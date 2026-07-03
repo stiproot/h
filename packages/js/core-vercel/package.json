@@ -1,0 +1,30 @@
+{
+  "name": "core-vercel",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "oxlint src && oxfmt --check src",
+    "format": "oxfmt src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.0.0",
+    "@effect/platform": "^0.96.2",
+    "ai": "^4.0.0",
+    "effect": "^3.21.4"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^24"
+  }
+}

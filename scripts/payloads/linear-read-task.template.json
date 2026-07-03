@@ -1,0 +1,5 @@
+{
+  "taskId": "linear-read-${ISSUE_ID}",
+  "issueId": "${ISSUE_ID}",
+  "problem": "Verify that openhands can read from Linear. Build and run an ephemeral two-step workflow (use run_workflow — do NOT save_workflow):\n(1) a setup step with id 'setup-linear' on agentId 'openhands-agent' that runs 'tessl init' to bootstrap the agent workspace;\n(2) a run-openhands step with id 'read-issue' whose task is: 'Using your Linear skill (the Linear GraphQL API, authenticated with the LINEAR_API_KEY environment variable which is already set), fetch Linear issue ${ISSUE_ID} and report its title, current status, assignee, and a one-paragraph summary of its description. If you cannot reach Linear or the issue cannot be found, state exactly what failed.'.\nAwait the instance; when COMPLETED, return the read-issue step's output verbatim."
+}

@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "id": "setup",
+      "activity": "setup",
+      "input": {
+        "agentId": "langgraph-agent",
+        "setup": [
+          { "cmd": "printf \"{}\" > tessl.json" },
+          { "cmd": "tessl init" }
+        ]
+      }
+    },
+    {
+      "id": "run",
+      "activity": "run-langgraph",
+      "input": {
+        "task": "Use the search_skills tool to find the most relevant skill for implementing a Node.js REST API. Search for something like 'node api' or 'hexagonal architecture node'. Pick the best result based on its description and scores. Install it using install_skill. Once installed, read it with read_skill and use the skill to implement a simple Node.js API in a hex-api/ directory that translates English text to hex — a single POST /translate endpoint. Also write a one-shot bash script (run-and-test.sh) that starts the server and fires a curl request against it.",
+        "graph": {
+          "tools": ["search_skills", "install_skill", "read_skill", "write_file"]
+        }
+      }
+    }
+  ]
+}

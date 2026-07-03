@@ -1,0 +1,18 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: localhost:6379
+    - name: redisPassword
+      value: ""
+    - name: actorStateStore
+      value: "true"
+    # Shared keyspace (no app-id prefix) so services — and dapr-mcp — can read each
+    # other's keys. Actor/workflow state uses its own composite keying, unaffected by this.
+    - name: keyPrefix
+      value: none

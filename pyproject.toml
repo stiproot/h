@@ -1,0 +1,19 @@
+# Virtual uv workspace root (no [project] of its own).
+# Groups the shared Python lib with the apps that consume its contract, so they
+# share one lockfile and resolve together — the Python mirror of the npm
+# workspace declared in package.json.
+#
+# Members are the shared lib plus the agent apps that consume its contract.
+# claude-managed-agent (diagrid) and workflow-agent (cron, different contract)
+# stay standalone with their own uv.lock and are excluded here.
+[tool.uv.workspace]
+members = [
+  "packages/py/agent-server",
+  "apps/dapr-agent",
+  "apps/dapr-claude-loop-agent",
+  "apps/langgraph-agent",
+]
+exclude = [
+  "apps/claude-managed-agent",
+  "apps/workflow-agent",
+]

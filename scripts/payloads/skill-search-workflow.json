@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "id": "setup-claude",
+      "activity": "setup",
+      "input": {
+        "agentId": "claude-agent",
+        "setup": [
+          {
+            "cmd": "printf \"{}\" > tessl.json"
+          },
+          {
+            "cmd": "tessl init --agent claude-code"
+          },
+          {
+            "cmd": "mkdir -p .claude && cp $AGENT_APP_DIR/.claude/settings.json .claude/settings.json"
+          },
+          {
+            "cmd": "cp $AGENT_APP_DIR/CLAUDE.md CLAUDE.md"
+          }
+        ]
+      }
+    },
+    {
+      "id": "search-and-solve",
+      "activity": "run-claude",
+      "input": {
+        "task": "Use the mcp__tessl__search tool to find the most relevant skill for implementing a Node.js REST API. Search for something like \"node api\" or \"hexagonal architecture node\". Pick the best result based on its description and scores. Install it using mcp__tessl__install (or fall back to running `tessl install <package> --skill <name>` via Bash if the MCP tool is unavailable). Once installed, use the skill to implement a simple Node.js API in a hex-api/ directory that translates English text to hex — a single POST /translate endpoint. Also add a one-shot bash script (run-and-test.sh) that starts the server and fires a curl request against it."
+      }
+    }
+  ]
+}

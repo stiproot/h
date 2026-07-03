@@ -1,0 +1,43 @@
+# secrets
+.env
+.env.*
+!.env.example
+secrets/*
+!secrets/*.example
+k8s/secrets/app-secrets.yaml
+.claude/settings.local.json
+
+# domain-specific workflow payloads, feature-request specs, and docs
+# (org/deployment-specific content; the generic machinery and demo payloads
+# in scripts/payloads/ are committed — see scripts/payloads/README.md)
+scripts/payloads/domain/*
+!scripts/payloads/domain/README.md
+
+# local scratch
+tmp/
+.claude/worktrees/
+
+# Dapr runtime
+dapr-etcd/
+
+# Workflow artifacts
+output/
+workspace/
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+*.log
+
+plans/

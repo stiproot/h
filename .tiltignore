@@ -1,0 +1,12 @@
+node_modules/
+**/node_modules/
+**/dist/
+**/.venv/
+**/__pycache__/
+**/*.pyc
+dapr-etcd/
+output/
+secrets/
+k8s/secrets/
+.git/
+*.log

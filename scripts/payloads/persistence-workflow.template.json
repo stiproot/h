@@ -1,0 +1,12 @@
+{
+  "key": "${WORKFLOW_KEY}",
+  "steps": [
+    {
+      "id": "run-task",
+      "activity": "run-claude",
+      "input": {
+        "task": "Print the current date and time, then exit."
+      }
+    }
+  ]
+}

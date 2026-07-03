@@ -1,0 +1,29 @@
+{
+  "name": "git-core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "oxlint src && oxfmt --check src",
+    "format": "oxfmt src",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "^0.107.0",
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^24"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.96.2",
+    "effect": "^3.21.4"
+  }
+}

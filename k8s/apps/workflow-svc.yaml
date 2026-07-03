@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-svc
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: workflow-svc
+  template:
+    metadata:
+      labels:
+        app: workflow-svc
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "workflow-svc"
+        dapr.io/app-port: "8000"
+        dapr.io/log-level: "info"
+        dapr.io/config: "appconfig"
+    spec:
+      containers:
+        - name: workflow-svc
+          image: h/workflow-svc
+          env:
+            - name: APP_PORT
+              value: "8000"
+          volumeMounts:
+            - name: output
+              mountPath: /output
+      volumes:
+        - name: output
+          hostPath:
+            path: /Users/stiproot/code/tessl/lab/h/output
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-svc
+  namespace: default
+spec:
+  selector:
+    app: workflow-svc
+  ports:
+    - port: 8000
+      targetPort: 8000

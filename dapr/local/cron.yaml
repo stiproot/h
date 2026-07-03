@@ -1,0 +1,13 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: cron-tick
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    # Dapr POSTs to /cron-tick on the scoped app on this schedule. Tune as needed.
+    - name: schedule
+      value: "@every 60s"
+scopes:
+  - workflow-agent

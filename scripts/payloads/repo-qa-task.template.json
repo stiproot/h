@@ -1,0 +1,4 @@
+{
+  "taskId": "repo-qa",
+  "problem": "Answer questions about the git repository ${REPO_URL} on branch '${BRANCH}' (empty means the default branch). Clone it and analyse it to answer the following questions: ${QUESTIONS}"
+}

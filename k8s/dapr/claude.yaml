@@ -1,0 +1,23 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: claude
+  namespace: default
+spec:
+  type: conversation.openai
+  version: v1
+  metadata:
+    - name: key
+      secretKeyRef:
+        name: h-secrets
+        key: LITELLM_API_KEY
+    - name: endpoint
+      secretKeyRef:
+        name: h-secrets
+        key: ANTHROPIC_BASE_URL
+    - name: model
+      value: claude-haiku-4-5
+auth:
+  secretStore: secretstore
+scopes:
+  - claude-agent

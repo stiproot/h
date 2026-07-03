@@ -1,0 +1,33 @@
+# Dependencies — never bake host-installed packages into an image
+node_modules/
+**/node_modules/
+**/.venv/
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Build outputs — images build these themselves; stale host dist must not leak in
+**/dist/
+**/build/
+**/.turbo/
+
+# Runtime state
+dapr-etcd/
+output/
+workspace/
+
+# Secrets
+.env
+.env.*
+secrets/secrets.json
+k8s/secrets/
+
+# Repo tooling — not needed in any image
+.git/
+.gitignore
+.tiltignore
+Tiltfile
+Makefile
+*.log

@@ -1,0 +1,34 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: resiliency
+spec:
+  policies:
+    timeouts:
+      agentTimeout: 3600s
+  targets:
+    apps:
+      claude-agent:
+        outbound:
+          timeout: agentTimeout
+      openhands-agent:
+        outbound:
+          timeout: agentTimeout
+      dapr-agent:
+        outbound:
+          timeout: agentTimeout
+      dapr-claude-loop-agent:
+        outbound:
+          timeout: agentTimeout
+      langgraph-agent:
+        outbound:
+          timeout: agentTimeout
+      claude-managed-agent:
+        outbound:
+          timeout: agentTimeout
+      workflow-agent:
+        outbound:
+          timeout: agentTimeout
+      workflow-svc:
+        outbound:
+          timeout: agentTimeout

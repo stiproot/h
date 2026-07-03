@@ -1,0 +1,4 @@
+{
+  "taskId": "trivial-write",
+  "problem": "Build and run a workflow with a single run-langgraph step whose task is: 'Write a file hello.txt containing exactly: workflow-agent works'. Once the workflow COMPLETES, return a one-line confirmation of what the workflow produced."
+}

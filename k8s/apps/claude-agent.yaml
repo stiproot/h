@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-agent-mcp-config
+  namespace: default
+data:
+  mcp.json: |
+    {
+      "mcpServers": {
+        "workflows": {
+          "type": "sse",
+          "url": "http://workflow-mcp:8000/sse"
+        },
+        "github": {
+          "type": "http",
+          "url": "https://api.githubcopilot.com/mcp/",
+          "headers": {
+            "Authorization": "Bearer ${GH_TOKEN}"
+          }
+        },
+        "dapr": {
+          "type": "sse",
+          "url": "http://dapr-mcp:8000/sse"
+        },
+        "notion": {
+          "type": "stdio",
+          "command": "npx",
+          "args": ["-y", "@notionhq/notion-mcp-server"],
+          "env": {
+            "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ${NOTION_API_KEY}\", \"Notion-Version\": \"2022-06-28\"}"
+          }
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-agent
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: claude-agent
+  template:
+    metadata:
+      labels:
+        app: claude-agent
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "claude-agent"
+        dapr.io/app-port: "8000"
+        dapr.io/log-level: "info"
+        dapr.io/config: "appconfig"
+    spec:
+      containers:
+        - name: claude-agent
+          image: h/claude-agent
+          env:
+            - name: APP_PORT
+              value: "8000"
+            - name: AGENT_BASE_DIR
+              value: /workspace/claude-agent
+            - name: AGENT_APP_DIR
+              value: /app/apps/claude-agent
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: ANTHROPIC_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: ANTHROPIC_BASE_URL
+            - name: AGENT_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: AGENT_MODEL
+            - name: TESSL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: TESSL_TOKEN
+                  optional: true
+            - name: GH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: GH_TOKEN
+                  optional: true
+            - name: NOTION_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: NOTION_API_KEY
+                  optional: true
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: mcp-config
+              mountPath: /workspace/claude-agent/.mcp.json
+              subPath: mcp.json
+      volumes:
+        - name: workspace
+          hostPath:
+            path: /Users/stiproot/code/tessl/lab/h-workspace
+            type: DirectoryOrCreate
+        - name: mcp-config
+          configMap:
+            name: claude-agent-mcp-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claude-agent
+  namespace: default
+spec:
+  selector:
+    app: claude-agent
+  ports:
+    - port: 8000
+      targetPort: 8000

@@ -1,0 +1,47 @@
+import type { WorkflowActivityContext } from "@dapr/dapr";
+import { Effect } from "effect";
+
+import { invokeAgentMethod, runActivity } from "../activity-registry.ts";
+
+type Input = {
+  workflowInstanceId: string;
+  workspaceId?: string;
+  sourceRepo?: string;
+  branch?: string;
+  baseRef?: string;
+  // Branch to refresh from origin before cutting a new branch (defaults to "main" in the agent's
+  // /worktree route). Pass an explicit "" to skip the refresh and branch from the local checkout.
+  remoteBase?: string;
+  agentId?: string;
+  traceparent?: string;
+};
+
+// Invokes an agent's /worktree to add a run-specific git worktree of a pre-cloned source repo.
+// Returns the worktree path so downstream run steps can target it via {{create-worktree.worktreePath}}.
+export async function createWorktreeActivity(
+  _ctx: WorkflowActivityContext,
+  input: unknown,
+): Promise<{ worktreePath: string }> {
+  const {
+    workflowInstanceId,
+    workspaceId,
+    sourceRepo,
+    branch,
+    baseRef,
+    remoteBase,
+    agentId,
+    traceparent,
+  } = input as Input;
+  const targetAgent = agentId ?? "claude-agent";
+  return runActivity(
+    invokeAgentMethod({
+      label: "create-worktree",
+      appId: targetAgent,
+      method: "worktree",
+      body: { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase },
+      span: "client",
+      parse: "json",
+    }).pipe(Effect.map((json) => json as { worktreePath: string })),
+    traceparent,
+  );
+}

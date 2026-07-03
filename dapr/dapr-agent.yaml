@@ -1,0 +1,22 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: dapr-agent
+spec:
+  type: conversation.openai
+  version: v1
+  metadata:
+    - name: key
+      secretKeyRef:
+        name: ANTHROPIC_API_KEY
+        key: ANTHROPIC_API_KEY
+    - name: endpoint
+      secretKeyRef:
+        name: ANTHROPIC_BASE_URL
+        key: ANTHROPIC_BASE_URL
+    - name: model
+      value: claude-haiku-4-5
+auth:
+  secretStore: secretstore
+scopes:
+  - dapr-agent

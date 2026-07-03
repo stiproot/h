@@ -1,0 +1,38 @@
+{
+  "steps": [
+    {
+      "activity": "setup",
+      "input": {
+        "setup": [
+          {
+            "cmd": "tessl init"
+          },
+          {
+            "cmd": "mkdir -p .claude && cp $AGENT_APP_DIR/.claude/settings.json .claude/settings.json"
+          },
+          {
+            "cmd": "tessl install ${SKILL_SPEC} --skill ${SKILL_NAME}"
+          }
+        ]
+      }
+    },
+    {
+      "activity": "run-claude",
+      "input": {
+        "task": "${TASK}"
+      }
+    },
+    {
+      "activity": "copy-session",
+      "input": {
+        "targetDir": "${TARGET_DIR}",
+        "output": {
+          "$ref": "run-claude.output"
+        },
+        "sessionId": {
+          "$ref": "run-claude.sessionId"
+        }
+      }
+    }
+  ]
+}

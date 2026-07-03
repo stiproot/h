@@ -1,0 +1,35 @@
+{
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/app/apps/claude-agent/.claude/hooks/publish-event.sh PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/app/apps/claude-agent/.claude/hooks/publish-event.sh PostToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/app/apps/claude-agent/.claude/hooks/publish-event.sh Stop"
+          }
+        ]
+      }
+    ]
+  }
+}

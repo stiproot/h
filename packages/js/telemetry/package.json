@@ -1,0 +1,36 @@
+{
+  "name": "telemetry",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "oxlint src && oxfmt --check src",
+    "format": "oxfmt src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@effect/opentelemetry": "^0.63.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.0.0",
+    "@opentelemetry/core": "^2.0.0",
+    "@opentelemetry/exporter-zipkin": "^2.0.0",
+    "@opentelemetry/resources": "^2.0.0",
+    "@opentelemetry/sdk-trace-base": "^2.0.0",
+    "@opentelemetry/sdk-trace-node": "^2.0.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0",
+    "effect": "^3.21.4"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^24"
+  }
+}

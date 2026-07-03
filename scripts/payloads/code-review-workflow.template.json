@@ -1,0 +1,46 @@
+{
+  "steps": [
+    {
+      "id": "setup-workspace",
+      "activity": "setup",
+      "input": {
+        "agentId": "claude-agent",
+        "setup": [
+          {
+            "cmd": "tessl init"
+          },
+          {
+            "cmd": "mkdir -p .claude && cp $AGENT_APP_DIR/.claude/settings.json .claude/settings.json"
+          },
+          {
+            "cmd": "cp $AGENT_APP_DIR/CLAUDE.md CLAUDE.md"
+          },
+          {
+            "cmd": "git clone ${REPO_URL} repo",
+            "validateCmd": "test -d repo"
+          }
+        ]
+      }
+    },
+    {
+      "id": "run-review",
+      "activity": "run-claude",
+      "input": {
+        "task": "${TASK}"
+      }
+    },
+    {
+      "id": "save-review",
+      "activity": "copy-session",
+      "input": {
+        "output": {
+          "$ref": "run-review.output"
+        },
+        "sessionId": {
+          "$ref": "run-review.sessionId"
+        },
+        "targetDir": "${OUTPUT_DIR}/{{run-review.sessionId}}"
+      }
+    }
+  ]
+}

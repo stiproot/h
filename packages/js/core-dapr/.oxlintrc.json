@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../node_modules/oxlint/configuration_schema.json",
+  "plugins": ["unicorn", "typescript", "eslint", "oxc", "import", "node", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "ignorePatterns": ["node_modules/", "dist/"],
+  "rules": {
+    "explicit-function-return-type": "off",
+    "no-console": "error",
+    "eslint/no-await-in-loop": "off"
+  }
+}

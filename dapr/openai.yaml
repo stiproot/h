@@ -1,0 +1,21 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: openai
+spec:
+  type: conversation.openai
+  version: v1
+  metadata:
+    - name: key
+      secretKeyRef:
+        name: LITELLM_API_KEY
+        key: LITELLM_API_KEY
+    - name: endpoint
+      secretKeyRef:
+        name: ANTHROPIC_BASE_URL
+        key: ANTHROPIC_BASE_URL
+    - name: model
+      value: evals-openai/gpt-5.4-mini
+auth:
+  secretStore: secretstore
+scopes: []

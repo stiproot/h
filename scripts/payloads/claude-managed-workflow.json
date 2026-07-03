@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {
+      "id": "run",
+      "activity": "run-claude-managed",
+      "input": {
+        "task": "Use the calculator to compute (42 * 17) + 256. Then count the words in 'The quick brown fox jumps over the lazy dog'. Finally, tell me the current UTC time. Summarise all three results clearly."
+      }
+    }
+  ]
+}

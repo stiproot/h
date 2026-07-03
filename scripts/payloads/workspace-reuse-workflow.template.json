@@ -1,0 +1,20 @@
+{
+  "workspaceId": "${WORKSPACE_ID}",
+  "steps": [
+    {
+      "id": "setup-claude",
+      "activity": "setup",
+      "input": {
+        "agentId": "claude-agent",
+        "setup": [
+          {
+            "cmd": "printf \"{}\" > tessl.json"
+          },
+          {
+            "cmd": "tessl init --agent claude-code"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,208 @@
+import { describe, expect, it } from "vitest";
+
+import { FetchHttpClient } from "@effect/platform";
+import { NodeContext } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+import type { AgentInvokeParams } from "./invoker.ts";
+import { AgentInvoker, layerAgentInvoker } from "./invoker.ts";
+import type { AgentStrategy, StreamEvent } from "./agents/types.ts";
+
+const TestPlatform = Layer.mergeAll(NodeContext.layer, FetchHttpClient.layer);
+
+// A strategy that runs `node -e <script>` — a real trivial subprocess — so the
+// Command.start + decodeText + splitLines pipeline is exercised end to end.
+function nodeStrategy(script: string, overrides: Partial<AgentStrategy> = {}): AgentStrategy {
+  return {
+    type: "claude",
+    name: "TestAgent",
+    validateEnvironment: () => null,
+    buildInvocation: async () => ({ command: "node", args: ["-e", script] }),
+    extractSessionId: (events: StreamEvent[]) =>
+      events.find((event) => event.session_id)?.session_id,
+    extractMetrics: () => ({}),
+    ...overrides,
+  };
+}
+
+function baseParams(overrides: Partial<AgentInvokeParams> = {}): AgentInvokeParams {
+  return {
+    systemPrompt: "",
+    taskPrompt: "task",
+    cwd: process.cwd(),
+    env: {},
+    timeout: 0,
+    ...overrides,
+  };
+}
+
+function invoke(strategy: AgentStrategy, params: AgentInvokeParams) {
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const invoker = yield* AgentInvoker;
+      return yield* invoker.invoke(params);
+    }).pipe(Effect.provide(layerAgentInvoker(strategy).pipe(Layer.provide(TestPlatform)))),
+  );
+}
+
+describe("AgentInvoker layer (Command.start pipeline)", () => {
+  it("parses JSONL split across chunks and flushes a trailing line without a newline, firing onEvent incrementally", async () => {
+    // Line 1 is written in two chunks (split mid-JSON); line 2 has no trailing
+    // newline and only becomes visible via the close-time flush.
+    const script = `
+      const line1 = JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "hello" }] } }) + "\\n";
+      process.stdout.write(line1.slice(0, 12));
+      setTimeout(() => {
+        process.stdout.write(line1.slice(12));
+        setTimeout(() => {
+          process.stdout.write(JSON.stringify({ type: "result", session_id: "sess-1" }));
+          process.exit(0);
+        }, 400);
+      }, 50);
+    `;
+
+    const arrivals: Array<{ type: string; at: number }> = [];
+    const result = await invoke(
+      nodeStrategy(script),
+      baseParams({
+        onEvent: (event) => arrivals.push({ type: String(event["type"]), at: Date.now() }),
+      }),
+    );
+    const doneAt = Date.now();
+
+    expect(result.success).toBe(true);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("hello");
+    expect(result.sessionId).toBe("sess-1");
+    // Both events observed, in stream order.
+    expect(arrivals.map((a) => a.type)).toEqual(["assistant", "result"]);
+    // Incremental delivery: the first event arrived while the child was still
+    // running (well before the invocation resolved), not after process exit.
+    expect(doneAt - arrivals[0]!.at).toBeGreaterThanOrEqual(300);
+  });
+
+  it("maps a timeout to the legacy exit-124 structured result instead of failing the call", async () => {
+    const script = `setTimeout(() => {}, 30000);`;
+    const startedAt = Date.now();
+
+    const result = await invoke(nodeStrategy(script), baseParams({ timeout: 500 }));
+
+    expect(result).toEqual({
+      success: false,
+      stdout: "Task timed out after 500ms",
+      stderr: "Task timed out",
+      exitCode: 124,
+    });
+    // The subprocess was killed by the scope, not awaited to completion.
+    expect(Date.now() - startedAt).toBeLessThan(5000);
+  });
+
+  it("resolves a non-zero exit as an unsuccessful result with stderr captured", async () => {
+    const script = `console.error("boom"); process.exit(3);`;
+
+    const result = await invoke(nodeStrategy(script), baseParams());
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("Process exited with code 3");
+    expect(result.stderr).toContain("boom");
+  });
+
+  it("resolves exit 127 when the command does not exist", async () => {
+    const strategy = nodeStrategy("", {
+      buildInvocation: async () => ({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
+    });
+
+    const result = await invoke(strategy, baseParams());
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBe(127);
+    expect(result.stdout).toContain("Command not found");
+  });
+
+  it("feeds stdinInput to the child and closes stdin", async () => {
+    const script = `
+      let input = "";
+      process.stdin.on("data", (d) => (input += d));
+      process.stdin.on("end", () => {
+        console.log(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "got:" + input }] } }));
+      });
+    `;
+    const strategy = nodeStrategy(script, {
+      buildInvocation: async () => ({
+        command: "node",
+        args: ["-e", script],
+        stdinInput: "ping",
+      }),
+    });
+
+    const result = await invoke(strategy, baseParams());
+
+    expect(result.success).toBe(true);
+    expect(result.stdout).toBe("got:ping");
+  });
+
+  it("routes lines through a strategy streamParser, including the trailing partial line", async () => {
+    const script = `process.stdout.write("alpha\\nbeta");`;
+    const strategy = nodeStrategy(script, {
+      buildInvocation: async () => ({
+        command: "node",
+        args: ["-e", script],
+        streamParser: {
+          parseChunk(buffer, chunk, events, onEvent) {
+            const combined = buffer + chunk;
+            const lines = combined.split("\n");
+            const remainder = lines.pop() ?? "";
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              onEvent?.({ type: "output", text: line });
+              events.push({
+                type: "assistant",
+                message: { content: [{ type: "text", text: line }] },
+              });
+            }
+            return remainder;
+          },
+          flushBuffer(buffer, events, onEvent) {
+            if (!buffer.trim()) return;
+            onEvent?.({ type: "output", text: buffer });
+            events.push({
+              type: "assistant",
+              message: { content: [{ type: "text", text: buffer }] },
+            });
+          },
+        },
+      }),
+    });
+
+    const seen: string[] = [];
+    const result = await invoke(
+      strategy,
+      baseParams({ onEvent: (event) => seen.push(String(event["text"])) }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.stdout).toBe("alpha\nbeta");
+    expect(seen).toEqual(["alpha", "beta"]);
+  });
+
+  it("short-circuits with the strategy's environment-validation result without spawning", async () => {
+    const strategy = nodeStrategy("", {
+      validateEnvironment: () => ({
+        success: false,
+        stdout: "SOME_KEY is required",
+        stderr: "Missing SOME_KEY",
+        exitCode: 1,
+      }),
+    });
+
+    const result = await invoke(strategy, baseParams());
+
+    expect(result).toEqual({
+      success: false,
+      stdout: "SOME_KEY is required",
+      stderr: "Missing SOME_KEY",
+      exitCode: 1,
+    });
+  });
+});

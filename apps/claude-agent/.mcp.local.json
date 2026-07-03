@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "workflows": {
+      "type": "sse",
+      "url": "http://localhost:8005/sse"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GH_TOKEN}"
+      }
+    },
+    "dapr": {
+      "type": "sse",
+      "url": "http://localhost:8011/sse"
+    },
+    "obs": {
+      "type": "sse",
+      "url": "http://localhost:8013/sse"
+    },
+    "notion": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@notionhq/notion-mcp-server"],
+      "env": {
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer ${NOTION_API_KEY}\", \"Notion-Version\": \"2022-06-28\"}"
+      }
+    }
+  }
+}

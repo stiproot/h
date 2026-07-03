@@ -1,0 +1,524 @@
+services:
+  placement:
+    container_name: placement
+    image: daprio/placement:edge
+    command:
+      - "./placement"
+      - "--port=50006"
+    ports:
+      - "50006:50006"
+    profiles: [all, infra]
+
+  scheduler:
+    container_name: scheduler
+    image: daprio/scheduler:edge
+    command:
+      - "./scheduler"
+      - "--port=50007"
+      - "--etcd-data-dir=/data"
+    ports:
+      - "50007:50007"
+    volumes:
+      - ./dapr-etcd:/data
+    profiles: [all, infra]
+
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    profiles: [all, infra]
+
+  # Lightweight web UI for inspecting the statestore (auto-connects to the redis service).
+  # Open http://localhost:16379 — keys like task:*, __workflow_index__, and saved-workflow keys.
+  # Host port 16379 (redis 6379 + 10000) avoids the very common 8081; container stays on 8081.
+  redis-commander:
+    container_name: redis-commander
+    image: ghcr.io/joeferner/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "16379:8081"
+    depends_on:
+      - redis
+    profiles: [all, infra]
+
+  zipkin:
+    container_name: zipkin
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+    profiles: [all, infra]
+
+  loki:
+    container_name: loki
+    image: grafana/loki:3.0.0
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./config/loki/local-config.yaml:/etc/loki/local-config.yaml
+    profiles: [all, infra]
+
+  alloy:
+    container_name: alloy
+    image: grafana/alloy:latest
+    command: run /etc/alloy/config.alloy
+    volumes:
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    profiles: [all, infra]
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - loki
+    profiles: [all, infra]
+
+  # --- Workflow orchestrator ---
+  workflow-svc:
+    container_name: workflow-svc
+    profiles: [all]
+    build:
+      context: .
+      dockerfile: apps/workflow-svc/Dockerfile
+    environment:
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+    volumes:
+      - ./output:/output
+    ports:
+      - "8003:8000"
+      - "3503:3500"
+
+  workflow-svc-dapr:
+    container_name: workflow-svc-dapr
+    profiles: [all]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=workflow-svc"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--dapr-grpc-port=50001"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:workflow-svc"
+    depends_on:
+      - workflow-svc
+
+  # --- Workflow MCP server ---
+  obs-mcp:
+    container_name: obs-mcp
+    profiles: [all, mcps]
+    build:
+      context: .
+      dockerfile: apps/obs-mcp/Dockerfile
+    environment:
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      - ZIPKIN_URL=http://zipkin:9411
+      - LOKI_URL=http://loki:3100
+      - RUNS_DIR=/workspace/.runs
+    volumes:
+      - ../h-workspace:/workspace
+    ports:
+      - "8013:8000"
+
+  workflow-mcp:
+    container_name: workflow-mcp
+    profiles: [all, mcps]
+    build:
+      context: .
+      dockerfile: apps/workflow-mcp/Dockerfile
+    environment:
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+    ports:
+      - "8005:8000"
+      - "3505:3500"
+
+  workflow-mcp-dapr:
+    container_name: workflow-mcp-dapr
+    profiles: [all, mcps]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=workflow-mcp"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:workflow-mcp"
+    depends_on:
+      - workflow-mcp
+
+  # --- Dapr state MCP server (statestore inspection / interaction) ---
+  dapr-mcp:
+    container_name: dapr-mcp
+    profiles: [all, mcps]
+    build:
+      context: .
+      dockerfile: apps/dapr-mcp/Dockerfile
+    # APP_PORT: Fastify/MCP-SSE (published). ACTOR_APP_PORT: GenericActor host == sidecar
+    # --app-port, internal-only (the sidecar reaches it over the shared network namespace).
+    environment:
+      - APP_PORT=8000
+      - ACTOR_APP_PORT=8010
+      - DAPR_HTTP_PORT=3500
+    ports:
+      - "8011:8000"
+      - "3511:3500"
+
+  dapr-mcp-dapr:
+    container_name: dapr-mcp-dapr
+    profiles: [all, mcps]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=dapr-mcp"
+      - "--app-port=8010"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:dapr-mcp"
+    depends_on:
+      - dapr-mcp
+
+  # --- Claude Code CLI agent ---
+  claude-agent:
+    container_name: claude-agent
+    profiles: [all, claude-agent]
+    build:
+      context: .
+      dockerfile: apps/claude-agent/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
+      - AGENT_BASE_DIR=/workspace/claude-agent
+      - AGENT_APP_DIR=/app/apps/claude-agent
+      # Root-level h skills, mounted read-only below; a setup step copies them to ~/.claude/skills/.
+      - H_SKILLS_DIR=/h-skills
+      - TESSL_TOKEN=${TESSL_TOKEN:-}
+      # GitHub token for cloning private repos (clone-repo activity → /clone → git-core).
+      - GH_TOKEN=${GH_TOKEN:-}
+      # ops plugins reach production over AWS SSM; Linear is read via the h `linear` skill.
+      - AWS_PROFILE=${AWS_PROFILE:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - LINEAR_API_KEY=${LINEAR_API_KEY:-}
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+    volumes:
+      - ../h-workspace:/workspace
+      - ./skills:/h-skills:ro
+      - ./apps/claude-agent/.mcp.json:/workspace/claude-agent/.mcp.json:ro
+      # Host AWS SSO session (read-only) so the ops plugin can run aws ssm commands.
+      # Mounted into the 'claude' user's home (the container runs as that user).
+      - ${HOME}/.aws:/home/claude/.aws:ro
+    ports:
+      - "8002:8000"
+      - "3502:3500"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "which claude && which tessl"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  claude-agent-dapr:
+    container_name: claude-agent-dapr
+    profiles: [all, claude-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=claude-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:claude-agent"
+    depends_on:
+      - claude-agent
+
+  # --- OpenHands agent ---
+  openhands-agent:
+    container_name: openhands-agent
+    profiles: [all, openhands-agent]
+    build:
+      context: .
+      dockerfile: apps/openhands-agent/Dockerfile
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL}
+      - AGENT_MODEL=${OPENHANDS_MODEL:-claude-sonnet-4-6}
+      - AGENT_BASE_DIR=/workspace/openhands-agent
+      - TESSL_TOKEN=${TESSL_TOKEN:-}
+      # Consumed by OpenHands' built-in "linear" skill to authenticate to the Linear API.
+      - LINEAR_API_KEY=${LINEAR_API_KEY:-}
+    volumes:
+      - ../h-workspace:/workspace
+    ports:
+      - "8004:8000"
+      - "3504:3500"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "which openhands && which tessl"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  openhands-agent-dapr:
+    container_name: openhands-agent-dapr
+    profiles: [all, openhands-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=openhands-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:openhands-agent"
+    depends_on:
+      - openhands-agent
+
+  # --- Dapr Agents SDK agent ---
+  dapr-agent:
+    container_name: dapr-agent
+    profiles: [all, dapr-agent]
+    build:
+      context: .
+      dockerfile: apps/dapr-agent/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - AGENT_BASE_DIR=/workspace/dapr-agent
+    volumes:
+      - ../h-workspace:/workspace
+      - ${TESSL_BIN:-/usr/local/bin/tessl}:/usr/local/bin/tessl:ro
+    ports:
+      - "8006:8006"
+      - "3506:3500"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/dapr/subscribe')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  dapr-agent-dapr:
+    container_name: dapr-agent-dapr
+    profiles: [all, dapr-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=dapr-agent"
+      - "--app-port=8006"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:dapr-agent"
+    depends_on:
+      - dapr-agent
+
+  # --- Claude agentic loop agent (Anthropic SDK + Dapr) ---
+  dapr-claude-loop-agent:
+    container_name: dapr-claude-loop-agent
+    profiles: [all, dapr-claude-loop-agent]
+    build:
+      context: .
+      dockerfile: apps/dapr-claude-loop-agent/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - AGENT_MODEL=${AGENT_MODEL:-claude-sonnet-4-6}
+      - AGENT_MAX_ITERATIONS=${AGENT_MAX_ITERATIONS:-20}
+      - AGENT_BASE_DIR=/workspace/dapr-claude-loop-agent
+    volumes:
+      - ../h-workspace:/workspace
+      - ${TESSL_BIN:-/usr/local/bin/tessl}:/usr/local/bin/tessl:ro
+    ports:
+      - "8007:8000"
+      - "3507:3500"
+
+  dapr-claude-loop-agent-dapr:
+    container_name: dapr-claude-loop-agent-dapr
+    profiles: [all, dapr-claude-loop-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=dapr-claude-loop-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:dapr-claude-loop-agent"
+    depends_on:
+      - dapr-claude-loop-agent
+
+  # --- LangGraph agent (pure LangChain/LangGraph ReAct) ---
+  langgraph-agent:
+    container_name: langgraph-agent
+    profiles: [all, langgraph-agent]
+    build:
+      context: .
+      dockerfile: apps/langgraph-agent/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - AGENT_MODEL=${AGENT_MODEL:-claude-sonnet-4-6}
+      - AGENT_MAX_ITERATIONS=${AGENT_MAX_ITERATIONS:-20}
+      - AGENT_BASE_DIR=/workspace/langgraph-agent
+    volumes:
+      - ../h-workspace:/workspace
+      - ${TESSL_BIN:-/usr/local/bin/tessl}:/usr/local/bin/tessl:ro
+    ports:
+      - "8009:8000"
+      - "3509:3500"
+
+  langgraph-agent-dapr:
+    container_name: langgraph-agent-dapr
+    profiles: [all, langgraph-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=langgraph-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:langgraph-agent"
+    depends_on:
+      - langgraph-agent
+
+  # --- Claude Managed Agents agent ---
+  claude-managed-agent:
+    container_name: claude-managed-agent
+    profiles: [all, claude-managed-agent]
+    build:
+      context: .
+      dockerfile: apps/claude-managed-agent/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - AGENT_MODEL=${AGENT_MODEL:-claude-sonnet-4-6}
+      - AGENT_MAX_ITERATIONS=${AGENT_MAX_ITERATIONS:-10}
+    ports:
+      - "8008:8000"
+      - "3508:3500"
+
+  claude-managed-agent-dapr:
+    container_name: claude-managed-agent-dapr
+    profiles: [all, claude-managed-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=claude-managed-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--dapr-grpc-port=50001"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:claude-managed-agent"
+    depends_on:
+      - claude-managed-agent
+
+  # --- Workflow orchestrator agent (cron-triggered) ---
+  workflow-agent:
+    container_name: workflow-agent
+    profiles: [all, workflow-agent]
+    build:
+      context: .
+      dockerfile: apps/workflow-agent/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      - AGENT_MODEL=${AGENT_MODEL:-claude-sonnet-4-6}
+      - AGENT_MAX_ITERATIONS=${AGENT_MAX_ITERATIONS:-25}
+      - WORKFLOW_MCP_URL=${WORKFLOW_MCP_URL:-http://workflow-mcp:8000/sse}
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+    ports:
+      - "8010:8000"
+      - "3510:3500"
+
+  workflow-agent-dapr:
+    container_name: workflow-agent-dapr
+    profiles: [all, workflow-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=workflow-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:workflow-agent"
+    depends_on:
+      - workflow-agent

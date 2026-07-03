@@ -1,0 +1,30 @@
+{
+  "name": "openhands-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc --project tsconfig.build.json",
+    "start": "node --enable-source-maps ./dist/index.js",
+    "lint": "tsc --noEmit && oxfmt --check src",
+    "format": "oxfmt src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.96.2",
+    "@effect/platform-node": "^0.107.0",
+    "agent-cli": "workspace:*",
+    "agent-server": "workspace:*",
+    "core": "workspace:*",
+    "effect": "^3.21.4",
+    "fastify": "^5.0.0",
+    "logger": "workspace:*",
+    "telemetry": "workspace:*"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^24",
+    "tsx": "^4.19.0"
+  }
+}

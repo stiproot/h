@@ -1,0 +1,15 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: workflow-cron-tick
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    # Heartbeat for the scheduler: Dapr POSTs to /workflow-cron-tick on workflow-svc on this
+    # schedule, which then fires any saved workflow whose own cron schedule is due. Minute
+    # resolution matches cron's smallest unit.
+    - name: schedule
+      value: "@every 60s"
+scopes:
+  - workflow-svc

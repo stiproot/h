@@ -1,0 +1,27 @@
+{
+  "name": "core",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "oxlint src && oxfmt --check src",
+    "format": "oxfmt src",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^24"
+  },
+  "dependencies": {
+    "effect": "^3.21.4"
+  }
+}

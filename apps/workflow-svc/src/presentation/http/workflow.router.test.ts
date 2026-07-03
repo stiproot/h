@@ -1,0 +1,222 @@
+import { WorkflowError } from "core";
+import { Effect, Layer, ManagedRuntime, Option } from "effect";
+import Fastify, { type FastifyInstance } from "fastify";
+import { afterEach, describe, expect, it } from "vitest";
+
+import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import {
+  WorkflowInvoker,
+  type WorkflowInvokerService,
+} from "../../domain/ports/IWorkflowInvoker.ts";
+import { WorkflowStore, type WorkflowStoreService } from "../../domain/ports/IWorkflowStore.ts";
+import { registerWorkflowRoutes, type WorkflowRoutesRuntime } from "./workflow.router.ts";
+
+const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
+  invoke: () => Effect.succeed({ instanceId: "generated-id" }),
+  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  ...overrides,
+});
+
+const stubStore = (overrides: Partial<WorkflowStoreService> = {}): WorkflowStoreService => ({
+  save: () => Effect.void,
+  get: () => Effect.succeed(Option.none()),
+  list: () => Effect.succeed([]),
+  listScheduled: () => Effect.succeed([]),
+  markRun: () => Effect.void,
+  ...overrides,
+});
+
+const cleanups: Array<() => Promise<unknown>> = [];
+afterEach(async () => {
+  while (cleanups.length > 0) await cleanups.pop()!();
+});
+
+async function makeApp(
+  invoker: WorkflowInvokerService,
+  store: WorkflowStoreService,
+): Promise<FastifyInstance> {
+  const runtime: WorkflowRoutesRuntime = ManagedRuntime.make(
+    Layer.mergeAll(Layer.succeed(WorkflowInvoker, invoker), Layer.succeed(WorkflowStore, store)),
+  );
+  const app = Fastify();
+  registerWorkflowRoutes(app, runtime);
+  await app.ready();
+  cleanups.push(
+    () => app.close(),
+    () => runtime.dispose(),
+  );
+  return app;
+}
+
+describe("POST /workflow/run", () => {
+  it("202s with the scheduled instance id and passes the payload through", async () => {
+    const seen: WorkflowRequest[] = [];
+    const app = await makeApp(
+      stubInvoker({
+        invoke: (input) => {
+          seen.push(input);
+          return Effect.succeed({ instanceId: "wf-1" });
+        },
+      }),
+      stubStore(),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run",
+      payload: { steps: [{ activity: "run-claude", input: { task: "t" } }], extra: "kept" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ instanceId: "wf-1" });
+    // Excess wire fields survive the decode (onExcessProperty: "preserve").
+    expect(seen[0]).toMatchObject({ extra: "kept" });
+  });
+
+  it("400s a malformed body with the Bad Request shape (ParseError mapping)", async () => {
+    const app = await makeApp(stubInvoker(), stubStore());
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run",
+      payload: { steps: "not-an-array" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ statusCode: 400, error: "Bad Request" });
+  });
+
+  it("500s a WorkflowError with the Fastify default error shape and the cause's message", async () => {
+    const app = await makeApp(
+      stubInvoker({
+        invoke: () =>
+          Effect.fail(new WorkflowError({ cause: new Error("scheduler down"), instanceId: "" })),
+      }),
+      stubStore(),
+    );
+    const res = await app.inject({ method: "POST", url: "/workflow/run", payload: { steps: [] } });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "scheduler down",
+    });
+  });
+});
+
+describe("POST /workflow/save", () => {
+  it("201s and persists the schedule envelope", async () => {
+    const saved: Array<{ key: string; workflow: StoredWorkflow }> = [];
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({
+        save: (key, workflow) => {
+          saved.push({ key, workflow });
+          return Effect.void;
+        },
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/save",
+      payload: { key: "daily", steps: [{ activity: "run-claude" }], schedule: "0 9 * * *" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toEqual({ key: "daily" });
+    expect(saved[0]!.key).toBe("daily");
+    expect(saved[0]!.workflow.schedule).toMatchObject({ cron: "0 9 * * *" });
+    expect(saved[0]!.workflow.schedule!.savedAt).toBeTruthy();
+  });
+
+  it("400s an invalid cron expression with the legacy body", async () => {
+    const app = await makeApp(stubInvoker(), stubStore());
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/save",
+      payload: { key: "daily", steps: [], schedule: "not a cron" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: "Invalid cron expression: not a cron" });
+  });
+
+  it("400s a body without a key (ParseError mapping)", async () => {
+    const app = await makeApp(stubInvoker(), stubStore());
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/save",
+      payload: { steps: [] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ statusCode: 400, error: "Bad Request" });
+  });
+});
+
+describe("POST /workflow/run/:key", () => {
+  it("404s a missing key with the legacy body (Option.none mapping)", async () => {
+    const app = await makeApp(stubInvoker(), stubStore());
+    const res = await app.inject({ method: "POST", url: "/workflow/run/nope" });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ error: "Workflow not found" });
+  });
+
+  it("202s and invokes the stored workflow's projection", async () => {
+    const seen: WorkflowRequest[] = [];
+    const stored: StoredWorkflow = {
+      steps: [{ activity: "run-claude", input: { task: "t" } }],
+      workspaceId: "ws-1",
+    };
+    const app = await makeApp(
+      stubInvoker({
+        invoke: (input) => {
+          seen.push(input);
+          return Effect.succeed({ instanceId: "wf-2" });
+        },
+      }),
+      stubStore({ get: () => Effect.succeed(Option.some(stored)) }),
+    );
+    const res = await app.inject({ method: "POST", url: "/workflow/run/daily" });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ instanceId: "wf-2" });
+    expect(seen[0]).toMatchObject({ steps: stored.steps, workspaceId: "ws-1" });
+  });
+});
+
+describe("GET routes", () => {
+  it("GET /workflow/list returns the keys", async () => {
+    const app = await makeApp(stubInvoker(), stubStore({ list: () => Effect.succeed(["a", "b"]) }));
+    const res = await app.inject({ method: "GET", url: "/workflow/list" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ keys: ["a", "b"] });
+  });
+
+  it("GET /workflow/get/:key returns the stored value, 404s a miss", async () => {
+    const stored: StoredWorkflow = { steps: [{ activity: "setup" }], disabled: true };
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({
+        get: (key) => Effect.succeed(key === "daily" ? Option.some(stored) : Option.none()),
+      }),
+    );
+    const hit = await app.inject({ method: "GET", url: "/workflow/get/daily" });
+    expect(hit.statusCode).toBe(200);
+    expect(hit.json()).toEqual(stored);
+    const miss = await app.inject({ method: "GET", url: "/workflow/get/nope" });
+    expect(miss.statusCode).toBe(404);
+    expect(miss.json()).toEqual({ error: "Workflow not found" });
+  });
+
+  it("GET /workflow/status/:instanceId passes the status through (UNKNOWN fallback intact)", async () => {
+    const app = await makeApp(
+      stubInvoker({
+        getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
+      }),
+      stubStore(),
+    );
+    const res = await app.inject({ method: "GET", url: "/workflow/status/wf-9" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ instanceId: "wf-9", runtimeStatus: "UNKNOWN" });
+  });
+
+  it("GET /dapr/subscribe returns []", async () => {
+    const app = await makeApp(stubInvoker(), stubStore());
+    const res = await app.inject({ method: "GET", url: "/dapr/subscribe" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([]);
+  });
+});

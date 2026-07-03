@@ -1,0 +1,19 @@
+{
+  "key": "${KEY}",
+  "schedule": "* * * * *",
+  "workspaceId": "${KEY}",
+  "steps": [
+    {
+      "id": "setup",
+      "activity": "setup",
+      "input": {
+        "agentId": "claude-agent",
+        "setup": [
+          {
+            "cmd": "printf \"{}\" > tessl.json"
+          }
+        ]
+      }
+    }
+  ]
+}

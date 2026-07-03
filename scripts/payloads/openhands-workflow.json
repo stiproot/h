@@ -1,0 +1,58 @@
+{
+  "steps": [
+    {
+      "id": "setup-openhands",
+      "activity": "setup",
+      "input": {
+        "agentId": "openhands-agent",
+        "setup": [
+          {
+            "cmd": "printf \"{}\" > tessl.json"
+          },
+          {
+            "cmd": "tessl init"
+          },
+          {
+            "cmd": "mkdir -p .openhands/skills && cp $AGENT_APP_DIR/.openhands/skills/steering-rules.md .openhands/skills/steering-rules.md"
+          },
+          {
+            "cmd": "tessl install github:Dokhacgiakhoa/antigravity-ide@332e58b --skill api-patterns --agent openhands",
+            "validateCmd": "find .openhands/skills -maxdepth 1 -type d -name \"*api-patterns*\" | grep -q ."
+          }
+        ]
+      }
+    },
+    {
+      "id": "build-api",
+      "activity": "run-openhands",
+      "input": {
+        "task": "Use the /api-patterns skill to implement a simple Node API in a hex-api/ directory that translates English text to hex. It should expose a single POST /translate endpoint. Also add a one-shot bash script (run-and-test.sh) that starts the server and fires a curl request against it."
+      }
+    },
+    {
+      "id": "setup-claude",
+      "activity": "setup",
+      "input": {
+        "agentId": "claude-agent",
+        "setup": [
+          {
+            "cmd": "tessl init"
+          },
+          {
+            "cmd": "mkdir -p .claude && cp $AGENT_APP_DIR/.claude/settings.json .claude/settings.json"
+          },
+          {
+            "cmd": "cp $AGENT_APP_DIR/CLAUDE.md CLAUDE.md"
+          }
+        ]
+      }
+    },
+    {
+      "id": "test-api",
+      "activity": "run-claude",
+      "input": {
+        "task": "The API was built at {{build-api.workspacePath}}. Explore that directory, find the test script, run it, and report whether the API test passed."
+      }
+    }
+  ]
+}

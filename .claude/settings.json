@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "effect-claude-primitives@effect-primitives": true
+  }
+}

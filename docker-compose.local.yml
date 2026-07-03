@@ -1,0 +1,7 @@
+services:
+  scheduler:
+    command:
+      - "./scheduler"
+      - "--port=50007"
+      - "--etcd-data-dir=/data"
+      - "--override-broadcast-host-port=localhost:50007"
