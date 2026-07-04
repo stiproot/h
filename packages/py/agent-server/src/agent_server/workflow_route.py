@@ -119,16 +119,16 @@ class WorkflowBabysitter:
             raise ValueError("submit needs a key or steps")
         if submit.key:
             url = self._invoke_url(f"workflow/run/{urllib.parse.quote(submit.key)}")
-            body: dict[str, Any] = {"params": submit.params} if submit.params else {}
+            body: dict[str, Any] = {}
         else:
             url = self._invoke_url("workflow/run")
             body = {"steps": submit.steps}
-            if submit.params:
-                body["params"] = submit.params
-            if submit.instanceId:
-                body["instanceId"] = submit.instanceId
-            if submit.workspaceId:
-                body["workspaceId"] = submit.workspaceId
+        if submit.params:
+            body["params"] = submit.params
+        if submit.instanceId:
+            body["instanceId"] = submit.instanceId
+        if submit.workspaceId:
+            body["workspaceId"] = submit.workspaceId
         scheduled = await asyncio.to_thread(self._post, url, body)
         instance_id = scheduled["instanceId"]
         state = WatchState(instanceId=instance_id, startedAt=_now())

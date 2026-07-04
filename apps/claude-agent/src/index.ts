@@ -83,3 +83,15 @@ const shutdown = async (): Promise<void> => {
 };
 process.once("SIGTERM", () => void shutdown());
 process.once("SIGINT", () => void shutdown());
+
+// Crash visibility: a silent app death (observed 2026-07-04 — the process exited while its
+// sidecar kept answering, leaving nothing but an EOF on the next Dapr invoke) must at least
+// leave a loud, timestamped trace. Log fatally, then exit non-zero like the default behaviour.
+process.on("uncaughtException", (err) => {
+  fastify.log.fatal({ err }, "claude-agent | uncaught exception — exiting");
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  fastify.log.fatal({ err: reason }, "claude-agent | unhandled rejection — exiting");
+  process.exit(1);
+});

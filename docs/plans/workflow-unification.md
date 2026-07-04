@@ -127,13 +127,22 @@ supervision      babysitter (shared agent-server pkgs, js+py): poll status + led
 
 ### Deferred / follow-ups
 
-- Family runs get GUID instance ids → GUID-named worktree dirs (`worktrees/<guid>`), though the
-  branch name stays readable. Consider accepting a fire-time `instanceId`/`workspaceId` on
-  `POST /workflow/run/:key` so family runs regain readable, stable keys.
+- ~~Fire-time `instanceId`/`workspaceId` on `POST /workflow/run/:key`~~ — done 2026-07-04
+  (route + MCP tool + babysitter key-mode + `h workflow run --instance-id`).
+- ~~`toolCalls: 0` in the JS run ledger~~ — done 2026-07-04: the claude CLI stream nests
+  tool_use blocks inside assistant events' `message.content[]`; the tally now counts them.
+- ~~SKILL.md path drift~~ / ~~render-time sourceRepo validation~~ — done 2026-07-04 (warning
+  when the rendered worktree step's sourceRepo doesn't exist locally).
 - `h feature run --spec-file` formalization folded into Phase 6 (the positional already accepts
   a path; the family path is `h workflow run feature -p spec=@file`).
 - `plugin-improvement` publish needs org config (`pluginImprovement.tile`/`sourceRepo` in
   values.local.yaml) — goldens cover the render; live publish awaits a real plugin repo setup.
+- Babysitter escalation hook (agent-in-the-loop judgment on budget breach / repeated failure)
+  — design next; the deterministic terminate + `workflow-events` emission is the substrate.
+- claude-agent silent death (2026-07-04, window ~13:10–14:08): kernel clean (no OOM, suspend,
+  or coredump); the bun process exited while its sidecar survived. Mitigated with fatal
+  uncaughtException/unhandledRejection handlers so the next death is loud; root cause needs
+  the original terminal's scrollback if still available.
 
 - Fix `toolCalls: 0` in the JS run ledger for MCP-heavy runs.
 - Fix `analyze-workflow-run/SKILL.md` script path (also in repo-root `skills/` copy).

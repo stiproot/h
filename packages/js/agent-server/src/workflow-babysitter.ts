@@ -83,10 +83,11 @@ export class WorkflowBabysitter {
   async submit(submit: WorkflowSubmit): Promise<{ instanceId: string }> {
     if (!submit.key && !submit.steps) throw new Error("submit needs a key or steps");
     const scheduled = submit.key
-      ? await this.post(
-          `workflow/run/${encodeURIComponent(submit.key)}`,
-          submit.params ? { params: submit.params } : {},
-        )
+      ? await this.post(`workflow/run/${encodeURIComponent(submit.key)}`, {
+          ...(submit.params ? { params: submit.params } : {}),
+          ...(submit.instanceId ? { instanceId: submit.instanceId } : {}),
+          ...(submit.workspaceId ? { workspaceId: submit.workspaceId } : {}),
+        })
       : await this.post("workflow/run", {
           steps: submit.steps,
           ...(submit.params ? { params: submit.params } : {}),

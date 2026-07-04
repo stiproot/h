@@ -128,6 +128,14 @@ def run(
             "--param", "-p", help="Fire-time param key=value; value '@path' splices a file."
         ),
     ] = None,
+    instance_id: Annotated[
+        str | None,
+        typer.Option(
+            "--instance-id",
+            help="Stable, readable instance id for this run (becomes the worktree/workspace "
+            "name instead of a generated GUID).",
+        ),
+    ] = None,
     agent: AgentOpt = None,
 ) -> None:
     """Fire a saved workflow with fire-time params; prints the instance id.
@@ -141,9 +149,11 @@ def run(
         body: dict[str, Any] = {"key": key}
         if params:
             body["params"] = params
+        if instance_id:
+            body["instanceId"] = instance_id
         result = _guarded(lambda: agent_service.submit_workflow(agent_url, body))
     else:
-        result = _guarded(lambda: workflow_svc.run_saved(key, params))
+        result = _guarded(lambda: workflow_svc.run_saved(key, params, instance_id))
     console.print_json(data=result)
     console.print(f"    watch it: h workflow status {result['instanceId']}")
 

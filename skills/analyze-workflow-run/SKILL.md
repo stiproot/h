@@ -34,7 +34,7 @@ activity records its real error there. Always verify the self-report against the
 Run the bundled script with the instance id (run from the h repo root):
 
 ```bash
-~/.claude/skills/analyze-workflow-run/cli/scripts/analyze-run.sh <workflowInstanceId> [taskId]
+~/.claude/skills/analyze-workflow-run/scripts/analyze-run.sh <workflowInstanceId> [taskId]
 # e.g. analyze-run.sh triage-ABC-123
 ```
 

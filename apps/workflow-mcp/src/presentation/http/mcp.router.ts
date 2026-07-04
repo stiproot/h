@@ -33,6 +33,18 @@ export const RunSavedWorkflowInput = Schema.Struct({
         "Fire-time parameter values; they override the saved workflow's default params key-by-key.",
     }),
   ),
+  instanceId: Schema.optional(
+    Schema.String.annotations({
+      description:
+        "Optional stable, readable workflow instance id for this run (e.g. 'feature-dark-mode'); it becomes the run's worktree/workspace name instead of a generated GUID.",
+    }),
+  ),
+  workspaceId: Schema.optional(
+    Schema.String.annotations({
+      description:
+        "Optional stable workspace key: every step targets the same reusable agent workspace dir instead of a per-run one.",
+    }),
+  ),
 });
 export const TerminateWorkflowInput = Schema.Struct({
   instanceId: Schema.String.annotations({
@@ -143,6 +155,16 @@ export const TOOL_DEFINITIONS = [
           type: "object",
           description:
             "Fire-time parameter values; they override the saved workflow's default params key-by-key.",
+        },
+        instanceId: {
+          type: "string",
+          description:
+            "Optional stable, readable workflow instance id for this run (e.g. 'feature-dark-mode'); it becomes the run's worktree/workspace name instead of a generated GUID.",
+        },
+        workspaceId: {
+          type: "string",
+          description:
+            "Optional stable workspace key: every step targets the same reusable agent workspace dir instead of a per-run one.",
         },
       },
       required: ["key"],
@@ -276,7 +298,12 @@ export const toolHandlers: Record<
     Effect.gen(function* () {
       const input = yield* decodePreserving(RunSavedWorkflowInput)(args);
       const service = yield* WorkflowService;
-      return jsonResult(yield* service.runByKey(input.key, input.params));
+      return jsonResult(
+        yield* service.runByKey(input.key, input.params, {
+          instanceId: input.instanceId,
+          workspaceId: input.workspaceId,
+        }),
+      );
     }).pipe(catchToolErrors("run_saved_workflow")),
 
   terminate_workflow: (args) =>

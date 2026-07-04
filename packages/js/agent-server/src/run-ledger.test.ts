@@ -149,6 +149,33 @@ describe("startRunLedgerEffect", () => {
     // the tool-call tally is sync and unaffected by append failures
     expect(summary.toolCalls).toBe(5);
   });
+
+  it("counts tool_use blocks nested in claude-CLI assistant events", async () => {
+    const { layer } = makeStubLedger();
+    const summary = await Effect.runPromise(
+      Effect.gen(function* () {
+        const handle = yield* startRunLedgerEffect(runCtx);
+        // The claude CLI stream shape: tool calls arrive inside assistant message content.
+        handle.onEvent({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "text", text: "calling the workflow tool" },
+              { type: "tool_use", name: "mcp__workflows__run_workflow" },
+              { type: "tool_use", name: "mcp__workflows__await_workflow" },
+            ],
+          },
+        });
+        handle.onEvent({ type: "user", message: { content: [{ type: "tool_result" }] } });
+        handle.onEvent({
+          type: "assistant",
+          message: { content: [{ type: "tool_use", name: "Bash" }] },
+        });
+        return yield* handle.finish({ status: "completed", output: "" });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(summary.toolCalls).toBe(3);
+  });
 });
 
 describe("recordActivityEffect", () => {

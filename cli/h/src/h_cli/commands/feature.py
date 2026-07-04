@@ -57,6 +57,27 @@ def _derive_slug(spec_file: Path) -> str:
     return slug
 
 
+def _warn_missing_source_repo(rendered: str) -> None:
+    """Warn when the rendered worktree step points at a repo path that doesn't exist locally.
+
+    The chart's sourceRepo (usually from the gitignored values.local.yaml) is only consumed by
+    the agent at the worktree step, so a typo'd or unprovisioned path otherwise surfaces
+    minutes into the run. A warning, not an error: the agent may resolve the path on another
+    host (docker/k8s).
+    """
+    definition = yaml.safe_load(rendered)
+    for step in definition.get("steps", []) if isinstance(definition, dict) else []:
+        if step.get("activity") != "create-worktree":
+            continue
+        source_repo = (step.get("input") or {}).get("sourceRepo")
+        if source_repo and not Path(source_repo).is_dir():
+            err_console.print(
+                f"[yellow]warning:[/yellow] sourceRepo '{source_repo}' does not exist locally — "
+                "the worktree step will fail unless the agent resolves it elsewhere "
+                "(pre-clone with cli/scripts/clone.sh, or fix values.local.yaml)"
+            )
+
+
 def _render(spec: str, slug: str | None) -> tuple[str, str]:
     spec_file = _resolve_spec(spec)
     resolved_slug = slug or _derive_slug(spec_file)
@@ -69,6 +90,7 @@ def _render(spec: str, slug: str | None) -> tuple[str, str]:
     except helm.HelmError as err:
         err_console.print(f"[red]helm:[/red] {err}")
         raise typer.Exit(1) from err
+    _warn_missing_source_repo(rendered)
     return rendered, resolved_slug
 
 

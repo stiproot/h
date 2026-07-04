@@ -81,6 +81,7 @@ export class WorkflowService extends Context.Tag("WorkflowService")<
     readonly runByKey: (
       key: string,
       params?: WorkflowParams,
+      overrides?: { instanceId?: string; workspaceId?: string },
     ) => Effect.Effect<{ instanceId: string }, WorkflowError>;
     readonly list: () => Effect.Effect<{ keys: readonly string[] }, WorkflowError>;
     readonly getByKey: (

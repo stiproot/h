@@ -30,8 +30,16 @@ export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutes
 /** A saved workflow key that resolved to nothing — mapped to the legacy 404 body. */
 class WorkflowNotFoundError extends Data.TaggedError("WorkflowNotFoundError") {}
 
-/** Optional body of POST /workflow/run/:key — fire-time params for the saved workflow. */
-const RunSavedBody = Schema.Struct({ params: Schema.optional(WorkflowParams) });
+/**
+ * Optional body of POST /workflow/run/:key — fire-time params for the saved workflow, plus an
+ * optional caller-chosen instanceId/workspaceId so a family run gets a readable, stable
+ * worktree/workspace key instead of a generated GUID.
+ */
+const RunSavedBody = Schema.Struct({
+  params: Schema.optional(WorkflowParams),
+  instanceId: Schema.optional(Schema.String),
+  workspaceId: Schema.optional(Schema.String),
+});
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
 class InvalidCronError extends Data.TaggedError("InvalidCronError")<{
@@ -177,14 +185,22 @@ export function registerWorkflowRoutes(
         runtime,
         reply,
         Effect.gen(function* () {
-          // Optional body: fire-time params override the stored defaults key-by-key. An
-          // absent/empty body keeps the pre-params behaviour.
-          const { params } = yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
+          // Optional body: fire-time params override the stored defaults key-by-key; a
+          // fire-time instanceId/workspaceId overrides the projection (readable run keys).
+          // An absent/empty body keeps the pre-params behaviour.
+          const { params, instanceId, workspaceId } = yield* Schema.decodeUnknown(RunSavedBody)(
+            request.body ?? {},
+          );
           const store = yield* WorkflowStore;
           const workflow = yield* store.get(request.params.key);
           if (Option.isNone(workflow)) return yield* new WorkflowNotFoundError();
           const invoker = yield* WorkflowInvoker;
-          return yield* invoker.invoke(toRequest(workflow.value, traceparent, params));
+          const req = toRequest(workflow.value, traceparent, params);
+          return yield* invoker.invoke({
+            ...req,
+            ...(instanceId ? { instanceId } : {}),
+            ...(workspaceId ? { workspaceId } : {}),
+          });
         }),
         { successStatus: 202 },
       );

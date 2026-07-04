@@ -36,6 +36,26 @@ def test_no_args_shows_help() -> None:
     assert "workflow" in result.output
 
 
+def test_warn_missing_source_repo(capsys) -> None:
+    rendered = (
+        "steps:\n"
+        "  - id: worktree\n"
+        "    activity: create-worktree\n"
+        "    input:\n"
+        "      sourceRepo: /definitely/not/a/real/path\n"
+    )
+    feature._warn_missing_source_repo(rendered)
+    assert "does not exist locally" in capsys.readouterr().err
+
+
+def test_no_warning_for_existing_or_default_source_repo(capsys, tmp_path) -> None:
+    feature._warn_missing_source_repo(
+        f"steps:\n  - activity: create-worktree\n    input:\n      sourceRepo: {tmp_path}\n"
+    )
+    feature._warn_missing_source_repo("steps:\n  - activity: create-worktree\n    input: {}\n")
+    assert capsys.readouterr().err == ""
+
+
 @needs_helm
 def test_feature_render_json_is_a_valid_definition(hostile_spec: Path) -> None:
     result = runner.invoke(app, ["feature", "render", str(hostile_spec), "--json"])

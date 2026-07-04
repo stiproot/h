@@ -35,9 +35,16 @@ def save(key: str, steps: list[Any], params: dict[str, Any] | None = None) -> An
     return resp.json()
 
 
-def run_saved(key: str, params: dict[str, Any] | None = None) -> Any:
-    """Fire a saved workflow; fire-time params override the stored defaults key-by-key."""
-    body = {"params": params} if params else {}
+def run_saved(
+    key: str, params: dict[str, Any] | None = None, instance_id: str | None = None
+) -> Any:
+    """Fire a saved workflow; fire-time params override the stored defaults key-by-key.
+    An instance_id gives the run a readable, stable worktree/workspace key."""
+    body: dict[str, Any] = {}
+    if params:
+        body["params"] = params
+    if instance_id:
+        body["instanceId"] = instance_id
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()

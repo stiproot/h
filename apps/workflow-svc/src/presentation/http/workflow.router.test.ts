@@ -224,6 +224,30 @@ describe("POST /workflow/run/:key", () => {
     expect(res.statusCode).toBe(202);
     expect(seen[0]!.params).toEqual({ spec: "fire-time-spec", slug: "default-slug" });
   });
+
+  it("passes a fire-time instanceId/workspaceId through to the invoker (readable run keys)", async () => {
+    const seen: WorkflowRequest[] = [];
+    const app = await makeApp(
+      stubInvoker({
+        invoke: (input) => {
+          seen.push(input);
+          return Effect.succeed({ instanceId: input.instanceId ?? "generated" });
+        },
+      }),
+      stubStore({ get: () => Effect.succeed(Option.some({ steps: [] })) }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { instanceId: "feature-dark-mode", workspaceId: "ws-dark-mode" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ instanceId: "feature-dark-mode" });
+    expect(seen[0]).toMatchObject({
+      instanceId: "feature-dark-mode",
+      workspaceId: "ws-dark-mode",
+    });
+  });
 });
 
 describe("POST /workflow/terminate/:instanceId", () => {

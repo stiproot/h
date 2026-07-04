@@ -136,10 +136,16 @@ export const WorkflowServiceLive: Layer.Layer<WorkflowService, never, HttpClient
             Effect.flatMap(decodePreserving(RunResponse, req.instanceId ?? "")),
           ),
 
-        runByKey: (key, params) =>
-          invokePost(`workflow/run/${encodeURIComponent(key)}`, params ? { params } : {}, key).pipe(
-            Effect.flatMap(decodePreserving(RunResponse, key)),
-          ),
+        runByKey: (key, params, overrides) =>
+          invokePost(
+            `workflow/run/${encodeURIComponent(key)}`,
+            {
+              ...(params ? { params } : {}),
+              ...(overrides?.instanceId ? { instanceId: overrides.instanceId } : {}),
+              ...(overrides?.workspaceId ? { workspaceId: overrides.workspaceId } : {}),
+            },
+            key,
+          ).pipe(Effect.flatMap(decodePreserving(RunResponse, key))),
 
         list: () =>
           invokeGet("workflow/list", "").pipe(

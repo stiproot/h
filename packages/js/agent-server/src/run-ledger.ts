@@ -102,10 +102,19 @@ export type ActivitySummary = {
 // Shared pure helpers
 // ---------------------------------------------------------------------------
 
-/** Tool-call tally over the invoker's event stream: count tool_use events, trust reported stats. */
+/**
+ * Tool-call tally over the invoker's event stream: count top-level tool_use events, count
+ * tool_use content blocks nested inside message events (the claude CLI stream never emits a
+ * top-level tool_use — its calls arrive as `{type: "assistant", message: {content:
+ * [{type: "tool_use"}, …]}}`), and trust reported stats when a strategy provides them.
+ */
 function tallyToolCalls(current: number, event: Record<string, unknown>): number {
   let next = current;
   if ((event as { type?: string }).type === "tool_use") next += 1;
+  const content = (event as { message?: { content?: unknown } }).message?.content;
+  if (Array.isArray(content)) {
+    next += content.filter((block) => (block as { type?: string })?.type === "tool_use").length;
+  }
   const statsToolCalls = (event as { stats?: { tool_calls?: number } }).stats?.tool_calls;
   if (typeof statsToolCalls === "number") next = Math.max(next, statsToolCalls);
   return next;
