@@ -40,4 +40,18 @@ describe("resolveRefs", () => {
       b: "literal",
     });
   });
+
+  // The params contract: the generic workflow seeds named params into the results map under the
+  // reserved id `params`, so they resolve exactly like step results.
+  it("resolves {{params.x}} and $ref params when seeded into results", () => {
+    const withParams = { ...results, params: { spec: "# Fix lint", slug: "ci-lint-fix" } };
+    const input = {
+      task: "Branch feature/{{params.slug}}:\n{{params.spec}}",
+      whole: { $ref: "params" },
+    };
+    expect(resolveRefs(input, withParams)).toEqual({
+      task: "Branch feature/ci-lint-fix:\n# Fix lint",
+      whole: { spec: "# Fix lint", slug: "ci-lint-fix" },
+    });
+  });
 });

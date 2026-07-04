@@ -14,6 +14,7 @@ import { activeTraceparent, withAmbientParent, withServerSpan } from "telemetry"
 
 import {
   SaveWorkflowRequest,
+  WorkflowParams,
   WorkflowRequest,
   toRequest,
 } from "../../domain/models/workflow.model.ts";
@@ -28,6 +29,9 @@ export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutes
 
 /** A saved workflow key that resolved to nothing — mapped to the legacy 404 body. */
 class WorkflowNotFoundError extends Data.TaggedError("WorkflowNotFoundError") {}
+
+/** Optional body of POST /workflow/run/:key — fire-time params for the saved workflow. */
+const RunSavedBody = Schema.Struct({ params: Schema.optional(WorkflowParams) });
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
 class InvalidCronError extends Data.TaggedError("InvalidCronError")<{
@@ -143,9 +147,8 @@ export function registerWorkflowRoutes(
         runtime,
         reply,
         Effect.gen(function* () {
-          const { key, steps, workspaceId, schedule, disabled } = yield* Schema.decodeUnknown(
-            SaveWorkflowRequest,
-          )(request.body);
+          const { key, steps, workspaceId, schedule, disabled, params } =
+            yield* Schema.decodeUnknown(SaveWorkflowRequest)(request.body);
           if (schedule !== undefined) {
             yield* Effect.try({
               try: () => assertValidCron(schedule),
@@ -158,6 +161,7 @@ export function registerWorkflowRoutes(
             workspaceId,
             schedule: schedule ? { cron: schedule, savedAt: new Date().toISOString() } : undefined,
             disabled,
+            params,
           });
           return { key };
         }),
@@ -173,15 +177,35 @@ export function registerWorkflowRoutes(
         runtime,
         reply,
         Effect.gen(function* () {
+          // Optional body: fire-time params override the stored defaults key-by-key. An
+          // absent/empty body keeps the pre-params behaviour.
+          const { params } = yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
           const store = yield* WorkflowStore;
           const workflow = yield* store.get(request.params.key);
           if (Option.isNone(workflow)) return yield* new WorkflowNotFoundError();
           const invoker = yield* WorkflowInvoker;
-          return yield* invoker.invoke(toRequest(workflow.value, traceparent));
+          return yield* invoker.invoke(toRequest(workflow.value, traceparent, params));
         }),
         { successStatus: 202 },
       );
     }),
+  );
+
+  fastify.post<{ Params: { instanceId: string } }>(
+    "/workflow/terminate/:instanceId",
+    (request, reply) =>
+      withServerSpan("POST /workflow/terminate/:instanceId", request.headers, () =>
+        runRoute(
+          runtime,
+          reply,
+          Effect.gen(function* () {
+            const invoker = yield* WorkflowInvoker;
+            yield* invoker.terminate(request.params.instanceId);
+            return { instanceId: request.params.instanceId };
+          }),
+          { successStatus: 202 },
+        ),
+      ),
   );
 
   fastify.get("/workflow/list", (_request, reply) =>
@@ -222,6 +246,10 @@ export function registerWorkflowRoutes(
   );
 
   fastify.get("/dapr/subscribe", async (_request, reply) => {
-    return reply.send([]);
+    // The single well-known trigger topic (see trigger.router.ts): events carrying
+    // { key, params } fire the named saved workflow — the pub/sub sibling of /workflow/run/:key.
+    return reply.send([
+      { pubsubname: "pubsub", topic: "workflow-trigger", route: "workflow-trigger" },
+    ]);
   });
 }

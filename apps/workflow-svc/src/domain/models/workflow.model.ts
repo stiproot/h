@@ -7,6 +7,12 @@ import { Schema } from "effect";
  * state store), decode with `onExcessProperty: "preserve"` so nothing is stripped.
  */
 
+// Named workflow parameters. Steps reference them like step results — `{{params.x}}` inside a
+// string or `{ "$ref": "params.x" }` — resolved by the generic workflow, which seeds them into
+// the results map under the reserved id `params` (a step must not use that id).
+export const WorkflowParams = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+export type WorkflowParams = Schema.Schema.Type<typeof WorkflowParams>;
+
 export const StepDefinition = Schema.Struct({
   id: Schema.optional(Schema.String),
   activity: Schema.String,
@@ -27,6 +33,8 @@ export const WorkflowRequest = Schema.Struct({
   // W3C traceparent captured when the run was requested, carried as data so activities can
   // re-attach to the originating trace across the workflow's async/replay boundary.
   traceparent: Schema.optional(Schema.String),
+  // Named parameters resolved into step inputs as {{params.x}} / {"$ref": "params.x"}.
+  params: Schema.optional(WorkflowParams),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
@@ -38,6 +46,9 @@ export const SaveWorkflowRequest = Schema.Struct({
   schedule: Schema.optional(Schema.String),
   // When true, the scheduler skips this workflow — a way to pause a schedule without deleting it.
   disabled: Schema.optional(Schema.Boolean),
+  // Default parameter values for this saved workflow (a "family"); fire-time params override
+  // these key-by-key.
+  params: Schema.optional(WorkflowParams),
 });
 export type SaveWorkflowRequest = Schema.Schema.Type<typeof SaveWorkflowRequest>;
 
@@ -59,12 +70,21 @@ export const StoredWorkflow = Schema.Struct({
   schedule: Schema.optional(WorkflowSchedule),
   // When true, the scheduler skips this workflow — a way to pause a schedule without deleting it.
   disabled: Schema.optional(Schema.Boolean),
+  // Default parameter values; fire-time params override key-by-key (see toRequest).
+  params: Schema.optional(WorkflowParams),
 });
 export type StoredWorkflow = Schema.Schema.Type<typeof StoredWorkflow>;
 
-// Projects a stored workflow into the run-time request handed to the invoker.
-export function toRequest(stored: StoredWorkflow, traceparent?: string): WorkflowRequest {
-  return { steps: stored.steps, workspaceId: stored.workspaceId, traceparent };
+// Projects a stored workflow into the run-time request handed to the invoker. Fire-time params
+// merge over the stored defaults key-by-key, so a family can ship defaults and a caller can
+// override just the slots it cares about.
+export function toRequest(
+  stored: StoredWorkflow,
+  traceparent?: string,
+  params?: WorkflowParams,
+): WorkflowRequest {
+  const merged = stored.params || params ? { ...stored.params, ...params } : undefined;
+  return { steps: stored.steps, workspaceId: stored.workspaceId, traceparent, params: merged };
 }
 
 export type AgentResult = {

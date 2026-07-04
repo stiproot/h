@@ -14,6 +14,7 @@ import { registerCronRoutes, tickEffect } from "./cron.router.ts";
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
   getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  terminate: () => Effect.void,
   ...overrides,
 });
 

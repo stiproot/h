@@ -73,4 +73,23 @@ describe("toRequest", () => {
       traceparent: "00-abc-def-01",
     });
   });
+
+  it("merges fire-time params over stored defaults key-by-key", () => {
+    const stored: StoredWorkflow = {
+      steps: [],
+      params: { spec: "default", slug: "kept" },
+    };
+    expect(toRequest(stored, undefined, { spec: "override" }).params).toEqual({
+      spec: "override",
+      slug: "kept",
+    });
+  });
+
+  it("leaves params undefined when neither side has any", () => {
+    expect(toRequest({ steps: [] }).params).toBeUndefined();
+  });
+
+  it("passes fire-time params through when nothing is stored", () => {
+    expect(toRequest({ steps: [] }, undefined, { a: 1 }).params).toEqual({ a: 1 });
+  });
 });

@@ -10,6 +10,7 @@ import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
 import { WorkflowStoreLive } from "./infrastructure/dapr-workflow-store.ts";
 import { genericWorkflow } from "./infrastructure/workflows/generic.workflow.ts";
 import { registerCronRoutes } from "./presentation/http/cron.router.ts";
+import { registerTriggerRoutes } from "./presentation/http/trigger.router.ts";
 import { registerWorkflowRoutes } from "./presentation/http/workflow.router.ts";
 
 const daprHttpPort = process.env.DAPR_HTTP_PORT ?? "3500";
@@ -52,6 +53,7 @@ for (const activity of activities) {
 const fastify = Fastify({ logger: true });
 registerWorkflowRoutes(fastify, runtime);
 registerCronRoutes(fastify, runtime);
+registerTriggerRoutes(fastify, runtime);
 
 // The sidecar must be up (components loaded, placement connected) before the workflow
 // worker connects to it.

@@ -14,6 +14,7 @@ import {
 
 import {
   SaveWorkflowRequest,
+  WorkflowParams,
   WorkflowRequest,
   WorkflowService,
 } from "../../domain/ports/IWorkflowService.ts";
@@ -26,6 +27,17 @@ export type McpToolRuntime = ManagedRuntime.ManagedRuntime<WorkflowService, neve
 // descriptions. Exported (with TOOL_DEFINITIONS) for the schema-drift test.
 export const RunSavedWorkflowInput = Schema.Struct({
   key: Schema.String.annotations({ description: "Key of the saved workflow to run" }),
+  params: Schema.optional(
+    WorkflowParams.annotations({
+      description:
+        "Fire-time parameter values; they override the saved workflow's default params key-by-key.",
+    }),
+  ),
+});
+export const TerminateWorkflowInput = Schema.Struct({
+  instanceId: Schema.String.annotations({
+    description: "Instance ID of the running workflow to terminate",
+  }),
 });
 export const GetWorkflowInput = Schema.Struct({
   key: Schema.String.annotations({ description: "Key of the saved workflow to fetch" }),
@@ -78,6 +90,11 @@ export const TOOL_DEFINITIONS = [
             required: ["activity", "input"],
           },
         },
+        params: {
+          type: "object",
+          description:
+            "Default parameter values for this saved workflow; run_saved_workflow params override them key-by-key.",
+        },
       },
       required: ["key", "steps"],
     },
@@ -106,6 +123,11 @@ export const TOOL_DEFINITIONS = [
             required: ["activity", "input"],
           },
         },
+        params: {
+          type: "object",
+          description:
+            'Named parameters resolved into step inputs: reference them as {{params.x}} inside a string, or {"$ref": "params.x"} for a whole value.',
+        },
       },
       required: ["steps"],
     },
@@ -117,8 +139,28 @@ export const TOOL_DEFINITIONS = [
       type: "object" as const,
       properties: {
         key: { type: "string", description: "Key of the saved workflow to run" },
+        params: {
+          type: "object",
+          description:
+            "Fire-time parameter values; they override the saved workflow's default params key-by-key.",
+        },
       },
       required: ["key"],
+    },
+  },
+  {
+    name: "terminate_workflow",
+    description:
+      "Terminate a running workflow instance (it reaches runtimeStatus TERMINATED). Use to short-circuit a run that is stuck, spinning, or no longer needed.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        instanceId: {
+          type: "string",
+          description: "Instance ID of the running workflow to terminate",
+        },
+      },
+      required: ["instanceId"],
     },
   },
   {
@@ -234,8 +276,15 @@ export const toolHandlers: Record<
     Effect.gen(function* () {
       const input = yield* decodePreserving(RunSavedWorkflowInput)(args);
       const service = yield* WorkflowService;
-      return jsonResult(yield* service.runByKey(input.key));
+      return jsonResult(yield* service.runByKey(input.key, input.params));
     }).pipe(catchToolErrors("run_saved_workflow")),
+
+  terminate_workflow: (args) =>
+    Effect.gen(function* () {
+      const input = yield* decodePreserving(TerminateWorkflowInput)(args);
+      const service = yield* WorkflowService;
+      return jsonResult(yield* service.terminate(input.instanceId));
+    }).pipe(catchToolErrors("terminate_workflow")),
 
   list_workflows: () =>
     Effect.gen(function* () {

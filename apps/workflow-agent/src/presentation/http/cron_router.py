@@ -1,9 +1,7 @@
 import asyncio
-import json
 import logging
-import os
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from domain.models import Task, TaskStatus
@@ -12,29 +10,9 @@ from infrastructure.workflow_agent_runner import WorkflowAgentRunner
 
 logger = logging.getLogger(__name__)
 
-PLUGIN_FEEDBACK_TOPIC = "plugin-feedback"
-
 
 class RunRequest(BaseModel):
     taskId: str
-
-
-def _improvement_problem(feedback: str, repo: str, tile: str, plugin: str, branch: str) -> str:
-    """Plain-English task: worktree the target repo and apply the plugin improvement on it."""
-    return (
-        f"Improve the {plugin} plugin using triage feedback. The plugin source lives at {tile} "
-        f"in the {repo} repository. Build and start an EPHEMERAL workflow with run_workflow "
-        f"(do NOT save_workflow). Steps:\n"
-        f"(1) create-worktree with id 'worktree': input {{ agentId: 'claude-agent', branch: "
-        f"'{branch}' }} off the shared pre-cloned repo.\n"
-        f"(2) run-claude with id 'improve', input {{ cwd: '{{{{worktree.worktreePath}}}}', task: "
-        f"'You are in a git worktree of the plugin repository (your current directory). Trace the "
-        f"current {plugin} plugin source under {tile} (SKILL.md, references/, scripts/) "
-        f"before editing — the installed copy can lag the source. Apply this improvement:"
-        f"\\n\\n{feedback}\\n\\nMake a focused change to the plugin source and bump the version "
-        f"in {tile}.tessl-plugin/plugin.json. Do not commit. Summarize what you changed.' }}.\n"
-        f"Await the instance; when COMPLETED, return the improve step output verbatim."
-    )
 
 
 def create_router(runner: WorkflowAgentRunner, store: StateStore) -> APIRouter:
@@ -84,62 +62,10 @@ def create_router(runner: WorkflowAgentRunner, store: StateStore) -> APIRouter:
 
     @router.get("/dapr/subscribe")
     async def subscribe():
-        # Route plugin-feedback events (published by the triage diagnosis step) to the handler
-        # below, which turns each into a plugin-improvement task. route matches the POST path.
-        return [
-            {
-                "pubsubname": "pubsub",
-                "topic": PLUGIN_FEEDBACK_TOPIC,
-                "route": "plugin-feedback",
-            }
-        ]
-
-    @router.post("/plugin-feedback")
-    async def plugin_feedback(request: Request):
-        # Dapr delivers a CloudEvents envelope; the published payload is in `data`. Parse it
-        # defensively since the agent may publish data as an object or a JSON string.
-        envelope = await request.json()
-        data = envelope.get("data", envelope) if isinstance(envelope, dict) else envelope
-        if isinstance(data, str):
-            try:
-                data = json.loads(data)
-            except json.JSONDecodeError:
-                data = {"feedback": data}
-        if not isinstance(data, dict):
-            return {"skipped": "event data is not an object"}
-
-        feedback = (data.get("feedback") or "").strip()
-        if not feedback:
-            return {"skipped": "empty feedback"}
-
-        issue_id = data.get("issueId")
-        # Plugin targeting comes from the event, falling back to deployment config — there is
-        # deliberately no in-code default, since repo/plugin names are org-specific.
-        repo = data.get("repo") or os.getenv("PLUGIN_FEEDBACK_REPO", "")
-        tile = data.get("tilePath") or os.getenv("PLUGIN_FEEDBACK_TILE_PATH", "")
-        if not repo or not tile:
-            logger.warning(
-                "workflow-agent | plugin-feedback event lacks repo/tilePath and no "
-                "PLUGIN_FEEDBACK_REPO / PLUGIN_FEEDBACK_TILE_PATH configured — skipping"
-            )
-            return {"skipped": "no repo/tilePath in event and no PLUGIN_FEEDBACK_* env configured"}
-        plugin = tile.rstrip("/").split("/")[-1]
-        suffix = issue_id or envelope.get("id", "event")
-        task_id = f"{plugin}-improve-{suffix}"
-        branch = f"improve/{plugin}-{suffix}"
-
-        # Seed a pending task; the cron tick picks it up and drives the improvement workflow.
-        # Seeding (not processing inline) keeps the ack fast so Dapr does not redeliver.
-        await store.seed_task(
-            {
-                "id": task_id,
-                "status": TaskStatus.PENDING.value,
-                "problem": _improvement_problem(feedback, repo, tile, plugin, branch),
-                "issueId": issue_id,
-                "result": None,
-            }
-        )
-        logger.info("workflow-agent | seeded plugin-improvement task %s", task_id)
-        return {"seeded": task_id}
+        # No subscriptions. The plugin-feedback → plugin-improvement flow moved out of this
+        # service: it is now the `plugin-improvement` chart family (cli/charts) fired by
+        # workflow-svc's generic `workflow-trigger` topic — a family + an event, no domain
+        # routes in any agent service. See docs/plans/workflow-unification.md.
+        return []
 
     return router

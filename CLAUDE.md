@@ -51,7 +51,7 @@ apps/workflow-agent/src/                  # workflow-agent (thin wrapper over ag
 ├── main.py                               # FastAPI composition root; system prompt loaded from the workflow-orchestrator skill (agent_core.load_skill_instructions; AGENT_SYSTEM_PROMPT overrides)
 ├── infrastructure/workflow_agent_runner.py  # IAgentRunner impl – delegates to agent_core's ReAct loop over the workflow-mcp toolset
 ├── infrastructure/statestore.py          # task read-write via Dapr state API
-└── presentation/http/cron_router.py      # POST /cron-tick (cron binding target), POST /run, GET /dapr/subscribe (plugin-feedback), POST /plugin-feedback (seeds a plugin-improvement task)
+└── presentation/http/cron_router.py      # POST /cron-tick (cron binding target), POST /run, GET /dapr/subscribe (empty — the plugin-feedback flow moved to workflow-svc's workflow-trigger topic + the plugin-improvement chart family)
 
 apps/workflow-svc/src/
 ├── index.ts                                          # registers workflow + activities + cron route, starts Fastify

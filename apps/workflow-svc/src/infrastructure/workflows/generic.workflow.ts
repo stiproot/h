@@ -8,7 +8,9 @@ export async function* genericWorkflow(
   ctx: WorkflowContext,
   input: WorkflowRequest,
 ): AsyncGenerator<Task<unknown>, string, unknown> {
-  const results: Record<string, unknown> = {};
+  // Seed named params under the reserved id `params`, so steps reference them exactly like
+  // step results: {{params.x}} in strings, { "$ref": "params.x" } for any-typed values.
+  const results: Record<string, unknown> = { params: input.params ?? {} };
   const workflowInstanceId = ctx.getWorkflowInstanceId();
 
   for (const step of input.steps) {

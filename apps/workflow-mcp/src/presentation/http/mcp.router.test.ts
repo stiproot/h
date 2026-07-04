@@ -13,6 +13,7 @@ import {
   GetWorkflowInput,
   GetWorkflowStatusInput,
   RunSavedWorkflowInput,
+  TerminateWorkflowInput,
   TOOL_DEFINITIONS,
   toolHandlers,
 } from "./mcp.router.ts";
@@ -88,6 +89,10 @@ describe("published inputSchema stays aligned with the annotated Structs", () =>
     expectAligned(publishedFor("await_workflow"), generatedFor(AwaitWorkflowInput));
   });
 
+  it("terminate_workflow", () => {
+    expectAligned(publishedFor("terminate_workflow"), generatedFor(TerminateWorkflowInput));
+  });
+
   it("every published tool has a handler and vice versa", () => {
     expect(TOOL_DEFINITIONS.map((t) => t.name).sort()).toEqual(Object.keys(toolHandlers).sort());
   });
@@ -110,6 +115,7 @@ const failingService = Layer.succeed(WorkflowService, {
   list: () => boom(""),
   getByKey: (key) => boom(key),
   getStatus: (instanceId) => boom(instanceId),
+  terminate: (instanceId) => boom(instanceId),
 });
 
 const stubService = Layer.succeed(WorkflowService, {
@@ -119,6 +125,7 @@ const stubService = Layer.succeed(WorkflowService, {
   list: () => Effect.succeed({ keys: ["a", "b"] }),
   getByKey: () => Effect.succeedNone,
   getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  terminate: (instanceId) => Effect.succeed({ instanceId }),
 });
 
 // A stub whose only varying method is getStatus — the await_workflow tests differ solely in
@@ -135,6 +142,7 @@ const serviceWithStatus = (
     list: () => Effect.succeed({ keys: [] }),
     getByKey: () => Effect.succeedNone,
     getStatus,
+    terminate: (instanceId) => Effect.succeed({ instanceId }),
   });
 
 describe("tool error edge", () => {
@@ -165,6 +173,7 @@ describe("tool error edge", () => {
       get_workflow: { key: "k" },
       get_workflow_status: { instanceId: "wf-1" },
       await_workflow: { instanceId: "wf-1" },
+      terminate_workflow: { instanceId: "wf-1" },
     };
     for (const [name, handler] of Object.entries(toolHandlers)) {
       const result = await Effect.runPromise(
@@ -196,6 +205,7 @@ describe("behaviour preservation", () => {
       list: () => Effect.succeed({ keys: [] }),
       getByKey: () => Effect.succeedNone,
       getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
+      terminate: (instanceId) => Effect.succeed({ instanceId }),
     });
     await Effect.runPromise(
       toolHandlers["save_workflow"]!({
@@ -206,6 +216,39 @@ describe("behaviour preservation", () => {
       }).pipe(Effect.provide(capture)),
     );
     expect(seen).toMatchObject({ key: "k", schedule: "0 * * * *", workspaceId: "ws-1" });
+  });
+
+  it("run_saved_workflow passes fire-time params through to runByKey", async () => {
+    let seenKey: string | undefined;
+    let seenParams: unknown;
+    const capture = Layer.succeed(WorkflowService, {
+      save: (req) => Effect.succeed({ key: req.key }),
+      run: () => Effect.succeed({ instanceId: "wf-1" }),
+      runByKey: (key, params) => {
+        seenKey = key;
+        seenParams = params;
+        return Effect.succeed({ instanceId: "wf-1" });
+      },
+      list: () => Effect.succeed({ keys: [] }),
+      getByKey: () => Effect.succeedNone,
+      getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
+      terminate: (instanceId) => Effect.succeed({ instanceId }),
+    });
+    await Effect.runPromise(
+      toolHandlers["run_saved_workflow"]!({ key: "feature", params: { slug: "dark-mode" } }).pipe(
+        Effect.provide(capture),
+      ),
+    );
+    expect(seenKey).toBe("feature");
+    expect(seenParams).toEqual({ slug: "dark-mode" });
+  });
+
+  it("terminate_workflow returns the terminated instance id", async () => {
+    const result = await Effect.runPromise(
+      toolHandlers["terminate_workflow"]!({ instanceId: "wf-9" }).pipe(Effect.provide(stubService)),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ instanceId: "wf-9" });
   });
 
   it("get_workflow_status returns the stubbed status verbatim", async () => {
@@ -286,6 +329,7 @@ describe("behaviour preservation", () => {
       list: () => Effect.succeed({ keys: [] }),
       getByKey: () => Effect.succeed(Option.some({ steps: [{ activity: "a", input: {} }] })),
       getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
+      terminate: (instanceId) => Effect.succeed({ instanceId }),
     });
     const result = await Effect.runPromise(
       toolHandlers["get_workflow"]!({ key: "k" }).pipe(Effect.provide(withWorkflow)),

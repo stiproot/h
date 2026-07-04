@@ -15,6 +15,8 @@ import type { WorkflowRequest, WorkflowStatus } from "../models/workflow.model.t
 export interface WorkflowInvokerService {
   readonly invoke: (input: WorkflowRequest) => Effect.Effect<{ instanceId: string }, WorkflowError>;
   readonly getStatus: (instanceId: string) => Effect.Effect<WorkflowStatus, WorkflowError>;
+  /** Requests termination of a running instance (the babysitter's short-circuit action). */
+  readonly terminate: (instanceId: string) => Effect.Effect<void, WorkflowError>;
 }
 
 /** Service tag for the invoker. Yield it to call: `const invoker = yield* WorkflowInvoker`. */

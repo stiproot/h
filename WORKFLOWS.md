@@ -200,11 +200,11 @@ and are invoked identically (`invoke-workflow-agent.sh <name> …`); document th
 `WORKFLOWS.md` in that directory. See `cli/scripts/payloads/domain/README.md`.
 
 The machinery they compose is all committed: `create-worktree` for isolated per-run worktrees of a
-pre-cloned repo, the `plugin-feedback` pub/sub topic (an agent publishes improvement feedback via
-the dapr MCP; `workflow-agent` subscribes and seeds a plugin-improvement task — target repo/path
-configured via `PLUGIN_FEEDBACK_REPO` / `PLUGIN_FEEDBACK_TILE_PATH` or per-event fields), and the
-report-marker convention (`===ISSUE REPORT===`, `===PLUGIN FEEDBACK===`, …) for extracting
-structured sections from agent output.
+pre-cloned repo, the `workflow-trigger` pub/sub topic (an agent publishes `{key, params}` via the
+dapr MCP; `workflow-svc` subscribes and fires the named saved workflow with those params — e.g.
+`{key: "plugin-improvement", params: {feedback, slug}}` fires the published `plugin-improvement`
+chart family), and the report-marker convention (`===ISSUE REPORT===`, `===PLUGIN FEEDBACK===`,
+`===VERIFY===`, …) for extracting structured sections from agent output.
 
 ### Feature request (feature-request)
 

@@ -136,8 +136,8 @@ export const WorkflowServiceLive: Layer.Layer<WorkflowService, never, HttpClient
             Effect.flatMap(decodePreserving(RunResponse, req.instanceId ?? "")),
           ),
 
-        runByKey: (key) =>
-          invokePost(`workflow/run/${encodeURIComponent(key)}`, {}, key).pipe(
+        runByKey: (key, params) =>
+          invokePost(`workflow/run/${encodeURIComponent(key)}`, params ? { params } : {}, key).pipe(
             Effect.flatMap(decodePreserving(RunResponse, key)),
           ),
 
@@ -159,6 +159,13 @@ export const WorkflowServiceLive: Layer.Layer<WorkflowService, never, HttpClient
                 onSome: (json) =>
                   decodePreserving(WorkflowRequest, key)(json).pipe(Effect.map(Option.some)),
               }),
+            ),
+          ),
+
+        terminate: (instanceId) =>
+          invokePost(`workflow/terminate/${encodeURIComponent(instanceId)}`, {}, instanceId).pipe(
+            Effect.flatMap(
+              decodePreserving(Schema.Struct({ instanceId: Schema.String }), instanceId),
             ),
           ),
 

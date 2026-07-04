@@ -14,6 +14,7 @@ import { registerWorkflowRoutes, type WorkflowRoutesRuntime } from "./workflow.r
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
   getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  terminate: () => Effect.void,
   ...overrides,
 });
 
@@ -124,6 +125,30 @@ describe("POST /workflow/save", () => {
     expect(saved[0]!.workflow.schedule!.savedAt).toBeTruthy();
   });
 
+  it("persists default params on the stored workflow", async () => {
+    const saved: Array<{ key: string; workflow: StoredWorkflow }> = [];
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({
+        save: (key, workflow) => {
+          saved.push({ key, workflow });
+          return Effect.void;
+        },
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/save",
+      payload: {
+        key: "feature",
+        steps: [{ activity: "run-claude", input: { task: "{{params.spec}}" } }],
+        params: { slug: "default-slug" },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(saved[0]!.workflow.params).toEqual({ slug: "default-slug" });
+  });
+
   it("400s an invalid cron expression with the legacy body", async () => {
     const app = await makeApp(stubInvoker(), stubStore());
     const res = await app.inject({
@@ -175,6 +200,64 @@ describe("POST /workflow/run/:key", () => {
     expect(res.json()).toEqual({ instanceId: "wf-2" });
     expect(seen[0]).toMatchObject({ steps: stored.steps, workspaceId: "ws-1" });
   });
+
+  it("merges fire-time params over the stored defaults", async () => {
+    const seen: WorkflowRequest[] = [];
+    const stored: StoredWorkflow = {
+      steps: [{ activity: "run-claude", input: { task: "{{params.spec}}" } }],
+      params: { spec: "default-spec", slug: "default-slug" },
+    };
+    const app = await makeApp(
+      stubInvoker({
+        invoke: (input) => {
+          seen.push(input);
+          return Effect.succeed({ instanceId: "wf-3" });
+        },
+      }),
+      stubStore({ get: () => Effect.succeed(Option.some(stored)) }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { params: { spec: "fire-time-spec" } },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(seen[0]!.params).toEqual({ spec: "fire-time-spec", slug: "default-slug" });
+  });
+});
+
+describe("POST /workflow/terminate/:instanceId", () => {
+  it("202s with the instance id after terminating", async () => {
+    const terminated: string[] = [];
+    const app = await makeApp(
+      stubInvoker({
+        terminate: (instanceId) => {
+          terminated.push(instanceId);
+          return Effect.void;
+        },
+      }),
+      stubStore(),
+    );
+    const res = await app.inject({ method: "POST", url: "/workflow/terminate/wf-9" });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ instanceId: "wf-9" });
+    expect(terminated).toEqual(["wf-9"]);
+  });
+
+  it("500s a WorkflowError from the invoker with its cause message", async () => {
+    const app = await makeApp(
+      stubInvoker({
+        terminate: (instanceId) =>
+          Effect.fail(
+            new WorkflowError({ cause: new Error("terminate failed with 404"), instanceId }),
+          ),
+      }),
+      stubStore(),
+    );
+    const res = await app.inject({ method: "POST", url: "/workflow/terminate/wf-9" });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ message: "terminate failed with 404" });
+  });
 });
 
 describe("GET routes", () => {
@@ -213,10 +296,12 @@ describe("GET routes", () => {
     expect(res.json()).toEqual({ instanceId: "wf-9", runtimeStatus: "UNKNOWN" });
   });
 
-  it("GET /dapr/subscribe returns []", async () => {
+  it("GET /dapr/subscribe declares the workflow-trigger subscription", async () => {
     const app = await makeApp(stubInvoker(), stubStore());
     const res = await app.inject({ method: "GET", url: "/dapr/subscribe" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual([]);
+    expect(res.json()).toEqual([
+      { pubsubname: "pubsub", topic: "workflow-trigger", route: "workflow-trigger" },
+    ]);
   });
 });

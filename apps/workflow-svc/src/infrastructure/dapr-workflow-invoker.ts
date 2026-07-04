@@ -70,6 +70,23 @@ export const WorkflowInvokerLive: Layer.Layer<WorkflowInvoker, never, HttpClient
           )
           .pipe(Effect.asVoid, Effect.mapError(asWorkflowError(instanceId)));
 
+      // Requests termination of a running instance. Unlike purge (legacy, fire-and-forget),
+      // a non-ok response surfaces as a WorkflowError — a caller terminating a workflow needs
+      // to know the request was rejected.
+      const terminate = (instanceId: string): Effect.Effect<void, WorkflowError> =>
+        Effect.gen(function* () {
+          const response = yield* httpClient.execute(
+            HttpClientRequest.post(`${daprBase}/v1.0-beta1/workflows/dapr/${instanceId}/terminate`),
+          );
+          if (response.status < 200 || response.status >= 300) {
+            const text = yield* response.text;
+            return yield* new WorkflowError({
+              cause: new Error(`terminate failed with ${response.status}: ${text}`),
+              instanceId,
+            });
+          }
+        }).pipe(Effect.asVoid, Effect.mapError(asWorkflowError(instanceId)));
+
       const invoke = (
         input: WorkflowRequest,
       ): Effect.Effect<{ instanceId: string }, WorkflowError> =>
@@ -95,6 +112,6 @@ export const WorkflowInvokerLive: Layer.Layer<WorkflowInvoker, never, HttpClient
           return { instanceId };
         });
 
-      return { invoke, getStatus };
+      return { invoke, getStatus, terminate };
     }),
   );

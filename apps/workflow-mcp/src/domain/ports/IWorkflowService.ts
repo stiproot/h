@@ -20,6 +20,16 @@ export const StepDefinition = Schema.Struct({
 });
 export type StepDefinition = Schema.Schema.Type<typeof StepDefinition>;
 
+// Named workflow parameters, resolved into step inputs by workflow-svc's generic workflow as
+// {{params.x}} placeholders / { "$ref": "params.x" } objects.
+export const WorkflowParams = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+export type WorkflowParams = Schema.Schema.Type<typeof WorkflowParams>;
+
+const paramsAnnotation = {
+  description:
+    'Named parameters resolved into step inputs: reference them as {{params.x}} inside a string, or {"$ref": "params.x"} for a whole value.',
+};
+
 export const WorkflowRequest = Schema.Struct({
   steps: Schema.Array(StepDefinition).annotations({
     description: "Ordered list of step definitions",
@@ -32,6 +42,7 @@ export const WorkflowRequest = Schema.Struct({
         "Optional stable, readable workflow instance id (e.g. 'triage-ABC-123'). It becomes the run's worktree/workspace name. Re-running with the same id reuses the existing instance instead of starting a new one.",
     }),
   ),
+  params: Schema.optional(WorkflowParams.annotations(paramsAnnotation)),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
@@ -40,6 +51,12 @@ export const SaveWorkflowRequest = Schema.Struct({
   steps: Schema.Array(StepDefinition).annotations({
     description: "Ordered list of step definitions",
   }),
+  params: Schema.optional(
+    WorkflowParams.annotations({
+      description:
+        "Default parameter values for this saved workflow; run_saved_workflow params override them key-by-key.",
+    }),
+  ),
 });
 export type SaveWorkflowRequest = Schema.Schema.Type<typeof SaveWorkflowRequest>;
 
@@ -61,11 +78,18 @@ export class WorkflowService extends Context.Tag("WorkflowService")<
   {
     readonly save: (req: SaveWorkflowRequest) => Effect.Effect<{ key: string }, WorkflowError>;
     readonly run: (req: WorkflowRequest) => Effect.Effect<{ instanceId: string }, WorkflowError>;
-    readonly runByKey: (key: string) => Effect.Effect<{ instanceId: string }, WorkflowError>;
+    readonly runByKey: (
+      key: string,
+      params?: WorkflowParams,
+    ) => Effect.Effect<{ instanceId: string }, WorkflowError>;
     readonly list: () => Effect.Effect<{ keys: readonly string[] }, WorkflowError>;
     readonly getByKey: (
       key: string,
     ) => Effect.Effect<Option.Option<WorkflowRequest>, WorkflowError>;
     readonly getStatus: (instanceId: string) => Effect.Effect<WorkflowStatus, WorkflowError>;
+    /** Requests termination of a running instance (maps to POST /workflow/terminate/:id). */
+    readonly terminate: (
+      instanceId: string,
+    ) => Effect.Effect<{ instanceId: string }, WorkflowError>;
   }
 >() {}
