@@ -215,7 +215,7 @@ prod diagnosis, no plugin-feedback publish). Specs live in the gitignored
 
 1. `create-worktree` — run-specific worktree of the pre-cloned target repo on branch `feature/<slug>`,
    where `<slug>` derives from the spec's filename. Every later step runs in it via the step's `cwd`.
-2. `setup` (claude-agent) — copies the h runtime steering (`steering/h-runtime.md`) to the
+2. `setup` (claude-agent) — copies the h runtime steering (`steering/h-lab-runtime.md`) to the
    agent's user-global `~/.claude/CLAUDE.md` and the root-level h skills to `~/.claude/skills/`.
    No `tessl install` — the worktree is already a tessl project.
 3. `run-claude` (`investigate`, cwd = the worktree) — reads the feature spec (spliced into the task

@@ -43,7 +43,8 @@ h/
 │   │   ├── core-vercel/      # Vercel AI SDK client wrapper (ILlmClient → LiteLLM)
 │   │   └── logger/           # Pino logger wrapper
 │   └── py/              # Python (uv workspace — root pyproject.toml)
-│       └── agent-server/     # Shared FastAPI agent routes (run/setup/dapr-subscribe) + run ledger
+│       ├── agent-server/     # Shared FastAPI agent routes (run/setup/dapr-subscribe) + run ledger
+│       └── agent-core/       # Shared agent machinery (ReAct loop, LLM adapters, workflow-mcp toolset)
 ├── dapr/                 # Dapr component YAMLs — Docker / docker-compose mode
 │   └── local/            # Dapr component YAMLs — local dev via dapr CLI
 ├── k8s/                  # Kubernetes manifests — Tilt mode
@@ -55,7 +56,10 @@ h/
 │   ├── alloy/            # Grafana Alloy config (Docker log scraping → Loki)
 │   ├── grafana/          # Grafana provisioning (Loki datasource)
 │   └── loki/             # Loki config
-├── cli/scripts/              # Run, test, and utility scripts
+├── cli/                  # Early prototype of the h CLI (see cli/README.md)
+│   ├── scripts/          # Run, test, and utility scripts (shell + payload strategy)
+│   ├── charts/           # Helm-templated workflow definitions (client-side helm template)
+│   └── h/                # The `h` command — Python (Typer + rich), uv workspace member
 ├── Tiltfile              # Tilt dev stack definition (k8s mode)
 ├── Makefile              # Lifecycle commands — see `make help`
 ├── turbo.json            # Turborepo pipeline (build ordering for workspace packages)
@@ -300,14 +304,22 @@ bun run lint     # tsc --noEmit + oxlint/oxfmt
 bun run test     # vitest run
 ```
 
-Python agents — workspace members (`dapr-agent`, `dapr-claude-loop-agent`,
-`langgraph-agent`, and the shared `agent-server` lib) share one root `uv.lock`;
-sync from the repo root. Standalone agents sync from their own directory:
+Python — workspace members (the shared `agent-server` / `agent-core` libs, the agent
+apps `dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`, and
+the `h` CLI at `cli/h`) share one root `uv.lock`; sync from the repo root. The
+standalone `claude-managed-agent` syncs from its own directory:
 
 ```sh
 uv sync --frozen                                  # whole workspace
 cd apps/claude-managed-agent && uv sync --frozen --no-dev
-cd apps/workflow-agent && uv sync --frozen --no-dev
+```
+
+The `h` CLI (early prototype — see [cli/README.md](./cli/README.md)):
+
+```sh
+uv run h --help                       # render/run chart-templated workflows, inspect workflow-svc
+uv run h feature render <spec>        # canonical YAML; --json for the wire form
+uv run --package h-cli pytest         # unit + golden-snapshot tests (requires helm for goldens)
 ```
 
 ## Tooling
@@ -315,5 +327,7 @@ cd apps/workflow-agent && uv sync --frozen --no-dev
 - **[Bun](https://bun.sh)** — package management and TypeScript execution
 - **[Turborepo](https://turbo.build)** — workspace build orchestration (`turbo.json` defines the pipeline)
 - **[oxlint](https://oxc.rs/docs/guide/usage/linter)** / **[oxfmt](https://oxc.rs/docs/guide/usage/formatter)** — linting and formatting
+- **[uv](https://docs.astral.sh/uv)** — Python package management (workspace declared in root `pyproject.toml`)
 - **[Tilt](https://tilt.dev)** — Kubernetes dev loop (image build, deploy, port-forward)
-- **[Helm](https://helm.sh)** — Dapr control plane installation (`make dapr-install`)
+- **[Helm](https://helm.sh)** — Dapr control plane installation (`make dapr-install`) and the client-side
+  templating engine for workflow definitions (`cli/charts`, rendered by `h feature render` / `_render.sh`)

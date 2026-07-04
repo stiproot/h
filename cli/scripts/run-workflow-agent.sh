@@ -15,6 +15,9 @@ export AGENT_MODEL="${AGENT_MODEL:-claude-sonnet-4-6}"
 export AGENT_MAX_ITERATIONS="${AGENT_MAX_ITERATIONS:-25}"
 # workflow-mcp is reachable on the host at 8005 in local dev.
 export WORKFLOW_MCP_URL="${WORKFLOW_MCP_URL:-http://localhost:8005/sse}"
+# Orchestration knowledge is the workflow-orchestrator h-skill; the agent loads it as its
+# system prompt from the repo skills root (same source claude-agent gets via ~/.claude/skills).
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 
 cd "${APP_DIR}/src"
 

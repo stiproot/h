@@ -13,11 +13,13 @@ from agent_core.react_loop import (
     ToolDispatch,
     run_react_loop,
 )
+from agent_core.skills import load_skill_instructions
 
 __all__ = [
     "LLMClient",
     "LLMTurn",
     "ToolCall",
     "ToolDispatch",
+    "load_skill_instructions",
     "run_react_loop",
 ]

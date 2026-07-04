@@ -14,7 +14,7 @@ run h --help`). The two construction strategies co-exist deliberately.
 ```
 apps/claude-agent/src/                    # claude-agent
 ├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree, starts Fastify
-├── steering/h-runtime.md             # h runtime steering (the MCP set + how to use it); a triage setup step copies it to the agent's ~/.claude/CLAUDE.md
+├── steering/h-lab-runtime.md         # h runtime steering (the MCP set + how to use it); a triage setup step copies it to the agent's ~/.claude/CLAUDE.md
 ├── infrastructure/mcp-config.ts          # mergeMcpConfig – merge h's MCP servers into the cwd's existing .mcp.json (pure, value-tested)
 └── infrastructure/claude-runner.ts       # IAgentRunner impl; honours an optional cwd (e.g. a worktree); merges MCP config into cwd; routes (/run, /setup, /clone, /worktree, /dapr/subscribe) come from agent-server
 
@@ -47,10 +47,9 @@ apps/langgraph-agent/src/                 # langgraph-agent (pure LangChain/Lang
 └── presentation/http/run_router.py       # register_langgraph_routes – bespoke POST /run, POST /save
                                           # /setup, /dapr/subscribe come from agent_server (packages/py)
 
-apps/workflow-agent/src/                  # workflow-agent (Dapr Agents SDK orchestrator)
-├── main.py                               # FastAPI composition root + agent system prompt
-├── infrastructure/workflow_agent_runner.py  # ReAct loop (OpenAIChatClient) over workflow-mcp tools + await_workflow
-├── infrastructure/mcp_tools.py           # connects to workflow-mcp via dapr_agents MCPClient (SSE)
+apps/workflow-agent/src/                  # workflow-agent (thin wrapper over agent-core)
+├── main.py                               # FastAPI composition root; system prompt loaded from the workflow-orchestrator skill (agent_core.load_skill_instructions; AGENT_SYSTEM_PROMPT overrides)
+├── infrastructure/workflow_agent_runner.py  # IAgentRunner impl – delegates to agent_core's ReAct loop over the workflow-mcp toolset
 ├── infrastructure/statestore.py          # task read-write via Dapr state API
 └── presentation/http/cron_router.py      # POST /cron-tick (cron binding target), POST /run, GET /dapr/subscribe (plugin-feedback), POST /plugin-feedback (seeds a plugin-improvement task)
 
@@ -159,6 +158,21 @@ packages/py/agent-server/src/agent_server/   # Python sibling of js/agent-server
 ├── routes.py      # register_agent_routes + granular register_{run,setup,subscribe}_route (FastAPI); /run records the run ledger
 ├── run_ledger.py  # record_run – Python sibling of js run-ledger (summary.json/events.jsonl + statestore mirror)
 └── runner.py      # IAgentRunner Protocol – run(request, workspace) → AgentResponse
+
+packages/py/agent-core/src/agent_core/       # shared agent machinery (uv workspace member)
+├── react_loop.py  # provider-agnostic ReAct loop + LLMClient protocol (dependency-free base)
+├── skills.py      # load_skill_instructions – system prompt from an h skill dir
+├── llm/openai.py  # OpenAI wire-protocol adapter (extra: dapr)
+└── workflows/mcp_tools.py  # workflow-mcp toolset via MCPClient/SSE (extra: dapr)
+
+cli/                                          # early prototype of the h CLI (see cli/README.md)
+├── scripts/       # strategy 1 – run-*.sh / invoke-workflow-*.sh + payloads (envsubst/jq); _render.sh bridges to strategy 2
+├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<family>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
+└── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
+    ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
+    ├── src/h_cli/commands/{feature,workflow}.py  # h feature render|run; h workflow list|get|status
+    ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc httpx clients
+    └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```
 
 ## Kubernetes layout
@@ -268,22 +282,29 @@ bun run format   # oxfmt src
 bun run test     # vitest run
 ```
 
-For Python agents, sync dependencies from the lockfile.
+For Python, sync dependencies from the lockfile.
 
-Workspace members (`dapr-claude-loop-agent`, `langgraph-agent`, and the shared
-`agent-server` lib) share one root `uv.lock` — sync from the repo root, optionally
-scoping to one app with `--package`:
+Workspace members (the shared `agent-server` / `agent-core` libs, the agent apps
+`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`, and the
+`h` CLI at `cli/h`) share one root `uv.lock` — sync from the repo root, optionally
+scoping to one member with `--package`:
 
 ```sh
 uv sync --frozen                                  # whole workspace
 uv sync --frozen --package langgraph-agent        # one member + its deps
 ```
 
-Standalone agents keep their own `uv.lock` and sync from their own directory:
+The one standalone agent keeps its own `uv.lock` and syncs from its own directory:
 
 ```sh
 cd apps/claude-managed-agent && uv sync --frozen --no-dev
-cd apps/workflow-agent && uv sync --frozen --no-dev
+```
+
+The `h` CLI (installed editable as a workspace member):
+
+```sh
+uv run h --help                          # run the CLI from the repo root
+uv run --package h-cli pytest            # its test suite (incl. golden snapshots of cli/charts)
 ```
 
 ## Docker build context
@@ -294,7 +315,7 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 
 ## Key gotchas
 
-- **Polyglot package layout** — shared libs are partitioned by ecosystem: TypeScript under `packages/js/*` (npm workspace, declared in root `package.json`), Python under `packages/py/*` (uv workspace, declared in root `pyproject.toml`). The two never resolve each other, so a name can be reused across them — `agent-server` exists in both (`js/agent-server`, `py/agent-server`/module `agent_server`). The uv workspace deliberately scopes its `members` to the shared lib plus the apps that consume it (`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`) and the `h` CLI (`cli/h`, package `h-cli`, installed editable so `uv run h` works at the root); `claude-managed-agent` (diagrid) and `workflow-agent` (cron, different contract) are `exclude`d and keep their own per-app `uv.lock`.
+- **Polyglot package layout** — shared libs are partitioned by ecosystem: TypeScript under `packages/js/*` (npm workspace, declared in root `package.json`), Python under `packages/py/*` (uv workspace, declared in root `pyproject.toml`). The two never resolve each other, so a name can be reused across them — `agent-server` exists in both (`js/agent-server`, `py/agent-server`/module `agent_server`). The uv workspace deliberately scopes its `members` to the shared libs (`agent-server`: the HTTP contract; `agent-core`: the ReAct loop + workflow toolset) plus the apps that consume them (`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`) and the `h` CLI (`cli/h`, package `h-cli`, installed editable so `uv run h` works at the root); `claude-managed-agent` (diagrid) is `exclude`d and keeps its own per-app `uv.lock`.
 - **`bun install` required after adding packages** — workspace dependencies are hoisted to the root `node_modules`. If a new package is added to any `apps/*` or `packages/js/*` workspace member and `bun install` hasn't been run at the repo root, that package won't be found at runtime.
 - **`uv lock` required after adding to a Python workspace member** — the workspace shares one root `uv.lock`. After adding a dependency to a member app or to `packages/py/agent-server`, run `uv lock` (then `uv sync`) at the repo root, and add the member's `pyproject.toml` COPY line to its Dockerfile — `uv sync --frozen` fails otherwise.
 - **Turborepo build pipeline** — `turbo.json` defines `build` with `dependsOn: ["^build"]`, ensuring packages are always compiled in dependency order. `bun run build` at the root delegates to `turbo build`. Dockerfiles use `bunx turbo build --filter=<app>...` to build only the transitive deps of a given app.
@@ -306,6 +327,7 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **`workflow-cron-tick` binding → `workflow-svc`** — `dapr/workflow-cron.yaml` (and `dapr/local/`) is a second `bindings.cron`, scoped to `workflow-svc`, POSTing `/workflow-cron-tick` every 60s. The handler scans saved workflows and fires any whose cron `schedule` is due (next fire after `lastRunAt`, else `savedAt`, has passed), stamping `lastRunAt` — stamp-forward means missed fires self-heal (one fire, no catch-up storm); `disabled: true` skips. **Gotcha:** Dapr probes an input binding with `OPTIONS`, and both the probe and the tick arrive as `application/json` with an empty body — Fastify 404s an unhandled method and 400s an empty JSON body, either of which makes Dapr log "app has not subscribed". So the route lives in an encapsulated Fastify plugin scope with its content-type parsers cleared, and answers both POST and OPTIONS.
 - **Reusable workspaces (`workspaceId`)** — a workflow may carry a top-level `workspaceId`; agents key their workspace dir on `workspaceId ?? workflowInstanceId`, so a recurring/cron workflow reuses one provisioned dir instead of a fresh per-run one. `/setup` is idempotent: it hashes the setup spec into `.agent-setup-complete` and short-circuits on an unchanged spec, so skills/config are installed once. `workspaceId` is injected into every step by `generic.workflow.ts` and persisted on saved workflows.
 - **Grooming workflow shared-context pattern** — the `cli/scripts/invoke-workflow-grooming.sh` grooming workflow uses a symmetrical naming scheme: the Dapr workflow instanceId, the file the groom step writes, and the actor used to persist findings are all keyed by the same id (`groom-${ISSUE_ID}`). The groom step writes `groom-${ISSUE_ID}.md` into the worktree cwd (file-based handoff, reliable across steps in the same workflow) AND calls `actor_state_set(actorId='groom-${ISSUE_ID}', key='findings')` via dapr-mcp (actor-based, durable in Redis, inspectable from any session via `actor_state_get`). The writeback step reads the file with `cat`; any external session can read the actor state. `--dry-run` sets `DRY_RUN=1` in the task payload so workflow-agent builds only the first three steps. The script seeds the task and POSTs to workflow-agent (same pattern as `invoke-workflow-agent.sh`) so the trace is end-to-end: workflow-agent → workflow-mcp → workflow-svc → claude-agent.
+- **Chart-rendered workflows (`cli/charts`)** — `helm template` is used purely client-side (no cluster) to render a workflow family's template into a `run_workflow` request body. YAML is the canonical artifact; JSON conversion is a final processing step at the wire boundary only (`_render.sh: yaml_to_json` / `h_cli.infrastructure.helm: to_wire_json`). Delimiter coexistence is deliberate: engine tokens (`{{step.field}}`) are emitted via the `h.token` helper (`printf`), agent-side `$VARS` are inert text, and `{"$ref": ...}` needs nothing. The syrupy goldens in `cli/h/tests` are the chart's contract tests — rendered hermetically (`include_local=False`, so a dev's gitignored `values.local.yaml` can't skew them) from the hostile fixture; re-bless with `--snapshot-update` only deliberately, reviewing the `.ambr` diff. Org-specific chart defaults live in `cli/charts/workflows/values.local.yaml` (gitignored, auto-merged by both render paths).
 - **Worktree fetch-before-branch** — `addWorktree` in `packages/js/git-core/src/git-client.ts` accepts a `remoteBase` option. When set (and no explicit `baseRef` is given), it fetches `origin/<remoteBase>` before cutting the new branch, so the worktree starts from the latest remote tip rather than the potentially-stale local checkout. The `/worktree` route in `agent-server` defaults `remoteBase` to `"main"` for all worktree-cutting workflows (grooming, feature-request, triage). Pass `remoteBase: ""` explicitly to opt out.
 - **Run ledger is best-effort** — observability must never break a run, so every ledger write (the `RUNS_DIR` files and the statestore mirror) swallows errors; the on-disk files are the source of truth. The `runs:index` / `run:<id>` keys follow the flat-keyspace convention so `dapr-mcp` can read them. `obs-mcp` reads Zipkin/Loki over HTTP and the ledger off `RUNS_DIR` (fs) — it has **no Dapr sidecar**, so its `--app-port` (8013) is just the MCP listener.
 - **Statestore shared keyspace** — the Redis state store sets `keyPrefix: none`, so keys are global (no app-id prefix). This is deliberate: it lets any service — and `dapr-mcp` — read each other's keys (e.g. `task:…`, `tasks:index`, `__workflow_index__`, saved workflow keys) for dogfooding/inspection. Actor/workflow runtime state uses its own composite keying and is unaffected. With a flat keyspace, avoid key collisions across services (the existing keys are namespaced by convention: `task:`, `feedback:`, `__workflow_index__`).
@@ -316,7 +338,7 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **`:edge` images** track the latest Dapr release and can move without notice. Pin to a specific version for anything beyond local hacking.
 - **`packages/agent-cli` and `packages/logger` dist** — both packages are imported from `./dist/index.js`. Changes to source are not picked up until rebuilt.
 - **Alloy log scraping** — `config/alloy/config.alloy` uses `discovery.relabel` (not `loki.relabel`) to apply `__meta_docker_*` labels to log streams. `loki.relabel` only sees log-entry labels, not discovery metadata — using it for Docker labels produces streams with no labels, which Loki rejects with a 400.
-- **Python agents base image** — all Python agents use `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (not Docker Hub). Workspace members (`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`) build against the root `uv.lock` with `uv sync --frozen --no-dev --package <app>` (two-phase: `--no-install-workspace` for cached external deps, then a second sync to install the editable workspace packages). Standalone agents (`claude-managed-agent`, `workflow-agent`) install from their own `uv.lock` via `uv sync --frozen --no-dev`.
+- **Python agents base image** — all Python agents use `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (not Docker Hub). Workspace members (`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`) build against the root `uv.lock` with `uv sync --frozen --no-dev --package <app>` (two-phase: `--no-install-workspace` for cached external deps, then a second sync to install the editable workspace packages). The standalone `claude-managed-agent` installs from its own `uv.lock` via `uv sync --frozen --no-dev`.
 - **Dapr Conversation API tool calling** — `DaprChatClient` (alpha2) does not support function/tool calling. The Python agents use `OpenAIChatClient` (OpenAI wire protocol) pointed at the LiteLLM proxy instead.
 - **MCP server per-connection isolation** — `workflow-mcp` creates a new `Server` instance per SSE connection. A single shared instance throws "Already connected to a transport" on reconnect.
 - **Resiliency policy** — `dapr/local/resiliency.yaml` sets a 1-hour outbound timeout for all agent app-ids. Without it the Dapr Workflow scheduler times out long-running agent activities before they complete.
