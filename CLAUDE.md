@@ -22,9 +22,9 @@ apps/openhands-agent/src/                 # openhands-agent
 ├── index.ts                              # composition root – registers shared agent-server routes, starts Fastify
 └── infrastructure/openhands-runner.ts    # IAgentRunner impl; /run, /setup, /dapr/subscribe come from agent-server
 
-apps/dapr-agent/src/                      # dapr-agent
-├── main.py                               # composition root – registers shared agent-server routes
-├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – ReAct loop via dapr_agents.OpenAIChatClient
+apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
+├── main.py                               # composition root – registers shared agent-server routes; opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
+├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – delegates to agent_core's ReAct loop (OpenAIChatAdapter); merges the workflow-mcp toolset when enabled
 └── infrastructure/tools.py               # search_skills, install_skill, read_skill, write_file
                                           # /run, /setup, /dapr/subscribe come from agent_server (packages/py)
 
@@ -89,7 +89,8 @@ apps/workflow-mcp/src/                   # workflow-mcp – MCP server for agent
 ├── infrastructure/dapr-workflow-service.ts  # calls workflow service via Dapr invoke
 └── presentation/http/mcp.router.ts       # GET /sse, POST /messages, GET /dapr/subscribe
                                           # exposes: save_workflow, run_workflow, run_saved_workflow,
-                                          #          list_workflows, get_workflow, get_workflow_status
+                                          #          list_workflows, get_workflow, get_workflow_status,
+                                          #          await_workflow (block until terminal, else TIMEOUT)
 
 apps/dapr-mcp/src/                        # dapr-mcp – MCP server for Dapr state stores + actors + pub/sub
 ├── index.ts                              # composition root – starts GenericActor host, then Fastify/MCP
@@ -159,11 +160,11 @@ packages/py/agent-server/src/agent_server/   # Python sibling of js/agent-server
 ├── run_ledger.py  # record_run – Python sibling of js run-ledger (summary.json/events.jsonl + statestore mirror)
 └── runner.py      # IAgentRunner Protocol – run(request, workspace) → AgentResponse
 
-packages/py/agent-core/src/agent_core/       # shared agent machinery (uv workspace member)
+packages/py/agent-core/src/agent_core/       # shared agent machinery (uv workspace member; tests via `uv run --package agent-core pytest`)
 ├── react_loop.py  # provider-agnostic ReAct loop + LLMClient protocol (dependency-free base)
 ├── skills.py      # load_skill_instructions – system prompt from an h skill dir
-├── llm/openai.py  # OpenAI wire-protocol adapter (extra: dapr)
-└── workflows/mcp_tools.py  # workflow-mcp toolset via MCPClient/SSE (extra: dapr)
+├── llm/openai.py  # OpenAIChatAdapter over dapr_agents OpenAIChatClient (extra: dapr)
+└── workflows/mcp_tools.py  # connect_workflows_mcp + WorkflowTools + open_workflow_tools (workflow-mcp toolset via MCPClient/SSE; extra: dapr)
 
 cli/                                          # early prototype of the h CLI (see cli/README.md)
 ├── scripts/       # strategy 1 – run-*.sh / invoke-workflow-*.sh + payloads (envsubst/jq); _render.sh bridges to strategy 2
@@ -228,12 +229,16 @@ repo's `tessl` server) still gains h's `dapr`/`obs`/`workflows` servers. Docker 
 
 h provides its own agent skills, kept at the repo-root `skills/` dir — not inside any agent app, so
 they stay reusable across agents and the agent services stay thin. A workflow setup step copies them
-into the agent's user-global `~/.claude/skills/` (`cp -r $H_SKILLS_DIR/* ~/.claude/skills/`).
-`H_SKILLS_DIR` is the repo `skills/` locally (set by `run-claude-agent.sh`) and a read-only mount
-(`./skills:/h-skills`) in compose. The first such skill is `linear` — read a Linear issue headlessly
-via `LINEAR_API_KEY` with `get-issue.sh`, and post comments back with `add-comment.sh` (the hosted
-Linear MCP can't authenticate unattended). This is a third skill source alongside the tessl registry
-(org-published plugins) and a repo's own `.claude/` skills.
+into a CLI agent's user-global `~/.claude/skills/` (`cp -r $H_SKILLS_DIR/* ~/.claude/skills/`).
+`H_SKILLS_DIR` is the repo `skills/` locally (set by the agent run scripts) and a read-only mount
+(`./skills:/h-skills`) in compose. Current skills: `linear` (read a Linear issue headlessly via
+`LINEAR_API_KEY` with `get-issue.sh`, post comments back with `add-comment.sh` — the hosted Linear
+MCP can't authenticate unattended), `analyze-workflow-run` (correlate every observability source for
+a run), and `workflow-orchestrator` (turn a task into a saved/run/monitored workflow via the
+workflows MCP). A **Python** agent consumes a skill's body directly as its system prompt via
+`agent_core.load_skill_instructions` — workflow-agent loads `workflow-orchestrator` this way (the
+same source a CLI agent gets), so the orchestration procedure has a single home. This is a skill
+source alongside the tessl registry (org-published plugins) and a repo's own `.claude/` skills.
 
 ## Observability
 

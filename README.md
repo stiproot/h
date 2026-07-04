@@ -304,6 +304,12 @@ bun run lint     # tsc --noEmit + oxlint/oxfmt
 bun run test     # vitest run
 ```
 
+Run every unit test across both ecosystems with one command:
+
+```sh
+make test        # test-js (turbo → vitest) + test-py (agent-core pytest)
+```
+
 Python — workspace members (the shared `agent-server` / `agent-core` libs, the agent
 apps `dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`, and
 the `h` CLI at `cli/h`) share one root `uv.lock`; sync from the repo root. The
@@ -311,6 +317,7 @@ standalone `claude-managed-agent` syncs from its own directory:
 
 ```sh
 uv sync --frozen                                  # whole workspace
+uv run --package agent-core pytest                # agent-core unit tests (mirror of `bun run test`)
 cd apps/claude-managed-agent && uv sync --frozen --no-dev
 ```
 
