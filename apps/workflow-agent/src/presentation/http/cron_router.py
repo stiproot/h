@@ -23,8 +23,8 @@ def _improvement_problem(feedback: str, repo: str, tile: str, plugin: str, branc
     """Plain-English task: worktree the target repo and apply the plugin improvement on it."""
     return (
         f"Improve the {plugin} plugin using triage feedback. The plugin source lives at {tile} "
-        f"in the {repo} repository. Build and start an EPHEMERAL workflow with run_workflow (do NOT "
-        f"save_workflow). Steps:\n"
+        f"in the {repo} repository. Build and start an EPHEMERAL workflow with run_workflow "
+        f"(do NOT save_workflow). Steps:\n"
         f"(1) create-worktree with id 'worktree': input {{ agentId: 'claude-agent', branch: "
         f"'{branch}' }} off the shared pre-cloned repo.\n"
         f"(2) run-claude with id 'improve', input {{ cwd: '{{{{worktree.worktreePath}}}}', task: "

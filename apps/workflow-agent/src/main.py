@@ -33,8 +33,8 @@ _DEFAULT_SYSTEM = (
     "GitHub repos authenticate server-side, you never handle tokens), create-worktree (adds a "
     "run-specific git worktree of a pre-cloned source repo on a shared path and returns "
     "{ worktreePath }; input { sourceRepo, branch, baseRef, agentId } — sourceRepo defaults to the "
-    "shared pre-cloned target repo; use it to investigate or change a repo on an isolated checkout that "
-    "every agent in the run shares), run-claude / run-openhands / run-dapr-agent / "
+    "shared pre-cloned target repo; use it to investigate or change a repo on an isolated "
+    "checkout that every agent in the run shares), run-claude / run-openhands / run-dapr-agent / "
     "run-dapr-claude-loop / run-claude-managed / run-langgraph (each runs that agent, input "
     '{ task }; run-claude also takes an optional cwd, e.g. "{{create-worktree.worktreePath}}", '
     "to run in the worktree, an optional model to override the LLM for that step (e.g. a Sonnet "
@@ -66,18 +66,20 @@ _DEFAULT_SYSTEM = (
     "run_workflow (ephemeral — do NOT save_workflow, since every repo and question set differs):\n"
     '  1. clone-repo, input { "url": "<url>", "branch": "<branch>", "depth": 1 } '
     "(omit branch when none is given).\n"
-    '  2. run-claude, whose task is: "The repository is cloned at ./repo. Explore it and answer the '
-    'following questions, putting the full answer in your final response: <questions>".\n'
+    '  2. run-claude, whose task is: "The repository is cloned at ./repo. Explore it and '
+    "answer the following questions, putting the full answer in your final response: "
+    '<questions>".\n'
     "Then await_workflow on the returned instanceId; when COMPLETED, extract the run-claude step's "
     "output from the workflow result and return it verbatim as your final answer."
 )
 
 _runner = WorkflowAgentRunner(
     model=os.getenv("AGENT_MODEL", "claude-sonnet-4-6"),
+    base_url=os.environ["ANTHROPIC_BASE_URL"],
+    api_key=os.getenv("ANTHROPIC_API_KEY", ""),
     system_prompt=os.getenv("AGENT_SYSTEM_PROMPT", _DEFAULT_SYSTEM),
     max_iterations=int(os.getenv("AGENT_MAX_ITERATIONS", "25")),
     workflows_mcp_url=WORKFLOW_MCP_URL,
-    dapr_http_port=DAPR_HTTP_PORT,
 )
 _store = StateStore(f"http://localhost:{DAPR_HTTP_PORT}/v1.0/state/{STATESTORE_NAME}")
 
