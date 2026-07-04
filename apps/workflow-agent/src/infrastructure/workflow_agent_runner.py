@@ -2,7 +2,7 @@ import logging
 
 from agent_core import run_react_loop
 from agent_core.llm.openai import OpenAIChatAdapter
-from agent_core.workflows import connect_workflows_mcp
+from agent_core.workflows import open_workflow_tools
 
 from domain.models import AgentResult
 
@@ -37,10 +37,8 @@ class WorkflowAgentRunner:
         self._mcp_url = workflows_mcp_url
 
     async def run(self, problem: str) -> AgentResult:
-        # await_workflow is now one of the workflow-mcp tools, so it arrives in mcp_tools —
+        # await_workflow is now one of the workflow-mcp tools, so it arrives in wt.tools —
         # no local schema/impl needed; dispatch routes every call to the MCP tool.
-        client, mcp_tools = await connect_workflows_mcp(self._mcp_url)
-        tool_map = {t.name: t for t in mcp_tools}
         adapter = OpenAIChatAdapter(
             api_key=self._api_key, base_url=self._base_url, model=self._model
         )
@@ -49,21 +47,19 @@ class WorkflowAgentRunner:
             {"role": "user", "content": problem},
         ]
 
-        async def dispatch(name: str, args: dict) -> str:
-            tool = tool_map.get(name)
-            if tool is None:
-                return f"Unknown tool: {name}"
-            return str(await tool.arun(**args))
+        async with open_workflow_tools(self._mcp_url) as wt:
 
-        try:
+            async def dispatch(name: str, args: dict) -> str:
+                if wt.handles(name):
+                    return await wt.run(name, args)
+                return f"Unknown tool: {name}"
+
             output, turns = await run_react_loop(
                 adapter,
                 messages,
-                mcp_tools,
+                wt.tools,
                 dispatch,
                 max_iterations=self._max_iterations,
                 label="workflow-agent",
             )
-            return AgentResult(output=output, turns=turns)
-        finally:
-            await client.close()
+        return AgentResult(output=output, turns=turns)

@@ -3,6 +3,10 @@ monitor/await) to an agent. Requires the ``dapr`` extra (``agent-core[dapr]``), 
 provides ``dapr_agents``' MCP client.
 """
 
-from agent_core.workflows.mcp_tools import connect_workflows_mcp
+from agent_core.workflows.mcp_tools import (
+    WorkflowTools,
+    connect_workflows_mcp,
+    open_workflow_tools,
+)
 
-__all__ = ["connect_workflows_mcp"]
+__all__ = ["WorkflowTools", "connect_workflows_mcp", "open_workflow_tools"]

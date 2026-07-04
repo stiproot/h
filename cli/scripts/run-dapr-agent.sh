@@ -12,6 +12,10 @@ fi
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/dapr-agent}"
+# Opt-in workflow orchestration: set WORKFLOWS_MCP_URL (e.g. http://localhost:8005/sse) in .env to
+# let this agent construct/invoke/monitor workflows. H_SKILLS_DIR (defaulted here) then lets it load
+# the workflow-orchestrator procedure; both are inert when WORKFLOWS_MCP_URL is unset.
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 
 cd "${APP_DIR}/src"
 

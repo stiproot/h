@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 
+from agent_core import load_skill_instructions
 from agent_server import register_agent_routes
 from fastapi import APIRouter, FastAPI
 
@@ -10,6 +11,9 @@ from infrastructure.dapr_agent_runner import DaprAgentRunner
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 AGENT_BASE_DIR = Path(os.getenv("AGENT_BASE_DIR", "/workspace/dapr-agent"))
+# Opt-in workflow orchestration: set WORKFLOWS_MCP_URL to let this agent construct/invoke/monitor
+# workflows via workflow-mcp (needs H_SKILLS_DIR so it can load the orchestrator procedure).
+WORKFLOWS_MCP_URL = os.getenv("WORKFLOWS_MCP_URL")
 
 _SYSTEM_PROMPT = (
     "You are a workspace-scoped coding agent. "
@@ -18,12 +22,24 @@ _SYSTEM_PROMPT = (
     "Do not read from or reference files outside the current working directory."
 )
 
+
+def _system_prompt() -> str:
+    base = os.getenv("AGENT_SYSTEM_PROMPT", _SYSTEM_PROMPT)
+    if WORKFLOWS_MCP_URL:
+        # Teach it the same procedure claude-agent / workflow-agent use, from the shared skill.
+        base += "\n\nYou can also orchestrate workflows:\n\n" + load_skill_instructions(
+            "workflow-orchestrator"
+        )
+    return base
+
+
 _runner = DaprAgentRunner(
     model=os.getenv("AGENT_MODEL", "claude-haiku-4-5"),
     base_url=os.environ["ANTHROPIC_BASE_URL"],
     api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-    system_prompt=os.getenv("AGENT_SYSTEM_PROMPT", _SYSTEM_PROMPT),
+    system_prompt=_system_prompt(),
     max_turns=int(os.getenv("AGENT_MAX_ITERATIONS", "20")),
+    workflows_mcp_url=WORKFLOWS_MCP_URL,
 )
 
 app = FastAPI()
