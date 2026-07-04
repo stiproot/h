@@ -1,11 +1,9 @@
 """Tests for OpenAIChatAdapter — the seam between dapr_agents' OpenAIChatClient and the
 provider-agnostic loop. Bypasses __init__ (no real SDK client) to unit-test the parse/append
-logic. Run: `uv run --package agent-core python packages/py/agent-core/tests/test_openai_adapter.py`
-"""
+logic. Run: `uv run --package agent-core pytest`."""
 
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from typing import Any
 
@@ -23,10 +21,10 @@ class FakeMsg:
 
 
 class FakeResponse:
-    def __init__(self, msg: FakeMsg) -> None:
+    def __init__(self, msg: Any) -> None:
         self._msg = msg
 
-    def get_message(self) -> FakeMsg:
+    def get_message(self) -> Any:
         return self._msg
 
 
@@ -52,7 +50,7 @@ def _tool_call(id: str, name: str, args: dict) -> SimpleNamespace:
     return SimpleNamespace(id=id, function=SimpleNamespace(name=name, arguments_dict=args))
 
 
-async def _parses_final_content() -> None:
+async def test_parses_final_content() -> None:
     msg = FakeMsg("hello", [])
     adapter, client = _adapter_with(FakeResponse(msg))
     turn = await adapter.generate([{"role": "user", "content": "hi"}], ["tool-schema"])
@@ -63,7 +61,7 @@ async def _parses_final_content() -> None:
     assert client.calls == [([{"role": "user", "content": "hi"}], ["tool-schema"])]
 
 
-async def _parses_tool_calls() -> None:
+async def test_parses_tool_calls() -> None:
     msg = FakeMsg(None, [_tool_call("id1", "run_workflow", {"steps": []})])
     adapter, _ = _adapter_with(FakeResponse(msg))
     turn = await adapter.generate([], [])
@@ -73,16 +71,16 @@ async def _parses_tool_calls() -> None:
     assert turn.raw is msg
 
 
-async def _handles_missing_get_tool_calls() -> None:
+async def test_handles_missing_get_tool_calls() -> None:
     # A message object without get_tool_calls() → no tool calls, not an error.
     msg = SimpleNamespace(content="done")
-    adapter, _ = _adapter_with(FakeResponse(msg))  # type: ignore[arg-type]
+    adapter, _ = _adapter_with(FakeResponse(msg))
     turn = await adapter.generate([], [])
     assert turn.content == "done"
     assert turn.tool_calls == []
 
 
-def _append_assistant_appends_raw() -> None:
+def test_append_assistant_appends_raw() -> None:
     adapter, _ = _adapter_with(FakeResponse(FakeMsg(None, [])))
     messages: list = []
     raw = {"role": "assistant", "tool_calls": [{"id": "id1"}]}
@@ -90,21 +88,8 @@ def _append_assistant_appends_raw() -> None:
     assert messages == [raw]
 
 
-def _append_tool_result_shapes_message() -> None:
+def test_append_tool_result_shapes_message() -> None:
     adapter, _ = _adapter_with(FakeResponse(FakeMsg(None, [])))
     messages: list = []
     adapter.append_tool_result(messages, ToolCall("id1", "t", {}), "the-result")
     assert messages == [{"role": "tool", "tool_call_id": "id1", "content": "the-result"}]
-
-
-async def main() -> None:
-    await _parses_final_content()
-    await _parses_tool_calls()
-    await _handles_missing_get_tool_calls()
-    _append_assistant_appends_raw()
-    _append_tool_result_shapes_message()
-    print("agent_core.llm.openai.OpenAIChatAdapter: all tests passed")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

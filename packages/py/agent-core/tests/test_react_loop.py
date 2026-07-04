@@ -1,9 +1,7 @@
-"""Tests for the pure ReAct loop. Run directly: `uv run --package agent-core python
-packages/py/agent-core/tests/test_react_loop.py` (no test runner required)."""
+"""Tests for the pure ReAct loop. Run: `uv run --package agent-core pytest`."""
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from agent_core.react_loop import (
@@ -34,19 +32,19 @@ class FakeClient:
         messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
 
 
-async def _returns_content_without_tools() -> None:
+async def test_returns_content_without_tools() -> None:
     client = FakeClient([LLMTurn(content="done")])
 
     async def dispatch(name: str, args: dict) -> Any:
         raise AssertionError("dispatch should not be called")
 
     out, turns = await run_react_loop(client, [], [], dispatch, max_iterations=5)
-    assert out == "done", out
-    assert turns == 1, turns
+    assert out == "done"
+    assert turns == 1
     assert client.assistant_appends == 0
 
 
-async def _executes_tool_then_finishes() -> None:
+async def test_executes_tool_then_finishes() -> None:
     calls: list[tuple[str, dict]] = []
     client = FakeClient(
         [
@@ -60,14 +58,14 @@ async def _executes_tool_then_finishes() -> None:
         return "tool-out"
 
     out, turns = await run_react_loop(client, [], [], dispatch, max_iterations=5)
-    assert out == "finished", out
-    assert turns == 2, turns
-    assert calls == [("echo", {"x": 1})], calls
+    assert out == "finished"
+    assert turns == 2
+    assert calls == [("echo", {"x": 1})]
     assert client.assistant_appends == 1
-    assert client.tool_results == ["tool-out"], client.tool_results
+    assert client.tool_results == ["tool-out"]
 
 
-async def _stops_at_max_iterations() -> None:
+async def test_stops_at_max_iterations() -> None:
     client = FakeClient(
         [LLMTurn(tool_calls=[ToolCall(id="c", name="loop", arguments={})]) for _ in range(10)]
     )
@@ -76,11 +74,11 @@ async def _stops_at_max_iterations() -> None:
         return "x"
 
     out, turns = await run_react_loop(client, [], [], dispatch, max_iterations=3)
-    assert out == MAX_ITERATIONS_MESSAGE, out
-    assert turns == 3, turns
+    assert out == MAX_ITERATIONS_MESSAGE
+    assert turns == 3
 
 
-async def _truncates_tool_result() -> None:
+async def test_truncates_tool_result() -> None:
     client = FakeClient(
         [
             LLMTurn(tool_calls=[ToolCall(id="c1", name="big", arguments={})]),
@@ -92,16 +90,4 @@ async def _truncates_tool_result() -> None:
         return "y" * 100
 
     await run_react_loop(client, [], [], dispatch, max_iterations=5, result_char_limit=10)
-    assert client.tool_results == ["y" * 10], client.tool_results
-
-
-async def main() -> None:
-    await _returns_content_without_tools()
-    await _executes_tool_then_finishes()
-    await _stops_at_max_iterations()
-    await _truncates_tool_result()
-    print("agent_core.react_loop: all tests passed")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    assert client.tool_results == ["y" * 10]

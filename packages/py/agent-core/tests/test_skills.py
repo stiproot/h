@@ -1,5 +1,4 @@
-"""Tests for the skill-instruction loader. Run directly: `uv run --package agent-core python
-packages/py/agent-core/tests/test_skills.py`."""
+"""Tests for the skill-instruction loader. Run: `uv run --package agent-core pytest`."""
 
 from __future__ import annotations
 
@@ -10,17 +9,17 @@ from pathlib import Path
 from agent_core.skills import _strip_frontmatter, load_skill_instructions
 
 
-def _strips_leading_frontmatter() -> None:
+def test_strips_leading_frontmatter() -> None:
     out = _strip_frontmatter("---\nname: x\ndescription: y\n---\n\n# Title\nbody")
-    assert out.lstrip().startswith("# Title"), repr(out)
-    assert "name: x" not in out, repr(out)
+    assert out.lstrip().startswith("# Title")
+    assert "name: x" not in out
 
 
-def _passthrough_without_frontmatter() -> None:
+def test_passthrough_without_frontmatter() -> None:
     assert _strip_frontmatter("# Title\nbody") == "# Title\nbody"
 
 
-def _loads_body_from_dir() -> None:
+def test_loads_body_from_dir() -> None:
     with tempfile.TemporaryDirectory() as d:
         skill = Path(d) / "demo"
         skill.mkdir()
@@ -28,7 +27,7 @@ def _loads_body_from_dir() -> None:
         assert load_skill_instructions("demo", skills_dir=d) == "# Demo\nDo the thing."
 
 
-def _uses_h_skills_dir_env() -> None:
+def test_uses_h_skills_dir_env() -> None:
     with tempfile.TemporaryDirectory() as d:
         skill = Path(d) / "demo"
         skill.mkdir()
@@ -44,7 +43,7 @@ def _uses_h_skills_dir_env() -> None:
                 os.environ["H_SKILLS_DIR"] = prev
 
 
-def _raises_without_any_dir() -> None:
+def test_raises_without_any_dir() -> None:
     prev = os.environ.pop("H_SKILLS_DIR", None)
     try:
         try:
@@ -56,16 +55,3 @@ def _raises_without_any_dir() -> None:
     finally:
         if prev is not None:
             os.environ["H_SKILLS_DIR"] = prev
-
-
-def main() -> None:
-    _strips_leading_frontmatter()
-    _passthrough_without_frontmatter()
-    _loads_body_from_dir()
-    _uses_h_skills_dir_env()
-    _raises_without_any_dir()
-    print("agent_core.skills: all tests passed")
-
-
-if __name__ == "__main__":
-    main()
