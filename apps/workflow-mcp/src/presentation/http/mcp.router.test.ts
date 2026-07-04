@@ -1,5 +1,5 @@
 import { WorkflowError } from "core";
-import { Effect, JSONSchema, Layer, Option } from "effect";
+import { Duration, Effect, Fiber, JSONSchema, Layer, Option, TestClock, TestContext } from "effect";
 import type { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -222,6 +222,60 @@ describe("behaviour preservation", () => {
       instanceId: "wf-1",
       runtimeStatus: "COMPLETED",
       output: "done",
+    });
+  });
+
+  it("await_workflow polls until the status becomes terminal", async () => {
+    let calls = 0;
+    const polling = Layer.succeed(WorkflowService, {
+      save: (req) => Effect.succeed({ key: req.key }),
+      run: () => Effect.succeed({ instanceId: "wf-1" }),
+      runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
+      list: () => Effect.succeed({ keys: [] }),
+      getByKey: () => Effect.succeedNone,
+      // RUNNING for the first two polls, then COMPLETED — the loop must poll past the sleeps.
+      getStatus: (instanceId) =>
+        Effect.sync(() => {
+          calls += 1;
+          return { instanceId, runtimeStatus: calls >= 3 ? "COMPLETED" : "RUNNING" };
+        }),
+    });
+    // Drive the clock: each RUNNING poll sleeps 5s (the default interval); advancing 15s lets the
+    // third poll (COMPLETED) be reached without real waiting.
+    const program = Effect.gen(function* () {
+      const fiber = yield* Effect.fork(toolHandlers["await_workflow"]!({ instanceId: "wf-1" }));
+      yield* TestClock.adjust(Duration.seconds(15));
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(polling), Effect.provide(TestContext.TestContext));
+
+    const result = await Effect.runPromise(program);
+    expect(JSON.parse(result.content[0]!.text)).toEqual({
+      instanceId: "wf-1",
+      runtimeStatus: "COMPLETED",
+    });
+    expect(calls).toBe(3);
+  });
+
+  it("await_workflow returns TIMEOUT once the wait budget elapses", async () => {
+    const stuck = Layer.succeed(WorkflowService, {
+      save: (req) => Effect.succeed({ key: req.key }),
+      run: () => Effect.succeed({ instanceId: "wf-1" }),
+      runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
+      list: () => Effect.succeed({ keys: [] }),
+      getByKey: () => Effect.succeedNone,
+      getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+    });
+    // Past the default 15-minute budget → TIMEOUT, so the caller can re-await the same id.
+    const program = Effect.gen(function* () {
+      const fiber = yield* Effect.fork(toolHandlers["await_workflow"]!({ instanceId: "wf-1" }));
+      yield* TestClock.adjust(Duration.minutes(20));
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(stuck), Effect.provide(TestContext.TestContext));
+
+    const result = await Effect.runPromise(program);
+    expect(JSON.parse(result.content[0]!.text)).toEqual({
+      instanceId: "wf-1",
+      runtimeStatus: "TIMEOUT",
     });
   });
 
