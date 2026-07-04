@@ -1,19 +1,39 @@
 {{- /*
-feature workflow — worktree → setup → plan → implement.
+feature workflow — worktree → setup → plan → implement (→ verify).
 
 Renders a run_workflow request body (WORKFLOWS.md "Feature request"): a run-specific worktree
 of the pre-cloned target repo on branch feature/<slug>, h skills + runtime steering installed,
 a read-only plan pass over the spec, then an implement pass that leaves the result as
-uncommitted working-tree changes.
+uncommitted working-tree changes. When feature.verifyCmd is set, a trailing verify step runs
+that command in the worktree and fixes forward until it passes (bounded attempts), ending with
+a machine-checkable ===VERIFY=== PASS/FAIL verdict — without it, an implement step's
+self-report is an unchecked claim.
 
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
   helm template feature cli/charts/workflows -s templates/feature.yaml \
     --set feature.slug=dark-mode --set-file feature.spec=./dark-mode.md
+
+Publish mode (--set publish=true): instead of literal slug/spec values, the per-run inputs are
+emitted as {{params.slug}} / {{params.spec}} engine tokens and the top-level instanceId is
+omitted — the render becomes a *family*: a parameterized definition for save_workflow, fired
+later with run_saved_workflow + fire-time params. Family config (sourceRepo, models,
+verifyCmd) still bakes in from values at publish time.
 */ -}}
+{{- /* Family gate: helm evaluates every template even under -s, so each family's body (and
+its `required` calls) only runs when the renderer selects it via --set family=<name>. */ -}}
+{{- if eq (.Values.family | default "") "feature" }}
 {{- $f := .Values.feature }}
-{{- $slug := required "feature.slug is required (--set feature.slug=<slug>)" $f.slug }}
-{{- $spec := required "feature.spec is required (--set-file feature.spec=<path.md>)" $f.spec }}
+{{- $publish := .Values.publish | default false }}
+{{- $slug := "" }}
+{{- $spec := "" }}
+{{- if $publish }}
+{{- $slug = include "h.token" "params.slug" }}
+{{- $spec = include "h.token" "params.spec" }}
+{{- else }}
+{{- $slug = required "feature.slug is required (--set feature.slug=<slug>)" $f.slug }}
+{{- $spec = required "feature.spec is required (--set-file feature.spec=<path.md>)" $f.spec }}
 instanceId: {{ printf "feature-%s" $slug | quote }}
+{{- end }}
 steps:
   - id: worktree
     activity: create-worktree
@@ -68,3 +88,28 @@ steps:
 
         ===IMPLEMENTATION PLAN===
         {{- include "h.token" "plan.output" | nindent 8 }}
+  {{- if $f.verifyCmd }}
+  - id: verify
+    activity: run-claude
+    input:
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $f.models.verify }}
+      model: {{ . | quote }}
+      {{- end }}
+      task: |-
+        You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
+        A change was just implemented (summary under ===IMPLEMENTED=== below). Verify it:
+        run exactly this command in the worktree root:
+
+            {{ $f.verifyCmd }}
+
+        If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
+        until it passes or you have made 3 fix attempts. Do not weaken the check (no
+        skipping tests, no suppressing errors); do not commit or push.
+        End your response with the exact marker ===VERIFY=== on its own line, then PASS or
+        FAIL on the next line, then a short summary of the final command output as evidence.
+
+        ===IMPLEMENTED===
+        {{- include "h.token" "implement.output" | nindent 8 }}
+  {{- end }}
+{{- end }}

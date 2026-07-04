@@ -4,6 +4,14 @@
   "type": "object",
   "properties": {
     "agentId": { "type": "string", "minLength": 1 },
+    "family": {
+      "type": "string",
+      "$comment": "Set by the renderer to the selected family; gates which template body evaluates (helm evaluates all templates even under -s)."
+    },
+    "publish": {
+      "type": "boolean",
+      "$comment": "Emit per-run inputs as {{params.*}} tokens (a saveable family) instead of literals."
+    },
     "feature": {
       "type": "object",
       "properties": {
@@ -15,11 +23,34 @@
         "spec": { "type": "string" },
         "sourceRepo": { "type": "string" },
         "remoteBase": { "type": "string" },
+        "verifyCmd": {
+          "type": "string",
+          "$comment": "Shell command that proves the implementation (run in the worktree by a trailing verify step). Empty omits the step."
+        },
         "models": {
           "type": "object",
           "properties": {
             "plan": { "type": "string" },
-            "implement": { "type": "string" }
+            "implement": { "type": "string" },
+            "verify": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "pluginImprovement": {
+      "type": "object",
+      "properties": {
+        "sourceRepo": { "type": "string" },
+        "tile": { "type": "string" },
+        "remoteBase": { "type": "string" },
+        "verifyCmd": { "type": "string" },
+        "models": {
+          "type": "object",
+          "properties": {
+            "improve": { "type": "string" },
+            "verify": { "type": "string" }
           },
           "additionalProperties": false
         }

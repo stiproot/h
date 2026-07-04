@@ -42,7 +42,12 @@ def test_feature_render_json_is_a_valid_definition(hostile_spec: Path) -> None:
     assert result.exit_code == 0, _all_output(result)
     definition = json.loads(result.output)
     assert definition["instanceId"] == "feature-hostile"
-    assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
+    # This goes through the real CLI path, which merges the dev's gitignored values.local.yaml —
+    # so the optional verify step (feature.verifyCmd) may or may not be present. The hermetic
+    # step-shape assertions live in test_render.py.
+    ids = [s["id"] for s in definition["steps"]]
+    assert ids[:4] == ["worktree", "setup", "plan", "implement"]
+    assert ids[4:] in ([], ["verify"])
 
 
 @needs_helm

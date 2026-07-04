@@ -38,6 +38,65 @@ def test_feature_wire_json_golden(hostile_spec: Path, snapshot) -> None:
     assert helm.to_wire_json(_render_hostile(hostile_spec)) == snapshot
 
 
+def test_feature_with_verify_golden(hostile_spec: Path, snapshot) -> None:
+    """verifyCmd adds the trailing verify step (canonical YAML) — omitted from the base golden."""
+    rendered = helm.render_workflow(
+        "feature",
+        values={"feature.slug": "hostile-fixture", "feature.verifyCmd": "bun run lint"},
+        file_values={"feature.spec": hostile_spec},
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_verify_step_omitted_by_default(hostile_spec: Path) -> None:
+    """Chart default (empty verifyCmd) keeps the pre-verify four-step shape."""
+    definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))
+    assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
+
+
+def test_feature_publish_mode_golden(snapshot) -> None:
+    """Publish mode: slug/spec become {{params.*}} slots, no instanceId — a saveable family."""
+    rendered = helm.render_workflow("feature", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_feature_publish_mode_opens_param_slots() -> None:
+    definition = json.loads(
+        helm.to_wire_json(
+            helm.render_workflow("feature", values={"publish": "true"}, include_local=False)
+        )
+    )
+    assert "instanceId" not in definition
+    assert definition["steps"][0]["input"]["branch"] == "feature/{{params.slug}}"
+    assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
+
+
+def test_plugin_improvement_golden(snapshot) -> None:
+    """The plugin-improvement family (publish-native), hermetic with explicit family config."""
+    rendered = helm.render_workflow(
+        "plugin-improvement",
+        values={
+            "pluginImprovement.tile": "plugins/linear",
+            "pluginImprovement.sourceRepo": "/workspace/plugins-repo",
+        },
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_families_do_not_cross_demand_values(hostile_spec: Path) -> None:
+    """The family gate: rendering one family never trips another family's `required`."""
+    # feature renders without pluginImprovement.tile set…
+    _render_hostile(hostile_spec)
+    # …and plugin-improvement renders without feature.slug/spec set.
+    helm.render_workflow(
+        "plugin-improvement",
+        values={"pluginImprovement.tile": "plugins/linear"},
+        include_local=False,
+    )
+
+
 def test_hostile_tokens_survive_verbatim(hostile_spec: Path) -> None:
     """Belt-and-braces behavioral check, independent of snapshot blessing."""
     definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))

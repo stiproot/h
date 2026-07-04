@@ -19,7 +19,10 @@ render_workflow() {
   local chart="${CHARTS_DIR}/workflows"
   local -a extra=()
   [[ -f "${chart}/values.local.yaml" ]] && extra+=(--values "${chart}/values.local.yaml")
-  helm template "$family" "$chart" -s "templates/${family}.yaml" "${extra[@]}" "$@" \
+  # --set family=… gates which template body evaluates: helm renders every template even under
+  # -s, so without the gate one family's `required` values would break another family's render.
+  helm template "$family" "$chart" -s "templates/${family}.yaml" --set "family=${family}" \
+    "${extra[@]}" "$@" \
     | sed '/^---$/d; /^# Source: /d'
 }
 

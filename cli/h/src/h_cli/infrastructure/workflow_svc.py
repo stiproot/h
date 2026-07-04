@@ -1,4 +1,4 @@
-"""Read-side client for workflow-svc's HTTP surface (saved workflows + instance status)."""
+"""Client for workflow-svc's HTTP surface (saved workflows, runs, instance status)."""
 
 from typing import Any
 
@@ -21,5 +21,31 @@ def get(key: str) -> Any:
 
 def status(instance_id: str) -> Any:
     resp = httpx.get(f"{WORKFLOW_URL}/workflow/status/{instance_id}", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def save(key: str, steps: list[Any], params: dict[str, Any] | None = None) -> Any:
+    """Persist a (possibly parameterized) workflow definition under a key."""
+    body: dict[str, Any] = {"key": key, "steps": steps}
+    if params:
+        body["params"] = params
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/save", json=body, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def run_saved(key: str, params: dict[str, Any] | None = None) -> Any:
+    """Fire a saved workflow; fire-time params override the stored defaults key-by-key."""
+    body = {"params": params} if params else {}
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def terminate(instance_id: str) -> Any:
+    """Request termination of a running instance. The body must be `{}`, not empty —
+    Fastify 400s an empty body when content-type is application/json."""
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/terminate/{instance_id}", json={}, timeout=30)
     resp.raise_for_status()
     return resp.json()

@@ -36,7 +36,18 @@ def render_workflow(
     if shutil.which("helm") is None:
         raise HelmError("helm is required on PATH (https://helm.sh) — it renders cli/charts")
     chart = CHARTS_DIR / "workflows"
-    cmd = ["helm", "template", family, str(chart), "-s", f"templates/{family}.yaml"]
+    # --set family=… gates which template body evaluates: helm renders every template even under
+    # -s, so without the gate one family's `required` values would break another family's render.
+    cmd = [
+        "helm",
+        "template",
+        family,
+        str(chart),
+        "-s",
+        f"templates/{family}.yaml",
+        "--set",
+        f"family={family}",
+    ]
     local_values = chart / "values.local.yaml"
     if include_local and local_values.is_file():
         cmd += ["--values", str(local_values)]

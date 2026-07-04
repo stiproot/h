@@ -12,11 +12,12 @@ from typing import Annotated
 
 import httpx
 import typer
+import yaml
 from rich.console import Console
 from rich.syntax import Syntax
 
-from h_cli.config import FEATURE_SPECS_DIR
-from h_cli.infrastructure import helm, statestore, workflow_agent
+from h_cli.config import AGENT_URLS, FEATURE_SPECS_DIR, resolve_agent_url
+from h_cli.infrastructure import agent_service, helm, statestore, workflow_agent
 
 app = typer.Typer(no_args_is_help=True, help="Feature-request workflow (chart strategy).")
 console = Console()
@@ -103,17 +104,53 @@ def render(
 def run(
     spec: SpecArg,
     slug: SlugOpt = None,
+    agent: Annotated[
+        str | None,
+        typer.Option(
+            "--agent",
+            help="Submit via this agent service's POST /workflow (submit-and-babysit, "
+            "non-blocking). An agent name from the registry, or a full URL. Without it, "
+            "the legacy workflow-agent long-poll path runs.",
+        ),
+    ] = None,
     timeout: Annotated[
-        int, typer.Option(help="Seconds to wait for the workflow-agent long-poll.")
+        int, typer.Option(help="Seconds to wait for the workflow-agent long-poll (legacy path).")
     ] = 1800,
 ) -> None:
-    """Render, seed the task (definition embedded), and trigger the workflow-agent."""
+    """Render and run the feature workflow.
+
+    With --agent: the rendered definition is submitted to that agent's standard /workflow
+    endpoint — 202 with the instanceId immediately, the agent's babysitter supervises the run
+    (watch with `h workflow status <id>`). Without: the legacy blocking path (seed a task,
+    long-poll workflow-agent).
+    """
     rendered, resolved_slug = _render(spec, slug)
-    task_id = f"feature-helm-{resolved_slug}"
     console.print(
         f"==> Feature request -> slug '{resolved_slug}' "
         f"(branch feature/{resolved_slug}, chart-rendered)"
     )
+
+    if agent:
+        agent_url = resolve_agent_url(agent)
+        if agent_url is None:
+            err_console.print(f"[red]Unknown agent[/red] '{agent}'")
+            err_console.print(
+                "Known agents: " + ", ".join(sorted(AGENT_URLS)) + " (or a full URL)"
+            )
+            raise typer.Exit(1)
+        definition = yaml.safe_load(rendered)
+        body = {k: definition[k] for k in ("instanceId", "steps") if k in definition}
+        try:
+            result = agent_service.submit_workflow(agent_url, body)
+        except httpx.HTTPError as err:
+            err_console.print(f"[red]http:[/red] {err}")
+            err_console.print(f"Is {agent} running and serving POST /workflow?")
+            raise typer.Exit(1) from err
+        console.print_json(data=result)
+        console.print(f"    watch it: h workflow status {result['instanceId']}")
+        return
+
+    task_id = f"feature-helm-{resolved_slug}"
     try:
         console.print(f"==> Seeding task '{task_id}' into the state store")
         statestore.seed_task(task_id, _RUN_VERBATIM_PREAMBLE + helm.to_wire_json(rendered))

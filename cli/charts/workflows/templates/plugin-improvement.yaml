@@ -1,0 +1,88 @@
+{{- /*
+plugin-improvement workflow — worktree → setup → improve (→ verify).
+
+The chart-family port of workflow-agent's `_improvement_problem` prose (the plugin-feedback
+use-case: a triage run produces feedback on an h plugin; this workflow applies that feedback
+to the plugin's source repo and bumps its version). Publish-native: per-run inputs are always
+emitted as {{params.*}} engine tokens — this family only makes sense saved and fired with
+run_saved_workflow (by the CLI, an agent, or a pub/sub trigger), never rendered as a one-off.
+
+Fire-time params:
+  slug      branch token — the run works on branch improve/<slug> (e.g. linear-AE-42)
+  feedback  the improvement to apply, plain text/Markdown
+
+Family config (values, baked at publish time): pluginImprovement.sourceRepo (pre-cloned plugin
+repo), pluginImprovement.tile (plugin source dir within the repo — the plugin name is its last
+path segment), models, optional verifyCmd.
+
+Publish:
+  helm template plugin-improvement cli/charts/workflows -s templates/plugin-improvement.yaml \
+    --set pluginImprovement.tile=plugins/linear --set pluginImprovement.sourceRepo=/path/repo
+*/ -}}
+{{- /* Family gate — see feature.yaml: bodies only evaluate for the selected family. */ -}}
+{{- if eq (.Values.family | default "") "plugin-improvement" }}
+{{- $p := .Values.pluginImprovement }}
+{{- $tile := required "pluginImprovement.tile is required (--set pluginImprovement.tile=<dir>)" $p.tile | trimSuffix "/" }}
+{{- $plugin := $tile | splitList "/" | last }}
+steps:
+  - id: worktree
+    activity: create-worktree
+    input:
+      agentId: {{ .Values.agentId | quote }}
+      branch: {{ printf "improve/%s" (include "h.token" "params.slug") | quote }}
+      {{- with $p.sourceRepo }}
+      sourceRepo: {{ . | quote }}
+      {{- end }}
+      {{- with $p.remoteBase }}
+      remoteBase: {{ . | quote }}
+      {{- end }}
+  - id: setup
+    activity: setup
+    input:
+      agentId: {{ .Values.agentId | quote }}
+      setup:
+        {{- include "h.setupSteps" . | nindent 8 }}
+  - id: improve
+    activity: run-claude
+    input:
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $p.models.improve }}
+      model: {{ . | quote }}
+      {{- end }}
+      task: |-
+        You are in a git worktree of the plugin repository (your current directory), on branch
+        improve/{{ include "h.token" "params.slug" }}. Trace the current {{ $plugin }} plugin
+        source under {{ $tile }} (SKILL.md, references/, scripts/) before editing — the
+        installed copy can lag the source. Apply the improvement under ===FEEDBACK=== below:
+        make a focused change to the plugin source and bump the version in
+        {{ $tile }}/.tessl-plugin/plugin.json. Do not commit or push. Summarize what you
+        changed.
+
+        ===FEEDBACK===
+        {{- include "h.token" "params.feedback" | nindent 8 }}
+  {{- if $p.verifyCmd }}
+  - id: verify
+    activity: run-claude
+    input:
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $p.models.verify }}
+      model: {{ . | quote }}
+      {{- end }}
+      task: |-
+        You are in a git worktree of the plugin repository, on branch
+        improve/{{ include "h.token" "params.slug" }}. A change was just implemented (summary
+        under ===IMPLEMENTED=== below). Verify it: run exactly this command in the worktree
+        root:
+
+            {{ $p.verifyCmd }}
+
+        If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
+        until it passes or you have made 3 fix attempts. Do not weaken the check (no
+        skipping tests, no suppressing errors); do not commit or push.
+        End your response with the exact marker ===VERIFY=== on its own line, then PASS or
+        FAIL on the next line, then a short summary of the final command output as evidence.
+
+        ===IMPLEMENTED===
+        {{- include "h.token" "improve.output" | nindent 8 }}
+  {{- end }}
+{{- end }}
