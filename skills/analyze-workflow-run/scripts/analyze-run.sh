@@ -13,10 +13,10 @@ TASK_ID="${2:-$INSTANCE}"   # for the agent-built path, the taskId is usually ==
 
 WF_SVC="${WF_SVC_URL:-http://localhost:8003}"
 STATE="${DAPR_STATE_URL:-http://localhost:3510/v1.0/state/statestore}"
-RUNS_DIR="${RUNS_DIR:-../h-workspace/.runs}"
+AGENT_RUNS_DIR="${AGENT_RUNS_DIR:-../h-workspace/.runs}"
 TARGET_REPO="${TARGET_REPO_PATH:-../h-workspace/repo}"
 ZIPKIN="${ZIPKIN_URL:-http://localhost:9411}"
-G="${RUNS_DIR}/${INSTANCE}"
+G="${AGENT_RUNS_DIR}/${INSTANCE}"
 
 echo "================ 1. workflow status ================"
 curl -s --max-time 5 "${WF_SVC}/workflow/status/${INSTANCE}" \

@@ -1,6 +1,6 @@
 """The run ledger captures "what an agent did" for every run as durable, inspectable artifacts.
 
-A ``{RUNS_DIR}/<group>/<agentId>-<ts>/`` directory holds ``summary.json``, ``output.txt`` and
+A ``{AGENT_RUNS_DIR}/<group>/<agentId>-<ts>/`` directory holds ``summary.json``, ``output.txt`` and
 ``events.jsonl``; a compact record is mirrored into the Dapr statestore under ``run:<runId>`` plus a
 ``runs:index`` list, so runs are queryable through dapr-mcp. Mirrors the TypeScript ``run-ledger``
 in ``packages/js/agent-server``.

@@ -21,6 +21,6 @@ stop_stale obs-mcp 8013
 export APP_PORT="${APP_PORT:-8013}"
 export ZIPKIN_URL="${ZIPKIN_URL:-http://localhost:9411}"
 export LOKI_URL="${LOKI_URL:-http://localhost:3100}"
-export RUNS_DIR="${RUNS_DIR:-$(cd "${PROJECT_DIR}/.." && pwd)/h-workspace/.runs}"
+export AGENT_RUNS_DIR="${AGENT_RUNS_DIR:-$(cd "${PROJECT_DIR}/.." && pwd)/h-workspace/.runs}"
 
 exec bun run src/index.ts

@@ -58,5 +58,5 @@ workflow_output() {
 # Points at the run ledger / observability tooling for inspecting what the agents did.
 done_hint() {
   echo ""
-  echo "==> Inspect this run: obs-mcp runs_list / run_get, or \${RUNS_DIR}/$1/ on the shared volume."
+  echo "==> Inspect this run: obs-mcp runs_list / run_get, or \${AGENT_RUNS_DIR}/$1/ on the shared volume."
 }

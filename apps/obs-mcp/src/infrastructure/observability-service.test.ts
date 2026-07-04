@@ -19,7 +19,7 @@ const configLayer = Layer.setConfigProvider(
     new Map([
       ["ZIPKIN_URL", "http://zipkin.test"],
       ["LOKI_URL", "http://loki.test"],
-      ["RUNS_DIR", "/runs"],
+      ["AGENT_RUNS_DIR", "/runs"],
     ]),
   ),
 );
@@ -169,7 +169,7 @@ describe("swallow semantics: Zipkin/Loki reads (legacy #getJson → null)", () =
 });
 
 describe("swallow semantics: run ledger (legacy #runDirs / #readJson / runGet try-catch)", () => {
-  it("runsList returns [] when RUNS_DIR is unreadable", async () => {
+  it("runsList returns [] when AGENT_RUNS_DIR is unreadable", async () => {
     await expect(run((obs) => obs.runsList({}), { fs: emptyFs })).resolves.toEqual([]);
   });
 

@@ -21,7 +21,7 @@ type ZipkinSpan = {
 
 /**
  * Reads the three observability surfaces directly over HTTP/fs (no Dapr sidecar): Zipkin for traces,
- * Loki for logs, and the on-disk run ledger ({RUNS_DIR}) for agent runs.
+ * Loki for logs, and the on-disk run ledger ({AGENT_RUNS_DIR}) for agent runs.
  *
  * The silent error handling is load-bearing: every read tolerates missing/unreachable data and
  * degrades to an empty result or `Option.none` — never a failure — at exactly the granularity the
@@ -44,7 +44,9 @@ export const ObservabilityServiceLive: Layer.Layer<
     const lokiUrl = yield* Config.string("LOKI_URL").pipe(
       Config.withDefault("http://localhost:3100"),
     );
-    const runsDir = yield* Config.string("RUNS_DIR").pipe(Config.withDefault("/workspace/.runs"));
+    const runsDir = yield* Config.string("AGENT_RUNS_DIR").pipe(
+      Config.withDefault("/workspace/.runs"),
+    );
 
     // Swallow site (legacy #getJson → null): a transport failure, a non-2xx status, or an
     // unparsable body all degrade to Option.none — the shared path behind every Zipkin/Loki read.
@@ -62,10 +64,10 @@ export const ObservabilityServiceLive: Layer.Layer<
         Effect.option,
       );
 
-    /** All run-artifact directories under RUNS_DIR (one level: <group>/<agentId>-<ts>). */
+    /** All run-artifact directories under AGENT_RUNS_DIR (one level: <group>/<agentId>-<ts>). */
     const runDirs: Effect.Effect<string[]> = Effect.gen(function* () {
       const dirs: string[] = [];
-      // Swallow site (legacy): an unreadable RUNS_DIR yields no dirs at all.
+      // Swallow site (legacy): an unreadable AGENT_RUNS_DIR yields no dirs at all.
       const groups = yield* fs.readDirectory(runsDir).pipe(Effect.orElseSucceed(() => []));
       for (const group of groups) {
         const groupPath = join(runsDir, group);

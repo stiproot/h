@@ -24,7 +24,7 @@ activity records its real error there. Always verify the self-report against the
 | --- | --- | --- |
 | Workflow status | Is it RUNNING / COMPLETED / FAILED / TERMINATED? final output? | `workflow-svc /workflow/status/<id>` |
 | Task state | The agent's overall status + self-reported result (a *claim*) | statestore `task:<id>` |
-| **Run ledger** | **Per-step truth**: which setup/clone/worktree activity and which agent run succeeded or failed, with the real error | `<RUNS_DIR>/<id>/*/summary.json` (+ `output.txt`, `events.jsonl`) |
+| **Run ledger** | **Per-step truth**: which setup/clone/worktree activity and which agent run succeeded or failed, with the real error | `<AGENT_RUNS_DIR>/<id>/*/summary.json` (+ `output.txt`, `events.jsonl`) |
 | Zipkin | Error spans for activities/agent runs — catches failures that never reach the ledger | `localhost:9411` |
 | Worktree | What the run actually produced on disk (the change, or nothing) | `git -C <target repo> worktree list`; `git status` in the worktree |
 | Pub/sub | Follow-up tasks the run seeded (e.g. a plugin-improvement task) | statestore `tasks:index` |
@@ -39,7 +39,7 @@ Run the bundled script with the instance id (run from the h repo root):
 ```
 
 It prints all seven sections. Endpoints/paths default to the local layout and are overridable via env
-(`WF_SVC_URL`, `DAPR_STATE_URL`, `RUNS_DIR`, `TARGET_REPO_PATH`, `ZIPKIN_URL`).
+(`WF_SVC_URL`, `DAPR_STATE_URL`, `AGENT_RUNS_DIR`, `TARGET_REPO_PATH`, `ZIPKIN_URL`).
 
 ## How to interpret it
 

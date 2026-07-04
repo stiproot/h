@@ -38,7 +38,7 @@ Slash commands wrap the common flows: `/observe`, `/runs`, `/run <id>`, `/trace 
 
 Every agent run writes a durable record (best-effort; never blocks the run):
 
-- On the shared volume: `{RUNS_DIR}/<group>/<agentId>-<ts>/` with `summary.json` (status, model,
+- On the shared volume: `{AGENT_RUNS_DIR}/<group>/<agentId>-<ts>/` with `summary.json` (status, model,
   turns, tokens, costUsd, toolCalls, sessionId, durationMs, inputPreview), `output.txt` (full output),
   and `events.jsonl` (the agent event stream — full for CLI agents, one synthesized event for the
   Python loop agents). `<group>` is the workflowInstanceId (or workspaceId).

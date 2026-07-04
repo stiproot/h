@@ -78,7 +78,7 @@ apps/workflow-svc/src/
     └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; injects workflowInstanceId + workspaceId; seeds named params under the reserved results id `params` ({{params.x}})
 
 apps/obs-mcp/src/                         # obs-mcp – read-only observability MCP (no Dapr sidecar; port 8013)
-├── index.ts                              # composition root – Fastify/MCP; reads ZIPKIN_URL, LOKI_URL, RUNS_DIR
+├── index.ts                              # composition root – Fastify/MCP; reads ZIPKIN_URL, LOKI_URL, AGENT_RUNS_DIR
 ├── domain/ports/IObservabilityService.ts # outbound port – traces, logs, run ledger
 ├── infrastructure/observability-service.ts # Zipkin (HTTP) + Loki (HTTP) + run-ledger (fs) reader
 └── presentation/http/mcp.router.ts       # GET /sse, POST /messages, GET /dapr/subscribe
@@ -127,7 +127,7 @@ packages/js/agent-server/src/                # shared HTTP contract for agent se
 ├── worktree-route.ts # registerWorktreeRoute – opt-in POST /worktree (git worktree of a pre-cloned repo at a shared, agent-neutral path; idempotent; returns { worktreePath })
 ├── workflow-babysitter.ts # WorkflowBabysitter – submit-and-supervise (non-blocking): schedule on workflow-svc via the sidecar, poll status on a cadence, terminate on wall-clock budget breach, publish workflow-events on terminal; plain fetch, injectable for tests
 ├── workflow-route.ts # registerWorkflowRoute – the standard agent-service workflow endpoint: POST /workflow {key|steps, params?, instanceId?, workspaceId?, policy?} → 202 {instanceId, watching}; GET /workflow/watches
-├── run-ledger.ts     # startRunLedger – per-run summary.json/events.jsonl/output.txt under RUNS_DIR + statestore mirror; toolCalls tally counts tool_use blocks nested in claude-CLI assistant events
+├── run-ledger.ts     # startRunLedger – per-run summary.json/events.jsonl/output.txt under AGENT_RUNS_DIR + statestore mirror; toolCalls tally counts tool_use blocks nested in claude-CLI assistant events
 └── runner.ts         # IAgentRunner port (run request → response)
 
 packages/js/core/src/
@@ -257,8 +257,8 @@ default agent workspace key, a Zipkin span attribute, and the group key of the r
   end-to-end — including the cron path (the tick captures `activeTraceparent()`). k8s tracing is off
   (`samplingRate: "0"`).
 - **Run ledger → "what the agent did".** Every agent run writes, best-effort,
-  `{RUNS_DIR}/<instanceId|workspaceId>/<agentId>-<ts>/{summary.json,events.jsonl,output.txt}` on the
-  shared volume (`RUNS_DIR` defaults to `<AGENT_BASE_DIR>/../.runs`), and mirrors a compact
+  `{AGENT_RUNS_DIR}/<instanceId|workspaceId>/<agentId>-<ts>/{summary.json,events.jsonl,output.txt}` on the
+  shared volume (`AGENT_RUNS_DIR` defaults to `<AGENT_BASE_DIR>/../.runs`), and mirrors a compact
   `run:<runId>` record + `runs:index` into the statestore — so runs are queryable via `dapr-mcp` too.
   The JS capture lives in `agent-server`'s `startRunLedger` (events arrive via the runner's `onEvent`);
   the Python sibling is `record_run`, called from the shared `/run` route.
@@ -345,7 +345,7 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **Standard `POST /workflow` (the babysitter)** — every agent service registers submit-and-supervise from the shared agent-server packages: `{key|steps, params?, instanceId?, workspaceId?, policy?}` → `202 {instanceId, watching}` immediately; a deterministic background loop polls status, terminates on wall-clock budget breach (default 45 min), and publishes `workflow-events` on terminal. Machines run the loop; agents are only for judgment. Never build orchestration on an agent looping `await_workflow` — a model can abandon the loop (observed: haiku returned after one TIMEOUT). `workflow-agent` is NOT the exclusive workflow entry point.
 - **MCP servers are agent-runtime dependencies** — `dapr-mcp`/`obs-mcp`/`workflow-mcp` down doesn't just blind human observability: agent runs silently lose those tools (observed: a run skipped its `actor_state_set` persistence without erroring because dapr-mcp was down). Workflow task prose that depends on an MCP tool should require the agent to report tool-unavailable explicitly; keep the MCP set running whenever agents run.
 - **Worktree fetch-before-branch** — `addWorktree` in `packages/js/git-core/src/git-client.ts` accepts a `remoteBase` option. When set (and no explicit `baseRef` is given), it fetches `origin/<remoteBase>` before cutting the new branch, so the worktree starts from the latest remote tip rather than the potentially-stale local checkout. The `/worktree` route in `agent-server` defaults `remoteBase` to `"main"` for all worktree-cutting workflows (grooming, feature-request, triage). Pass `remoteBase: ""` explicitly to opt out.
-- **Run ledger is best-effort** — observability must never break a run, so every ledger write (the `RUNS_DIR` files and the statestore mirror) swallows errors; the on-disk files are the source of truth. The `runs:index` / `run:<id>` keys follow the flat-keyspace convention so `dapr-mcp` can read them. `obs-mcp` reads Zipkin/Loki over HTTP and the ledger off `RUNS_DIR` (fs) — it has **no Dapr sidecar**, so its `--app-port` (8013) is just the MCP listener.
+- **Run ledger is best-effort** — observability must never break a run, so every ledger write (the `AGENT_RUNS_DIR` files and the statestore mirror) swallows errors; the on-disk files are the source of truth. The `runs:index` / `run:<id>` keys follow the flat-keyspace convention so `dapr-mcp` can read them. `obs-mcp` reads Zipkin/Loki over HTTP and the ledger off `AGENT_RUNS_DIR` (fs) — it has **no Dapr sidecar**, so its `--app-port` (8013) is just the MCP listener.
 - **Statestore shared keyspace** — the Redis state store sets `keyPrefix: none`, so keys are global (no app-id prefix). This is deliberate: it lets any service — and `dapr-mcp` — read each other's keys (e.g. `task:…`, `tasks:index`, `__workflow_index__`, saved workflow keys) for dogfooding/inspection. Actor/workflow runtime state uses its own composite keying and is unaffected. With a flat keyspace, avoid key collisions across services (the existing keys are namespaced by convention: `task:`, `feedback:`, `__workflow_index__`).
 - **`docker-compose.local.yml`** — required for local dev (`--profile infra`). Overrides the scheduler's broadcast address to `localhost:50007` so host-side daprd processes can reach it. Without it the scheduler advertises its internal Docker IP, unreachable from the host on macOS. Never use this file with full-Docker profiles — Docker containers resolve `localhost` as their own loopback, not the scheduler container.
 - **`docker compose down -v`** — always pass `-v`. Without it the scheduler's etcd volume persists and can replay a prior workflow on next startup.

@@ -2,10 +2,10 @@
 
 ## Run ledger
 
-**On disk** (`RUNS_DIR`, default `../h-workspace/.runs` local / `/workspace/.runs` docker):
+**On disk** (`AGENT_RUNS_DIR`, default `../h-workspace/.runs` local / `/workspace/.runs` docker):
 
 ```
-{RUNS_DIR}/<group>/<agentId>-<ts>/
+{AGENT_RUNS_DIR}/<group>/<agentId>-<ts>/
   summary.json   # see schema below
   output.txt     # full final output
   events.jsonl   # one JSON event per line

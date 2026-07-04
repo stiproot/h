@@ -5,7 +5,7 @@ import { Context, Data, Effect, Layer, Runtime } from "effect";
 
 /**
  * The run ledger captures "what an agent did" for every run as durable, inspectable artifacts:
- * a {RUNS_DIR}/<group>/<agentId>-<ts>/ directory holding summary.json, output.txt and (for agents
+ * a {AGENT_RUNS_DIR}/<group>/<agentId>-<ts>/ directory holding summary.json, output.txt and (for agents
  * that stream events) events.jsonl. It also mirrors a compact record into the Dapr statestore under
  * `run:<runId>` plus a `runs:index` list, so runs are queryable through the existing dapr-mcp.
  *
@@ -18,7 +18,7 @@ import { Context, Data, Effect, Layer, Runtime } from "effect";
 
 export type RunLedgerContext = {
   agentId: string;
-  /** Shared runs root (RUNS_DIR), visible to every agent and the host. */
+  /** Shared runs root (AGENT_RUNS_DIR), visible to every agent and the host. */
   runsDir: string;
   workflowInstanceId?: string;
   workspaceId?: string;
@@ -62,7 +62,7 @@ export type RunSummary = {
 
 /** Identity an activity route needs to write an activity record into the run ledger. */
 export type ActivityLedgerConfig = {
-  /** Shared runs root (RUNS_DIR). */
+  /** Shared runs root (AGENT_RUNS_DIR). */
   runsDir: string;
   agentId: string;
   /** Dapr sidecar HTTP port; when set, the record is mirrored to the statestore. */

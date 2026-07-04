@@ -133,7 +133,7 @@ services:
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
       - ZIPKIN_URL=http://zipkin:9411
       - LOKI_URL=http://loki:3100
-      - RUNS_DIR=/workspace/.runs
+      - AGENT_RUNS_DIR=/workspace/.runs
     volumes:
       - ../h-workspace:/workspace
     ports:
