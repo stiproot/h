@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { WorkflowError } from "core";
-import { Effect, Option, Schema } from "effect";
+import { Duration, Effect, Option, Schema } from "effect";
 import type { ManagedRuntime, ParseResult } from "effect";
 import { withAmbientParent, withServerSpan } from "telemetry";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -35,6 +35,21 @@ export const GetWorkflowStatusInput = Schema.Struct({
     description: "Instance ID returned when the workflow was run",
   }),
 });
+// await_workflow takes the same single instanceId as get_workflow_status; the poll cadence and
+// wait budget are server-side (env-overridable) rather than model-controlled — matching the
+// helper this promotes out of workflow-agent so every MCP client (JS + Python) shares it.
+export const AwaitWorkflowInput = Schema.Struct({
+  instanceId: Schema.String.annotations({
+    description: "Instance ID returned when the workflow was run",
+  }),
+});
+
+// Terminal runtimeStatus values that stop the await poll. Anything else (RUNNING/PENDING/…) keeps
+// waiting until the budget elapses, at which point await returns runtimeStatus "TIMEOUT" so the
+// caller can re-await with the same instanceId (the contract the orchestrator prompt relies on).
+const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
+const AWAIT_MAX_WAIT_MS = Number(process.env.WORKFLOW_AWAIT_MAX_WAIT_MS ?? 900_000);
+const AWAIT_POLL_INTERVAL_MS = Number(process.env.WORKFLOW_AWAIT_POLL_INTERVAL_MS ?? 5_000);
 
 // The published tool list — a wire artifact the model reads, kept byte-identical to the
 // pre-Effect server. Deliberate duplication: deriving it from the annotated Structs via
@@ -137,6 +152,21 @@ export const TOOL_DEFINITIONS = [
       required: ["instanceId"],
     },
   },
+  {
+    name: "await_workflow",
+    description:
+      "Block until a running workflow instance reaches a terminal state (COMPLETED / FAILED / TERMINATED) and return its final runtimeStatus and output. Call this once after run_workflow or run_saved_workflow, passing the returned instanceId — do not poll get_workflow_status in a loop yourself. If the wait budget elapses while the run is still going it returns runtimeStatus 'TIMEOUT'; call it again with the same instanceId to keep waiting.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        instanceId: {
+          type: "string",
+          description: "Instance ID returned when the workflow was run",
+        },
+      },
+      required: ["instanceId"],
+    },
+  },
 ];
 
 type ToolResult = {
@@ -228,6 +258,33 @@ export const toolHandlers: Record<
       const service = yield* WorkflowService;
       return jsonResult(yield* service.getStatus(input.instanceId));
     }).pipe(catchToolErrors("get_workflow_status")),
+
+  await_workflow: (args) =>
+    Effect.gen(function* () {
+      const input = yield* decodePreserving(AwaitWorkflowInput)(args);
+      const service = yield* WorkflowService;
+      // Poll getStatus until terminal or the budget elapses. Recursion via flatMap is stack-safe
+      // (Effect trampolines); each getStatus keeps its own client span + invoke timeout.
+      const poll = (elapsedMs: number): Effect.Effect<unknown, WorkflowError> =>
+        service.getStatus(input.instanceId).pipe(
+          Effect.flatMap((status) => {
+            if (TERMINAL_STATUSES.has(status.runtimeStatus)) return Effect.succeed(status);
+            if (elapsedMs + AWAIT_POLL_INTERVAL_MS > AWAIT_MAX_WAIT_MS) {
+              return Effect.succeed({ instanceId: input.instanceId, runtimeStatus: "TIMEOUT" });
+            }
+            return Effect.sleep(Duration.millis(AWAIT_POLL_INTERVAL_MS)).pipe(
+              Effect.flatMap(() => poll(elapsedMs + AWAIT_POLL_INTERVAL_MS)),
+            );
+          }),
+        );
+      return jsonResult(
+        yield* poll(0).pipe(
+          Effect.withSpan("await_workflow", {
+            attributes: { "workflow.instance_id": input.instanceId },
+          }),
+        ),
+      );
+    }).pipe(catchToolErrors("await_workflow")),
 };
 
 function createServer(runtime: McpToolRuntime): Server {

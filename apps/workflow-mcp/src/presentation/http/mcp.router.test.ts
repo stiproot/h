@@ -9,6 +9,7 @@ import {
   WorkflowService,
 } from "../../domain/ports/IWorkflowService.ts";
 import {
+  AwaitWorkflowInput,
   GetWorkflowInput,
   GetWorkflowStatusInput,
   RunSavedWorkflowInput,
@@ -83,6 +84,10 @@ describe("published inputSchema stays aligned with the annotated Structs", () =>
     expectAligned(publishedFor("get_workflow_status"), generatedFor(GetWorkflowStatusInput));
   });
 
+  it("await_workflow", () => {
+    expectAligned(publishedFor("await_workflow"), generatedFor(AwaitWorkflowInput));
+  });
+
   it("every published tool has a handler and vice versa", () => {
     expect(TOOL_DEFINITIONS.map((t) => t.name).sort()).toEqual(Object.keys(toolHandlers).sort());
   });
@@ -143,6 +148,7 @@ describe("tool error edge", () => {
       list_workflows: {},
       get_workflow: { key: "k" },
       get_workflow_status: { instanceId: "wf-1" },
+      await_workflow: { instanceId: "wf-1" },
     };
     for (const [name, handler] of Object.entries(toolHandlers)) {
       const result = await Effect.runPromise(
@@ -195,6 +201,27 @@ describe("behaviour preservation", () => {
     expect(JSON.parse(result.content[0]!.text)).toEqual({
       instanceId: "wf-1",
       runtimeStatus: "RUNNING",
+    });
+  });
+
+  it("await_workflow returns a terminal status immediately, without polling", async () => {
+    const completed = Layer.succeed(WorkflowService, {
+      save: (req) => Effect.succeed({ key: req.key }),
+      run: () => Effect.succeed({ instanceId: "wf-1" }),
+      runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
+      list: () => Effect.succeed({ keys: [] }),
+      getByKey: () => Effect.succeedNone,
+      getStatus: (instanceId) =>
+        Effect.succeed({ instanceId, runtimeStatus: "COMPLETED", output: "done" }),
+    });
+    const result = await Effect.runPromise(
+      toolHandlers["await_workflow"]!({ instanceId: "wf-1" }).pipe(Effect.provide(completed)),
+    );
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0]!.text)).toEqual({
+      instanceId: "wf-1",
+      runtimeStatus: "COMPLETED",
+      output: "done",
     });
   });
 
