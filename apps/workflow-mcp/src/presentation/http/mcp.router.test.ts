@@ -121,6 +121,22 @@ const stubService = Layer.succeed(WorkflowService, {
   getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
 });
 
+// A stub whose only varying method is getStatus — the await_workflow tests differ solely in
+// the status sequence it returns, so they share this factory instead of repeating the layer.
+const serviceWithStatus = (
+  getStatus: (
+    instanceId: string,
+  ) => Effect.Effect<{ instanceId: string; runtimeStatus: string; output?: string }, WorkflowError>,
+) =>
+  Layer.succeed(WorkflowService, {
+    save: (req) => Effect.succeed({ key: req.key }),
+    run: () => Effect.succeed({ instanceId: "wf-1" }),
+    runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
+    list: () => Effect.succeed({ keys: [] }),
+    getByKey: () => Effect.succeedNone,
+    getStatus,
+  });
+
 describe("tool error edge", () => {
   it("a failing service becomes an isError ToolResult, not a rejection", async () => {
     const result = await Effect.runPromise(
@@ -205,15 +221,9 @@ describe("behaviour preservation", () => {
   });
 
   it("await_workflow returns a terminal status immediately, without polling", async () => {
-    const completed = Layer.succeed(WorkflowService, {
-      save: (req) => Effect.succeed({ key: req.key }),
-      run: () => Effect.succeed({ instanceId: "wf-1" }),
-      runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
-      list: () => Effect.succeed({ keys: [] }),
-      getByKey: () => Effect.succeedNone,
-      getStatus: (instanceId) =>
-        Effect.succeed({ instanceId, runtimeStatus: "COMPLETED", output: "done" }),
-    });
+    const completed = serviceWithStatus((instanceId) =>
+      Effect.succeed({ instanceId, runtimeStatus: "COMPLETED", output: "done" }),
+    );
     const result = await Effect.runPromise(
       toolHandlers["await_workflow"]!({ instanceId: "wf-1" }).pipe(Effect.provide(completed)),
     );
@@ -227,19 +237,13 @@ describe("behaviour preservation", () => {
 
   it("await_workflow polls until the status becomes terminal", async () => {
     let calls = 0;
-    const polling = Layer.succeed(WorkflowService, {
-      save: (req) => Effect.succeed({ key: req.key }),
-      run: () => Effect.succeed({ instanceId: "wf-1" }),
-      runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
-      list: () => Effect.succeed({ keys: [] }),
-      getByKey: () => Effect.succeedNone,
-      // RUNNING for the first two polls, then COMPLETED — the loop must poll past the sleeps.
-      getStatus: (instanceId) =>
-        Effect.sync(() => {
-          calls += 1;
-          return { instanceId, runtimeStatus: calls >= 3 ? "COMPLETED" : "RUNNING" };
-        }),
-    });
+    // RUNNING for the first two polls, then COMPLETED — the loop must poll past the sleeps.
+    const polling = serviceWithStatus((instanceId) =>
+      Effect.sync(() => {
+        calls += 1;
+        return { instanceId, runtimeStatus: calls >= 3 ? "COMPLETED" : "RUNNING" };
+      }),
+    );
     // Drive the clock: each RUNNING poll sleeps 5s (the default interval); advancing 15s lets the
     // third poll (COMPLETED) be reached without real waiting.
     const program = Effect.gen(function* () {
@@ -257,14 +261,9 @@ describe("behaviour preservation", () => {
   });
 
   it("await_workflow returns TIMEOUT once the wait budget elapses", async () => {
-    const stuck = Layer.succeed(WorkflowService, {
-      save: (req) => Effect.succeed({ key: req.key }),
-      run: () => Effect.succeed({ instanceId: "wf-1" }),
-      runByKey: () => Effect.succeed({ instanceId: "wf-1" }),
-      list: () => Effect.succeed({ keys: [] }),
-      getByKey: () => Effect.succeedNone,
-      getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
-    });
+    const stuck = serviceWithStatus((instanceId) =>
+      Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+    );
     // Past the default 15-minute budget → TIMEOUT, so the caller can re-await the same id.
     const program = Effect.gen(function* () {
       const fiber = yield* Effect.fork(toolHandlers["await_workflow"]!({ instanceId: "wf-1" }));

@@ -69,6 +69,21 @@ infra-up: ## Start local infra via Docker Compose (placement, scheduler, redis, 
 infra-down: ## Stop local infra and remove volumes
 	docker compose --profile infra -f docker-compose.yml -f docker-compose.local.yml down -v
 
+# ── Tests ─────────────────────────────────────────────────────────────────────
+#
+# One command across both ecosystems. `test-js` runs vitest via Turborepo; `test-py`
+# runs the pure-unit Python suite (agent-core). The h CLI's helm-gated golden tests are
+# a separate category — run them with `uv run --package h-cli pytest cli/h`.
+
+.PHONY: test test-js test-py
+test: test-js test-py ## Run all unit tests (JS + Python)
+
+test-js: ## Run the JS/TS unit tests (turbo → vitest)
+	bun run test
+
+test-py: ## Run the Python unit tests (pytest)
+	uv run --package agent-core pytest packages/py/agent-core
+
 .PHONY: worktrees-purge
 worktrees-purge: ## Remove all git worktrees from the shared workspace (git worktree remove + prune)
 	@if [ ! -d "$(WORKSPACE_DIR)/worktrees" ]; then \
