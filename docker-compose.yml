@@ -218,7 +218,12 @@ services:
       context: .
       dockerfile: apps/claude-agent/Dockerfile
     environment:
+      # Auth is either/or: an API key, or a Claude Max/Pro subscription token
+      # (CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`). Leave the key blank when
+      # using the token — the agent-cli claude strategy won't forward an empty key,
+      # so it can't shadow the subscription.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
       - AGENT_MODEL=${AGENT_MODEL:-claude-haiku-4-5}
       - AGENT_BASE_DIR=/workspace/claude-agent

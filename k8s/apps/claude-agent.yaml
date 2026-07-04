@@ -63,11 +63,22 @@ spec:
               value: /workspace/claude-agent
             - name: AGENT_APP_DIR
               value: /app/apps/claude-agent
+            # Auth is either/or: ANTHROPIC_API_KEY (pay-as-you-go) or a Claude Max/Pro
+            # subscription token. Both are marked optional so a token-only or key-only
+            # secret starts cleanly; the agent-cli claude strategy won't forward an
+            # empty key, so it can't shadow the token.
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: h-secrets
                   key: ANTHROPIC_API_KEY
+                  optional: true
+            - name: CLAUDE_CODE_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: CLAUDE_CODE_OAUTH_TOKEN
+                  optional: true
             - name: ANTHROPIC_BASE_URL
               valueFrom:
                 secretKeyRef:

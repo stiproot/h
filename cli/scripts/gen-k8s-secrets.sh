@@ -29,6 +29,7 @@ metadata:
 type: Opaque
 data:
   ANTHROPIC_API_KEY: $(b64 "${ANTHROPIC_API_KEY:-}")
+  CLAUDE_CODE_OAUTH_TOKEN: $(b64 "${CLAUDE_CODE_OAUTH_TOKEN:-}")
   ANTHROPIC_BASE_URL: $(b64 "${ANTHROPIC_BASE_URL}")
   AGENT_MODEL: $(b64 "${AGENT_MODEL:-claude-haiku-4-5}")
   LLM_API_KEY: $(b64 "${LLM_API_KEY:-}")
