@@ -12,7 +12,7 @@ k8s_yaml([
     'k8s/dapr/appconfig.yaml',
 ])
 
-# Secrets (gitignored — generate with: scripts/gen-k8s-secrets.sh)
+# Secrets (gitignored — generate with: cli/scripts/gen-k8s-secrets.sh)
 k8s_yaml('k8s/secrets/app-secrets.yaml')
 
 # App images

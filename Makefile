@@ -40,7 +40,7 @@ ZELLIJ_SESSION ?= h
 DEV_LAYOUT     ?= .zellij/dev.kdl
 
 WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
-# Pre-cloned target repo dir under the workspace root (see scripts/clone.sh)
+# Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
 TARGET_REPO_DIR ?= repo
 
 # ── Default target ────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ pods-dapr: ## Show pods in the dapr-system namespace (Helm-managed control plane
 # Prerequisites for `tilt-up`:
 #   1. Kubernetes enabled in Rancher Desktop
 #   2. `make dapr-install` completed
-#   3. `scripts/gen-k8s-secrets.sh` run (creates k8s/secrets/app-secrets.yaml)
+#   3. `cli/scripts/gen-k8s-secrets.sh` run (creates k8s/secrets/app-secrets.yaml)
 
 .PHONY: tilt-up tilt-down tilt-trigger
 tilt-up: ## Start the Tilt dev stack (opens Tilt UI at http://localhost:10350)

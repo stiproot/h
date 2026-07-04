@@ -1,0 +1,87 @@
+# serializer version: 1
+# name: test_feature_wire_json_golden
+  '{"instanceId": "feature-hostile-fixture", "steps": [{"id": "worktree", "activity": "create-worktree", "input": {"agentId": "claude-agent", "branch": "feature/hostile-fixture"}}, {"id": "setup", "activity": "setup", "input": {"agentId": "claude-agent", "setup": [{"cmd": "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"}, {"cmd": "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"}]}}, {"id": "plan", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-sonnet-4-6", "permissionMode": "plan", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\nInvestigate the feature request under ===FEATURE SPEC=== below: explore the relevant\\ncode and produce an implementation plan. Do NOT write code or modify any files.\\nIf the feature already appears implemented, say so in the plan.\\nEnd your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —"}}, {"id": "implement", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-haiku-4-5", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\nImplement the feature described under ===FEATURE SPEC=== below, following the plan\\nunder ===IMPLEMENTATION PLAN===. Leave the result as uncommitted working-tree\\nchanges — do not commit or push. If the feature already appears implemented, make\\nno changes and say so.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —\\n\\n\\n===IMPLEMENTATION PLAN===\\n{{plan.output}}"}}]}'
+# ---
+# name: test_feature_yaml_golden
+  '''
+  instanceId: "feature-hostile-fixture"
+  steps:
+    - id: worktree
+      activity: create-worktree
+      input:
+        agentId: "claude-agent"
+        branch: "feature/hostile-fixture"
+    - id: setup
+      activity: setup
+      input:
+        agentId: "claude-agent"
+        setup:
+          - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
+          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+    - id: plan
+      activity: run-claude
+      input:
+        cwd: "{{worktree.worktreePath}}"
+        model: "claude-sonnet-4-6"
+        permissionMode: plan
+        task: |-
+          You are in a git worktree of the target repository, on branch feature/hostile-fixture.
+          Investigate the feature request under ===FEATURE SPEC=== below: explore the relevant
+          code and produce an implementation plan. Do NOT write code or modify any files.
+          If the feature already appears implemented, say so in the plan.
+          End your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.
+  
+          ===FEATURE SPEC===
+          # Hostile-content fixture
+          
+          This spec deliberately carries every token class that must survive rendering untouched.
+          It is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,
+          the JSON wire step) mangles one of these, the golden snapshot diff catches it.
+          
+          - agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}
+          - envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}
+          - engine-style tokens: {{step.field}} and {"$ref": "step.field"}
+          - "double quotes", 'single quotes', back\slashes, a lone $ sign
+          - markdown: `inline code`, **bold**, a [link](https://example.invalid)
+          
+            an indented block
+              a deeper one
+          
+          Trailing punctuation and unicode: café, emoji ✅, em-dash —
+          
+    - id: implement
+      activity: run-claude
+      input:
+        cwd: "{{worktree.worktreePath}}"
+        model: "claude-haiku-4-5"
+        task: |-
+          You are in a git worktree of the target repository, on branch feature/hostile-fixture.
+          Implement the feature described under ===FEATURE SPEC=== below, following the plan
+          under ===IMPLEMENTATION PLAN===. Leave the result as uncommitted working-tree
+          changes — do not commit or push. If the feature already appears implemented, make
+          no changes and say so.
+  
+          ===FEATURE SPEC===
+          # Hostile-content fixture
+          
+          This spec deliberately carries every token class that must survive rendering untouched.
+          It is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,
+          the JSON wire step) mangles one of these, the golden snapshot diff catches it.
+          
+          - agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}
+          - envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}
+          - engine-style tokens: {{step.field}} and {"$ref": "step.field"}
+          - "double quotes", 'single quotes', back\slashes, a lone $ sign
+          - markdown: `inline code`, **bold**, a [link](https://example.invalid)
+          
+            an indented block
+              a deeper one
+          
+          Trailing punctuation and unicode: café, emoji ✅, em-dash —
+          
+  
+          ===IMPLEMENTATION PLAN===
+          {{plan.output}}
+  
+  '''
+# ---

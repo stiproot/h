@@ -1,0 +1,70 @@
+{{- /*
+feature workflow — worktree → setup → plan → implement.
+
+Renders a run_workflow request body (WORKFLOWS.md "Feature request"): a run-specific worktree
+of the pre-cloned target repo on branch feature/<slug>, h skills + runtime steering installed,
+a read-only plan pass over the spec, then an implement pass that leaves the result as
+uncommitted working-tree changes.
+
+Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
+  helm template feature cli/charts/workflows -s templates/feature.yaml \
+    --set feature.slug=dark-mode --set-file feature.spec=./dark-mode.md
+*/ -}}
+{{- $f := .Values.feature }}
+{{- $slug := required "feature.slug is required (--set feature.slug=<slug>)" $f.slug }}
+{{- $spec := required "feature.spec is required (--set-file feature.spec=<path.md>)" $f.spec }}
+instanceId: {{ printf "feature-%s" $slug | quote }}
+steps:
+  - id: worktree
+    activity: create-worktree
+    input:
+      agentId: {{ .Values.agentId | quote }}
+      branch: {{ printf "feature/%s" $slug | quote }}
+      {{- with $f.sourceRepo }}
+      sourceRepo: {{ . | quote }}
+      {{- end }}
+      {{- with $f.remoteBase }}
+      remoteBase: {{ . | quote }}
+      {{- end }}
+  - id: setup
+    activity: setup
+    input:
+      agentId: {{ .Values.agentId | quote }}
+      setup:
+        {{- include "h.setupSteps" . | nindent 8 }}
+  - id: plan
+    activity: run-claude
+    input:
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $f.models.plan }}
+      model: {{ . | quote }}
+      {{- end }}
+      permissionMode: plan
+      task: |-
+        You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
+        Investigate the feature request under ===FEATURE SPEC=== below: explore the relevant
+        code and produce an implementation plan. Do NOT write code or modify any files.
+        If the feature already appears implemented, say so in the plan.
+        End your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.
+
+        ===FEATURE SPEC===
+        {{- $spec | nindent 8 }}
+  - id: implement
+    activity: run-claude
+    input:
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $f.models.implement }}
+      model: {{ . | quote }}
+      {{- end }}
+      task: |-
+        You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
+        Implement the feature described under ===FEATURE SPEC=== below, following the plan
+        under ===IMPLEMENTATION PLAN===. Leave the result as uncommitted working-tree
+        changes — do not commit or push. If the feature already appears implemented, make
+        no changes and say so.
+
+        ===FEATURE SPEC===
+        {{- $spec | nindent 8 }}
+
+        ===IMPLEMENTATION PLAN===
+        {{- include "h.token" "plan.output" | nindent 8 }}

@@ -50,12 +50,12 @@ h/
 │   ├── apps/             # App Deployments + Services
 │   ├── dapr/             # Dapr Component / Resiliency / Configuration CRDs
 │   ├── infra/            # Infrastructure (Redis)
-│   └── secrets/          # Generated secrets (gitignored — see scripts/gen-k8s-secrets.sh)
+│   └── secrets/          # Generated secrets (gitignored — see cli/scripts/gen-k8s-secrets.sh)
 ├── config/
 │   ├── alloy/            # Grafana Alloy config (Docker log scraping → Loki)
 │   ├── grafana/          # Grafana provisioning (Loki datasource)
 │   └── loki/             # Loki config
-├── scripts/              # Run, test, and utility scripts
+├── cli/scripts/              # Run, test, and utility scripts
 ├── Tiltfile              # Tilt dev stack definition (k8s mode)
 ├── Makefile              # Lifecycle commands — see `make help`
 ├── turbo.json            # Turborepo pipeline (build ordering for workspace packages)
@@ -81,7 +81,7 @@ Runs `workflow` and `claude-agent` in a local Kubernetes cluster (Rancher Deskto
 
 ```sh
 # Generate k8s secrets from .env (re-run if .env changes)
-./scripts/gen-k8s-secrets.sh
+./cli/scripts/gen-k8s-secrets.sh
 
 make tilt-up    # opens Tilt UI at http://localhost:10350
 make tilt-down  # tears down the app stack (Dapr control plane stays up)
@@ -101,7 +101,7 @@ See `make help` for all available targets.
 ### Run a test
 
 ```sh
-./scripts/invoke-workflow-skill-search-claude.sh
+./cli/scripts/invoke-workflow-skill-search-claude.sh
 ```
 
 ### Full teardown
@@ -155,17 +155,17 @@ Copy `.env.example` to `.env` and fill in the required values. Scripts source `.
 ### 4. Start services (separate terminals)
 
 ```sh
-./scripts/run-workflow-svc.sh
-./scripts/run-workflow-mcp.sh
-./scripts/run-dapr-mcp.sh
-./scripts/run-obs-mcp.sh
-./scripts/run-claude-agent.sh
-./scripts/run-openhands-agent.sh
-./scripts/run-dapr-agent.sh
-./scripts/run-dapr-claude-loop-agent.sh
-./scripts/run-claude-managed-agent.sh
-./scripts/run-langgraph-agent.sh
-./scripts/run-workflow-agent.sh
+./cli/scripts/run-workflow-svc.sh
+./cli/scripts/run-workflow-mcp.sh
+./cli/scripts/run-dapr-mcp.sh
+./cli/scripts/run-obs-mcp.sh
+./cli/scripts/run-claude-agent.sh
+./cli/scripts/run-openhands-agent.sh
+./cli/scripts/run-dapr-agent.sh
+./cli/scripts/run-dapr-claude-loop-agent.sh
+./cli/scripts/run-claude-managed-agent.sh
+./cli/scripts/run-langgraph-agent.sh
+./cli/scripts/run-workflow-agent.sh
 ```
 
 Not all services need to run simultaneously — start only what a given test requires.
@@ -174,19 +174,19 @@ Not all services need to run simultaneously — start only what a given test req
 
 | Script | What it tests |
 | --- | --- |
-| `scripts/invoke-workflow-skill-search-claude.sh` | claude-agent: dynamic skill discovery → hex API |
-| `scripts/invoke-workflow-skill-search-dapr.sh` | dapr-agent: dynamic skill discovery → hex API |
-| `scripts/invoke-workflow-skill-search-dapr-loop.sh` | dapr-claude-loop-agent: skill discovery → hex API |
-| `scripts/invoke-workflow-skill-search-langgraph.sh` | langgraph-agent: skill discovery → hex API |
-| `scripts/invoke-workflow-agent.sh <name> [VAR=value]` | workflow-agent: seed a plain-English task → agent builds/runs/monitors a workflow → writes result back. Task configs are `payloads/<name>-task[.template].json` (`trivial`, `linear-read`, `repo-qa`, plus any org-specific configs in the gitignored `payloads/domain/`) |
-| `scripts/invoke-workflow-agent-composed.sh` | claude-agent uses workflows MCP to trigger a child workflow |
-| `scripts/invoke-workflow-persistence.sh` | workflow-svc: save a workflow by key then invoke it by key |
-| `scripts/invoke-workflow-claude-managed.sh` | claude-managed-agent: multi-tool task via Claude Managed Agents |
-| `scripts/invoke-workflow-hex-api-test.sh` | openhands-agent builds → claude-agent reviews |
-| `scripts/invoke-workflow-hex-api-summary.sh` | multi-agent handoff with output copy |
-| `scripts/invoke-workflow-skill-creator.sh` | single-agent with pre-installed skill |
-| `scripts/invoke-workflow-code-review.sh` | claude-agent code review |
-| `scripts/invoke-workflow-grooming.sh <ISSUE_ID> [context] [--dry-run]` | claude-agent reads Linear issue → inspects production (if relevant) → analyses worktree → looks up Notion links → writes findings back as a Linear comment. `--dry-run` skips the writeback step. |
+| `cli/scripts/invoke-workflow-skill-search-claude.sh` | claude-agent: dynamic skill discovery → hex API |
+| `cli/scripts/invoke-workflow-skill-search-dapr.sh` | dapr-agent: dynamic skill discovery → hex API |
+| `cli/scripts/invoke-workflow-skill-search-dapr-loop.sh` | dapr-claude-loop-agent: skill discovery → hex API |
+| `cli/scripts/invoke-workflow-skill-search-langgraph.sh` | langgraph-agent: skill discovery → hex API |
+| `cli/scripts/invoke-workflow-agent.sh <name> [VAR=value]` | workflow-agent: seed a plain-English task → agent builds/runs/monitors a workflow → writes result back. Task configs are `payloads/<name>-task[.template].json` (`trivial`, `linear-read`, `repo-qa`, plus any org-specific configs in the gitignored `payloads/domain/`) |
+| `cli/scripts/invoke-workflow-agent-composed.sh` | claude-agent uses workflows MCP to trigger a child workflow |
+| `cli/scripts/invoke-workflow-persistence.sh` | workflow-svc: save a workflow by key then invoke it by key |
+| `cli/scripts/invoke-workflow-claude-managed.sh` | claude-managed-agent: multi-tool task via Claude Managed Agents |
+| `cli/scripts/invoke-workflow-hex-api-test.sh` | openhands-agent builds → claude-agent reviews |
+| `cli/scripts/invoke-workflow-hex-api-summary.sh` | multi-agent handoff with output copy |
+| `cli/scripts/invoke-workflow-skill-creator.sh` | single-agent with pre-installed skill |
+| `cli/scripts/invoke-workflow-code-review.sh` | claude-agent code review |
+| `cli/scripts/invoke-workflow-grooming.sh <ISSUE_ID> [context] [--dry-run]` | claude-agent reads Linear issue → inspects production (if relevant) → analyses worktree → looks up Notion links → writes findings back as a Linear comment. `--dry-run` skips the writeback step. |
 
 ## Observability
 
@@ -263,7 +263,7 @@ docker compose --profile all down -v
 Every local service binds a unique set of ports, so any combination can run at once. `workflow-svc`
 keeps Dapr gRPC `50001` (the Dapr Workflow SDK's default); the other sidecars pin a distinct `360xx`
 gRPC port rather than letting the CLI auto-assign, so none can race `workflow-svc` for `50001`. Each
-`scripts/run-*.sh` also frees its own ports on start (see `stop_stale` in `scripts/_lib.sh`), so
+`cli/scripts/run-*.sh` also frees its own ports on start (see `stop_stale` in `cli/scripts/_lib.sh`), so
 re-running a script cleanly replaces a prior instance.
 
 ## Dapr components

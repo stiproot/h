@@ -3,17 +3,22 @@
 # share one lockfile and resolve together — the Python mirror of the npm
 # workspace declared in package.json.
 #
-# Members are the shared lib plus the agent apps that consume its contract.
-# claude-managed-agent (diagrid) and workflow-agent (cron, different contract)
-# stay standalone with their own uv.lock and are excluded here.
+# Members are the shared libs (agent-server: the HTTP contract; agent-core: the
+# ReAct loop + workflow toolset) plus the agent apps that consume them, and the h CLI
+# prototype (cli/h — installed editable, so `uv run h ...` works at the root; it is
+# expected to grow onto the shared lib's models). workflow-agent joined the workspace
+# so it can consume agent-core (it is now a thin wrapper over the shared orchestration
+# machinery). claude-managed-agent (diagrid) stays standalone with its own uv.lock.
 [tool.uv.workspace]
 members = [
   "packages/py/agent-server",
+  "packages/py/agent-core",
   "apps/dapr-agent",
   "apps/dapr-claude-loop-agent",
   "apps/langgraph-agent",
+  "apps/workflow-agent",
+  "cli/h",
 ]
 exclude = [
   "apps/claude-managed-agent",
-  "apps/workflow-agent",
 ]

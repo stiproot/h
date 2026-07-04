@@ -1,0 +1,11 @@
+apiVersion: v2
+name: workflows
+description: >-
+  h workflow-definition templates. Each template under templates/ renders one workflow
+  family's run_workflow request body as YAML — NOT a Kubernetes manifest. Helm is used purely
+  as a client-side templating engine (helm template, no cluster). YAML is the canonical
+  rendered artifact; conversion to JSON is a final processing step applied at the wire
+  boundary by cli/scripts/_render.sh, only because today's consumers (workflow-svc,
+  workflow-mcp run_workflow) speak JSON.
+type: application
+version: 0.1.0

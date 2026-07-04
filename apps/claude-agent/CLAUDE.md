@@ -47,7 +47,7 @@ apps/dapr-claude-loop-agent/
 ### Local run
 
 ```sh
-./scripts/run-dapr-claude-loop-agent.sh
+./cli/scripts/run-dapr-claude-loop-agent.sh
 ```
 
 Registers as Dapr app-id `dapr-claude-loop-agent` on port 8005.
@@ -61,7 +61,7 @@ docker compose --profile claude-managed up
 ### Demo workflow (requires workflow + dapr-claude-loop-agent both running)
 
 ```sh
-./scripts/run-dapr-claude-loop-demo.sh
+./cli/scripts/run-dapr-claude-loop-demo.sh
 ```
 
 Submits a `run-dapr-claude-loop` step to the generic workflow, which invokes the agent via Dapr

@@ -22,11 +22,15 @@ export const claudeStrategy: AgentStrategy = {
   name: "Claude Code",
 
   validateEnvironment(effectiveEnv, processEnv) {
-    if (
-      !resolveEnvValue(effectiveEnv, "ANTHROPIC_API_KEY") &&
-      !resolveEnvValue(processEnv, "ANTHROPIC_API_KEY")
-    ) {
-      return createMissingEnvResult("Claude", "ANTHROPIC_API_KEY");
+    const hasApiKey =
+      resolveEnvValue(effectiveEnv, "ANTHROPIC_API_KEY") ||
+      resolveEnvValue(processEnv, "ANTHROPIC_API_KEY");
+    // A Claude Max/Pro subscription authenticates the CLI via an OAuth token
+    // (`claude setup-token` → CLAUDE_CODE_OAUTH_TOKEN), inherited from the process
+    // env, instead of an API key. Either one satisfies the requirement.
+    const hasOAuthToken = resolveEnvValue(processEnv, "CLAUDE_CODE_OAUTH_TOKEN");
+    if (!hasApiKey && !hasOAuthToken) {
+      return createMissingEnvResult("Claude", "ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN");
     }
     return null;
   },
@@ -35,7 +39,12 @@ export const claudeStrategy: AgentStrategy = {
     const { llmConfig } = request;
     if (!llmConfig) return {};
 
-    const env: Record<string, string> = { ANTHROPIC_API_KEY: llmConfig.apiKey };
+    // Only forward an API key when one is actually set. An empty ANTHROPIC_API_KEY
+    // would shadow the subscription's CLAUDE_CODE_OAUTH_TOKEN and force API billing.
+    const env: Record<string, string> = {};
+    if (llmConfig.apiKey) {
+      env["ANTHROPIC_API_KEY"] = llmConfig.apiKey;
+    }
     if (llmConfig.baseUrl) {
       env["ANTHROPIC_BASE_URL"] = llmConfig.baseUrl;
     }

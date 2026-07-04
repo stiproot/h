@@ -61,4 +61,4 @@ Base `http://localhost:3100`. `obs logs_query` wraps
 | `workflows` | `localhost:8005/sse` | workflow save/run/list/get/status |
 | `dapr` | `localhost:8011/sse` | state store + actors |
 
-Start them with `./scripts/run-obs-mcp.sh`, `./scripts/run-workflow-mcp.sh`, `./scripts/run-dapr-mcp.sh`.
+Start them with `./cli/scripts/run-obs-mcp.sh`, `./cli/scripts/run-workflow-mcp.sh`, `./cli/scripts/run-dapr-mcp.sh`.

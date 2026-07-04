@@ -9,9 +9,13 @@ k8s/secrets/app-secrets.yaml
 
 # domain-specific workflow payloads, feature-request specs, and docs
 # (org/deployment-specific content; the generic machinery and demo payloads
-# in scripts/payloads/ are committed — see scripts/payloads/README.md)
-scripts/payloads/domain/*
-!scripts/payloads/domain/README.md
+# in cli/scripts/payloads/ are committed — see cli/scripts/payloads/README.md)
+cli/scripts/payloads/domain/*
+!cli/scripts/payloads/domain/README.md
+
+# org-specific chart value overrides (real repo paths, model ids — merged by
+# render_workflow in cli/scripts/_render.sh when present)
+cli/charts/*/values.local.yaml
 
 # local scratch
 tmp/

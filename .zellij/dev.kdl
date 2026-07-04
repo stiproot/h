@@ -4,22 +4,22 @@
 // node here would break the tab-bar rendering when used with `zellij action new-tab`.
 // Assumes `make infra-up` has the control plane (redis, placement, scheduler) running.
 // Panes inherit the launch cwd (repo root), so the relative script paths resolve.
-// Each pane runs scripts/_pane.sh, which starts the service and, on Ctrl+C, drops to an
+// Each pane runs cli/scripts/_pane.sh, which starts the service and, on Ctrl+C, drops to an
 // interactive shell in the same pane so you can re-run it or run anything else.
 layout {
     pane split_direction="vertical" {
         pane split_direction="horizontal" {
-            pane name="workflow-svc" command="bash" { args "scripts/_pane.sh" "scripts/run-workflow-svc.sh"; }
-            pane name="claude-agent" command="bash" { args "scripts/_pane.sh" "scripts/run-claude-agent.sh"; }
-            pane name="workflow-agent" command="bash" { args "scripts/_pane.sh" "scripts/run-workflow-agent.sh"; }
+            pane name="workflow-svc" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-workflow-svc.sh"; }
+            pane name="claude-agent" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-claude-agent.sh"; }
+            pane name="workflow-agent" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-workflow-agent.sh"; }
         }
         pane split_direction="horizontal" {
-            pane name="workflow-mcp" command="bash" { args "scripts/_pane.sh" "scripts/run-workflow-mcp.sh"; }
-            pane name="openhands-agent" command="bash" { args "scripts/_pane.sh" "scripts/run-openhands-agent.sh"; }
+            pane name="workflow-mcp" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-workflow-mcp.sh"; }
+            pane name="openhands-agent" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-openhands-agent.sh"; }
         }
         pane split_direction="horizontal" {
-            pane name="dapr-mcp" command="bash" { args "scripts/_pane.sh" "scripts/run-dapr-mcp.sh"; }
-            pane name="obs-mcp" command="bash" { args "scripts/_pane.sh" "scripts/run-obs-mcp.sh"; }
+            pane name="dapr-mcp" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-dapr-mcp.sh"; }
+            pane name="obs-mcp" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-obs-mcp.sh"; }
         }
     }
 }

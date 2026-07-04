@@ -1,0 +1,33 @@
+[project]
+name = "agent-core"
+version = "0.1.0"
+description = "Shared agent machinery for h Python services: the ReAct loop, a provider-agnostic LLM-client protocol, and the workflow-MCP toolset. The Python mirror of packages/js/agent-core (reserved)."
+requires-python = ">=3.12"
+# The base package is pure orchestration (stdlib only) so any service can import the
+# loop without pulling an LLM SDK. Provider adapters and the workflow toolset live
+# behind extras.
+dependencies = []
+
+[project.optional-dependencies]
+# OpenAIChatClient adapter (agent_core.llm.openai) + workflow-MCP toolset
+# (agent_core.workflows) — both ride on dapr_agents.
+dapr = ["dapr-agents>=1.0.0"]
+# Anthropic SDK adapter (agent_core.llm.anthropic).
+anthropic = ["anthropic>=0.40"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_core"]
+
+[dependency-groups]
+dev = ["ruff>=0.9"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

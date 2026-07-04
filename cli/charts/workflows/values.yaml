@@ -1,0 +1,23 @@
+# Values for the h workflows chart. Shared knobs sit at the top level; each workflow
+# family gets its own block, consumed by its template under templates/.
+#
+# Org-specific defaults (real repo paths, model ids) belong in values.local.yaml next to
+# this file — gitignored, merged automatically by the invoke scripts — not here.
+
+# Agent that provisions worktrees and executes setup / run steps.
+agentId: claude-agent
+
+# feature workflow (templates/feature.yaml): worktree → setup → plan → implement.
+feature:
+  # Git-branch-safe token; the run works on branch feature/<slug>. Required at render time.
+  slug: ""
+  # The Markdown feature spec. Required — pass with --set-file feature.spec=<path.md>.
+  spec: ""
+  # Path of the pre-cloned target repo; empty = the agent's default shared clone.
+  sourceRepo: ""
+  # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
+  remoteBase: ""
+  # Per-step model overrides; empty = the agent's AGENT_MODEL.
+  models:
+    plan: claude-sonnet-4-6
+    implement: claude-haiku-4-5
