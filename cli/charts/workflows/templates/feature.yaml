@@ -62,9 +62,14 @@ steps:
       permissionMode: plan
       task: |-
         You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
-        Investigate the feature request under ===FEATURE SPEC=== below: explore the relevant
-        code and produce an implementation plan. Do NOT write code or modify any files.
-        If the feature already appears implemented, say so in the plan.
+
+        First check for a persisted plan from a prior run: if plan-feature-{{ $slug }}.md
+        exists in the worktree root, read it — if it still matches the spec and the code,
+        reuse it as your plan instead of re-investigating.
+
+        Otherwise investigate the feature request under ===FEATURE SPEC=== below: explore the
+        relevant code and produce an implementation plan. Do NOT write code or modify any
+        files. If the feature already appears implemented, say so in the plan.
         End your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.
 
         ===FEATURE SPEC===
@@ -78,10 +83,21 @@ steps:
       {{- end }}
       task: |-
         You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
-        Implement the feature described under ===FEATURE SPEC=== below, following the plan
-        under ===IMPLEMENTATION PLAN===. Leave the result as uncommitted working-tree
-        changes — do not commit or push. If the feature already appears implemented, make
-        no changes and say so.
+
+        First persist the plan you were handed under ===IMPLEMENTATION PLAN=== (the
+        shared-context handoff, so a re-run or another session can pick it up — the planning
+        agent runs read-only and cannot write it itself):
+        1. Write it to plan-feature-{{ $slug }}.md in the worktree root.
+        2. Call the dapr MCP tool actor_state_set with actorId 'feature-{{ $slug }}' and key
+           'plan', value the plan text — durable in the state store, inspectable from any
+           session via actor_state_get.
+        If either persistence step fails (e.g. the dapr MCP is unreachable), do NOT fail the
+        run — but you MUST say so explicitly in your final output, so the degradation is
+        visible instead of silent.
+
+        Then implement the feature described under ===FEATURE SPEC=== below, following the
+        plan. Leave the result as uncommitted working-tree changes — do not commit or push.
+        If the feature already appears implemented, make no changes and say so.
 
         ===FEATURE SPEC===
         {{- $spec | nindent 8 }}

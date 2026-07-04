@@ -213,6 +213,23 @@ supervision      babysitter (shared agent-server pkgs, js+py): poll status + led
 
 ## Learnings
 
+- **Shared-context persistence (2026-07-04):** the feature family now persists the plan as
+  `plan-feature-<slug>.md` in the worktree + actor state (`actorId 'feature-<slug>'`, key
+  `plan`, via the dapr MCP) so a re-run or another session can pick it up — the grooming
+  pattern, promoted into the chart. Decision: the **plan step keeps `permissionMode: plan`**
+  (read-only investigation is load-bearing) and the **implement step does the persisting** —
+  it receives the full plan via `{{plan.output}}` anyway. The plan step only *reads* a
+  persisted plan (reuse-on-rerun), which plan mode permits.
+- **Silent MCP degradation (2026-07-04, e2e audit):** during the persistence-audit run the
+  dapr MCP was down (dev-tab teardown), so the agent's ToolSearch for `actor_state_set` found
+  nothing and it skipped the durable write without mentioning it — plan file ✓, actor state ✗,
+  no trace in the output. Chart prose now requires the agent to report persistence failures
+  explicitly. Operational corollary: dapr-mcp/obs-mcp are part of the *agent runtime*, not
+  just the human observability surface — agent runs degrade when they're down. The audited
+  run's actor state was backfilled by hand. Same run proved the toolCalls tally fix live
+  (61/5/1 across plan/implement/verify, previously 0) and the babysitter watch table +
+  `===VERIFY=== PASS` end-to-end via `h feature run --agent claude-agent`.
+
 - The dapr workflow layer is durable and self-sufficient once started — orchestrator agents
   abandoning their watch does not endanger the run, only the result relay. Supervision therefore
   belongs in code, with agents only at escalation points.
