@@ -232,6 +232,16 @@ prod diagnosis, no plugin-feedback publish). Specs live in the gitignored
    a machine-checkable `===VERIFY===` PASS/FAIL verdict. Without it, the implement step's
    self-report is an unchecked claim.
 
+**Optional PR ending (`feature.createPr` / `--pr`):** by default the run ends as uncommitted
+working-tree changes. Opting in appends a commit/push/PR epilogue to the *final* step's prose
+(verify when present — gated on a PASS verdict — else implement): the agent commits the worktree,
+pushes `feature/<slug>` with a one-shot `GH_TOKEN` URL (never persisted into git config), opens
+the PR via the github MCP, and ends with a machine-checkable `===PR===` marker (URL or SKIPPED +
+reason). Direct renders opt in with `h feature run <spec> --pr` (or `--set feature.createPr=true`);
+a *published family* always carries the epilogue keyed off the fire-time `createPr` param —
+`-p createPr=true` to end as a PR, param absent for a worktree-only run — so one saved family
+serves both endings.
+
 The invocation reads the `.md` and injects it into the task with `jq --rawfile` (JSON-safe for
 arbitrary Markdown — quotes, backslashes, `$`), so it is a dedicated wrapper rather than a payload run
 through `invoke-workflow-agent.sh`. The spec arg is either a `.md` path or a bare name resolved
@@ -246,7 +256,7 @@ against `cli/scripts/payloads/domain/feature-requests/` (with or without the `.m
 `cli/scripts/clone.sh` once. claude-agent + workflow-agent running, and `GH_TOKEN` set in `.env`.
 
 **Chart strategy (co-existing):** `cli/scripts/invoke-workflow-feature-helm.sh <spec> [SLUG=<slug>]
-[--render-only]` renders the same workflow deterministically from
+[--pr] [--render-only]` renders the same workflow deterministically from
 `cli/charts/workflows/templates/feature.yaml` (`helm template`, client-side only) and seeds a task
 carrying the pre-built definition — the workflow-agent then runs it verbatim and monitors, instead
 of constructing the steps itself. YAML is the rendered artifact; JSON conversion happens only at

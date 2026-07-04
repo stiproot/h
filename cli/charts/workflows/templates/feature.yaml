@@ -9,6 +9,15 @@ that command in the worktree and fixes forward until it passes (bounded attempts
 a machine-checkable ===VERIFY=== PASS/FAIL verdict — without it, an implement step's
 self-report is an unchecked claim.
 
+feature.createPr appends a commit/push/PR epilogue to the prose of the run's FINAL step
+(verify when verifyCmd is set, else implement) — no extra step, no engine conditional: the
+agent itself commits the worktree, pushes feature/<slug> with a one-shot $GH_TOKEN URL (never
+persisted into git config), and opens the PR via the github MCP, ending with a machine-checkable
+===PR=== marker. The epilogue keys off the value under its ===CREATE PR=== heading: a literal
+'true' in direct renders (--set feature.createPr=true / `h feature run --pr`); in publish mode
+the {{params.createPr}} engine token, so the SAME saved family opts in per run with
+-p createPr=true (param absent → resolves to '' → worktree-only run).
+
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
   helm template feature cli/charts/workflows -s templates/feature.yaml \
     --set feature.slug=dark-mode --set-file feature.spec=./dark-mode.md
@@ -24,6 +33,14 @@ its `required` calls) only runs when the renderer selects it via --set family=<n
 {{- if eq (.Values.family | default "") "feature" }}
 {{- $f := .Values.feature }}
 {{- $publish := .Values.publish | default false }}
+{{- /* The value the PR epilogue keys off: publish mode always carries the epilogue with the
+fire-time param token; direct mode includes it (as a literal 'true') only when opted in. */ -}}
+{{- $createPr := "" }}
+{{- if $publish }}
+{{- $createPr = include "h.token" "params.createPr" }}
+{{- else if $f.createPr }}
+{{- $createPr = "true" }}
+{{- end }}
 {{- $slug := "" }}
 {{- $spec := "" }}
 {{- if $publish }}
@@ -96,8 +113,33 @@ steps:
         visible instead of silent.
 
         Then implement the feature described under ===FEATURE SPEC=== below, following the
-        plan. Leave the result as uncommitted working-tree changes — do not commit or push.
-        If the feature already appears implemented, make no changes and say so.
+        plan. If the feature already appears implemented, make no changes and say so.
+        {{- if and $createPr (not $f.verifyCmd) }}
+        Leave the result as working-tree changes while you work; whether the run ends
+        committed, pushed, and opened as a PR is decided under ===CREATE PR=== below.
+
+        ===CREATE PR===
+        {{ $createPr }}
+
+        The value under ===CREATE PR=== above decides how this run ends. If it is not
+        exactly 'true', leave everything as uncommitted working-tree changes — do not
+        commit or push. If it IS 'true':
+        1. Commit all working-tree changes on branch feature/{{ $slug }} with a concise
+           conventional commit message.
+        2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
+           from `git remote get-url origin` and push with a one-shot token URL:
+           git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
+           Never write the token into git config or the remote URL; if GH_TOKEN is unset,
+           skip the push and say so under ===PR===.
+        3. Open a pull request against the repository's default branch with the github
+           MCP tool create_pull_request: title from the feature, body summarizing the
+           spec, the plan, and what you implemented. If a PR for this branch already
+           exists, your push has updated it — do not open a duplicate.
+        End your response with the exact marker ===PR=== on its own line, then the PR
+        URL — or SKIPPED and the reason — on the next line.
+        {{- else }}
+        Leave the result as uncommitted working-tree changes — do not commit or push.
+        {{- end }}
 
         ===FEATURE SPEC===
         {{- $spec | nindent 8 }}
@@ -121,9 +163,36 @@ steps:
 
         If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
         until it passes or you have made 3 fix attempts. Do not weaken the check (no
+        {{- if $createPr }}
+        skipping tests, no suppressing errors); commit or push only as directed under
+        ===CREATE PR=== below.
+        {{- else }}
         skipping tests, no suppressing errors); do not commit or push.
+        {{- end }}
         End your response with the exact marker ===VERIFY=== on its own line, then PASS or
         FAIL on the next line, then a short summary of the final command output as evidence.
+        {{- if $createPr }}
+
+        ===CREATE PR===
+        {{ $createPr }}
+
+        The value under ===CREATE PR=== above decides how this run ends. If it is not
+        exactly 'true', leave everything as uncommitted working-tree changes. If it IS
+        'true' and your verdict is PASS (never open a PR for a failing change):
+        1. Commit all working-tree changes on branch feature/{{ $slug }} with a concise
+           conventional commit message.
+        2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
+           from `git remote get-url origin` and push with a one-shot token URL:
+           git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
+           Never write the token into git config or the remote URL; if GH_TOKEN is unset,
+           skip the push and say so under ===PR===.
+        3. Open a pull request against the repository's default branch with the github
+           MCP tool create_pull_request: title from the feature, body summarizing the
+           spec, the plan, and the verify verdict. If a PR for this branch already
+           exists, your push has updated it — do not open a duplicate.
+        After the ===VERIFY=== block, end your response with the exact marker ===PR===
+        on its own line, then the PR URL — or SKIPPED and the reason — on the next line.
+        {{- end }}
 
         ===IMPLEMENTED===
         {{- include "h.token" "implement.output" | nindent 8 }}

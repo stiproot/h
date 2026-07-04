@@ -55,6 +55,24 @@ def test_verify_step_omitted_by_default(hostile_spec: Path) -> None:
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
 
 
+def test_feature_with_pr_golden(hostile_spec: Path, snapshot) -> None:
+    """createPr appends the commit/push/PR epilogue to the final step's prose (here: implement)."""
+    rendered = helm.render_workflow(
+        "feature",
+        values={"feature.slug": "hostile-fixture", "feature.createPr": "true"},
+        file_values={"feature.spec": hostile_spec},
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_pr_epilogue_omitted_by_default(hostile_spec: Path) -> None:
+    """Chart default (createPr false) keeps the worktree-only prose — no ===CREATE PR=== block."""
+    rendered = _render_hostile(hostile_spec)
+    assert "===CREATE PR===" not in rendered
+    assert "do not commit or push" in rendered
+
+
 def test_feature_publish_mode_golden(snapshot) -> None:
     """Publish mode: slug/spec become {{params.*}} slots, no instanceId — a saveable family."""
     rendered = helm.render_workflow("feature", values={"publish": "true"}, include_local=False)
@@ -70,6 +88,9 @@ def test_feature_publish_mode_opens_param_slots() -> None:
     assert "instanceId" not in definition
     assert definition["steps"][0]["input"]["branch"] == "feature/{{params.slug}}"
     assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
+    # The PR epilogue is always present in a family, keyed off the fire-time createPr param
+    # (absent at fire time → resolves to '' → the agent leaves the worktree uncommitted).
+    assert "{{params.createPr}}" in definition["steps"][3]["input"]["task"]
 
 
 def test_plugin_improvement_golden(snapshot) -> None:

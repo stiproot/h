@@ -27,6 +27,13 @@ feature:
   # ends with a ===VERIFY=== PASS/FAIL verdict. Empty = no verify step; the implement step's
   # self-report then goes unchecked.
   verifyCmd: ""
+  # Append a commit/push/PR epilogue to the run's final step (verify when verifyCmd is set,
+  # else implement): the agent commits the worktree, pushes feature/<slug> with a one-shot
+  # $GH_TOKEN URL (never persisted), and opens the PR via the github MCP, ending with a
+  # ===PR=== marker. Direct renders opt in here (--set feature.createPr=true / `h feature
+  # run --pr`); a published family always carries the epilogue keyed off the fire-time param
+  # instead — -p createPr=true (absent = worktree-only run).
+  createPr: false
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     plan: claude-sonnet-4-6
