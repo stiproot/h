@@ -15,8 +15,12 @@ rather than guessing at the runtime's state.
     it directly.
   - Read and write shared state with `state_get`, `state_get_bulk`, `state_save`, `state_delete`.
 - **workflows** — build, run, and inspect workflows: `list_workflows`, `get_workflow`,
-  `save_workflow`, `run_workflow`, `run_saved_workflow`, `get_workflow_status`. Use these to start or
-  check on other workflows.
+  `save_workflow`, `run_workflow`, `run_saved_workflow`, `get_workflow_status`, `await_workflow`,
+  `terminate_workflow`. Use these to start or check on other workflows. Saved workflows can be
+  parameterized *families* — steps carry `{{params.x}}` slots; fire with
+  `run_saved_workflow(key, params, instanceId)` (fire-time params override stored defaults, a
+  readable instanceId names the run's worktree) before composing raw steps from scratch.
+  `terminate_workflow` short-circuits a run that is stuck or no longer needed.
 - **obs** — read-only observability: `trace_search`, `trace_get`, `logs_query`, `runs_list`,
   `run_get`, `system_overview`. Use these to find out what a previous run did. The join key across
   traces, logs, and the run ledger is the workflow instance id.

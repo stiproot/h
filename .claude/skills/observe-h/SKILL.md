@@ -54,6 +54,8 @@ A runId is `<group>:<agentId>:<ts>`.
   then `trace_search name:<instanceId>` for the cross-service trace.
 - **"Workflow is stuck/failed."** → `workflows get_workflow_status <instanceId>`; then `obs runs_list`
   filtered to that instanceId to see which step's agent run failed; `run_get` for the error + events.
+  To short-circuit a run that is genuinely stuck or no longer needed: `workflows terminate_workflow`
+  (or `h workflow terminate <instanceId>`).
 - **"Is anything broken right now?"** → `/observe`.
 - **"Trace this request end-to-end."** → `obs trace_search` by service or instanceId → `trace_get`.
 

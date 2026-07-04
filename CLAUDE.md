@@ -13,7 +13,7 @@ run h --help`). The two construction strategies co-exist deliberately.
 
 ```
 apps/claude-agent/src/                    # claude-agent
-├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree, starts Fastify
+├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), fatal crash handlers, starts Fastify
 ├── steering/h-lab-runtime.md         # h runtime steering (the MCP set + how to use it); a triage setup step copies it to the agent's ~/.claude/CLAUDE.md
 ├── infrastructure/mcp-config.ts          # mergeMcpConfig – merge h's MCP servers into the cwd's existing .mcp.json (pure, value-tested)
 └── infrastructure/claude-runner.ts       # IAgentRunner impl; honours an optional cwd (e.g. a worktree); merges MCP config into cwd; routes (/run, /setup, /clone, /worktree, /dapr/subscribe) come from agent-server
@@ -23,7 +23,7 @@ apps/openhands-agent/src/                 # openhands-agent
 └── infrastructure/openhands-runner.ts    # IAgentRunner impl; /run, /setup, /dapr/subscribe come from agent-server
 
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
-├── main.py                               # composition root – registers shared agent-server routes; opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
+├── main.py                               # composition root – registers shared agent-server routes + /workflow (babysitter); opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
 ├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – delegates to agent_core's ReAct loop (OpenAIChatAdapter); merges the workflow-mcp toolset when enabled
 └── infrastructure/tools.py               # search_skills, install_skill, read_skill, write_file
                                           # /run, /setup, /dapr/subscribe come from agent_server (packages/py)
@@ -47,8 +47,8 @@ apps/langgraph-agent/src/                 # langgraph-agent (pure LangChain/Lang
 └── presentation/http/run_router.py       # register_langgraph_routes – bespoke POST /run, POST /save
                                           # /setup, /dapr/subscribe come from agent_server (packages/py)
 
-apps/workflow-agent/src/                  # workflow-agent (thin wrapper over agent-core)
-├── main.py                               # FastAPI composition root; system prompt loaded from the workflow-orchestrator skill (agent_core.load_skill_instructions; AGENT_SYSTEM_PROMPT overrides)
+apps/workflow-agent/src/                  # workflow-agent (thin wrapper over agent-core; NOT the exclusive workflow entry point — every agent service has the standard /workflow endpoint)
+├── main.py                               # FastAPI composition root + /workflow (babysitter); system prompt loaded from the workflow-orchestrator skill (agent_core.load_skill_instructions; AGENT_SYSTEM_PROMPT overrides)
 ├── infrastructure/workflow_agent_runner.py  # IAgentRunner impl – delegates to agent_core's ReAct loop over the workflow-mcp toolset
 ├── infrastructure/statestore.py          # task read-write via Dapr state API
 └── presentation/http/cron_router.py      # POST /cron-tick (cron binding target), POST /run, GET /dapr/subscribe (empty — the plugin-feedback flow moved to workflow-svc's workflow-trigger topic + the plugin-improvement chart family)
@@ -56,15 +56,16 @@ apps/workflow-agent/src/                  # workflow-agent (thin wrapper over ag
 apps/workflow-svc/src/
 ├── index.ts                                          # registers workflow + activities + cron route, starts Fastify
 ├── domain/
-│   ├── models/workflow.model.ts                      # WorkflowRequest, StoredWorkflow (+ schedule/disabled), WorkflowSchedule, toRequest
-│   ├── ports/{IWorkflowInvoker,IWorkflowStore}.ts    # outbound ports
+│   ├── models/workflow.model.ts                      # WorkflowRequest, StoredWorkflow (+ schedule/disabled/params), WorkflowParams, WorkflowSchedule, toRequest (merges fire-time params over stored defaults)
+│   ├── ports/{IWorkflowInvoker,IWorkflowStore}.ts    # outbound ports (invoker: invoke/getStatus/terminate)
 │   └── scheduling.ts                                 # isDue / assertValidCron (cron-parser) – pure, unit-tested
 ├── presentation/http/
-│   ├── workflow.router.ts                            # POST /workflow/run, /save (accepts schedule+workspaceId), /run/:key
-│   │                                                 # GET /workflow/list, /get/:key, /status/:instanceId
+│   ├── workflow.router.ts                            # POST /workflow/run, /save (accepts schedule+workspaceId+params), /run/:key (body: fire-time params + instanceId/workspaceId overrides), /terminate/:instanceId
+│   │                                                 # GET /workflow/list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger
+│   ├── trigger.router.ts                             # POST /workflow-trigger (pub/sub target) – {key, params} events fire the named saved workflow; payload problems ack, infra failures 500 (redeliver)
 │   └── cron.router.ts                                # POST /workflow-cron-tick (cron binding target) – fires due saved workflows
 ├── infrastructure/
-│   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper
+│   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper (+ raw-HTTP terminate/purge/status)
 │   ├── dapr-workflow-store.ts                        # saved-workflow store (Redis): save/get/list/listScheduled/markRun
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
@@ -74,7 +75,7 @@ apps/workflow-svc/src/
 │       ├── run-{claude,openhands,dapr-agent,dapr-claude-loop,claude-managed,langgraph}.activity.ts  # call /run on each agent
 │       └── copy-session.activity.ts                  # copies agent workspace output to ./output/
 └── infrastructure/workflows/
-    └── generic.workflow.ts                           # step-sequencing workflow with $ref resolution; injects workflowInstanceId + workspaceId
+    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; injects workflowInstanceId + workspaceId; seeds named params under the reserved results id `params` ({{params.x}})
 
 apps/obs-mcp/src/                         # obs-mcp – read-only observability MCP (no Dapr sidecar; port 8013)
 ├── index.ts                              # composition root – Fastify/MCP; reads ZIPKIN_URL, LOKI_URL, RUNS_DIR
@@ -88,9 +89,11 @@ apps/workflow-mcp/src/                   # workflow-mcp – MCP server for agent
 ├── index.ts                              # composition root
 ├── infrastructure/dapr-workflow-service.ts  # calls workflow service via Dapr invoke
 └── presentation/http/mcp.router.ts       # GET /sse, POST /messages, GET /dapr/subscribe
-                                          # exposes: save_workflow, run_workflow, run_saved_workflow,
+                                          # exposes: save_workflow, run_workflow, run_saved_workflow
+                                          #          (all params-aware; run_saved takes instanceId/workspaceId overrides),
                                           #          list_workflows, get_workflow, get_workflow_status,
-                                          #          await_workflow (block until terminal, else TIMEOUT)
+                                          #          await_workflow (block until terminal, else TIMEOUT),
+                                          #          terminate_workflow (short-circuit a running instance)
 
 apps/dapr-mcp/src/                        # dapr-mcp – MCP server for Dapr state stores + actors + pub/sub
 ├── index.ts                              # composition root – starts GenericActor host, then Fastify/MCP
@@ -122,7 +125,9 @@ packages/js/agent-server/src/                # shared HTTP contract for agent se
 ├── agent-routes.ts   # registerAgentRoutes – POST /run, POST /setup, GET /dapr/subscribe (workspace dir via resolver, or an explicit cwd e.g. a worktree; /setup idempotent via spec-hash sentinel)
 ├── clone-route.ts    # registerCloneRoute – opt-in POST /clone (shallow git clone into the workspace)
 ├── worktree-route.ts # registerWorktreeRoute – opt-in POST /worktree (git worktree of a pre-cloned repo at a shared, agent-neutral path; idempotent; returns { worktreePath })
-├── run-ledger.ts     # startRunLedger – per-run summary.json/events.jsonl/output.txt under RUNS_DIR + statestore mirror
+├── workflow-babysitter.ts # WorkflowBabysitter – submit-and-supervise (non-blocking): schedule on workflow-svc via the sidecar, poll status on a cadence, terminate on wall-clock budget breach, publish workflow-events on terminal; plain fetch, injectable for tests
+├── workflow-route.ts # registerWorkflowRoute – the standard agent-service workflow endpoint: POST /workflow {key|steps, params?, instanceId?, workspaceId?, policy?} → 202 {instanceId, watching}; GET /workflow/watches
+├── run-ledger.ts     # startRunLedger – per-run summary.json/events.jsonl/output.txt under RUNS_DIR + statestore mirror; toolCalls tally counts tool_use blocks nested in claude-CLI assistant events
 └── runner.ts         # IAgentRunner port (run request → response)
 
 packages/js/core/src/
@@ -158,6 +163,7 @@ packages/py/agent-server/src/agent_server/   # Python sibling of js/agent-server
 ├── models.py      # AgentRequest, AgentResponse (dataclasses)
 ├── routes.py      # register_agent_routes + granular register_{run,setup,subscribe}_route (FastAPI); /run records the run ledger
 ├── run_ledger.py  # record_run – Python sibling of js run-ledger (summary.json/events.jsonl + statestore mirror)
+├── workflow_route.py  # WorkflowBabysitter + register_workflow_route – Python sibling of js workflow-babysitter/workflow-route (stdlib urllib via asyncio.to_thread; POST /workflow, GET /workflow/watches)
 └── runner.py      # IAgentRunner Protocol – run(request, workspace) → AgentResponse
 
 packages/py/agent-core/src/agent_core/       # shared agent machinery (uv workspace member; tests via `uv run --package agent-core pytest`)
@@ -171,8 +177,8 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<family>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,workflow}.py  # h feature render|run; h workflow list|get|status
-    ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc httpx clients
+    ├── src/h_cli/commands/{feature,workflow}.py  # h feature render|run [--agent]; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent]|terminate
+    ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```
 
@@ -333,6 +339,11 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **Reusable workspaces (`workspaceId`)** — a workflow may carry a top-level `workspaceId`; agents key their workspace dir on `workspaceId ?? workflowInstanceId`, so a recurring/cron workflow reuses one provisioned dir instead of a fresh per-run one. `/setup` is idempotent: it hashes the setup spec into `.agent-setup-complete` and short-circuits on an unchanged spec, so skills/config are installed once. `workspaceId` is injected into every step by `generic.workflow.ts` and persisted on saved workflows.
 - **Grooming workflow shared-context pattern** — the `cli/scripts/invoke-workflow-grooming.sh` grooming workflow uses a symmetrical naming scheme: the Dapr workflow instanceId, the file the groom step writes, and the actor used to persist findings are all keyed by the same id (`groom-${ISSUE_ID}`). The groom step writes `groom-${ISSUE_ID}.md` into the worktree cwd (file-based handoff, reliable across steps in the same workflow) AND calls `actor_state_set(actorId='groom-${ISSUE_ID}', key='findings')` via dapr-mcp (actor-based, durable in Redis, inspectable from any session via `actor_state_get`). The writeback step reads the file with `cat`; any external session can read the actor state. `--dry-run` sets `DRY_RUN=1` in the task payload so workflow-agent builds only the first three steps. The script seeds the task and POSTs to workflow-agent (same pattern as `invoke-workflow-agent.sh`) so the trace is end-to-end: workflow-agent → workflow-mcp → workflow-svc → claude-agent.
 - **Chart-rendered workflows (`cli/charts`)** — `helm template` is used purely client-side (no cluster) to render a workflow family's template into a `run_workflow` request body. YAML is the canonical artifact; JSON conversion is a final processing step at the wire boundary only (`_render.sh: yaml_to_json` / `h_cli.infrastructure.helm: to_wire_json`). Delimiter coexistence is deliberate: engine tokens (`{{step.field}}`) are emitted via the `h.token` helper (`printf`), agent-side `$VARS` are inert text, and `{"$ref": ...}` needs nothing. The syrupy goldens in `cli/h/tests` are the chart's contract tests — rendered hermetically (`include_local=False`, so a dev's gitignored `values.local.yaml` can't skew them) from the hostile fixture; re-bless with `--snapshot-update` only deliberately, reviewing the `.ambr` diff. Org-specific chart defaults live in `cli/charts/workflows/values.local.yaml` (gitignored, auto-merged by both render paths).
+- **Chart family gate (`--set family=<name>`)** — helm evaluates *every* template even under `-s`, so one family's `required` values would break every other family's render. Both render paths (`_render.sh`, `h_cli.infrastructure.helm`) pass `--set family=<name>` and each template body is wrapped in `{{- if eq .Values.family "<name>" }}`. A new family template MUST add this gate or it breaks all existing renders.
+- **Publish mode / families** — `--set publish=true` renders a family with per-run inputs as `{{params.*}}` engine tokens and no instanceId: a parameterized saved workflow. `h workflow publish <family>` saves it; fire with `h workflow run <key> -p k=v [-p spec=@file] [--instance-id readable-id]`, `run_saved_workflow` (MCP), or a `workflow-trigger` event. Params resolve like step results (`{{params.x}}` / `$ref`), seeded under the reserved results id `params` — a step must not use that id. Fire-time params merge over stored defaults key-by-key.
+- **`workflow-trigger` topic (triggers as data)** — workflow-svc subscribes to this single well-known topic; an event `{key, params}` fires the named saved workflow (the pub/sub sibling of `POST /workflow/run/:key`). One topic, not per-family topics, because Dapr subscriptions are declared at sidecar startup. Payload problems (unknown key, disabled, malformed) are *acked* as `{skipped}`; infra failures 500 so Dapr redelivers. The plugin-feedback → plugin-improvement flow is this pattern: a `plugin-improvement` chart family + a trigger event — no domain routes in any agent service.
+- **Standard `POST /workflow` (the babysitter)** — every agent service registers submit-and-supervise from the shared agent-server packages: `{key|steps, params?, instanceId?, workspaceId?, policy?}` → `202 {instanceId, watching}` immediately; a deterministic background loop polls status, terminates on wall-clock budget breach (default 45 min), and publishes `workflow-events` on terminal. Machines run the loop; agents are only for judgment. Never build orchestration on an agent looping `await_workflow` — a model can abandon the loop (observed: haiku returned after one TIMEOUT). `workflow-agent` is NOT the exclusive workflow entry point.
+- **MCP servers are agent-runtime dependencies** — `dapr-mcp`/`obs-mcp`/`workflow-mcp` down doesn't just blind human observability: agent runs silently lose those tools (observed: a run skipped its `actor_state_set` persistence without erroring because dapr-mcp was down). Workflow task prose that depends on an MCP tool should require the agent to report tool-unavailable explicitly; keep the MCP set running whenever agents run.
 - **Worktree fetch-before-branch** — `addWorktree` in `packages/js/git-core/src/git-client.ts` accepts a `remoteBase` option. When set (and no explicit `baseRef` is given), it fetches `origin/<remoteBase>` before cutting the new branch, so the worktree starts from the latest remote tip rather than the potentially-stale local checkout. The `/worktree` route in `agent-server` defaults `remoteBase` to `"main"` for all worktree-cutting workflows (grooming, feature-request, triage). Pass `remoteBase: ""` explicitly to opt out.
 - **Run ledger is best-effort** — observability must never break a run, so every ledger write (the `RUNS_DIR` files and the statestore mirror) swallows errors; the on-disk files are the source of truth. The `runs:index` / `run:<id>` keys follow the flat-keyspace convention so `dapr-mcp` can read them. `obs-mcp` reads Zipkin/Loki over HTTP and the ledger off `RUNS_DIR` (fs) — it has **no Dapr sidecar**, so its `--app-port` (8013) is just the MCP listener.
 - **Statestore shared keyspace** — the Redis state store sets `keyPrefix: none`, so keys are global (no app-id prefix). This is deliberate: it lets any service — and `dapr-mcp` — read each other's keys (e.g. `task:…`, `tasks:index`, `__workflow_index__`, saved workflow keys) for dogfooding/inspection. Actor/workflow runtime state uses its own composite keying and is unaffected. With a flat keyspace, avoid key collisions across services (the existing keys are namespaced by convention: `task:`, `feedback:`, `__workflow_index__`).

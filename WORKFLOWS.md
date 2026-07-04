@@ -218,11 +218,19 @@ prod diagnosis, no plugin-feedback publish). Specs live in the gitignored
 2. `setup` (claude-agent) — copies the h runtime steering (`steering/h-lab-runtime.md`) to the
    agent's user-global `~/.claude/CLAUDE.md` and the root-level h skills to `~/.claude/skills/`.
    No `tessl install` — the worktree is already a tessl project.
-3. `run-claude` (`investigate`, cwd = the worktree) — reads the feature spec (spliced into the task
-   under a `===FEATURE SPEC===` marker), explores the relevant code, and emits an
-   `===IMPLEMENTATION PLAN===` without writing code.
-4. `run-claude` (`implement`, cwd = the worktree) — implements the plan, left as uncommitted
-   working-tree changes ready for a feat branch. Makes no change if the feature already appears done.
+3. `run-claude` (`plan`, cwd = the worktree, `permissionMode: plan` — read-only) — reads the
+   feature spec (spliced under `===FEATURE SPEC===`), reuses a persisted
+   `plan-feature-<slug>.md` from a prior run when it still fits, otherwise explores the code and
+   emits an `===IMPLEMENTATION PLAN===` without writing anything.
+4. `run-claude` (`implement`, cwd = the worktree) — first persists the plan it received (the
+   shared-context handoff: writes `plan-feature-<slug>.md` in the worktree AND
+   `actor_state_set(actorId='feature-<slug>', key='plan')` via the dapr MCP — reporting
+   explicitly if a persistence step fails), then implements, left as uncommitted working-tree
+   changes. Makes no change if the feature already appears done.
+5. `run-claude` (`verify`, cwd = the worktree; only when `feature.verifyCmd` is set) — runs the
+   acceptance command, fixes forward on failure (≤3 attempts, no check-weakening), and ends with
+   a machine-checkable `===VERIFY===` PASS/FAIL verdict. Without it, the implement step's
+   self-report is an unchecked claim.
 
 The invocation reads the `.md` and injects it into the task with `jq --rawfile` (JSON-safe for
 arbitrary Markdown — quotes, backslashes, `$`), so it is a dedicated wrapper rather than a payload run
@@ -230,7 +238,7 @@ through `invoke-workflow-agent.sh`. The spec arg is either a `.md` path or a bar
 against `cli/scripts/payloads/domain/feature-requests/` (with or without the `.md` suffix).
 
 **Built workflow's activities:** `create-worktree` → `setup` (claude-agent) →
-`run-claude` (investigate) → `run-claude` (implement)
+`run-claude` (plan) → `run-claude` (implement) → [`run-claude` (verify)]
 **Task config:** `cli/scripts/payloads/domain/feature-request-task.template.json` (gitignored)
 **Spec home:** `cli/scripts/payloads/domain/feature-requests/*.md` (gitignored)
 **Script:** `cli/scripts/invoke-workflow-feature-request.sh <spec> [SLUG=<slug>]`
@@ -243,6 +251,20 @@ against `cli/scripts/payloads/domain/feature-requests/` (with or without the `.m
 carrying the pre-built definition — the workflow-agent then runs it verbatim and monitors, instead
 of constructing the steps itself. YAML is the rendered artifact; JSON conversion happens only at
 the wire boundary. See [cli/README.md](./cli/README.md).
+
+The `h` CLI supersedes both scripts:
+
+- `h feature run <spec> --agent claude-agent` — render, then submit the definition to that agent
+  service's standard `POST /workflow` (submit-and-babysit, **non-blocking**: 202 with the
+  instanceId immediately; the agent's babysitter supervises — terminal `workflow-events` or
+  budget-terminate). Without `--agent`, the legacy blocking workflow-agent path runs.
+- `h workflow publish feature` — render in publish mode ({{params.slug}}/{{params.spec}} slots
+  open, family config baked from values) and save as a reusable *family*; fire it with
+  `h workflow run feature -p slug=… -p spec=@file.md [--instance-id feature-<slug>] [--agent …]`,
+  the `run_saved_workflow` MCP tool, or a `workflow-trigger` pub/sub event `{key, params}`.
+
+See `docs/plans/workflow-unification.md` for the architecture (families, triggers-as-data, the
+babysitter) and its progress log.
 
 ---
 

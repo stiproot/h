@@ -24,7 +24,7 @@ cli/
     └── src/h_cli/
         ├── main.py                 # composition root — Typer app, command groups
         ├── config.py               # env-derived settings, mirroring the scripts' defaults
-        ├── commands/               # h feature (render/run), h workflow (list/get/status)
+        ├── commands/               # h feature (render/run [--agent]), h workflow (list/get/status/publish/run/terminate)
         └── infrastructure/         # helm subprocess adapter, statestore/agent/svc HTTP clients
 ```
 
@@ -86,8 +86,12 @@ uv sync --package h-cli        # once
 uv run h --help
 uv run h feature render <spec>            # canonical YAML artifact
 uv run h feature render <spec> --json     # wire-format edge applied
-uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow-agent
+uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow-agent (legacy, blocking)
+uv run h feature run <spec> --agent claude-agent   # render → agent's POST /workflow (babysat, non-blocking)
 uv run h workflow list|get|status         # read-side views over workflow-svc
+uv run h workflow publish <family>        # render publish-mode ({{params.*}} slots) → save_workflow
+uv run h workflow run <key> -p k=v [-p spec=@file] [--instance-id id] [--agent name]  # fire a family
+uv run h workflow terminate <instanceId>  # short-circuit a running instance
 ```
 
 Helm is invoked as a subprocess (arg-list, no shell) — the established wrapper pattern
