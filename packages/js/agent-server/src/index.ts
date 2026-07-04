@@ -12,6 +12,15 @@ export { ExecGitClient, GitClient } from "git-core";
 export { bodyFor, runHandler, statusFor } from "./run-handler.ts";
 export type { HandlerReply, RunHandlerOptions } from "./run-handler.ts";
 export { AgentRunner } from "./runner.ts";
+export { WorkflowBabysitter } from "./workflow-babysitter.ts";
+export type {
+  BabysitPolicy,
+  BabysitterConfig,
+  WatchOutcome,
+  WatchState,
+  WorkflowSubmit,
+} from "./workflow-babysitter.ts";
+export { registerWorkflowRoute } from "./workflow-route.ts";
 export {
   recordActivityEffect,
   RunLedger,

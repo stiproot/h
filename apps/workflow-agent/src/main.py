@@ -2,7 +2,8 @@ import logging
 import os
 
 from agent_core import load_skill_instructions
-from fastapi import FastAPI
+from agent_server import WorkflowBabysitter, register_workflow_route
+from fastapi import APIRouter, FastAPI
 
 from infrastructure.statestore import StateStore
 from infrastructure.workflow_agent_runner import WorkflowAgentRunner
@@ -45,4 +46,9 @@ _store = StateStore(f"http://localhost:{DAPR_HTTP_PORT}/v1.0/state/{STATESTORE_N
 
 app = FastAPI()
 init_tracing(app, "workflow-agent")
+_wf_router = APIRouter()
+# The standard workflow endpoint: submit-and-babysit (non-blocking). workflow-agent keeps its
+# task-queue routes (create_router) but is no longer the exclusive workflow entry point.
+register_workflow_route(_wf_router, WorkflowBabysitter(agent_id="workflow-agent"))
 app.include_router(create_router(_runner, _store))
+app.include_router(_wf_router)

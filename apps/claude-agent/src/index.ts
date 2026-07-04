@@ -6,8 +6,10 @@ import {
   ExecGitClient,
   registerAgentRoutesEffect,
   registerCloneRouteEffect,
+  registerWorkflowRoute,
   registerWorktreeRouteEffect,
   RunLedgerLive,
+  WorkflowBabysitter,
 } from "agent-server";
 import { Layer, ManagedRuntime } from "effect";
 import Fastify from "fastify";
@@ -60,6 +62,15 @@ const fastify = Fastify({ logger: true });
 registerAgentRoutesEffect(fastify, { runtime, resolveWorkspaceDir, ledger });
 registerCloneRouteEffect(fastify, { runtime, resolveWorkspaceDir, ledger });
 registerWorktreeRouteEffect(fastify, { runtime, sharedRoot, ledger });
+// The standard workflow endpoint: submit-and-babysit (non-blocking) — makes this agent
+// service a workflow entry point on the same contract as every other agent service.
+registerWorkflowRoute(
+  fastify,
+  new WorkflowBabysitter({
+    agentId: "claude-agent",
+    onLog: (msg) => fastify.log.warn(msg),
+  }),
+);
 
 const port = Number(process.env.APP_PORT ?? 8000);
 await fastify.listen({ port, host: "0.0.0.0" });

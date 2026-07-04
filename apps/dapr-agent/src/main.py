@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from agent_core import load_skill_instructions
-from agent_server import register_agent_routes
+from agent_server import WorkflowBabysitter, register_agent_routes, register_workflow_route
 from fastapi import APIRouter, FastAPI
 
 from infrastructure.dapr_agent_runner import DaprAgentRunner
@@ -51,4 +51,7 @@ register_agent_routes(
     lambda workflow_instance_id: AGENT_BASE_DIR / "workspaces" / workflow_instance_id,
     "dapr-agent",
 )
+# The standard workflow endpoint: submit-and-babysit (non-blocking) — makes this agent
+# service a workflow entry point on the same contract as every other agent service.
+register_workflow_route(_router, WorkflowBabysitter(agent_id="dapr-agent"))
 app.include_router(_router)
