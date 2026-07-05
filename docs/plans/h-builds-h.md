@@ -229,6 +229,16 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 
 ## Progress log
 
+- 2026-07-05 — **e2e PASSED** (issue stiproot/h#1 → PR stiproot/h#2, 12 min): worktree off
+  origin/main via ssh, plan → implement → verify PASS (191 tests) → ssh push → PR with
+  Closes #1. Two findings: (1) FIXED — the epilogue's "commit all changes" shipped the
+  runner's .mcp.json merge + plan-feature-<slug>.md in the PR; now commits selectively.
+  (2) OPEN — the stripped-coder guarantee has a hole when the target repo is h itself: the
+  worktree's own .mcp.json ships dapr/workflows/obs and mergeMcpConfig deliberately
+  preserves cwd servers, so the coder regained control-plane tools (observed: implement
+  used actor_state_set). Candidate fix: an MCP_CONFIG_MODE=replace knob on the runner for
+  claude-coder, so its github-only config REPLACES instead of merges.
+
 - 2026-07-05 — design synthesized and committed; no implementation yet.
 - 2026-07-05 — `fresh` flag shipped (attach-by-default invoker, flag threaded through
   workflow-svc routes, both babysitters, workflow-mcp tools, `h workflow run --fresh`,
