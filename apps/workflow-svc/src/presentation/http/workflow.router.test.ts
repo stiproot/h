@@ -248,6 +248,34 @@ describe("POST /workflow/run/:key", () => {
       workspaceId: "ws-dark-mode",
     });
   });
+
+  it("passes fresh through to the invoker, and omits it when not sent", async () => {
+    const seen: WorkflowRequest[] = [];
+    const app = await makeApp(
+      stubInvoker({
+        invoke: (input) => {
+          seen.push(input);
+          return Effect.succeed({ instanceId: input.instanceId ?? "generated" });
+        },
+      }),
+      stubStore({ get: () => Effect.succeed(Option.some({ steps: [] })) }),
+    );
+    const fresh = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { instanceId: "feature-issue-1", fresh: true },
+    });
+    expect(fresh.statusCode).toBe(202);
+    expect(seen[0]).toMatchObject({ instanceId: "feature-issue-1", fresh: true });
+
+    const attach = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { instanceId: "feature-issue-1" },
+    });
+    expect(attach.statusCode).toBe(202);
+    expect(seen[1]).not.toHaveProperty("fresh");
+  });
 });
 
 describe("POST /workflow/terminate/:instanceId", () => {

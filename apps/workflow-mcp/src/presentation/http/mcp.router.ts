@@ -45,6 +45,12 @@ export const RunSavedWorkflowInput = Schema.Struct({
         "Optional stable workspace key: every step targets the same reusable agent workspace dir instead of a per-run one.",
     }),
   ),
+  fresh: Schema.optional(
+    Schema.Boolean.annotations({
+      description:
+        "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
+    }),
+  ),
 });
 export const TerminateWorkflowInput = Schema.Struct({
   instanceId: Schema.String.annotations({
@@ -120,7 +126,7 @@ export const TOOL_DEFINITIONS = [
         instanceId: {
           type: "string",
           description:
-            "Optional stable, readable workflow instance id (e.g. 'triage-ABC-123'). It becomes the run's worktree/workspace name. Re-running with the same id reuses the existing instance instead of starting a new one.",
+            "Optional stable, readable workflow instance id (e.g. 'triage-ABC-123'). It becomes the run's worktree/workspace name. Re-running with the same id attaches to the existing instance (running or finished) instead of starting a new one; pass fresh=true to purge a finished instance and re-run.",
         },
         steps: {
           type: "array",
@@ -139,6 +145,11 @@ export const TOOL_DEFINITIONS = [
           type: "object",
           description:
             'Named parameters resolved into step inputs: reference them as {{params.x}} inside a string, or {"$ref": "params.x"} for a whole value.',
+        },
+        fresh: {
+          type: "boolean",
+          description:
+            "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
         },
       },
       required: ["steps"],
@@ -165,6 +176,11 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           description:
             "Optional stable workspace key: every step targets the same reusable agent workspace dir instead of a per-run one.",
+        },
+        fresh: {
+          type: "boolean",
+          description:
+            "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
         },
       },
       required: ["key"],
@@ -302,6 +318,7 @@ export const toolHandlers: Record<
         yield* service.runByKey(input.key, input.params, {
           instanceId: input.instanceId,
           workspaceId: input.workspaceId,
+          fresh: input.fresh,
         }),
       );
     }).pipe(catchToolErrors("run_saved_workflow")),

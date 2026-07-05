@@ -35,6 +35,11 @@ export const WorkflowRequest = Schema.Struct({
   traceparent: Schema.optional(Schema.String),
   // Named parameters resolved into step inputs as {{params.x}} / {"$ref": "params.x"}.
   params: Schema.optional(WorkflowParams),
+  // Opt-in re-run of a TERMINAL instance under the same instanceId: purge its state, then
+  // schedule fresh. Default (absent/false) is attach — an existing terminal instance is
+  // returned as-is (Dapr durability is the standard; purge-and-rerun was a test-flow
+  // convenience and must be asked for). RUNNING/PENDING instances are always reused.
+  fresh: Schema.optional(Schema.Boolean),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 

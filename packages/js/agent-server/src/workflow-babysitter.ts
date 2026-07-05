@@ -26,6 +26,8 @@ export interface WorkflowSubmit {
   params?: Record<string, unknown>;
   instanceId?: string;
   workspaceId?: string;
+  /** Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach). */
+  fresh?: boolean;
   policy?: BabysitPolicy;
 }
 
@@ -87,12 +89,14 @@ export class WorkflowBabysitter {
           ...(submit.params ? { params: submit.params } : {}),
           ...(submit.instanceId ? { instanceId: submit.instanceId } : {}),
           ...(submit.workspaceId ? { workspaceId: submit.workspaceId } : {}),
+          ...(submit.fresh !== undefined ? { fresh: submit.fresh } : {}),
         })
       : await this.post("workflow/run", {
           steps: submit.steps,
           ...(submit.params ? { params: submit.params } : {}),
           ...(submit.instanceId ? { instanceId: submit.instanceId } : {}),
           ...(submit.workspaceId ? { workspaceId: submit.workspaceId } : {}),
+          ...(submit.fresh !== undefined ? { fresh: submit.fresh } : {}),
         });
     const { instanceId } = scheduled as { instanceId: string };
     const state: WatchState = {

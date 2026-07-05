@@ -39,10 +39,16 @@ export const WorkflowRequest = Schema.Struct({
   instanceId: Schema.optional(
     Schema.String.annotations({
       description:
-        "Optional stable, readable workflow instance id (e.g. 'triage-ABC-123'). It becomes the run's worktree/workspace name. Re-running with the same id reuses the existing instance instead of starting a new one.",
+        "Optional stable, readable workflow instance id (e.g. 'triage-ABC-123'). It becomes the run's worktree/workspace name. Re-running with the same id attaches to the existing instance (running or finished) instead of starting a new one; pass fresh=true to purge a finished instance and re-run.",
     }),
   ),
   params: Schema.optional(WorkflowParams.annotations(paramsAnnotation)),
+  fresh: Schema.optional(
+    Schema.Boolean.annotations({
+      description:
+        "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
+    }),
+  ),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
@@ -81,7 +87,7 @@ export class WorkflowService extends Context.Tag("WorkflowService")<
     readonly runByKey: (
       key: string,
       params?: WorkflowParams,
-      overrides?: { instanceId?: string; workspaceId?: string },
+      overrides?: { instanceId?: string; workspaceId?: string; fresh?: boolean },
     ) => Effect.Effect<{ instanceId: string }, WorkflowError>;
     readonly list: () => Effect.Effect<{ keys: readonly string[] }, WorkflowError>;
     readonly getByKey: (

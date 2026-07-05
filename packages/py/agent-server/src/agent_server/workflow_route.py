@@ -44,6 +44,8 @@ class WorkflowSubmit(BaseModel):
     params: dict[str, Any] | None = None
     instanceId: str | None = None
     workspaceId: str | None = None
+    # Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach).
+    fresh: bool | None = None
     policy: BabysitPolicy | None = None
 
 
@@ -129,6 +131,8 @@ class WorkflowBabysitter:
             body["instanceId"] = submit.instanceId
         if submit.workspaceId:
             body["workspaceId"] = submit.workspaceId
+        if submit.fresh is not None:
+            body["fresh"] = submit.fresh
         scheduled = await asyncio.to_thread(self._post, url, body)
         instance_id = scheduled["instanceId"]
         state = WatchState(instanceId=instance_id, startedAt=_now())

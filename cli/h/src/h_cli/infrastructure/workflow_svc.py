@@ -36,15 +36,21 @@ def save(key: str, steps: list[Any], params: dict[str, Any] | None = None) -> An
 
 
 def run_saved(
-    key: str, params: dict[str, Any] | None = None, instance_id: str | None = None
+    key: str,
+    params: dict[str, Any] | None = None,
+    instance_id: str | None = None,
+    fresh: bool = False,
 ) -> Any:
     """Fire a saved workflow; fire-time params override the stored defaults key-by-key.
-    An instance_id gives the run a readable, stable worktree/workspace key."""
+    An instance_id gives the run a readable, stable worktree/workspace key. fresh opts in
+    to purging a finished instance under that id and re-running (default: attach)."""
     body: dict[str, Any] = {}
     if params:
         body["params"] = params
     if instance_id:
         body["instanceId"] = instance_id
+    if fresh:
+        body["fresh"] = True
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()

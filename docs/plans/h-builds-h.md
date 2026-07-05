@@ -195,6 +195,40 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 
 ---
 
+## Decisions (2026-07-05)
+
+1. **Purge is now opt-in (`fresh`), attach is the default.** The invoker no longer purges a
+   terminal instance on instanceId reuse; it returns it as-is. `fresh: true` (CLI `--fresh`,
+   MCP param, `/workflow/run*` body field, babysitter submit field) restores purge-and-rerun
+   for deliberate re-tests. Consequences for this plan: agreement #3 weakens from "instanceIds
+   cannot dedup" to "instanceIds are now a real dedup belt" — the registry stays the authority
+   for done/abandoned *semantics*, but a stable `feature-issue-<n>` id now structurally cannot
+   double-run. **The sweep's retry branch must fire with `fresh: true`** when re-dispatching a
+   FAILED issue (attempt 2), otherwise it attaches to the failed instance and no-ops.
+2. **Git auth becomes a strategy, SSH first.** `git-core` grows a `GitAuthStrategy` port —
+   `pat` (today's in-process token URL injection), `ssh` (remote left/rewritten to
+   `git@github.com:`, `GIT_SSH_COMMAND` pointing at a mounted key, no URL mutation), and later
+   `github-app` (mint an installation token per operation, then the pat path). The strategy is
+   *named* in workflow/step config (`auth: ssh`) and threaded through `/clone` / `/worktree`;
+   secrets stay env/mounts, never in definitions. The feature chart's PR-epilogue push prose
+   becomes strategy-aware (`token URL` vs plain `git push origin`). Transport ≠ API: SSH covers
+   git push/fetch only — PR creation still uses the GitHub MCP with the owner's PAT, so PRs are
+   authored as the owner, who (with bypass rules) approves them. That is the accepted starting
+   posture on owner-controlled repos; the two-PAT split from ruling D8 becomes the posture when
+   the loop graduates beyond them.
+3. **No per-PR cron registration.** One standing `issue-sweep` cron; PR lifecycle is registry
+   *data*, not registered/deregistered workflows. "Deregistration" is the registry row hitting
+   `done` (merge auto-closes the issue via `Closes #N`, so it also leaves the label query).
+   Merge detection is the sweep's poll; the `workflow-events`/webhook path stays a phase-4
+   latency optimization. **Review-comment resolution** joins the reconcile contract as new
+   scope: an open agent PR with unaddressed human review comments → the sweep fires a `revise`
+   run (same branch/worktree, `fresh: true`, comments as the spec addendum) under the same
+   attempt cap.
+
 ## Progress log
 
 - 2026-07-05 — design synthesized and committed; no implementation yet.
+- 2026-07-05 — `fresh` flag shipped (attach-by-default invoker, flag threaded through
+  workflow-svc routes, both babysitters, workflow-mcp tools, `h workflow run --fresh`,
+  `h feature run --fresh`). Decisions 1-3 above recorded; auth-strategy port and
+  comment-resolution not yet implemented.

@@ -93,8 +93,9 @@ export const WorkflowInvokerLive: Layer.Layer<WorkflowInvoker, never, HttpClient
         Effect.gen(function* () {
           // When the caller supplies an instanceId, decide by the existing run's state:
           //  - RUNNING/PENDING: reuse it, so an in-flight retry doesn't start a duplicate.
-          //  - terminal (COMPLETED/FAILED/TERMINATED): purge it, so re-invoking actually re-runs
-          //    rather than returning the stale finished instance.
+          //  - terminal (COMPLETED/FAILED/TERMINATED): attach — return the existing instance
+          //    without re-running. Purge-and-rerun (the pre-`fresh` default, a convenience for
+          //    re-testing a full flow under one id) is now opt-in via `fresh: true`.
           //  - UNKNOWN: it never existed — schedule fresh.
           if (input.instanceId) {
             const { runtimeStatus } = yield* getStatus(input.instanceId);
@@ -102,6 +103,7 @@ export const WorkflowInvokerLive: Layer.Layer<WorkflowInvoker, never, HttpClient
               return { instanceId: input.instanceId };
             }
             if (runtimeStatus !== "UNKNOWN") {
+              if (!input.fresh) return { instanceId: input.instanceId };
               yield* purge(input.instanceId);
             }
           }

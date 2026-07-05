@@ -5,6 +5,7 @@ rules, same seeding/trigger plumbing. `render` stops at the canonical YAML artif
 applies the JSON wire step, seeds the task (definition embedded), and triggers workflow-agent.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -140,6 +141,14 @@ def run(
     spec: SpecArg,
     slug: SlugOpt = None,
     pr: PrOpt = False,
+    fresh: Annotated[
+        bool,
+        typer.Option(
+            "--fresh",
+            help="Purge a FINISHED feature-<slug> instance and re-run it. Without this, "
+            "re-firing the same slug attaches to the existing instance instead of re-running.",
+        ),
+    ] = False,
     agent: Annotated[
         str | None,
         typer.Option(
@@ -176,6 +185,8 @@ def run(
             raise typer.Exit(1)
         definition = yaml.safe_load(rendered)
         body = {k: definition[k] for k in ("instanceId", "steps") if k in definition}
+        if fresh:
+            body["fresh"] = True
         try:
             result = agent_service.submit_workflow(agent_url, body)
         except httpx.HTTPError as err:
@@ -189,7 +200,10 @@ def run(
     task_id = f"feature-helm-{resolved_slug}"
     try:
         console.print(f"==> Seeding task '{task_id}' into the state store")
-        statestore.seed_task(task_id, _RUN_VERBATIM_PREAMBLE + helm.to_wire_json(rendered))
+        wire = helm.to_wire_json(rendered)
+        if fresh:
+            wire = json.dumps({**json.loads(wire), "fresh": True})
+        statestore.seed_task(task_id, _RUN_VERBATIM_PREAMBLE + wire)
         with console.status(f"workflow-agent running '{task_id}' (run -> monitor)..."):
             result = workflow_agent.run_task(task_id, timeout_secs=timeout)
     except httpx.HTTPError as err:

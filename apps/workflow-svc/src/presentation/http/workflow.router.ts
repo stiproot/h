@@ -39,6 +39,8 @@ const RunSavedBody = Schema.Struct({
   params: Schema.optional(WorkflowParams),
   instanceId: Schema.optional(Schema.String),
   workspaceId: Schema.optional(Schema.String),
+  // Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach).
+  fresh: Schema.optional(Schema.Boolean),
 });
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
@@ -188,9 +190,9 @@ export function registerWorkflowRoutes(
           // Optional body: fire-time params override the stored defaults key-by-key; a
           // fire-time instanceId/workspaceId overrides the projection (readable run keys).
           // An absent/empty body keeps the pre-params behaviour.
-          const { params, instanceId, workspaceId } = yield* Schema.decodeUnknown(RunSavedBody)(
-            request.body ?? {},
-          );
+          const { params, instanceId, workspaceId, fresh } = yield* Schema.decodeUnknown(
+            RunSavedBody,
+          )(request.body ?? {});
           const store = yield* WorkflowStore;
           const workflow = yield* store.get(request.params.key);
           if (Option.isNone(workflow)) return yield* new WorkflowNotFoundError();
@@ -200,6 +202,7 @@ export function registerWorkflowRoutes(
             ...req,
             ...(instanceId ? { instanceId } : {}),
             ...(workspaceId ? { workspaceId } : {}),
+            ...(fresh !== undefined ? { fresh } : {}),
           });
         }),
         { successStatus: 202 },

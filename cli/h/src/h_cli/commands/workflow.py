@@ -136,6 +136,14 @@ def run(
             "name instead of a generated GUID).",
         ),
     ] = None,
+    fresh: Annotated[
+        bool,
+        typer.Option(
+            "--fresh",
+            help="Purge a FINISHED instance under --instance-id and re-run it. Without this, "
+            "re-firing an existing instance id attaches to it instead of re-running.",
+        ),
+    ] = False,
     agent: AgentOpt = None,
 ) -> None:
     """Fire a saved workflow with fire-time params; prints the instance id.
@@ -151,9 +159,11 @@ def run(
             body["params"] = params
         if instance_id:
             body["instanceId"] = instance_id
+        if fresh:
+            body["fresh"] = True
         result = _guarded(lambda: agent_service.submit_workflow(agent_url, body))
     else:
-        result = _guarded(lambda: workflow_svc.run_saved(key, params, instance_id))
+        result = _guarded(lambda: workflow_svc.run_saved(key, params, instance_id, fresh))
     console.print_json(data=result)
     console.print(f"    watch it: h workflow status {result['instanceId']}")
 
