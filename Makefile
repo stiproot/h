@@ -36,8 +36,9 @@
 DAPR_VERSION   ?= 1.17.9
 DAPR_NAMESPACE ?= dapr-system
 
-ZELLIJ_SESSION ?= h
-DEV_LAYOUT     ?= .zellij/dev.kdl
+ZELLIJ_SESSION      ?= h
+DEV_LAYOUT          ?= .zellij/dev.kdl
+H_BUILDS_H_LAYOUT   ?= .zellij/h-builds-h.kdl
 
 WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
 # Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
@@ -172,3 +173,22 @@ dev: ## Launch all services in a dedicated zellij session 'h' (plain terminal; n
 
 dev-tab: ## Add the service stack as a new named tab in the current zellij session (needs infra-up)
 	zellij action new-tab --cwd "$(CURDIR)" --name $(ZELLIJ_SESSION) --layout $(DEV_LAYOUT)
+
+# ── h-builds-h supervised session (zellij) ─────────────────────────────────────────────────
+#
+# Like dev / dev-tab but uses the h-builds-h.kdl layout: all services run under
+# cli/scripts/_supervise.sh, which restarts them automatically on exit with capped
+# exponential backoff. Includes claude-coder (the stripped coding agent for the loop).
+# Use this layout for unattended cron-driven operation; use dev / dev-tab for interactive dev.
+
+.PHONY: h-builds-h h-builds-h-tab
+h-builds-h: ## Launch the supervised h-builds-h stack in a dedicated zellij session (plain terminal; needs infra-up)
+	@if [ -n "$$ZELLIJ" ]; then \
+	  echo "Already inside a zellij session — run 'make h-builds-h' from a plain terminal, or 'make h-builds-h-tab' to add it here."; \
+	  exit 1; \
+	fi
+	@zellij delete-session $(ZELLIJ_SESSION) --force >/dev/null 2>&1 || true
+	zellij --session $(ZELLIJ_SESSION) --layout $(H_BUILDS_H_LAYOUT)
+
+h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the current zellij session (needs infra-up)
+	zellij action new-tab --cwd "$(CURDIR)" --name $(ZELLIJ_SESSION) --layout $(H_BUILDS_H_LAYOUT)
