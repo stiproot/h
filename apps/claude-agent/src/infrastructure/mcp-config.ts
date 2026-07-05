@@ -9,11 +9,15 @@ type McpConfig = { mcpServers?: Record<string, unknown>; [key: string]: unknown 
  * This is what lets the agent operate in a worktree that carries its own .mcp.json (e.g. a target
  * repo ships one with only a `tessl` server) while still gaining h's dapr/obs/workflows servers.
  */
-export function mergeMcpConfig(existing: string | null, incoming: string): string {
+export function mergeMcpConfig(
+  existing: string | null,
+  incoming: string,
+  mode: "merge" | "replace" = "merge",
+): string {
   const incomingJson = JSON.parse(incoming) as McpConfig;
   const serialize = (cfg: McpConfig) => JSON.stringify(cfg, null, 2) + "\n";
 
-  if (existing === null) return serialize(incomingJson);
+  if (existing === null || mode === "replace") return serialize(incomingJson);
 
   let existingJson: McpConfig;
   try {

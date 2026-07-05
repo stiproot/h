@@ -303,6 +303,9 @@ services:
       - GIT_AUTH=${GIT_AUTH:-}
       - GIT_SSH_KEY_PATH=${GIT_SSH_KEY_PATH:-}
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      # Replace mode: overwrite the cwd's .mcp.json servers entirely so target-repo control-plane
+      # servers (dapr/workflows/obs) cannot bleed through when the target repo is h itself.
+      - MCP_CONFIG_MODE=replace
     volumes:
       - ../h-workspace:/workspace
       - ./skills:/h-skills:ro

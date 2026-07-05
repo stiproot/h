@@ -42,6 +42,9 @@ export GIT_AUTH="${GIT_AUTH:-}"
 export GIT_SSH_KEY_PATH="${GIT_SSH_KEY_PATH:-}"
 # github MCP only — the agent that executes untrusted specs gets no control-plane tools.
 export MCP_CONFIG_SRC="${APP_DIR}/.mcp.coder.json"
+# Replace mode: overwrite the cwd's .mcp.json servers entirely so target-repo control-plane
+# servers (dapr/workflows/obs) cannot bleed through when the target repo is h itself.
+export MCP_CONFIG_MODE=replace
 
 cd "${PROJECT_DIR}"
 bunx turbo build --filter=claude-agent

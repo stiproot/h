@@ -27,6 +27,8 @@ const claudeRunnerConfig = Config.all({
   runsDir: Config.option(Config.string("AGENT_RUNS_DIR")),
   // Source .mcp.json merged into each run's cwd (defaults to the file mounted at baseDir).
   mcpConfigSrc: Config.option(Config.string("MCP_CONFIG_SRC")),
+  // "replace" overwrites the cwd's servers entirely (for claude-coder); default "merge".
+  mcpConfigMode: Config.string("MCP_CONFIG_MODE").pipe(Config.withDefault("merge")),
   runTimeoutMs: Config.number("AGENT_RUN_TIMEOUT_MS").pipe(
     Config.withDefault(DEFAULT_RUN_TIMEOUT_MS),
   ),
@@ -41,6 +43,7 @@ type ClaudeRunnerConfig = {
   baseUrl: string;
   runsDir: string;
   mcpConfigSrc: string;
+  mcpConfigMode: string;
   runTimeoutMs: number;
   daprHttpPort: string | undefined;
 };
@@ -54,6 +57,7 @@ const resolveConfig = claudeRunnerConfig.pipe(
       baseUrl: raw.baseUrl,
       runsDir: Option.getOrElse(raw.runsDir, () => join(raw.baseDir, "..", ".runs")),
       mcpConfigSrc: Option.getOrElse(raw.mcpConfigSrc, () => join(raw.baseDir, ".mcp.json")),
+      mcpConfigMode: raw.mcpConfigMode,
       runTimeoutMs: raw.runTimeoutMs,
       daprHttpPort: Option.getOrUndefined(raw.daprHttpPort),
     }),
@@ -101,7 +105,8 @@ const runClaude = (
         const existing = (yield* fs.exists(mcpDest)) ? yield* fs.readFileString(mcpDest) : null;
         const incoming = yield* fs.readFileString(cfg.mcpConfigSrc);
         const merged = yield* Effect.try({
-          try: () => mergeMcpConfig(existing, incoming),
+          try: () =>
+            mergeMcpConfig(existing, incoming, cfg.mcpConfigMode as "merge" | "replace"),
           catch: (cause) => cause,
         });
         yield* fs.writeFileString(mcpDest, merged);
