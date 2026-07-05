@@ -236,3 +236,10 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
   comment-resolution not yet implemented.
 - 2026-07-05 — GitHub webhooks ruled out (local deployment, no inbound reachability);
   GitHub state is poll-discovered on the sweep tick.
+- 2026-07-05 — implementation: phase 1 (feature issueNumber param + Closes #N), GitAuth
+  strategy (pat|ssh in git-core, threaded through /clone + /worktree + chart gitAuth,
+  ssh-aware push prose), phase 2 (issue-sweep family + h-auto registry convention), phase 3
+  scaffolding (h workflow publish --schedule/--workspace-id/--disabled; claude-coder compose
+  service + run script + .mcp.coder.json). Runbook: docs/h-builds-h-runbook.md. Outstanding:
+  phase-0 GitHub config (human), publish/seed/arm (stack), review-comment resolution in the
+  sweep prompt, phase-4 backlog.

@@ -276,6 +276,21 @@ The `h` CLI supersedes both scripts:
 See `docs/plans/workflow-unification.md` for the architecture (families, triggers-as-data, the
 babysitter) and its progress log.
 
+### Issue sweep (issue-sweep) — the h-builds-h loop
+
+One judgment tick of the self-build loop (`docs/plans/h-builds-h.md`, operate via
+`docs/h-builds-h-runbook.md`): reconcile in-flight `feature-issue-<n>` runs, enforce
+budget/concurrency gates from the `h-auto:config` statestore key, pick the oldest OPEN issue
+labeled `agent-approved`, and dispatch ONE `feature` run (params `slug`/`spec`/`createPr`/
+`issueNumber`, `fresh: true` on retries) to the coding agent's `POST /workflow`. Publish with a
+cron schedule + `--workspace-id h-issue-sweep` (start `--disabled`); the sweep agent is the only
+writer of the `h-auto:*` registry. `issueSweep.dryRun` renders a tick that reports what it would
+dispatch and touches nothing.
+
+**Chart:** `cli/charts/workflows/templates/issue-sweep.yaml`
+**Config:** `issueSweep.*` values (repo, label, coderWorkflowUrl, maxInFlight, models.sweep);
+runtime knobs in `h-auto:config`.
+
 ---
 
 ## Repo Q&A (workflow-agent)
