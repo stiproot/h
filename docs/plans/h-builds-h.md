@@ -219,8 +219,10 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 3. **No per-PR cron registration.** One standing `issue-sweep` cron; PR lifecycle is registry
    *data*, not registered/deregistered workflows. "Deregistration" is the registry row hitting
    `done` (merge auto-closes the issue via `Closes #N`, so it also leaves the label query).
-   Merge detection is the sweep's poll; the `workflow-events`/webhook path stays a phase-4
-   latency optimization. **Review-comment resolution** joins the reconcile contract as new
+   Merge detection is the sweep's poll. GitHub webhooks are explicitly OUT of scope: the
+   stack runs locally with no inbound reachability, so all GitHub state (merges, review
+   comments, labels) is discovered by polling on the sweep tick. The only phase-4 latency
+   optimization is the internal `workflow-events` finalizer (Dapr pub/sub, outbound-only). **Review-comment resolution** joins the reconcile contract as new
    scope: an open agent PR with unaddressed human review comments → the sweep fires a `revise`
    run (same branch/worktree, `fresh: true`, comments as the spec addendum) under the same
    attempt cap.
@@ -232,3 +234,5 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
   workflow-svc routes, both babysitters, workflow-mcp tools, `h workflow run --fresh`,
   `h feature run --fresh`). Decisions 1-3 above recorded; auth-strategy port and
   comment-resolution not yet implemented.
+- 2026-07-05 — GitHub webhooks ruled out (local deployment, no inbound reachability);
+  GitHub state is poll-discovered on the sweep tick.
