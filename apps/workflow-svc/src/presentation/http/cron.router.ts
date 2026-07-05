@@ -5,8 +5,12 @@ import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
-import { WorkflowInvoker } from "../../domain/ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
+import {
+  type WatchScanReport,
+  invokeWithWatch,
+  scanWatchesEffect,
+} from "../../domain/watch-scan.ts";
 import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
 // The cron binding (dapr/local/workflow-cron.yaml) is named workflow-cron-tick; a cron binding is
@@ -26,25 +30,49 @@ const ROUTE = "/workflow-cron-tick";
 export const tickEffect = (
   ticking: Ref.Ref<boolean>,
   traceparent: string | undefined,
-): Effect.Effect<{ fired: string[] } | { skipped: string }, WorkflowError, WorkflowRoutesEnv> =>
+): Effect.Effect<
+  { fired: string[]; watch: WatchScanReport | { error: string } } | { skipped: string },
+  WorkflowError,
+  WorkflowRoutesEnv
+> =>
   Effect.gen(function* () {
     // CAS: flip false→true and learn atomically whether this fiber won the slot.
     const won = yield* Ref.modify(ticking, (t) => [!t, true] as const);
     if (!won) return { skipped: "previous tick still processing" };
-    return yield* scanAndFire(traceparent).pipe(Effect.ensuring(Ref.set(ticking, false)));
+    return yield* Effect.gen(function* () {
+      const { fired } = yield* scanAndFire(traceparent);
+      // The watch scan rides the same tick (ruling W2) but its failure must never fail the
+      // tick — a broken scan reply would make Dapr treat the binding as unsubscribed.
+      const watch = yield* scanWatchesEffect(traceparent).pipe(
+        Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
+      );
+      return { fired, watch };
+    }).pipe(Effect.ensuring(Ref.set(ticking, false)));
   });
+
+// Tagged errors often carry the raw failure in `cause` rather than their own message.
+function scanErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  const cause = (err as { cause?: unknown })?.cause;
+  if (cause instanceof Error && cause.message) return cause.message;
+  return String(err);
+}
 
 const scanAndFire = (
   traceparent: string | undefined,
 ): Effect.Effect<{ fired: string[] }, WorkflowError, WorkflowRoutesEnv> =>
   Effect.gen(function* () {
     const store = yield* WorkflowStore;
-    const invoker = yield* WorkflowInvoker;
     const now = new Date();
     const fired: string[] = [];
     for (const { key, workflow } of yield* store.listScheduled()) {
       if (workflow.disabled || !workflow.schedule || !isDue(workflow.schedule, now)) continue;
-      yield* invoker.invoke(toRequest(workflow, traceparent));
+      // Same choke point as the HTTP paths: a stored watch policy registers the row here
+      // (agreement 9 — cron-fired runs are supervised too).
+      yield* invokeWithWatch({
+        ...toRequest(workflow, traceparent),
+        ...(workflow.watch ? { watch: workflow.watch, watchMeta: { owner: key } } : {}),
+      });
       yield* store.markRun(key, now.toISOString());
       fired.push(key);
     }

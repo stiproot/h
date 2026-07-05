@@ -1,16 +1,18 @@
 import { WorkflowRuntime } from "@dapr/dapr";
 import { NodeContext, NodeHttpClient } from "@effect/platform-node";
-import { DaprInvokerLive, waitForSidecarEffect } from "core-dapr";
+import { DaprInvokerLive, DaprPublisherLive, waitForSidecarEffect } from "core-dapr";
 import { Layer, ManagedRuntime } from "effect";
 import Fastify from "fastify";
 import { makeTracingLive } from "telemetry";
 
 import { activities, setActivityRuntime } from "./infrastructure/activity-registry.ts";
+import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
 import { WorkflowStoreLive } from "./infrastructure/dapr-workflow-store.ts";
 import { genericWorkflow } from "./infrastructure/workflows/generic.workflow.ts";
 import { registerCronRoutes } from "./presentation/http/cron.router.ts";
 import { registerTriggerRoutes } from "./presentation/http/trigger.router.ts";
+import { registerWatchRoutes } from "./presentation/http/watch.router.ts";
 import { registerWorkflowRoutes } from "./presentation/http/workflow.router.ts";
 
 const daprHttpPort = process.env.DAPR_HTTP_PORT ?? "3500";
@@ -27,7 +29,9 @@ const appLayer = Layer.mergeAll(
   makeTracingLive("workflow-svc"),
   WorkflowInvokerLive.pipe(Layer.provide(NodeHttpClient.layer)),
   WorkflowStoreLive,
+  WatchStoreLive,
   DaprInvokerLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
+  DaprPublisherLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   NodeHttpClient.layer,
   NodeContext.layer,
 ).pipe(Layer.orDie);
@@ -54,6 +58,7 @@ const fastify = Fastify({ logger: true });
 registerWorkflowRoutes(fastify, runtime);
 registerCronRoutes(fastify, runtime);
 registerTriggerRoutes(fastify, runtime);
+registerWatchRoutes(fastify, runtime);
 
 // The sidecar must be up (components loaded, placement connected) before the workflow
 // worker connects to it.

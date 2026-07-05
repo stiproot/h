@@ -1,12 +1,14 @@
-"""The workflow babysitter + standard POST /workflow route — Python sibling of
-js/agent-server's workflow-babysitter.ts / workflow-route.ts.
+"""The standard POST /workflow route — Python sibling of js/agent-server's
+workflow-route.ts. Submit-and-forward, not submit-and-supervise.
 
-`submit` schedules a workflow on workflow-svc (via the Dapr sidecar) and returns the
-instanceId immediately; a background asyncio task then polls the instance on a cadence and
-enforces a deterministic policy — terminal status → publish a `workflow-events` event and
-stop; wall-clock budget exceeded → terminate the instance, publish, stop. Machines run the
-loop; agents are only consulted at decision points — never blocked holding a connection for
-the workflow's lifetime.
+Supervision is durable and engine-owned in workflow-svc (docs/plans/watcher-primitive.md):
+its run routes accept a `watch` field, write a durable `watch:sub:<instanceId>` statestore
+row in the same handler that schedules, and a cron-tick scan enforces the budget, retries,
+publishes terminal `workflow-events`, and tallies cost. This route only translates the
+caller's `policy.maxDurationMs` (default 45 min) into that `watch` field — an explicit
+`watch` in the submit body is forwarded verbatim and wins — POSTs to workflow-svc via the
+Dapr sidecar, and returns `{instanceId, watching}` from workflow-svc's reply.
+GET /workflow/watches proxies workflow-svc's GET /watch/list (global durable truth).
 
 Dependency-free like run_ledger (stdlib urllib, run in a thread from the event loop).
 """
@@ -15,27 +17,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
-import time
-import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
-
-_TERMINAL = {"COMPLETED", "FAILED", "TERMINATED"}
-
 
 class BabysitPolicy(BaseModel):
     maxDurationMs: int | None = None
-    pollIntervalMs: int | None = None
 
 
 class WorkflowSubmit(BaseModel):
@@ -47,42 +39,25 @@ class WorkflowSubmit(BaseModel):
     # Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach).
     fresh: bool | None = None
     policy: BabysitPolicy | None = None
-
-
-@dataclass
-class WatchState:
-    instanceId: str
-    startedAt: str
-    lastStatus: str = "SCHEDULED"
-    outcome: str | None = None
-    endedAt: str | None = None
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    # Explicit engine watch spec — forwarded verbatim, wins over policy.
+    watch: dict[str, Any] | None = None
+    watchMeta: dict[str, Any] | None = None
 
 
 class WorkflowBabysitter:
-    """Submit-and-supervise. In-process watch table (restarts forget past watches — MVP)."""
+    """Pure forwarder to workflow-svc's watch-aware run routes (name kept for consumers)."""
 
     def __init__(
         self,
         agent_id: str,
         dapr_http_port: str | None = None,
         workflow_app_id: str = "workflow-svc",
-        pubsub_name: str = "pubsub",
-        events_topic: str = "workflow-events",
-        default_poll_interval_ms: int = 10_000,
         default_max_duration_ms: int = 45 * 60_000,
     ) -> None:
         self.agent_id = agent_id
         self.dapr_http_port = dapr_http_port or os.getenv("DAPR_HTTP_PORT", "3500")
         self.workflow_app_id = workflow_app_id
-        self.pubsub_name = pubsub_name
-        self.events_topic = events_topic
-        self.default_poll_interval_ms = default_poll_interval_ms
         self.default_max_duration_ms = default_max_duration_ms
-        self.watches: dict[str, WatchState] = {}
 
     # -- sidecar HTTP (stdlib, blocking — always called via asyncio.to_thread) ------------
 
@@ -103,20 +78,18 @@ class WorkflowBabysitter:
             raw = resp.read()
             return json.loads(raw) if raw else {}
 
-    def _get_status(self, instance_id: str) -> str:
-        url = self._invoke_url(f"workflow/status/{urllib.parse.quote(instance_id)}")
-        try:
-            with urllib.request.urlopen(url, timeout=10) as resp:
-                return json.loads(resp.read()).get("runtimeStatus", "UNKNOWN")
-        except Exception:
-            # A transient sidecar/svc outage reads as UNKNOWN and the loop keeps polling —
-            # supervision must outlive the infra hiccups it exists to catch.
-            return "UNKNOWN"
+    def _get(self, url: str) -> Any:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            raw = resp.read()
+            return json.loads(raw) if raw else None
 
     # -- public API ------------------------------------------------------------------------
 
     async def submit(self, submit: WorkflowSubmit) -> dict:
-        """Schedule and start watching; returns {"instanceId": ...} as soon as scheduled."""
+        """Schedule on workflow-svc with a `watch` field; the engine supervises durably.
+
+        Returns {"instanceId": ..., "watching": ...} straight from workflow-svc's reply.
+        """
         if not submit.key and not submit.steps:
             raise ValueError("submit needs a key or steps")
         if submit.key:
@@ -133,82 +106,32 @@ class WorkflowBabysitter:
             body["workspaceId"] = submit.workspaceId
         if submit.fresh is not None:
             body["fresh"] = submit.fresh
+        # Explicit watch wins over policy; otherwise translate policy → watch.
+        if submit.watch is not None:
+            body["watch"] = submit.watch
+        else:
+            policy = submit.policy or BabysitPolicy()
+            body["watch"] = {"maxDurationMs": policy.maxDurationMs or self.default_max_duration_ms}
+        if submit.watchMeta is not None:
+            body["watchMeta"] = submit.watchMeta
         scheduled = await asyncio.to_thread(self._post, url, body)
-        instance_id = scheduled["instanceId"]
-        state = WatchState(instanceId=instance_id, startedAt=_now())
-        self.watches[instance_id] = state
-        policy = submit.policy or BabysitPolicy()
-        # Fire-and-forget: the watch owns its lifetime; a watch failure never propagates
-        # into the submitting request.
-        task = asyncio.create_task(self._watch(state, policy))
-        task.add_done_callback(lambda t: t.exception())  # swallow, already logged
-        return {"instanceId": instance_id}
-
-    def list(self) -> list[dict]:
-        return [asdict(s) for s in self.watches.values()]
-
-    # -- the deterministic loop --------------------------------------------------------------
-
-    async def _watch(self, state: WatchState, policy: BabysitPolicy) -> None:
-        poll_s = (policy.pollIntervalMs or self.default_poll_interval_ms) / 1000
-        budget_s = (policy.maxDurationMs or self.default_max_duration_ms) / 1000
-        deadline = time.monotonic() + budget_s
-        try:
-            while True:
-                await asyncio.sleep(poll_s)
-                status = await asyncio.to_thread(self._get_status, state.instanceId)
-                state.lastStatus = status
-                if status in _TERMINAL:
-                    state.outcome = status.lower()
-                    state.endedAt = _now()
-                    await self._publish_event(state, status)
-                    return
-                if time.monotonic() >= deadline:
-                    logger.warning(
-                        "babysitter | %s exceeded %.0fs budget — terminating",
-                        state.instanceId,
-                        budget_s,
-                    )
-                    terminate_url = self._invoke_url(
-                        f"workflow/terminate/{urllib.parse.quote(state.instanceId)}"
-                    )
-                    try:
-                        await asyncio.to_thread(self._post, terminate_url, {})
-                    except Exception:
-                        logger.exception("babysitter | terminate %s failed", state.instanceId)
-                    state.outcome = "budget-terminated"
-                    state.endedAt = _now()
-                    await self._publish_event(state, "TERMINATED")
-                    return
-        except Exception:
-            logger.exception("babysitter | watch %s died", state.instanceId)
-
-    async def _publish_event(self, state: WatchState, status: str) -> None:
-        url = (
-            f"http://localhost:{self.dapr_http_port}/v1.0/publish/"
-            f"{self.pubsub_name}/{self.events_topic}"
-        )
-        event = {
-            "instanceId": state.instanceId,
-            "outcome": state.outcome,
-            "runtimeStatus": status,
-            "watcherAgentId": self.agent_id,
-            "startedAt": state.startedAt,
-            "endedAt": state.endedAt,
+        return {
+            "instanceId": scheduled["instanceId"],
+            "watching": scheduled.get("watching", False),
         }
-        try:
-            await asyncio.to_thread(self._post, url, event)
-        except Exception:
-            # Event emission is best-effort observability — never fail the watch over it.
-            logger.warning("babysitter | publish for %s failed", state.instanceId)
+
+    async def watch_list(self) -> Any:
+        """Proxy workflow-svc's GET /watch/list — the durable watch table."""
+        return await asyncio.to_thread(self._get, self._invoke_url("watch/list"))
 
 
 def register_workflow_route(router: APIRouter, babysitter: WorkflowBabysitter) -> None:
-    """The standard agent-service workflow endpoint: 'invoke and babysit this workflow'.
+    """The standard agent-service workflow endpoint: 'invoke this workflow, engine-watched'.
 
-    Non-blocking — 202 with the instanceId as soon as the run is scheduled; the babysitter's
-    background task supervises it. The shared contract that makes any agent service a
-    workflow entry point. GET /workflow/watches exposes the in-process watch table.
+    Non-blocking — 202 with {instanceId, watching} as soon as workflow-svc schedules; the
+    durable watcher engine inside workflow-svc supervises it (budget, retries, terminal
+    events). The shared contract that makes any agent service a workflow entry point.
+    GET /workflow/watches proxies the engine's durable watch list.
     """
 
     @router.post("/workflow", status_code=202)
@@ -218,11 +141,13 @@ def register_workflow_route(router: APIRouter, babysitter: WorkflowBabysitter) -
                 status_code=400, detail="body needs a saved-workflow key or inline steps"
             )
         try:
-            result = await babysitter.submit(body)
+            return await babysitter.submit(body)
         except Exception as exc:  # scheduling failure — surface, nothing is being watched
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        return {**result, "watching": True}
 
     @router.get("/workflow/watches")
     async def watches():
-        return babysitter.list()
+        try:
+            return await babysitter.watch_list()
+        except Exception as exc:  # workflow-svc unreachable — the durable truth is elsewhere
+            raise HTTPException(status_code=502, detail=str(exc)) from exc

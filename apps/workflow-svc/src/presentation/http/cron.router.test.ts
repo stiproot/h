@@ -1,9 +1,12 @@
 import { WorkflowError } from "core";
+import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Deferred, Effect, Fiber, Layer, ManagedRuntime, Option, Ref } from "effect";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -27,8 +30,39 @@ const stubStore = (overrides: Partial<WorkflowStoreService> = {}): WorkflowStore
   ...overrides,
 });
 
-const envLayer = (invoker: WorkflowInvokerService, store: WorkflowStoreService) =>
-  Layer.mergeAll(Layer.succeed(WorkflowInvoker, invoker), Layer.succeed(WorkflowStore, store));
+function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, WatchRow> } {
+  const rows = new Map<string, WatchRow>();
+  return {
+    rows,
+    service: {
+      getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
+      listRows: () => Effect.succeed([...rows.values()]),
+      saveRow: (row) => Effect.sync(() => void rows.set(row.instanceId, row)),
+      deleteRow: (id) => Effect.sync(() => void rows.delete(id)),
+      getConfig: () => Effect.succeed(Option.none()),
+      getHeartbeat: () => Effect.succeed(Option.none()),
+      heartbeat: () => Effect.void,
+      getLedger: () => Effect.succeed(emptyLedger),
+      bumpLedger: () => Effect.void,
+      listRunKeys: () => Effect.succeed([]),
+      getRunCost: () => Effect.succeed(null),
+    },
+  };
+}
+
+const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
+
+const envLayer = (
+  invoker: WorkflowInvokerService,
+  store: WorkflowStoreService,
+  watch: WatchStoreService = memoryWatchStore().service,
+) =>
+  Layer.mergeAll(
+    Layer.succeed(WorkflowInvoker, invoker),
+    Layer.succeed(WorkflowStore, store),
+    Layer.succeed(WatchStore, watch),
+    Layer.succeed(DaprPublisherTag, stubPublisher),
+  );
 
 // A workflow whose every-minute schedule was saved long ago: always due.
 const dueWorkflow: StoredWorkflow = {
@@ -65,7 +99,7 @@ describe("tickEffect compare-and-set", () => {
 
         yield* Deferred.succeed(gate, void 0);
         const result = yield* Fiber.join(winner);
-        expect(result).toEqual({ fired: [] });
+        expect(result).toMatchObject({ fired: [] });
         expect(scans).toBe(1); // the losing tick never scanned
         expect(yield* Ref.get(ticking)).toBe(false); // flag released for the next tick
       }),
@@ -98,7 +132,7 @@ describe("tickEffect compare-and-set", () => {
         expect(yield* Ref.get(ticking)).toBe(false); // reset ran on the failure path
 
         const second = yield* tickEffect(ticking, undefined).pipe(Effect.provide(env));
-        expect(second).toEqual({ fired: [] });
+        expect(second).toMatchObject({ fired: [] });
       }),
     );
   });
@@ -136,12 +170,58 @@ describe("tickEffect compare-and-set", () => {
         );
 
         const result = yield* tickEffect(ticking, "00-abc-def-01").pipe(Effect.provide(env));
-        expect(result).toEqual({ fired: ["due"] });
+        expect(result).toMatchObject({ fired: ["due"] });
         expect(invoked).toEqual([
           { steps: dueWorkflow.steps, workspaceId: undefined, traceparent: "00-abc-def-01" },
         ]);
         expect(stamped).toHaveLength(1);
         expect(stamped[0]!.key).toBe("due");
+      }),
+    );
+  });
+
+  it("a saved workflow's stored watch policy registers a row on the cron fire (agreement 9)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const ticking = yield* Ref.make(false);
+        const mem = memoryWatchStore();
+        const watched: StoredWorkflow = {
+          ...dueWorkflow,
+          watch: { maxDurationMs: 60_000 },
+        };
+        const env = envLayer(
+          stubInvoker(),
+          stubStore({ listScheduled: () => Effect.succeed([{ key: "sweep", workflow: watched }]) }),
+          mem.service,
+        );
+        const result = yield* tickEffect(ticking, undefined).pipe(Effect.provide(env));
+        expect(result).toMatchObject({ fired: ["sweep"] });
+        // The same tick's scan already saw the fresh row and promoted it to watching
+        // (the stub invoker reports RUNNING) — registration and first observation ride
+        // one tick.
+        expect(mem.rows.get("generated-id")).toMatchObject({
+          status: "watching",
+          policy: { maxDurationMs: 60_000 },
+          meta: { owner: "sweep" },
+        });
+      }),
+    );
+  });
+
+  it("the tick carries the watch-scan report and survives a scan failure", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const ticking = yield* Ref.make(false);
+        const broken: WatchStoreService = {
+          ...memoryWatchStore().service,
+          listRows: () =>
+            Effect.fail(new WorkflowError({ cause: new Error("redis down"), instanceId: "" })),
+        };
+        const env = envLayer(stubInvoker(), stubStore(), broken);
+        const result = yield* tickEffect(ticking, undefined).pipe(Effect.provide(env));
+        // The watch scan's failure lands in the report — never a failed tick (Dapr would
+        // treat a non-2xx as "app has not subscribed").
+        expect(result).toMatchObject({ fired: [], watch: { error: "redis down" } });
       }),
     );
   });
@@ -180,7 +260,7 @@ describe("the cron route's Fastify plugin scope", () => {
       // no payload: Dapr's tick arrives with an empty JSON body
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ fired: [] });
+    expect(res.json()).toMatchObject({ fired: [] });
   });
 
   it("500s in the Fastify default error shape when the scan fails", async () => {

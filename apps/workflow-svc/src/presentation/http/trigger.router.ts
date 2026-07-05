@@ -4,8 +4,8 @@ import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { WorkflowParams, toRequest } from "../../domain/models/workflow.model.ts";
-import { WorkflowInvoker } from "../../domain/ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
+import { invokeWithWatch } from "../../domain/watch-scan.ts";
 import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
 /**
@@ -63,8 +63,12 @@ export const triggerEffect = (
     if (Option.isNone(workflow)) return { skipped: `no saved workflow '${key}'` };
     if (workflow.value.disabled) return { skipped: `workflow '${key}' is disabled` };
 
-    const invoker = yield* WorkflowInvoker;
-    const { instanceId } = yield* invoker.invoke(toRequest(workflow.value, traceparent, params));
+    // Same choke point as the HTTP/cron paths: a stored watch policy registers the row here
+    // (agreement 9 — trigger-fired runs are supervised too).
+    const { instanceId } = yield* invokeWithWatch({
+      ...toRequest(workflow.value, traceparent, params),
+      ...(workflow.value.watch ? { watch: workflow.value.watch, watchMeta: { owner: key } } : {}),
+    });
     return { fired: key, instanceId };
   });
 

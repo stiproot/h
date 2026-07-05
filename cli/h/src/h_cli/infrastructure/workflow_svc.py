@@ -55,10 +55,12 @@ def run_saved(
     params: dict[str, Any] | None = None,
     instance_id: str | None = None,
     fresh: bool = False,
+    watch: dict[str, Any] | None = None,
 ) -> Any:
     """Fire a saved workflow; fire-time params override the stored defaults key-by-key.
     An instance_id gives the run a readable, stable worktree/workspace key. fresh opts in
-    to purging a finished instance under that id and re-running (default: attach)."""
+    to purging a finished instance under that id and re-running (default: attach). A watch
+    policy ({maxDurationMs, retry?}) registers the run with the durable watcher engine."""
     body: dict[str, Any] = {}
     if params:
         body["params"] = params
@@ -66,7 +68,28 @@ def run_saved(
         body["instanceId"] = instance_id
     if fresh:
         body["fresh"] = True
+    if watch:
+        body["watch"] = watch
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def watch_list() -> Any:
+    """The watch registry plus the scan heartbeat (the staleness signal, one call)."""
+    resp = httpx.get(f"{WORKFLOW_URL}/watch/list", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def watch_get(instance_id: str) -> Any:
+    resp = httpx.get(f"{WORKFLOW_URL}/watch/{instance_id}", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def watch_delete(instance_id: str) -> Any:
+    resp = httpx.delete(f"{WORKFLOW_URL}/watch/{instance_id}", timeout=10)
     resp.raise_for_status()
     return resp.json()
 

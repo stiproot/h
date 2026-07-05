@@ -9,6 +9,32 @@ h CLI: the run/invoke shell scripts (`cli/scripts/`), the helm-templated workflo
 (`cli/charts/`), and the `h` command itself (`cli/h/`, Typer + rich, a uv workspace member — `uv
 run h --help`). The two construction strategies co-exist deliberately.
 
+## h primitives (vocabulary)
+
+The standard vocabulary for composing components (adopted 2026-07-05; see
+[docs/plans/watcher-primitive.md](./docs/plans/watcher-primitive.md) for the rulings behind it):
+
+- **Workflow** — a durable step sequence that does work and leaves durable traces (Dapr instance
+  status, run ledger + `run:<id>` mirrors, Zipkin spans, joined on `workflowInstanceId`). It never
+  supervises anything, including itself.
+- **Watcher** — a durable registration (`{subject, policy}`) plus a shared engine that, on a clock,
+  reads a subject's already-persisted operational state, interprets it against the policy, and acts
+  through a closed vocabulary (terminate own subject, record, publish, escalate). Judgment stays
+  agent-side. IMPLEMENTED: the engine lives in workflow-svc (`domain/watch-*.ts`, scan on the
+  workflow-cron-tick), rows are `watch:sub:<instanceId>` written by every fire path; the old
+  in-process babysitter loops (JS + Python) are deleted — `POST /workflow` forwards a `watch`
+  field. Inspect with `h watch list` or `GET /watch/list`.
+- **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
+  `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
+- **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
+  (the `__workflow_index__` pattern): saved workflows, `sweep:*`, `run:*` mirrors, `watch:*`.
+  The convention: a registry prefix names the single component that owns writing it.
+
+A watcher is deliberately a *composition* of the other three — a policy row in a registry,
+evaluated on a trigger's clock, acting on workflows. It gets its own name because supervision
+recurs often enough to deserve one name and one home, not because it is a new runtime concept.
+Watched workflows never depend on their watchers; only judgment consumers read watch rows.
+
 ## App layouts
 
 ```
@@ -56,17 +82,23 @@ apps/workflow-agent/src/                  # workflow-agent (thin wrapper over ag
 apps/workflow-svc/src/
 ├── index.ts                                          # registers workflow + activities + cron route, starts Fastify
 ├── domain/
-│   ├── models/workflow.model.ts                      # WorkflowRequest, StoredWorkflow (+ schedule/disabled/params), WorkflowParams, WorkflowSchedule, toRequest (merges fire-time params over stored defaults)
+│   ├── models/workflow.model.ts                      # WorkflowRequest (+ watch/watchMeta), StoredWorkflow (+ schedule/disabled/params/watch), WorkflowParams, WorkflowSchedule, toRequest (merges fire-time params over stored defaults)
+│   ├── models/watch.model.ts                         # the watcher primitive's shapes: WatchPolicy (maxDurationMs, retry, escalate), WatchRow (epoch-fenced), WatchConfig, WatchLedger
 │   ├── ports/{IWorkflowInvoker,IWorkflowStore}.ts    # outbound ports (invoker: invoke/getStatus/terminate)
+│   ├── ports/IWatchStore.ts                          # watch registry port (rows/index/config/heartbeat/ledger + run-mirror reads for the cost tally)
+│   ├── watch-engine.ts                               # pure decide(row, status, now) → wait|budget-terminate|finalize|retry — unit-tested policy surface
+│   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the one fire choke point) + scanWatchesEffect (per-tick scan: terminate/retry/escalate/cost-tally/publish)
 │   └── scheduling.ts                                 # isDue / assertValidCron (cron-parser) – pure, unit-tested
 ├── presentation/http/
-│   ├── workflow.router.ts                            # POST /workflow/run, /save (accepts schedule+workspaceId+params), /run/:key (body: fire-time params + instanceId/workspaceId/fresh overrides), /terminate/:instanceId
-│   │                                                 # GET /workflow/list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger
+│   ├── workflow.router.ts                            # POST /workflow/run, /save (accepts schedule+workspaceId+params+watch), /run/:key (body: fire-time params + instanceId/workspaceId/fresh/watch overrides), /terminate/:instanceId
+│   │                                                 # GET /workflow/list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger; run routes reply {instanceId, watching}
+│   ├── watch.router.ts                               # GET /watch/list (heartbeat + rows), GET/DELETE /watch/:instanceId — the watch registry's read/delete surface
 │   ├── trigger.router.ts                             # POST /workflow-trigger (pub/sub target) – {key, params} events fire the named saved workflow; payload problems ack, infra failures 500 (redeliver)
-│   └── cron.router.ts                                # POST /workflow-cron-tick (cron binding target) – fires due saved workflows
+│   └── cron.router.ts                                # POST /workflow-cron-tick (cron binding target) – fires due saved workflows, then runs the watch scan (its failure never fails the tick)
 ├── infrastructure/
 │   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper (+ raw-HTTP terminate/purge/status)
 │   ├── dapr-workflow-store.ts                        # saved-workflow store (Redis): save/get/list/listScheduled/markRun
+│   ├── dapr-watch-store.ts                           # watch registry store (Redis): watch:sub:* rows, watch:index, watch:config, watch:__tick__, watch:ledger:<date> — only workflow-svc writes watch:*
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
 │       ├── setup.activity.ts                         # calls /setup on a target agent via Dapr invoke
@@ -90,7 +122,8 @@ apps/workflow-mcp/src/                   # workflow-mcp – MCP server for agent
 ├── infrastructure/dapr-workflow-service.ts  # calls workflow service via Dapr invoke
 └── presentation/http/mcp.router.ts       # GET /sse, POST /messages, GET /dapr/subscribe
                                           # exposes: save_workflow, run_workflow, run_saved_workflow
-                                          #          (all params-aware; run_saved takes instanceId/workspaceId/fresh overrides),
+                                          #          (all params-aware; run tools take a watch policy — durable watcher registration;
+                                          #          run_saved takes instanceId/workspaceId/fresh/watch overrides),
                                           #          list_workflows, get_workflow, get_workflow_status,
                                           #          await_workflow (block until terminal, else TIMEOUT),
                                           #          terminate_workflow (short-circuit a running instance)
@@ -125,8 +158,8 @@ packages/js/agent-server/src/                # shared HTTP contract for agent se
 ├── agent-routes.ts   # registerAgentRoutes – POST /run, POST /setup, GET /dapr/subscribe (workspace dir via resolver, or an explicit cwd e.g. a worktree; /setup idempotent via spec-hash sentinel)
 ├── clone-route.ts    # registerCloneRoute – opt-in POST /clone (shallow git clone into the workspace)
 ├── worktree-route.ts # registerWorktreeRoute – opt-in POST /worktree (git worktree of a pre-cloned repo at a shared, agent-neutral path; idempotent; returns { worktreePath })
-├── workflow-babysitter.ts # WorkflowBabysitter – submit-and-supervise (non-blocking): schedule on workflow-svc via the sidecar, poll status on a cadence, terminate on wall-clock budget breach, publish workflow-events on terminal; plain fetch, injectable for tests
-├── workflow-route.ts # registerWorkflowRoute – the standard agent-service workflow endpoint: POST /workflow {key|steps, params?, instanceId?, workspaceId?, policy?} → 202 {instanceId, watching}; GET /workflow/watches
+├── workflow-babysitter.ts # WorkflowBabysitter – submit-and-FORWARD (post-watcher-cutover): translates policy.maxDurationMs into a watch field on the run body (an explicit watch field wins); supervision is workflow-svc's durable watcher engine, no in-process loop; plain fetch, injectable for tests
+├── workflow-route.ts # registerWorkflowRoute – the standard agent-service workflow endpoint: POST /workflow {key|steps, params?, instanceId?, workspaceId?, policy?|watch?, watchMeta?} → 202 {instanceId, watching}; GET /workflow/watches proxies workflow-svc's /watch/list (durable global truth)
 ├── run-ledger.ts     # startRunLedger – per-run summary.json/events.jsonl/output.txt under AGENT_RUNS_DIR + statestore mirror; toolCalls tally counts tool_use blocks nested in claude-CLI assistant events
 └── runner.ts         # IAgentRunner port (run request → response)
 
@@ -163,7 +196,7 @@ packages/py/agent-server/src/agent_server/   # Python sibling of js/agent-server
 ├── models.py      # AgentRequest, AgentResponse (dataclasses)
 ├── routes.py      # register_agent_routes + granular register_{run,setup,subscribe}_route (FastAPI); /run records the run ledger
 ├── run_ledger.py  # record_run – Python sibling of js run-ledger (summary.json/events.jsonl + statestore mirror)
-├── workflow_route.py  # WorkflowBabysitter + register_workflow_route – Python sibling of js workflow-babysitter/workflow-route (stdlib urllib via asyncio.to_thread; POST /workflow, GET /workflow/watches)
+├── workflow_route.py  # WorkflowBabysitter (submit-and-forward, watcher-engine cutover) + register_workflow_route – Python sibling of js workflow-babysitter/workflow-route (stdlib urllib via asyncio.to_thread; POST /workflow, GET /workflow/watches proxies workflow-svc /watch/list)
 └── runner.py      # IAgentRunner Protocol – run(request, workspace) → AgentResponse
 
 packages/py/agent-core/src/agent_core/       # shared agent machinery (uv workspace member; tests via `uv run --package agent-core pytest`)
@@ -345,11 +378,11 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **Publish mode / families** — `--set publish=true` renders a family with per-run inputs as `{{params.*}}` engine tokens and no instanceId: a parameterized saved workflow. `h workflow publish <family>` saves it; fire with `h workflow run <key> -p k=v [-p spec=@file] [--instance-id readable-id]`, `run_saved_workflow` (MCP), or a `workflow-trigger` event. Params resolve like step results (`{{params.x}}` / `$ref`), seeded under the reserved results id `params` — a step must not use that id. Fire-time params merge over stored defaults key-by-key.
 - **`workflow-trigger` topic (triggers as data)** — workflow-svc subscribes to this single well-known topic; an event `{key, params}` fires the named saved workflow (the pub/sub sibling of `POST /workflow/run/:key`). One topic, not per-family topics, because Dapr subscriptions are declared at sidecar startup. Payload problems (unknown key, disabled, malformed) are *acked* as `{skipped}`; infra failures 500 so Dapr redelivers. The plugin-feedback → plugin-improvement flow is this pattern: a `plugin-improvement` chart family + a trigger event — no domain routes in any agent service.
 - **Re-firing an existing instanceId ATTACHES by default (`fresh` opt-in)** — the invoker reuses a RUNNING/PENDING instance, and since the `fresh` flag landed it also returns a TERMINAL instance as-is instead of purging and re-running it (Dapr durability is the standard; purge-and-rerun was a test-flow convenience). Opt in per fire with `fresh: true` — `h workflow run <key> --fresh`, `h feature run --fresh`, the `fresh` param on `run_workflow`/`run_saved_workflow`, or the field on any `/workflow/run*` body / babysitter submit. A retry that must actually re-execute a FAILED instance under the same id needs `fresh: true`.
-- **Standard `POST /workflow` (the babysitter)** — every agent service registers submit-and-supervise from the shared agent-server packages: `{key|steps, params?, instanceId?, workspaceId?, policy?}` → `202 {instanceId, watching}` immediately; a deterministic background loop polls status, terminates on wall-clock budget breach (default 45 min), and publishes `workflow-events` on terminal. Machines run the loop; agents are only for judgment. Never build orchestration on an agent looping `await_workflow` — a model can abandon the loop (observed: haiku returned after one TIMEOUT). `workflow-agent` is NOT the exclusive workflow entry point.
+- **Standard `POST /workflow` (submit-and-forward) + the watcher engine** — every agent service registers the endpoint from the shared agent-server packages: `{key|steps, params?, instanceId?, workspaceId?, policy?|watch?, watchMeta?}` → `202 {instanceId, watching}` immediately. Supervision is DURABLE and engine-owned (docs/plans/watcher-primitive.md): every workflow-svc fire path (HTTP run routes, trigger events, cron) writes a `watch:sub:<instanceId>` row in the same handler that schedules; the workflow-cron-tick scan (60s) enforces the wall-clock budget (terminate, default 45 min), runs engine-owned retries (`retry: {maxAttempts, fresh}` — re-fires the same id with purge), finalizes outcomes with a cost tally off the `run:` mirrors (zero matches → `costGap`, never a silent $0), writes `watch:ledger:<date>`, and publishes terminal `workflow-events`. Rows are epoch-fenced: any re-fire of an id (including `fresh` without a watch) bumps `epoch` so a stale scan decision no-ops. Kill switch: `state_save watch:config {enabled:false}` (the heartbeat `watch:__tick__` records disarmed vs dead). Escalations (`escalate: {onOutcome, key}`) are fail-closed on `watch:config.maxEngineFiresPerDay`. Machines run the scan; agents are only for judgment — never build orchestration on an agent looping `await_workflow`. `workflow-agent` is NOT the exclusive workflow entry point. Inspect with `h watch list` / `GET /watch/list`.
 - **MCP servers are agent-runtime dependencies** — `dapr-mcp`/`obs-mcp`/`workflow-mcp` down doesn't just blind human observability: agent runs silently lose those tools (observed: a run skipped its `actor_state_set` persistence without erroring because dapr-mcp was down). Workflow task prose that depends on an MCP tool should require the agent to report tool-unavailable explicitly; keep the MCP set running whenever agents run.
 - **Worktree fetch-before-branch** — `addWorktree` in `packages/js/git-core/src/git-client.ts` accepts a `remoteBase` option. When set (and no explicit `baseRef` is given), it fetches `origin/<remoteBase>` before cutting the new branch, so the worktree starts from the latest remote tip rather than the potentially-stale local checkout. The `/worktree` route in `agent-server` defaults `remoteBase` to `"main"` for all worktree-cutting workflows (grooming, feature-request, triage). Pass `remoteBase: ""` explicitly to opt out.
 - **Run ledger is best-effort** — observability must never break a run, so every ledger write (the `AGENT_RUNS_DIR` files and the statestore mirror) swallows errors; the on-disk files are the source of truth. The `runs:index` / `run:<id>` keys follow the flat-keyspace convention so `dapr-mcp` can read them. `obs-mcp` reads Zipkin/Loki over HTTP and the ledger off `AGENT_RUNS_DIR` (fs) — it has **no Dapr sidecar**, so its `--app-port` (8013) is just the MCP listener.
-- **Statestore shared keyspace** — the Redis state store sets `keyPrefix: none`, so keys are global (no app-id prefix). This is deliberate: it lets any service — and `dapr-mcp` — read each other's keys (e.g. `task:…`, `tasks:index`, `__workflow_index__`, saved workflow keys) for dogfooding/inspection. Actor/workflow runtime state uses its own composite keying and is unaffected. With a flat keyspace, avoid key collisions across services (the existing keys are namespaced by convention: `task:`, `feedback:`, `__workflow_index__`, `h-auto:` — the issue-sweep loop's registry, written only by the sweep).
+- **Statestore shared keyspace** — the Redis state store sets `keyPrefix: none`, so keys are global (no app-id prefix). This is deliberate: it lets any service — and `dapr-mcp` — read each other's keys (e.g. `task:…`, `tasks:index`, `__workflow_index__`, saved workflow keys) for dogfooding/inspection. Actor/workflow runtime state uses its own composite keying and is unaffected. With a flat keyspace, avoid key collisions across services — a registry prefix names the single component that owns writing it (the existing keys: `task:`, `feedback:`, `__workflow_index__`, `sweep:` — the issue-sweep loop's registry (renamed from `h-auto:` 2026-07-05), written only by the sweep; `watch:` — the watcher engine's registry (`watch:sub:<instanceId>`, `watch:index`, `watch:config`, `watch:__tick__`, `watch:ledger:<date>`), written ONLY by workflow-svc — one writer per key is a design invariant, everyone else reads).
 - **`docker-compose.local.yml`** — required for local dev (`--profile infra`). Overrides the scheduler's broadcast address to `localhost:50007` so host-side daprd processes can reach it. Without it the scheduler advertises its internal Docker IP, unreachable from the host on macOS. Never use this file with full-Docker profiles — Docker containers resolve `localhost` as their own loopback, not the scheduler container.
 - **`docker compose down -v`** — always pass `-v`. Without it the scheduler's etcd volume persists and can replay a prior workflow on next startup.
 - **Local port allocation** — every `cli/scripts/run-*.sh` pins a unique set of ports (app, `--dapr-http-port`, `--dapr-grpc-port`, `--dapr-internal-grpc-port`) so any combination can run simultaneously without collision; the full map is in `README.md`. `workflow-svc` keeps Dapr gRPC `50001` (the Dapr Workflow SDK's default); all other sidecars pin a distinct `360xx` gRPC port rather than letting the dapr CLI auto-assign — otherwise a concurrently-starting sidecar could grab `50001` before `workflow-svc` and make it fail to bind. Internal gRPC ports are `500xx` (avoiding `50006`/`50007`, the placement/scheduler control plane). `dapr-mcp` additionally runs a second app listener on `ACTOR_APP_PORT` (8012 local / 8010 compose) for actor callbacks — that, not the MCP port, is its Dapr `--app-port`.

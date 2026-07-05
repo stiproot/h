@@ -61,7 +61,7 @@ uv run h workflow run feature -p slug=issue-X -p spec=@toy.md -p createPr=true \
   -p issueNumber=X --instance-id feature-issue-X --agent claude-coder
 
 # 3. Seed the runtime config (dapr MCP state_save, or curl the state API):
-#    key h-auto:config
+#    key sweep:config
 #    {"enabled": true, "maxAttemptsPerIssue": 2, "maxRunsPerDay": 3,
 #     "dailyBudgetUsd": 5, "runBudgetMs": 2400000}
 
@@ -82,23 +82,29 @@ uv run h workflow publish issue-sweep --schedule "*/30 * * * *" \
 
 1. `h workflow publish issue-sweep --schedule "*/30 * * * *" --workspace-id h-issue-sweep
    --disabled` — parks the schedule; honored by the cron and trigger paths.
-2. `state_save h-auto:config {"enabled": false}` — the sweep's own gate 0 stops every tick.
+2. `state_save sweep:config {"enabled": false}` — the sweep's own gate 0 stops every tick.
 3. Remove `agent-approved` labels on GitHub — nothing is eligible to discover.
 
-## Retry semantics
+## Retry semantics (watcher-engine cutover — docs/plans/watcher-primitive.md)
 
-- A FAILED run under the attempt cap goes back to `pending`; the next tick re-dispatches it
-  **with `fresh: true`** (re-firing an existing instanceId otherwise *attaches* — the
-  post-`fresh` default — and would no-op against the failed instance).
-- At the cap (2), the issue is `abandoned` + labeled `agent-needs-human`, with the
-  instanceId in a comment — feed it to `analyze-workflow-run` / `/observe`.
-- A human re-arms with the `agent-retry` label (resets attempts).
+- Mechanical retries are ENGINE-owned now: the sweep's dispatch carries
+  `watch: {maxDurationMs, retry: {maxAttempts, fresh: true}}`, and workflow-svc's scan
+  re-fires a FAILED run under the cap automatically (fresh purge, same instanceId, engine
+  `attempts` on the `watch:sub:feature-issue-<n>` row). The sweep no longer re-dispatches.
+- At the cap, the sweep (reading the watch row) marks the issue `abandoned` + labels
+  `agent-needs-human`, with the instanceId in a comment — feed it to
+  `analyze-workflow-run` / `/observe` / `h watch get <instanceId>`.
+- A human re-arms with the `agent-retry` label; the next sweep dispatch fires with
+  `fresh: true` (a new watch epoch — engine attempts continue, they are monotonic).
 - Retries are cheap: `workspaceId feature-issue-<n>` reuses the worktree and the persisted
   plan file.
+- Watcher kill switch (separate from the sweep's): `state_save watch:config
+  {"enabled": false}` pauses the scan loudly (`watch:__tick__` records disarmed); the sweep's
+  staleness guard then falls back to direct status polling and reports ENGINE STALE.
 
 ## Named residual risks
 
-- Babysitter budget-terminate ends the workflow, not the in-flight `claude` subprocess.
+- Engine budget-terminate ends the workflow, not the in-flight `claude` subprocess.
 - No hard token cap inside h — set a LiteLLM-proxy budget too.
 - Sweep-overlap safety is the concurrency gate + stable instanceIds, not a lock; the 30-min
   cadence makes overlap unlikely, not impossible.

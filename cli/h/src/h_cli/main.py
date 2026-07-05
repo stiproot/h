@@ -7,11 +7,12 @@ demonstrably replaced them.
 
 import typer
 
-from h_cli.commands import feature, workflow
+from h_cli.commands import feature, watch, workflow
 
 app = typer.Typer(
     no_args_is_help=True,
     help="h — the harness CLI (early prototype). Chart-rendered workflows and workflow-svc views.",
 )
 app.add_typer(feature.app, name="feature")
+app.add_typer(watch.app, name="watch")
 app.add_typer(workflow.app, name="workflow")

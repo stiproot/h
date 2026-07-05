@@ -17,8 +17,7 @@ export { WorkflowBabysitter } from "./workflow-babysitter.ts";
 export type {
   BabysitPolicy,
   BabysitterConfig,
-  WatchOutcome,
-  WatchState,
+  WatchPolicy,
   WorkflowSubmit,
 } from "./workflow-babysitter.ts";
 export { registerWorkflowRoute } from "./workflow-route.ts";

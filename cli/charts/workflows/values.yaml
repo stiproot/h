@@ -69,7 +69,7 @@ pluginImprovement:
 # issue-sweep workflow (templates/issue-sweep.yaml): setup → sweep — one judgment tick of the
 # "h builds h" loop (docs/plans/h-builds-h.md). Publish with a cron schedule + a stable
 # workspaceId, disabled until armed. Runtime knobs (enabled, budgets, attempt cap) live in the
-# statestore key h-auto:config, not here.
+# statestore key sweep:config, not here.
 issueSweep:
   # Target GitHub repo (owner/name) whose issue board drives the loop. Required.
   repo: ""

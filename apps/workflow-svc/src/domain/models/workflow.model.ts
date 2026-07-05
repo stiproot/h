@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { WatchPolicy } from "./watch.model.ts";
+
 /**
  * Wire contracts as Schema.Structs with same-name derived types (the `core` pattern).
  * Decode untrusted bodies with `Schema.decodeUnknown`; where the wire has always passed
@@ -40,6 +42,13 @@ export const WorkflowRequest = Schema.Struct({
   // returned as-is (Dapr durability is the standard; purge-and-rerun was a test-flow
   // convenience and must be asked for). RUNNING/PENDING instances are always reused.
   fresh: Schema.optional(Schema.Boolean),
+  // Watcher registration (docs/plans/watcher-primitive.md): when set, the fire path writes a
+  // durable watch:sub:<instanceId> row in the same handler that schedules — supervision is
+  // decoupled from the caller, never from the invocation. The routes strip this field before
+  // handing the request to the workflow runtime.
+  watch: Schema.optional(WatchPolicy),
+  // Opaque passthrough stamped onto the watch row for row consumers (e.g. {owner: "issue-sweep"}).
+  watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
@@ -54,6 +63,9 @@ export const SaveWorkflowRequest = Schema.Struct({
   // Default parameter values for this saved workflow (a "family"); fire-time params override
   // these key-by-key.
   params: Schema.optional(WorkflowParams),
+  // Stored watch policy: every fire of this saved workflow (HTTP, trigger event, cron tick)
+  // registers a watch row — how trigger- and cron-fired runs gain supervision (agreement 9).
+  watch: Schema.optional(WatchPolicy),
 });
 export type SaveWorkflowRequest = Schema.Schema.Type<typeof SaveWorkflowRequest>;
 
@@ -77,6 +89,8 @@ export const StoredWorkflow = Schema.Struct({
   disabled: Schema.optional(Schema.Boolean),
   // Default parameter values; fire-time params override key-by-key (see toRequest).
   params: Schema.optional(WorkflowParams),
+  // Stored watch policy applied on every fire path (see SaveWorkflowRequest.watch).
+  watch: Schema.optional(WatchPolicy),
 });
 export type StoredWorkflow = Schema.Schema.Type<typeof StoredWorkflow>;
 

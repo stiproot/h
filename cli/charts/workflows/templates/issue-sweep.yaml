@@ -2,22 +2,33 @@
 issue-sweep workflow — setup → sweep (one judgment tick of the "h builds h" loop).
 
 One bounded pass over the target repo's issue board (docs/plans/h-builds-h.md): reconcile
-in-flight feature runs, enforce budget/concurrency gates, pick the oldest maintainer-approved
-issue, and dispatch ONE run of the published `feature` family to the coding agent's standard
-POST /workflow (submit-and-babysit). The cron owns the loop (publish this family with a
-schedule); the agent owns only this tick's judgment. Fail-closed: any gate that cannot be
-verified stops the tick with a ===SWEEP REPORT===.
+in-flight feature runs off the watcher engine's durable rows, enforce budget/concurrency
+gates, pick the oldest maintainer-approved issue, and dispatch ONE run of the published
+`feature` family to the coding agent's standard POST /workflow — carrying a `watch` policy,
+so workflow-svc's durable watcher engine (docs/plans/watcher-primitive.md) owns budget
+termination, mechanical retries, and cost accounting. The cron owns the loop (publish this
+family with a schedule); the agent owns only this tick's judgment. Fail-closed: any gate
+that cannot be verified stops the tick with a ===SWEEP REPORT===.
 
-Registry convention (Redis statestore, flat keyspace — the sweep is the only writer):
-  h-auto:config               {enabled, maxAttemptsPerIssue, maxRunsPerDay, dailyBudgetUsd, runBudgetMs}
-  h-auto:issue:<n>            {status: pending|in-flight|done|failed|abandoned, attempts,
-                               instanceId, startedAt, prUrl?, lastError?, updatedAt}
-  h-auto:issues-index         [<n>, ...]
-  h-auto:ledger:<yyyy-mm-dd>  {runsFired, costUsd}
+Statestore conventions (Redis, flat keyspace):
+  Sweep-owned (the sweep is the only writer — carries NO attempts and NO ledger; both are
+  engine-owned now):
+    sweep:config               {enabled, maxAttemptsPerIssue, maxRunsPerDay, dailyBudgetUsd, runBudgetMs}
+    sweep:issue:<n>            {status: pending|in-flight|done|failed|abandoned, instanceId,
+                                 startedAt, prUrl?, lastError?, attempts? (read-only mirror
+                                 of the watch row), updatedAt}
+    sweep:issues-index         [<n>, ...]
+  Engine-owned (workflow-svc's watcher; READ-ONLY for the sweep — never write these):
+    watch:sub:<instanceId>      {instanceId, epoch, attempts, startedAt, policy, status:
+                                 scheduling|watching|finalized, lastStatus, unknownStreak,
+                                 outcome?, costUsd?, costGap?, note?, meta?, updatedAt, endedAt?}
+    watch:index                 [<instanceId>, ...]
+    watch:__tick__              {at, enabled} — scan heartbeat, the staleness guard
+    watch:ledger:<yyyy-mm-dd>   {runsFired, runsFinalized, engineFires, costUsd}
 
 Family config (values, baked at publish): issueSweep.repo (owner/name), label, maxInFlight,
 coderWorkflowUrl (the coding agent service's POST /workflow), models.sweep, dryRun.
-Runtime knobs a human tunes without republishing live in h-auto:config (seeded via dapr-mcp).
+Runtime knobs a human tunes without republishing live in sweep:config (seeded via dapr-mcp).
 
 Publish (then save with a cron schedule + workspaceId, disabled until armed):
   helm template issue-sweep cli/charts/workflows -s templates/issue-sweep.yaml \
@@ -49,47 +60,76 @@ steps:
         through the checklist below IN ORDER and stop at the first gate that fails — when in
         doubt, do nothing and report. You never modify code, never push, never open a PR:
         your only outputs are statestore writes, GitHub labels/comments, and at most ONE
-        dispatched workflow.
+        dispatched workflow. Supervision is NOT your job: every run you dispatch carries a
+        watch policy, and workflow-svc's durable watcher engine owns budget termination,
+        mechanical retries, orphan detection, and cost accounting. You read its rows.
 
-        Registry convention (dapr MCP state tools; you are its only writer):
-          h-auto:config               {enabled, maxAttemptsPerIssue, maxRunsPerDay, dailyBudgetUsd, runBudgetMs}
-          h-auto:issue:<n>            {status: pending|in-flight|done|failed|abandoned, attempts,
-                                       instanceId, startedAt, prUrl?, lastError?, updatedAt}
-          h-auto:issues-index         [<n>, ...]
-          h-auto:ledger:<yyyy-mm-dd>  {runsFired, costUsd}
+        Statestore conventions (dapr MCP state tools):
+          Sweep-owned (you are the only writer; no attempts, no ledger — engine-owned):
+            sweep:config           {enabled, maxAttemptsPerIssue, maxRunsPerDay, dailyBudgetUsd, runBudgetMs}
+            sweep:issue:<n>        {status: pending|in-flight|done|failed|abandoned,
+                                     instanceId, startedAt, prUrl?, lastError?,
+                                     attempts? (read-only mirror of the watch row), updatedAt}
+            sweep:issues-index     [<n>, ...]
+          Engine-owned (READ-ONLY for you — never state_save any watch:* key):
+            watch:sub:<instanceId>  the durable watch row: {instanceId, epoch, attempts,
+                                     startedAt, policy, status: scheduling|watching|finalized,
+                                     lastStatus, unknownStreak, outcome?: completed|failed|
+                                     terminated|budget-terminated|orphaned, costUsd?,
+                                     costGap?, note?, meta?, updatedAt, endedAt?}
+            watch:__tick__          {at, enabled} — the engine's scan heartbeat
+            watch:ledger:<yyyy-mm-dd> {runsFired, runsFinalized, engineFires, costUsd}
 
         0. PREFLIGHT (fail-closed). Verify each tool answers: dapr MCP (state_get), workflows
            MCP (get_workflow_status on any id), obs MCP (runs_list), github MCP (read access
            to {{ $repo }}). Any tool missing or erroring → report TOOLS UNAVAILABLE naming it,
            and STOP — a missing MCP silently drops tools, so absence of a tool is a gate, not
-           an excuse. Then state_get h-auto:config: missing, unparsable, or enabled not
+           an excuse. Then state_get sweep:config: missing, unparsable, or enabled not
            exactly true → report DISABLED and STOP.
 
-        R. RECONCILE. For every entry in h-auto:issues-index whose h-auto:issue:<n> status is
-           in-flight, call get_workflow_status on its instanceId:
-           - COMPLETED: find the run's final output (obs runs_list/run_get for that
-             instanceId) and extract the ===VERIFY=== and ===PR=== markers. A PR URL →
-             update the registry {status: done, prUrl, updatedAt}, add label agent-done to
-             issue #n, and comment the PR link on the issue. No PR (SKIPPED or verify FAIL)
-             → treat as FAILED below, with the marker text as lastError.
-           - FAILED or TERMINATED: if attempts < maxAttemptsPerIssue, set {status: pending,
-             lastError, updatedAt} — step D may re-pick it, and the re-dispatch MUST carry
-             fresh: true (the failed instance must be purged to re-run). Otherwise set
-             {status: abandoned}, add label agent-needs-human, and comment the failure AND
-             the instanceId on the issue (the id joins the run ledger and traces).
-           - RUNNING or PENDING: if now - startedAt exceeds runBudgetMs, terminate_workflow
-             and treat as FAILED above; otherwise leave it.
-           - UNKNOWN: a mark-then-fire crash left a dangling entry — revert to
-             {status: pending, updatedAt}.
-           For each run that turned terminal in this step, total its cost into today's
-           h-auto:ledger:<yyyy-mm-dd>: obs runs_list has NO instance filter yet — call it
-           with a generous limit and keep the records whose runId STARTS WITH
-           "<instanceId>:" (runIds are <group>:<agentId>:<ts>); one record per agent step
-           (plan, implement, verify — each carries costUsd); SUM them all. Records exist for every completed run — if you cannot find any, that is a
-           LEDGER GAP: say so explicitly in the sweep report instead of silently adding 0.
+        R. RECONCILE (read the engine's rows; do not re-derive supervision).
+           STALENESS GUARD first: state_get watch:__tick__. If the key is missing or its
+           `at` is older than 5 minutes, the engine is stale and its rows are NOT truth:
+           for this tick only, fall back to calling get_workflow_status per in-flight
+           instanceId to classify COMPLETED/FAILED/TERMINATED/RUNNING and reconcile the
+           registry, labels, and comments from that — but do not terminate anything, tally
+           any cost, or re-dispatch (those are the engine's jobs; it will catch up) — and
+           put an explicit "ENGINE STALE" line in the sweep report. If the heartbeat says
+           enabled: false, report "WATCHER DISARMED" and use the same fallback. Never
+           trust silently stale rows.
 
-        B. BUDGET (fail-closed). Read today's ledger. runsFired >= maxRunsPerDay, or
-           costUsd >= dailyBudgetUsd → report BUDGET EXHAUSTED and STOP.
+           Otherwise, for every entry in sweep:issues-index whose sweep:issue:<n> status
+           is in-flight, state_get watch:sub:<its instanceId> (e.g.
+           watch:sub:feature-issue-N) and read status/outcome/attempts/costUsd/costGap off
+           the row:
+           - No row at all: a mark-then-fire crash left a dangling registry entry — revert
+             it to {status: pending, updatedAt}.
+           - status scheduling or watching: the run is in flight and supervised — leave it
+             alone. Budget overruns and UNKNOWN streaks are the engine's to handle.
+           - finalized, outcome completed: find the run's final output (obs
+             runs_list/run_get for that instanceId) and extract the ===VERIFY=== and
+             ===PR=== markers. A PR URL → update the registry {status: done, prUrl,
+             updatedAt}, add label agent-done to issue #n, and comment the PR link on the
+             issue. No PR (SKIPPED or verify FAIL) → treat as failed below, with the
+             marker text as lastError.
+           - finalized, outcome failed / budget-terminated / orphaned: the ENGINE owns
+             mechanical retries (the dispatch's watch.retry re-fires the same instanceId
+             with fresh automatically, bumping the row's attempts), so never re-dispatch
+             or flip to pending yourself. Act only when the row's attempts >=
+             maxAttemptsPerIssue: set {status: abandoned, lastError, updatedAt}, add label
+             agent-needs-human, and comment the failure AND the instanceId on the issue
+             (the id joins the watch row, run ledger, and traces). Below the cap, leave
+             the entry in-flight — the engine's retry runs under the same id.
+           When you update a registry entry you may mirror the row's attempts onto it
+           read-only; never compute or increment attempts yourself. Any row with
+           costGap: true → put a "LEDGER GAP <instanceId>" line in the sweep report (the
+           engine found zero run-ledger records at finalize — cost unknown, not $0).
+
+        B. BUDGET (fail-closed). state_get watch:ledger:<today's UTC date, yyyy-mm-dd> —
+           the engine-written daily ledger; never sum run mirrors yourself. A missing key
+           means no watched fire today (all zeroes); an unparsable value → report LEDGER
+           UNREADABLE and STOP. runsFired >= maxRunsPerDay, or costUsd >= dailyBudgetUsd
+           → report BUDGET EXHAUSTED and STOP.
 
         C. CONCURRENCY. Any issue still in-flight after R → report IN FLIGHT and STOP
            (at most {{ $maxInFlight }} issue in flight).
@@ -98,7 +138,8 @@ steps:
            with status done whose PR (github: get the pull request at prUrl) is still OPEN,
            check two conditions: (a) a merge conflict — mergeable false / mergeable_state
            dirty; (b) changes-requested review or human review comments newer than the last
-           agent push. If any candidate exists and its attempts < maxAttemptsPerIssue, pick
+           agent push. If any candidate exists and the attempts on its watch row
+           (state_get watch:sub:<instanceId>; no row → 0) < maxAttemptsPerIssue, pick
            the oldest and compose a REVISE spec containing: the PR URL and branch; the
            instruction to `git fetch origin main` and merge origin/main into the branch,
            resolving conflicts — harness artifacts ALWAYS resolve to main's side, and any
@@ -120,11 +161,13 @@ steps:
            No candidates → continue to D.
 
         D. DISCOVER. List OPEN issues on {{ $repo }} carrying the label '{{ $label }}'.
-           Skip any whose registry status is done or abandoned, any at the attempt cap, and
-           any authored by a bot account — UNLESS the issue also carries the human-applied
-           label 'agent-retry', which re-arms it: reset its attempts to 0 and remove the
-           agent-retry label. Nothing eligible → report NOTHING TO DO and STOP. Otherwise
-           pick the OLDEST eligible issue #N; only now read its title and body.
+           Skip any whose registry status is done or abandoned, any whose watch row's
+           attempts is at the cap, and any authored by a bot account — UNLESS the issue
+           also carries the human-applied label 'agent-retry', which re-arms it: remove
+           the agent-retry label and treat the issue as eligible (its dispatch carries
+           fresh: true; the fresh re-fire starts a new watch epoch). Nothing eligible →
+           report NOTHING TO DO and STOP. Otherwise pick the OLDEST eligible issue #N;
+           only now read its title and body.
 
         S. COMPOSE. Build the feature spec for issue #N: the issue title as the first line,
            then the issue body VERBATIM inside a fenced code block, prefaced with exactly
@@ -140,20 +183,27 @@ steps:
         {{- else }}
 
         M. MARK (before firing, so a crash leaves a reconcilable trace). state_save
-           h-auto:issue:N {status: in-flight, attempts: previous+1, instanceId:
-           "feature-issue-N", startedAt/updatedAt: now}; append N to h-auto:issues-index if
-           absent; add label agent-in-flight to the issue; increment today's ledger runsFired.
+           sweep:issue:N {status: in-flight, instanceId: "feature-issue-N",
+           startedAt/updatedAt: now}; append N to sweep:issues-index if absent; add label
+           agent-in-flight to the issue. Do NOT write an attempts field (attempts live on
+           the engine's watch row) and do NOT touch any ledger (watch:ledger:<date> is
+           engine-written — the watched fire increments runsFired by itself).
 
         F. FIRE. POST (curl via Bash) to {{ $coderUrl }} with JSON body:
              {"key": "feature",
               "params": {"slug": "issue-N", "spec": <the composed spec>,
                          "createPr": "true", "issueNumber": "N"},
               "instanceId": "feature-issue-N", "workspaceId": "feature-issue-N",
-              "fresh": <true only if this is a retry (attempts > 1), else false>,
-              "policy": {"maxDurationMs": <runBudgetMs from h-auto:config>}}
-           Expect HTTP 202. Anything else: revert the registry entry to {status: pending,
-           attempts: previous}, undo the ledger increment, remove the agent-in-flight label,
-           and report DISPATCH FAILED with the response body.
+              "fresh": <true only when re-dispatching over a terminal prior instance
+                        (agent-retry re-arm, or a step-V revise), else false>,
+              "watch": {"maxDurationMs": <runBudgetMs from sweep:config>,
+                        "retry": {"maxAttempts": <maxAttemptsPerIssue from sweep:config>,
+                                  "fresh": true}},
+              "watchMeta": {"owner": "issue-sweep", "issue": "N"}}
+           Expect HTTP 202 — workflow-svc writes the durable watch:sub row in the same
+           handler that schedules, so supervision holds from the 202 on. Anything else:
+           revert the registry entry to {status: pending}, remove the agent-in-flight
+           label, and report DISPATCH FAILED with the response body.
         {{- end }}
 
         Z. REPORT. Whatever happened, end your response with the exact marker

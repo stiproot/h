@@ -1,21 +1,32 @@
 /**
- * The workflow babysitter: submit-and-supervise, non-blocking. `submit` schedules a workflow on
- * workflow-svc (via the Dapr sidecar) and returns the instanceId immediately; a background watch
- * loop then polls the instance on a cadence and enforces a deterministic policy — terminal
- * status → publish a `workflow-events` event and stop; wall-clock budget exceeded → terminate
- * the instance, publish, stop. Machines run the loop; agents are only consulted at decision
- * points (a future escalation hook) — never blocked holding a connection for the workflow's
- * lifetime.
+ * The workflow babysitter, post-watcher-cutover (docs/plans/watcher-primitive.md): submit and
+ * FORWARD, not submit-and-supervise. Supervision is durable and engine-owned in workflow-svc —
+ * the submit translates the caller's policy into a `watch` field on the run body, workflow-svc
+ * writes a `watch:sub:<instanceId>` row in the same handler that schedules, and its cron-tick
+ * scan enforces the budget, retries, and publishes terminal `workflow-events`. The in-process
+ * watch loop this class used to run (poll/terminate/publish, volatile across restarts) is
+ * deleted, not wrapped: rows survive restarts by construction.
  *
  * Deliberately dependency-light (plain fetch, no Effect): it must be embeddable in any agent
- * service regardless of its HTTP stack. Everything is injectable for tests (fetchImpl, cadences).
+ * service regardless of its HTTP stack. Everything is injectable for tests (fetchImpl).
  */
 
 export interface BabysitPolicy {
-  /** Wall-clock budget for the run; on breach the instance is terminated. Default 45 min. */
+  /** Wall-clock budget for the run; on breach the engine terminates the instance. Default 45 min. */
   maxDurationMs?: number;
-  /** Status poll cadence. Default 10s. */
+  /**
+   * @deprecated The engine scans on the workflow-svc cron tick (60s); there is no per-watch
+   * poll cadence anymore. Accepted and ignored so existing submit bodies stay valid.
+   */
   pollIntervalMs?: number;
+}
+
+/** The watcher engine's typed policy (mirrors workflow-svc's WatchPolicy schema). */
+export interface WatchPolicy {
+  maxDurationMs: number;
+  unknownStreakLimit?: number;
+  retry?: { maxAttempts: number; fresh?: boolean; onOutcome?: string[] };
+  escalate?: { onOutcome: string[]; key: string; params?: Record<string, unknown> };
 }
 
 export interface WorkflowSubmit {
@@ -28,37 +39,28 @@ export interface WorkflowSubmit {
   workspaceId?: string;
   /** Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach). */
   fresh?: boolean;
+  /** Legacy shorthand: policy.maxDurationMs becomes watch.maxDurationMs when no watch is given. */
   policy?: BabysitPolicy;
-}
-
-export type WatchOutcome = "completed" | "failed" | "terminated" | "budget-terminated";
-
-export interface WatchState {
-  instanceId: string;
-  startedAt: string;
-  lastStatus: string;
-  outcome?: WatchOutcome;
-  endedAt?: string;
+  /** Full watcher policy, forwarded verbatim to workflow-svc; wins over `policy`. */
+  watch?: WatchPolicy;
+  /** Opaque passthrough stamped onto the watch row (e.g. { owner: "issue-sweep" }). */
+  watchMeta?: Record<string, unknown>;
 }
 
 export interface BabysitterConfig {
-  /** Identity stamped on published events (which agent service was watching). */
+  /** Identity stamped onto watch rows via watchMeta when the caller provides none. */
   agentId: string;
   /** Dapr sidecar HTTP port; defaults to DAPR_HTTP_PORT or 3500. */
   daprHttpPort?: string;
   workflowAppId?: string;
-  pubsubName?: string;
-  /** Topic terminal/escalation events are published to. */
-  eventsTopic?: string;
   defaultPolicy?: BabysitPolicy;
   fetchImpl?: typeof fetch;
   onLog?: (msg: string) => void;
 }
 
-const TERMINAL = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
+const DEFAULT_BUDGET_MS = 45 * 60_000;
 
 export class WorkflowBabysitter {
-  private readonly watches = new Map<string, WatchState>();
   private readonly cfg: Required<Omit<BabysitterConfig, "fetchImpl" | "onLog" | "defaultPolicy">> &
     Pick<BabysitterConfig, "defaultPolicy">;
   private readonly fetchImpl: typeof fetch;
@@ -69,8 +71,6 @@ export class WorkflowBabysitter {
       agentId: config.agentId,
       daprHttpPort: config.daprHttpPort ?? process.env.DAPR_HTTP_PORT ?? "3500",
       workflowAppId: config.workflowAppId ?? "workflow-svc",
-      pubsubName: config.pubsubName ?? "pubsub",
-      eventsTopic: config.eventsTopic ?? "workflow-events",
       defaultPolicy: config.defaultPolicy,
     };
     this.fetchImpl = config.fetchImpl ?? fetch;
@@ -81,83 +81,47 @@ export class WorkflowBabysitter {
     return `http://localhost:${this.cfg.daprHttpPort}/v1.0/invoke/${this.cfg.workflowAppId}/method/${method}`;
   }
 
-  /** Schedule the workflow and start the watch loop; resolves as soon as the run is scheduled. */
-  async submit(submit: WorkflowSubmit): Promise<{ instanceId: string }> {
+  /**
+   * Schedule the workflow with a durable watch registration; resolves as soon as the run is
+   * scheduled. `watching` is workflow-svc's flag: true means the watch row is durably
+   * registered (supervision survives restarts), not that a process is looping.
+   */
+  async submit(submit: WorkflowSubmit): Promise<{ instanceId: string; watching: boolean }> {
     if (!submit.key && !submit.steps) throw new Error("submit needs a key or steps");
-    const scheduled = submit.key
-      ? await this.post(`workflow/run/${encodeURIComponent(submit.key)}`, {
-          ...(submit.params ? { params: submit.params } : {}),
-          ...(submit.instanceId ? { instanceId: submit.instanceId } : {}),
-          ...(submit.workspaceId ? { workspaceId: submit.workspaceId } : {}),
-          ...(submit.fresh !== undefined ? { fresh: submit.fresh } : {}),
-        })
-      : await this.post("workflow/run", {
-          steps: submit.steps,
-          ...(submit.params ? { params: submit.params } : {}),
-          ...(submit.instanceId ? { instanceId: submit.instanceId } : {}),
-          ...(submit.workspaceId ? { workspaceId: submit.workspaceId } : {}),
-          ...(submit.fresh !== undefined ? { fresh: submit.fresh } : {}),
-        });
-    const { instanceId } = scheduled as { instanceId: string };
-    const state: WatchState = {
-      instanceId,
-      startedAt: new Date().toISOString(),
-      lastStatus: "SCHEDULED",
+    const watch: WatchPolicy = submit.watch ?? {
+      maxDurationMs:
+        submit.policy?.maxDurationMs ?? this.cfg.defaultPolicy?.maxDurationMs ?? DEFAULT_BUDGET_MS,
     };
-    this.watches.set(instanceId, state);
-    // Fire-and-forget: the watch loop owns its own lifetime; a watch failure must never
-    // propagate into the submitting request.
-    void this.watch(state, { ...this.cfg.defaultPolicy, ...submit.policy }).catch((err) => {
-      this.onLog(`babysitter | watch ${instanceId} died: ${String(err)}`);
-    });
-    return { instanceId };
+    const body = {
+      ...(submit.steps ? { steps: submit.steps } : {}),
+      ...(submit.params ? { params: submit.params } : {}),
+      ...(submit.instanceId ? { instanceId: submit.instanceId } : {}),
+      ...(submit.workspaceId ? { workspaceId: submit.workspaceId } : {}),
+      ...(submit.fresh !== undefined ? { fresh: submit.fresh } : {}),
+      watch,
+      watchMeta: submit.watchMeta ?? { owner: this.cfg.agentId },
+    };
+    const method = submit.key ? `workflow/run/${encodeURIComponent(submit.key)}` : "workflow/run";
+    const scheduled = (await this.post(method, body)) as {
+      instanceId: string;
+      watching?: boolean;
+    };
+    const watching = scheduled.watching === true;
+    if (!watching) this.onLog(`babysitter | ${scheduled.instanceId} scheduled but not watching`);
+    return { instanceId: scheduled.instanceId, watching };
   }
 
-  /** Current watch states (in-process; restarts forget past watches — MVP). */
-  list(): WatchState[] {
-    return [...this.watches.values()];
-  }
-
-  private async watch(state: WatchState, policy: BabysitPolicy): Promise<void> {
-    const pollMs = policy.pollIntervalMs ?? 10_000;
-    const budgetMs = policy.maxDurationMs ?? 45 * 60_000;
-    const deadline = Date.now() + budgetMs;
-    for (;;) {
-      await new Promise((r) => setTimeout(r, pollMs));
-      const status = await this.getStatus(state.instanceId);
-      state.lastStatus = status;
-      if (TERMINAL.has(status)) {
-        state.outcome = status.toLowerCase() as WatchOutcome;
-        state.endedAt = new Date().toISOString();
-        await this.publishEvent(state, status);
-        return;
-      }
-      if (Date.now() >= deadline) {
-        this.onLog(`babysitter | ${state.instanceId} exceeded ${budgetMs}ms budget — terminating`);
-        await this.post(`workflow/terminate/${encodeURIComponent(state.instanceId)}`, {}).catch(
-          () => {},
-        );
-        state.outcome = "budget-terminated";
-        state.endedAt = new Date().toISOString();
-        await this.publishEvent(state, "TERMINATED");
-        return;
-      }
+  /**
+   * The durable watch table, read from workflow-svc's registry: `{ heartbeat, watches }`.
+   * Global truth — includes watches registered by any caller, and survives every restart.
+   */
+  async list(): Promise<unknown> {
+    const res = await this.fetchImpl(this.invokeUrl("watch/list"));
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`workflow-svc watch/list failed with ${res.status}: ${text}`);
     }
-  }
-
-  private async getStatus(instanceId: string): Promise<string> {
-    try {
-      const res = await this.fetchImpl(
-        this.invokeUrl(`workflow/status/${encodeURIComponent(instanceId)}`),
-      );
-      if (!res.ok) return "UNKNOWN";
-      const body = (await res.json()) as { runtimeStatus?: string };
-      return body.runtimeStatus ?? "UNKNOWN";
-    } catch {
-      // A transient sidecar/svc outage reads as UNKNOWN and the loop keeps polling —
-      // supervision must outlive the infra hiccups it exists to catch.
-      return "UNKNOWN";
-    }
+    return res.json();
   }
 
   private async post(method: string, body: unknown): Promise<unknown> {
@@ -171,24 +135,5 @@ export class WorkflowBabysitter {
       throw new Error(`workflow-svc ${method} failed with ${res.status}: ${text}`);
     }
     return res.json();
-  }
-
-  private async publishEvent(state: WatchState, status: string): Promise<void> {
-    const url = `http://localhost:${this.cfg.daprHttpPort}/v1.0/publish/${this.cfg.pubsubName}/${this.cfg.eventsTopic}`;
-    await this.fetchImpl(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instanceId: state.instanceId,
-        outcome: state.outcome,
-        runtimeStatus: status,
-        watcherAgentId: this.cfg.agentId,
-        startedAt: state.startedAt,
-        endedAt: state.endedAt,
-      }),
-    }).catch((err: unknown) => {
-      // Event emission is best-effort observability — never fail the watch over it.
-      this.onLog(`babysitter | publish for ${state.instanceId} failed: ${String(err)}`);
-    });
   }
 }

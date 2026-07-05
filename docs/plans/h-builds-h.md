@@ -284,3 +284,11 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
   service + run script + .mcp.coder.json). Runbook: docs/h-builds-h-runbook.md. Outstanding:
   phase-0 GitHub config (human), publish/seed/arm (stack), review-comment resolution in the
   sweep prompt, phase-4 backlog.
+
+- 2026-07-05 — **registry renamed `h-auto:*` → `sweep:*`** (canonical owner-named prefixes,
+  see docs/plans/watcher-primitive.md §1 and its progress log). Same schema, new keys:
+  `sweep:config`, `sweep:issue:<n>`, `sweep:issues-index`. The D4 ruling text above records
+  the original name. NOTE this landed together with the watcher-engine cutover: attempts and
+  the day ledger are no longer in this registry at all — attempts live on the engine's
+  `watch:sub:feature-issue-<n>` row, spend lives in `watch:ledger:<date>`, and gate B reads
+  the latter. Live Redis keys copied over; old `h-auto:*` keys left in place as inert history.

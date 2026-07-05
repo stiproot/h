@@ -265,31 +265,34 @@ the wire boundary. See [cli/README.md](./cli/README.md).
 The `h` CLI supersedes both scripts:
 
 - `h feature run <spec> --agent claude-agent` — render, then submit the definition to that agent
-  service's standard `POST /workflow` (submit-and-babysit, **non-blocking**: 202 with the
-  instanceId immediately; the agent's babysitter supervises — terminal `workflow-events` or
-  budget-terminate). Without `--agent`, the legacy blocking workflow-agent path runs.
+  service's standard `POST /workflow` (submit-and-forward, **non-blocking**: 202 with the
+  instanceId immediately; supervision is the durable watcher engine in workflow-svc — a
+  `watch:sub:<instanceId>` row, budget-terminate/retry on the cron-tick scan, terminal
+  `workflow-events`; see `docs/plans/watcher-primitive.md` and `h watch list`). Without
+  `--agent`, the legacy blocking workflow-agent path runs.
 - `h workflow publish feature` — render in publish mode ({{params.slug}}/{{params.spec}} slots
   open, family config baked from values) and save as a reusable *family*; fire it with
   `h workflow run feature -p slug=… -p spec=@file.md [--instance-id feature-<slug>] [--agent …]`,
   the `run_saved_workflow` MCP tool, or a `workflow-trigger` pub/sub event `{key, params}`.
 
-See `docs/plans/workflow-unification.md` for the architecture (families, triggers-as-data, the
-babysitter) and its progress log.
+See `docs/plans/workflow-unification.md` for the architecture (families, triggers-as-data) and
+its progress log, and `docs/plans/watcher-primitive.md` for the watcher engine that replaced the
+in-process babysitter loops.
 
 ### Issue sweep (issue-sweep) — the h-builds-h loop
 
 One judgment tick of the self-build loop (`docs/plans/h-builds-h.md`, operate via
 `docs/h-builds-h-runbook.md`): reconcile in-flight `feature-issue-<n>` runs, enforce
-budget/concurrency gates from the `h-auto:config` statestore key, pick the oldest OPEN issue
+budget/concurrency gates from the `sweep:config` statestore key, pick the oldest OPEN issue
 labeled `agent-approved`, and dispatch ONE `feature` run (params `slug`/`spec`/`createPr`/
 `issueNumber`, `fresh: true` on retries) to the coding agent's `POST /workflow`. Publish with a
 cron schedule + `--workspace-id h-issue-sweep` (start `--disabled`); the sweep agent is the only
-writer of the `h-auto:*` registry. `issueSweep.dryRun` renders a tick that reports what it would
+writer of the `sweep:*` registry. `issueSweep.dryRun` renders a tick that reports what it would
 dispatch and touches nothing.
 
 **Chart:** `cli/charts/workflows/templates/issue-sweep.yaml`
 **Config:** `issueSweep.*` values (repo, label, coderWorkflowUrl, maxInFlight, models.sweep);
-runtime knobs in `h-auto:config`.
+runtime knobs in `sweep:config`.
 
 ---
 

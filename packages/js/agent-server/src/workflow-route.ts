@@ -3,13 +3,14 @@ import type { FastifyInstance } from "fastify";
 import type { WorkflowBabysitter, WorkflowSubmit } from "./workflow-babysitter.ts";
 
 /**
- * The standard agent-service workflow endpoint: "invoke and babysit this workflow".
- * Non-blocking — replies 202 with the instanceId as soon as the run is scheduled; the
- * babysitter's background loop supervises it (see workflow-babysitter.ts). This is the shared
- * contract that makes any agent service a workflow entry point (workflow-agent is no longer
- * the exclusive one); the CLI's `--agent` flag and other agents target it uniformly.
+ * The standard agent-service workflow endpoint: "invoke this workflow with a durable watch".
+ * Non-blocking — replies 202 with the instanceId as soon as the run is scheduled; supervision
+ * is the watcher engine's job inside workflow-svc (see workflow-babysitter.ts). This is the
+ * shared contract that makes any agent service a workflow entry point; the CLI's `--agent`
+ * flag and other agents target it uniformly.
  *
- * GET /workflow/watches exposes the in-process watch table for inspection.
+ * GET /workflow/watches proxies workflow-svc's durable watch registry — global truth that
+ * survives restarts, unlike the in-process table it used to expose.
  */
 export function registerWorkflowRoute(
   fastify: FastifyInstance,
@@ -21,14 +22,18 @@ export function registerWorkflowRoute(
       return reply.status(400).send({ error: "body needs a saved-workflow key or inline steps" });
     }
     try {
-      const { instanceId } = await babysitter.submit(body);
-      return reply.status(202).send({ instanceId, watching: true });
+      const { instanceId, watching } = await babysitter.submit(body);
+      return reply.status(202).send({ instanceId, watching });
     } catch (err) {
       return reply.status(502).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
   fastify.get("/workflow/watches", async (_request, reply) => {
-    return reply.send(babysitter.list());
+    try {
+      return reply.send(await babysitter.list());
+    } catch (err) {
+      return reply.status(502).send({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 }

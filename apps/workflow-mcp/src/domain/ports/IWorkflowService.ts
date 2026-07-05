@@ -30,6 +30,16 @@ const paramsAnnotation = {
     'Named parameters resolved into step inputs: reference them as {{params.x}} inside a string, or {"$ref": "params.x"} for a whole value.',
 };
 
+const watchAnnotation = {
+  description:
+    'Optional watcher policy: workflow-svc registers a durable watch on the run (budget-terminate, retry, terminal workflow-events). Shape: {"maxDurationMs": number, "retry": {"maxAttempts": number, "fresh": boolean}}. A saved workflow may carry a stored policy; this overrides it.',
+};
+
+// Loosely typed on this wire (a record, not a struct): workflow-svc Schema-validates the
+// policy at its own boundary, and duplicating the full WatchPolicy struct here would drift.
+export const WatchPolicyInput = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+export type WatchPolicyInput = Schema.Schema.Type<typeof WatchPolicyInput>;
+
 export const WorkflowRequest = Schema.Struct({
   steps: Schema.Array(StepDefinition).annotations({
     description: "Ordered list of step definitions",
@@ -49,6 +59,7 @@ export const WorkflowRequest = Schema.Struct({
         "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
     }),
   ),
+  watch: Schema.optional(WatchPolicyInput.annotations(watchAnnotation)),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
@@ -87,7 +98,12 @@ export class WorkflowService extends Context.Tag("WorkflowService")<
     readonly runByKey: (
       key: string,
       params?: WorkflowParams,
-      overrides?: { instanceId?: string; workspaceId?: string; fresh?: boolean },
+      overrides?: {
+        instanceId?: string;
+        workspaceId?: string;
+        fresh?: boolean;
+        watch?: WatchPolicyInput;
+      },
     ) => Effect.Effect<{ instanceId: string }, WorkflowError>;
     readonly list: () => Effect.Effect<{ keys: readonly string[] }, WorkflowError>;
     readonly getByKey: (

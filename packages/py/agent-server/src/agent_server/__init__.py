@@ -12,7 +12,6 @@ from agent_server.run_ledger import record_run
 from agent_server.runner import IAgentRunner
 from agent_server.workflow_route import (
     BabysitPolicy,
-    WatchState,
     WorkflowBabysitter,
     WorkflowSubmit,
     register_workflow_route,
@@ -26,7 +25,6 @@ __all__ = [
     "RunRequest",
     "SetupItem",
     "SetupRequest",
-    "WatchState",
     "WorkflowBabysitter",
     "WorkflowSubmit",
     "record_run",

@@ -14,6 +14,7 @@ import {
 
 import {
   SaveWorkflowRequest,
+  WatchPolicyInput,
   WorkflowParams,
   WorkflowRequest,
   WorkflowService,
@@ -49,6 +50,12 @@ export const RunSavedWorkflowInput = Schema.Struct({
     Schema.Boolean.annotations({
       description:
         "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
+    }),
+  ),
+  watch: Schema.optional(
+    WatchPolicyInput.annotations({
+      description:
+        'Optional watcher policy: workflow-svc registers a durable watch on the run (budget-terminate, retry, terminal workflow-events). Shape: {"maxDurationMs": number, "retry": {"maxAttempts": number, "fresh": boolean}}. A saved workflow may carry a stored policy; this overrides it.',
     }),
   ),
 });
@@ -151,6 +158,11 @@ export const TOOL_DEFINITIONS = [
           description:
             "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
         },
+        watch: {
+          type: "object",
+          description:
+            'Optional watcher policy: workflow-svc registers a durable watch on the run (budget-terminate, retry, terminal workflow-events). Shape: {"maxDurationMs": number, "retry": {"maxAttempts": number, "fresh": boolean}}. A saved workflow may carry a stored policy; this overrides it.',
+        },
       },
       required: ["steps"],
     },
@@ -181,6 +193,11 @@ export const TOOL_DEFINITIONS = [
           type: "boolean",
           description:
             "Opt-in re-run: purge a FINISHED instance under the given instanceId and run it again. Default (false) attaches to the existing instance without re-running.",
+        },
+        watch: {
+          type: "object",
+          description:
+            'Optional watcher policy: workflow-svc registers a durable watch on the run (budget-terminate, retry, terminal workflow-events). Shape: {"maxDurationMs": number, "retry": {"maxAttempts": number, "fresh": boolean}}. A saved workflow may carry a stored policy; this overrides it.',
         },
       },
       required: ["key"],
@@ -319,6 +336,7 @@ export const toolHandlers: Record<
           instanceId: input.instanceId,
           workspaceId: input.workspaceId,
           fresh: input.fresh,
+          watch: input.watch,
         }),
       );
     }).pipe(catchToolErrors("run_saved_workflow")),

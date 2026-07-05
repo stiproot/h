@@ -1,9 +1,12 @@
 import { WorkflowError } from "core";
+import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -11,6 +14,22 @@ import {
 import { WorkflowStore, type WorkflowStoreService } from "../../domain/ports/IWorkflowStore.ts";
 import { registerTriggerRoutes } from "./trigger.router.ts";
 import type { WorkflowRoutesRuntime } from "./workflow.router.ts";
+
+const stubWatchStore = (): WatchStoreService => ({
+  getRow: () => Effect.succeed(Option.none()),
+  listRows: () => Effect.succeed([]),
+  saveRow: () => Effect.void,
+  deleteRow: () => Effect.void,
+  getConfig: () => Effect.succeed(Option.none()),
+  getHeartbeat: () => Effect.succeed(Option.none()),
+  heartbeat: () => Effect.void,
+  getLedger: () => Effect.succeed(emptyLedger),
+  bumpLedger: () => Effect.void,
+  listRunKeys: () => Effect.succeed([]),
+  getRunCost: () => Effect.succeed(null),
+});
+
+const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
@@ -38,7 +57,12 @@ async function makeApp(
   store: WorkflowStoreService,
 ): Promise<FastifyInstance> {
   const runtime: WorkflowRoutesRuntime = ManagedRuntime.make(
-    Layer.mergeAll(Layer.succeed(WorkflowInvoker, invoker), Layer.succeed(WorkflowStore, store)),
+    Layer.mergeAll(
+      Layer.succeed(WorkflowInvoker, invoker),
+      Layer.succeed(WorkflowStore, store),
+      Layer.succeed(WatchStore, stubWatchStore()),
+      Layer.succeed(DaprPublisherTag, stubPublisher),
+    ),
   );
   const app = Fastify();
   registerTriggerRoutes(app, runtime);

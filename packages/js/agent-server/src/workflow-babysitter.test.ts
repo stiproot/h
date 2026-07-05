@@ -13,106 +13,112 @@ const json = (value: unknown) =>
 /** A scripted fetch: routes by URL substring, records every call. */
 function scriptedFetch(script: {
   runResult?: unknown;
-  statuses?: string[];
+  watchList?: unknown;
   calls: Call[];
 }): typeof fetch {
-  let statusIdx = 0;
   return (async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url);
     script.calls.push({ url: u, init });
-    if (u.includes("/method/workflow/run")) return json(script.runResult ?? { instanceId: "wf-1" });
-    if (u.includes("/method/workflow/status/")) {
-      const statuses = script.statuses ?? ["COMPLETED"];
-      const status = statuses[Math.min(statusIdx, statuses.length - 1)]!;
-      statusIdx += 1;
-      return json({ instanceId: "wf-1", runtimeStatus: status });
+    if (u.includes("/method/workflow/run")) {
+      return json(script.runResult ?? { instanceId: "wf-1", watching: true });
     }
-    if (u.includes("/method/workflow/terminate/")) return json({ instanceId: "wf-1" });
-    if (u.includes("/v1.0/publish/")) return new Response(null, { status: 204 });
+    if (u.includes("/method/watch/list")) {
+      return json(script.watchList ?? { heartbeat: null, watches: [] });
+    }
     throw new Error(`unscripted fetch: ${u}`);
   }) as typeof fetch;
 }
 
-const fastPolicy = { pollIntervalMs: 2, maxDurationMs: 500 };
-
-async function until(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error("condition not reached");
-    await new Promise((r) => setTimeout(r, 2));
-  }
-}
-
-describe("WorkflowBabysitter", () => {
-  it("submits by key with params and returns the instanceId immediately", async () => {
+describe("WorkflowBabysitter (forward-with-watch-field)", () => {
+  it("submits by key and translates policy.maxDurationMs into the watch field", async () => {
     const calls: Call[] = [];
     const sitter = new WorkflowBabysitter({
       agentId: "test-agent",
       daprHttpPort: "3999",
       fetchImpl: scriptedFetch({ calls }),
-      defaultPolicy: fastPolicy,
     });
-    const { instanceId } = await sitter.submit({ key: "feature", params: { slug: "x" } });
-    expect(instanceId).toBe("wf-1");
+    const result = await sitter.submit({
+      key: "feature",
+      params: { slug: "x" },
+      policy: { maxDurationMs: 600_000 },
+    });
+    expect(result).toEqual({ instanceId: "wf-1", watching: true });
+    expect(calls).toHaveLength(1); // one schedule call, no polling — supervision is engine-owned
     expect(calls[0]!.url).toContain("/v1.0/invoke/workflow-svc/method/workflow/run/feature");
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({ params: { slug: "x" } });
-    await until(() => sitter.list()[0]?.outcome !== undefined);
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      params: { slug: "x" },
+      watch: { maxDurationMs: 600_000 },
+      watchMeta: { owner: "test-agent" },
+    });
   });
 
-  it("watches to a terminal status and publishes a workflow-events event", async () => {
+  it("defaults the watch budget to 45 minutes when no policy is given", async () => {
     const calls: Call[] = [];
     const sitter = new WorkflowBabysitter({
       agentId: "test-agent",
       daprHttpPort: "3999",
-      fetchImpl: scriptedFetch({ calls, statuses: ["RUNNING", "RUNNING", "COMPLETED"] }),
-      defaultPolicy: fastPolicy,
+      fetchImpl: scriptedFetch({ calls }),
     });
     await sitter.submit({ steps: [{ activity: "setup", input: {} }] });
-    await until(() => sitter.list()[0]?.outcome === "completed");
-    const publish = calls.find((c) => c.url.includes("/v1.0/publish/pubsub/workflow-events"));
-    expect(publish).toBeDefined();
-    expect(JSON.parse(publish!.init!.body as string)).toMatchObject({
-      instanceId: "wf-1",
-      outcome: "completed",
-      runtimeStatus: "COMPLETED",
-      watcherAgentId: "test-agent",
-    });
+    const body = JSON.parse(calls[0]!.init!.body as string);
+    expect(body.watch).toEqual({ maxDurationMs: 45 * 60_000 });
+    expect(calls[0]!.url).toContain("/method/workflow/run");
   });
 
-  it("terminates a run that exceeds its wall-clock budget", async () => {
+  it("forwards an explicit watch policy verbatim — it wins over policy", async () => {
     const calls: Call[] = [];
     const sitter = new WorkflowBabysitter({
       agentId: "test-agent",
       daprHttpPort: "3999",
-      fetchImpl: scriptedFetch({ calls, statuses: ["RUNNING"] }), // never terminal
+      fetchImpl: scriptedFetch({ calls }),
     });
-    await sitter.submit({ key: "feature", policy: { pollIntervalMs: 2, maxDurationMs: 10 } });
-    await until(() => sitter.list()[0]?.outcome === "budget-terminated");
-    expect(calls.some((c) => c.url.includes("/method/workflow/terminate/wf-1"))).toBe(true);
-    const publish = calls.find((c) => c.url.includes("/v1.0/publish/"));
-    expect(JSON.parse(publish!.init!.body as string)).toMatchObject({
-      outcome: "budget-terminated",
+    const watch = {
+      maxDurationMs: 2_400_000,
+      retry: { maxAttempts: 2, fresh: true },
+    };
+    await sitter.submit({
+      key: "feature",
+      instanceId: "feature-issue-9",
+      fresh: true,
+      policy: { maxDurationMs: 1 }, // ignored: explicit watch wins
+      watch,
+      watchMeta: { owner: "issue-sweep", issue: "9" },
+    });
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      instanceId: "feature-issue-9",
+      fresh: true,
+      watch,
+      watchMeta: { owner: "issue-sweep", issue: "9" },
     });
   });
 
-  it("keeps polling through transient status failures (UNKNOWN is not terminal)", async () => {
+  it("reports watching: false when workflow-svc did not register a watch", async () => {
     const calls: Call[] = [];
-    let flaky = 0;
-    const inner = scriptedFetch({ calls, statuses: ["RUNNING", "COMPLETED"] });
-    const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
-      if (String(url).includes("/method/workflow/status/") && flaky++ === 0) {
-        throw new Error("sidecar hiccup");
-      }
-      return inner(url, init);
-    }) as typeof fetch;
+    const logs: string[] = [];
     const sitter = new WorkflowBabysitter({
       agentId: "test-agent",
       daprHttpPort: "3999",
-      fetchImpl,
-      defaultPolicy: fastPolicy,
+      fetchImpl: scriptedFetch({ calls, runResult: { instanceId: "wf-1" } }),
+      onLog: (msg) => logs.push(msg),
     });
-    await sitter.submit({ key: "feature" });
-    await until(() => sitter.list()[0]?.outcome === "completed");
+    const result = await sitter.submit({ key: "feature" });
+    expect(result).toEqual({ instanceId: "wf-1", watching: false });
+    expect(logs.some((l) => l.includes("not watching"))).toBe(true);
+  });
+
+  it("list() proxies workflow-svc's durable watch registry", async () => {
+    const calls: Call[] = [];
+    const watchList = {
+      heartbeat: { at: "2026-07-05T09:00:00Z", enabled: true },
+      watches: [{ instanceId: "wf-1", status: "watching" }],
+    };
+    const sitter = new WorkflowBabysitter({
+      agentId: "test-agent",
+      daprHttpPort: "3999",
+      fetchImpl: scriptedFetch({ calls, watchList }),
+    });
+    expect(await sitter.list()).toEqual(watchList);
+    expect(calls[0]!.url).toContain("/v1.0/invoke/workflow-svc/method/watch/list");
   });
 
   it("rejects a submit with neither key nor steps", async () => {
@@ -123,13 +129,19 @@ describe("WorkflowBabysitter", () => {
     await expect(sitter.submit({})).rejects.toThrow("submit needs a key or steps");
   });
 
-  it("surfaces a scheduling failure to the submitter (no watch started)", async () => {
+  it("surfaces a scheduling failure to the submitter", async () => {
     const fetchImpl = (async () =>
       new Response("boom", { status: 500 })) as unknown as typeof fetch;
     const sitter = new WorkflowBabysitter({ agentId: "test-agent", fetchImpl });
     await expect(sitter.submit({ key: "feature" })).rejects.toThrow(
       "workflow-svc workflow/run/feature failed with 500",
     );
-    expect(sitter.list()).toEqual([]);
+  });
+
+  it("surfaces a watch-list failure (the route maps it to 502)", async () => {
+    const fetchImpl = (async () =>
+      new Response("down", { status: 503 })) as unknown as typeof fetch;
+    const sitter = new WorkflowBabysitter({ agentId: "test-agent", fetchImpl });
+    await expect(sitter.list()).rejects.toThrow("workflow-svc watch/list failed with 503");
   });
 });

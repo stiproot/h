@@ -12,6 +12,9 @@ import {
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { activeTraceparent, withAmbientParent, withServerSpan } from "telemetry";
 
+import type { DaprPublisherTag } from "core-dapr";
+
+import { WatchPolicy } from "../../domain/models/watch.model.ts";
 import {
   SaveWorkflowRequest,
   WorkflowParams,
@@ -19,16 +22,23 @@ import {
   toRequest,
 } from "../../domain/models/workflow.model.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
+import { WatchStore } from "../../domain/ports/IWatchStore.ts";
 import { WorkflowInvoker } from "../../domain/ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
+import { invokeWithWatch } from "../../domain/watch-scan.ts";
 
 /** Everything the workflow routes yield from the shared runtime. */
-export type WorkflowRoutesEnv = WorkflowInvoker | WorkflowStore;
+export type WorkflowRoutesEnv = WorkflowInvoker | WorkflowStore | WatchStore | DaprPublisherTag;
 
 export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutesEnv, never>;
 
 /** A saved workflow key that resolved to nothing — mapped to the legacy 404 body. */
 class WorkflowNotFoundError extends Data.TaggedError("WorkflowNotFoundError") {}
+
+/** A generic 404 with its own body text (used by the watch routes). */
+export class NotFoundError extends Data.TaggedError("NotFoundError")<{
+  readonly message: string;
+}> {}
 
 /**
  * Optional body of POST /workflow/run/:key — fire-time params for the saved workflow, plus an
@@ -41,6 +51,9 @@ const RunSavedBody = Schema.Struct({
   workspaceId: Schema.optional(Schema.String),
   // Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach).
   fresh: Schema.optional(Schema.Boolean),
+  // Fire-time watch policy; overrides the saved workflow's stored watch policy wholesale.
+  watch: Schema.optional(WatchPolicy),
+  watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
@@ -90,6 +103,9 @@ function replyFor(cause: Cause.Cause<unknown>): { status: number; body: unknown 
     const error = failure.value;
     if (Predicate.isTagged(error, "WorkflowNotFoundError")) {
       return { status: 404, body: { error: "Workflow not found" } };
+    }
+    if (Predicate.isTagged(error, "NotFoundError")) {
+      return { status: 404, body: { error: (error as unknown as NotFoundError).message } };
     }
     if (Predicate.isTagged(error, "InvalidCronError")) {
       const { schedule } = error as unknown as InvalidCronError;
@@ -143,8 +159,9 @@ export function registerWorkflowRoutes(
           const body = yield* Schema.decodeUnknown(WorkflowRequest, {
             onExcessProperty: "preserve",
           })(request.body);
-          const invoker = yield* WorkflowInvoker;
-          return yield* invoker.invoke({ ...body, traceparent });
+          // Registration and invocation share one handler (ruling W6); a `watch` field on the
+          // body writes the durable watch:sub:<instanceId> row.
+          return yield* invokeWithWatch({ ...body, traceparent });
         }),
         { successStatus: 202 },
       );
@@ -157,7 +174,7 @@ export function registerWorkflowRoutes(
         runtime,
         reply,
         Effect.gen(function* () {
-          const { key, steps, workspaceId, schedule, disabled, params } =
+          const { key, steps, workspaceId, schedule, disabled, params, watch } =
             yield* Schema.decodeUnknown(SaveWorkflowRequest)(request.body);
           if (schedule !== undefined) {
             yield* Effect.try({
@@ -172,6 +189,7 @@ export function registerWorkflowRoutes(
             schedule: schedule ? { cron: schedule, savedAt: new Date().toISOString() } : undefined,
             disabled,
             params,
+            watch,
           });
           return { key };
         }),
@@ -190,19 +208,22 @@ export function registerWorkflowRoutes(
           // Optional body: fire-time params override the stored defaults key-by-key; a
           // fire-time instanceId/workspaceId overrides the projection (readable run keys).
           // An absent/empty body keeps the pre-params behaviour.
-          const { params, instanceId, workspaceId, fresh } = yield* Schema.decodeUnknown(
-            RunSavedBody,
-          )(request.body ?? {});
+          const { params, instanceId, workspaceId, fresh, watch, watchMeta } =
+            yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
           const store = yield* WorkflowStore;
           const workflow = yield* store.get(request.params.key);
           if (Option.isNone(workflow)) return yield* new WorkflowNotFoundError();
-          const invoker = yield* WorkflowInvoker;
           const req = toRequest(workflow.value, traceparent, params);
-          return yield* invoker.invoke({
+          // Fire-time watch overrides the stored policy wholesale; either way the row is
+          // written here, in the same handler that schedules (ruling W6) — this is how
+          // trigger- and cron-fired saved workflows carry supervision too (agreement 9).
+          return yield* invokeWithWatch({
             ...req,
             ...(instanceId ? { instanceId } : {}),
             ...(workspaceId ? { workspaceId } : {}),
             ...(fresh !== undefined ? { fresh } : {}),
+            ...((watch ?? workflow.value.watch) ? { watch: watch ?? workflow.value.watch } : {}),
+            ...(watchMeta ? { watchMeta } : { watchMeta: { owner: request.params.key } }),
           });
         }),
         { successStatus: 202 },

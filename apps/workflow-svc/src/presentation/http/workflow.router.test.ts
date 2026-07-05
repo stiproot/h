@@ -1,9 +1,12 @@
 import { WorkflowError } from "core";
+import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -27,6 +30,29 @@ const stubStore = (overrides: Partial<WorkflowStoreService> = {}): WorkflowStore
   ...overrides,
 });
 
+// In-memory watch registry so the routes' registration through invokeWithWatch is observable.
+function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, WatchRow> } {
+  const rows = new Map<string, WatchRow>();
+  return {
+    rows,
+    service: {
+      getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
+      listRows: () => Effect.succeed([...rows.values()]),
+      saveRow: (row) => Effect.sync(() => void rows.set(row.instanceId, row)),
+      deleteRow: (id) => Effect.sync(() => void rows.delete(id)),
+      getConfig: () => Effect.succeed(Option.none()),
+      getHeartbeat: () => Effect.succeed(Option.none()),
+      heartbeat: () => Effect.void,
+      getLedger: () => Effect.succeed(emptyLedger),
+      bumpLedger: () => Effect.void,
+      listRunKeys: () => Effect.succeed([]),
+      getRunCost: () => Effect.succeed(null),
+    },
+  };
+}
+
+const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
+
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
@@ -35,9 +61,15 @@ afterEach(async () => {
 async function makeApp(
   invoker: WorkflowInvokerService,
   store: WorkflowStoreService,
+  watch: WatchStoreService = memoryWatchStore().service,
 ): Promise<FastifyInstance> {
   const runtime: WorkflowRoutesRuntime = ManagedRuntime.make(
-    Layer.mergeAll(Layer.succeed(WorkflowInvoker, invoker), Layer.succeed(WorkflowStore, store)),
+    Layer.mergeAll(
+      Layer.succeed(WorkflowInvoker, invoker),
+      Layer.succeed(WorkflowStore, store),
+      Layer.succeed(WatchStore, watch),
+      Layer.succeed(DaprPublisherTag, stubPublisher),
+    ),
   );
   const app = Fastify();
   registerWorkflowRoutes(app, runtime);
@@ -67,7 +99,7 @@ describe("POST /workflow/run", () => {
       payload: { steps: [{ activity: "run-claude", input: { task: "t" } }], extra: "kept" },
     });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ instanceId: "wf-1" });
+    expect(res.json()).toEqual({ instanceId: "wf-1", watching: false });
     // Excess wire fields survive the decode (onExcessProperty: "preserve").
     expect(seen[0]).toMatchObject({ extra: "kept" });
   });
@@ -197,7 +229,7 @@ describe("POST /workflow/run/:key", () => {
     );
     const res = await app.inject({ method: "POST", url: "/workflow/run/daily" });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ instanceId: "wf-2" });
+    expect(res.json()).toEqual({ instanceId: "wf-2", watching: false });
     expect(seen[0]).toMatchObject({ steps: stored.steps, workspaceId: "ws-1" });
   });
 
@@ -242,7 +274,7 @@ describe("POST /workflow/run/:key", () => {
       payload: { instanceId: "feature-dark-mode", workspaceId: "ws-dark-mode" },
     });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ instanceId: "feature-dark-mode" });
+    expect(res.json()).toEqual({ instanceId: "feature-dark-mode", watching: false });
     expect(seen[0]).toMatchObject({
       instanceId: "feature-dark-mode",
       workspaceId: "ws-dark-mode",
@@ -275,6 +307,56 @@ describe("POST /workflow/run/:key", () => {
     });
     expect(attach.statusCode).toBe(202);
     expect(seen[1]).not.toHaveProperty("fresh");
+  });
+
+  it("a watch field registers a durable row in the same handler that schedules (W6)", async () => {
+    const mem = memoryWatchStore();
+    const seen: WorkflowRequest[] = [];
+    const app = await makeApp(
+      stubInvoker({
+        invoke: (input) => {
+          seen.push(input);
+          return Effect.succeed({ instanceId: input.instanceId ?? "generated" });
+        },
+      }),
+      stubStore({
+        get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })),
+      }),
+      mem.service,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { instanceId: "feature-issue-9", watch: { maxDurationMs: 60_000 } },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ instanceId: "feature-issue-9", watching: true });
+    const row = mem.rows.get("feature-issue-9")!;
+    expect(row).toMatchObject({
+      status: "scheduling",
+      policy: { maxDurationMs: 60_000 },
+      meta: { owner: "feature" },
+    });
+    // The resubmit is stored for engine retries, and the watch field never reaches the invoker.
+    expect(row.resubmit).toBeDefined();
+    expect(seen[0]).not.toHaveProperty("watch");
+  });
+
+  it("a stored watch policy on the saved workflow registers without any body field", async () => {
+    const mem = memoryWatchStore();
+    const stored: StoredWorkflow = {
+      steps: [{ activity: "run-claude" }],
+      watch: { maxDurationMs: 5_000, retry: { maxAttempts: 2 } },
+    };
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({ get: () => Effect.succeed(Option.some(stored)) }),
+      mem.service,
+    );
+    const res = await app.inject({ method: "POST", url: "/workflow/run/nightly" });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ instanceId: "generated-id", watching: true });
+    expect(mem.rows.get("generated-id")!.policy.retry).toEqual({ maxAttempts: 2 });
   });
 });
 

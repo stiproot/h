@@ -144,6 +144,7 @@ export const WorkflowServiceLive: Layer.Layer<WorkflowService, never, HttpClient
               ...(overrides?.instanceId ? { instanceId: overrides.instanceId } : {}),
               ...(overrides?.workspaceId ? { workspaceId: overrides.workspaceId } : {}),
               ...(overrides?.fresh !== undefined ? { fresh: overrides.fresh } : {}),
+              ...(overrides?.watch ? { watch: overrides.watch } : {}),
             },
             key,
           ).pipe(Effect.flatMap(decodePreserving(RunResponse, key))),
