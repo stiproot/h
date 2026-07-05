@@ -166,3 +166,31 @@ def test_branch_unsafe_slug_fails_schema(hostile_spec: Path) -> None:
             file_values={"feature.spec": hostile_spec},
             include_local=False,
         )
+
+
+def test_issue_sweep_golden(snapshot) -> None:
+    """The issue-sweep family (h-builds-h): one judgment tick, family config baked."""
+    rendered = helm.render_workflow(
+        "issue-sweep",
+        values={
+            "issueSweep.repo": "owner/h",
+            "issueSweep.coderWorkflowUrl": "http://localhost:8002/workflow",
+        },
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_issue_sweep_dry_run_stops_before_mark() -> None:
+    rendered = helm.render_workflow(
+        "issue-sweep",
+        values={
+            "issueSweep.repo": "owner/h",
+            "issueSweep.coderWorkflowUrl": "http://localhost:8002/workflow",
+            "issueSweep.dryRun": "true",
+        },
+        include_local=False,
+    )
+    assert "DRY RUN: stop here" in rendered
+    assert "M. MARK" not in rendered
+    assert "F. FIRE" not in rendered

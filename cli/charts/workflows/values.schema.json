@@ -3,7 +3,10 @@
   "$comment": "Shape validation only. Required-ness is enforced per-template with helm's `required` function, so rendering one workflow family never demands another family's values.",
   "type": "object",
   "properties": {
-    "agentId": { "type": "string", "minLength": 1 },
+    "agentId": {
+      "type": "string",
+      "minLength": 1
+    },
     "family": {
       "type": "string",
       "$comment": "Set by the renderer to the selected family; gates which template body evaluates (helm evaluates all templates even under -s)."
@@ -20,9 +23,15 @@
           "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
           "$comment": "Git-branch-safe: lowercase alphanumerics and hyphens, no leading/trailing hyphen. Empty passes shape validation; the template rejects it via `required`."
         },
-        "spec": { "type": "string" },
-        "sourceRepo": { "type": "string" },
-        "remoteBase": { "type": "string" },
+        "spec": {
+          "type": "string"
+        },
+        "sourceRepo": {
+          "type": "string"
+        },
+        "remoteBase": {
+          "type": "string"
+        },
         "verifyCmd": {
           "type": "string",
           "$comment": "Shell command that proves the implementation (run in the worktree by a trailing verify step). Empty omits the step."
@@ -32,19 +41,32 @@
           "$comment": "Append a commit/push/PR epilogue to the run's final step. Direct renders only; a published family carries the epilogue keyed off the fire-time createPr param instead."
         },
         "issueNumber": {
-          "type": ["string", "integer"],
+          "type": [
+            "string",
+            "integer"
+          ],
           "$comment": "GitHub issue number for the PR's `Closes #N` line. Direct renders only; published families take the fire-time issueNumber param instead."
         },
         "gitAuth": {
-          "enum": ["", "pat", "ssh"],
+          "enum": [
+            "",
+            "pat",
+            "ssh"
+          ],
           "$comment": "Git auth strategy name for worktree/clone + the push instruction; secrets stay in the agent env. Empty = the agent's GIT_AUTH default."
         },
         "models": {
           "type": "object",
           "properties": {
-            "plan": { "type": "string" },
-            "implement": { "type": "string" },
-            "verify": { "type": "string" }
+            "plan": {
+              "type": "string"
+            },
+            "implement": {
+              "type": "string"
+            },
+            "verify": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         }
@@ -54,15 +76,58 @@
     "pluginImprovement": {
       "type": "object",
       "properties": {
-        "sourceRepo": { "type": "string" },
-        "tile": { "type": "string" },
-        "remoteBase": { "type": "string" },
-        "verifyCmd": { "type": "string" },
+        "sourceRepo": {
+          "type": "string"
+        },
+        "tile": {
+          "type": "string"
+        },
+        "remoteBase": {
+          "type": "string"
+        },
+        "verifyCmd": {
+          "type": "string"
+        },
         "models": {
           "type": "object",
           "properties": {
-            "improve": { "type": "string" },
-            "verify": { "type": "string" }
+            "improve": {
+              "type": "string"
+            },
+            "verify": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "issueSweep": {
+      "type": "object",
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "maxInFlight": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "coderWorkflowUrl": {
+          "type": "string"
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "sweep": {
+              "type": "string"
+            }
           },
           "additionalProperties": false
         }
