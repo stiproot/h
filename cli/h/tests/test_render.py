@@ -66,6 +66,24 @@ def test_feature_with_pr_golden(hostile_spec: Path, snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_git_auth_ssh_switches_transport(hostile_spec: Path) -> None:
+    """gitAuth=ssh names the strategy on the worktree step and swaps the push instruction."""
+    rendered = helm.render_workflow(
+        "feature",
+        values={
+            "feature.slug": "hostile-fixture",
+            "feature.createPr": "true",
+            "feature.gitAuth": "ssh",
+        },
+        file_values={"feature.spec": hostile_spec},
+        include_local=False,
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    assert definition["steps"][0]["input"]["auth"] == "ssh"
+    assert "git push origin feature/hostile-fixture" in definition["steps"][3]["input"]["task"]
+    assert "x-access-token" not in definition["steps"][3]["input"]["task"]
+
+
 def test_pr_epilogue_omitted_by_default(hostile_spec: Path) -> None:
     """Chart default (createPr false) keeps the worktree-only prose — no ===CREATE PR=== block."""
     rendered = _render_hostile(hostile_spec)

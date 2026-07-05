@@ -35,6 +35,10 @@
           "type": ["string", "integer"],
           "$comment": "GitHub issue number for the PR's `Closes #N` line. Direct renders only; published families take the fire-time issueNumber param instead."
         },
+        "gitAuth": {
+          "enum": ["", "pat", "ssh"],
+          "$comment": "Git auth strategy name for worktree/clone + the push instruction; secrets stay in the agent env. Empty = the agent's GIT_AUTH default."
+        },
         "models": {
           "type": "object",
           "properties": {

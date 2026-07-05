@@ -71,6 +71,9 @@ steps:
       {{- with $f.remoteBase }}
       remoteBase: {{ . | quote }}
       {{- end }}
+      {{- with $f.gitAuth }}
+      auth: {{ . | quote }}
+      {{- end }}
   - id: setup
     activity: setup
     input:
@@ -137,11 +140,17 @@ steps:
         commit or push. If it IS 'true':
         1. Commit all working-tree changes on branch feature/{{ $slug }} with a concise
            conventional commit message.
+        {{- if eq ($f.gitAuth | default "") "ssh" }}
+        2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
+           transport is already authenticated (agent-mounted key). If the push is rejected
+           for auth, skip it and say so under ===PR=== — do not retry with credentials.
+        {{- else }}
         2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
            from `git remote get-url origin` and push with a one-shot token URL:
            git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
            Never write the token into git config or the remote URL; if GH_TOKEN is unset,
            skip the push and say so under ===PR===.
+        {{- end }}
         3. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body summarizing the
            spec, the plan, and what you implemented. If the value under ===ISSUE===
@@ -197,11 +206,17 @@ steps:
         'true' and your verdict is PASS (never open a PR for a failing change):
         1. Commit all working-tree changes on branch feature/{{ $slug }} with a concise
            conventional commit message.
+        {{- if eq ($f.gitAuth | default "") "ssh" }}
+        2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
+           transport is already authenticated (agent-mounted key). If the push is rejected
+           for auth, skip it and say so under ===PR=== — do not retry with credentials.
+        {{- else }}
         2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
            from `git remote get-url origin` and push with a one-shot token URL:
            git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
            Never write the token into git config or the remote URL; if GH_TOKEN is unset,
            skip the push and say so under ===PR===.
+        {{- end }}
         3. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body summarizing the
            spec, the plan, and the verify verdict. If the value under ===ISSUE===

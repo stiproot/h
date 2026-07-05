@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { GitClient } from "git-core";
 import { withServerSpan } from "telemetry";
 
+import { resolveGitAuth } from "./git-auth.ts";
 import { runHandler } from "./run-handler.ts";
 import { RunLedger, recordActivityEffect } from "./run-ledger.ts";
 import type { ActivityLedgerConfig, ActivityRecord } from "./run-ledger.ts";
@@ -17,6 +18,8 @@ const CloneBody = Schema.Struct({
   branch: Schema.optional(Schema.String),
   depth: Schema.optional(Schema.Number),
   dir: Schema.optional(Schema.String),
+  // Auth strategy NAME only (secrets stay in the service env — see resolveGitAuth).
+  auth: Schema.optional(Schema.Literal("pat", "ssh")),
 });
 type CloneBody = Schema.Schema.Type<typeof CloneBody>;
 
@@ -56,7 +59,7 @@ const cloneEffect = (
   { resolveWorkspaceDir, ledger }: Pick<CloneRouteEffectConfig, "resolveWorkspaceDir" | "ledger">,
 ) =>
   Effect.gen(function* () {
-    const { workflowInstanceId, workspaceId, url, branch, depth, dir } =
+    const { workflowInstanceId, workspaceId, url, branch, depth, dir, auth } =
       yield* Schema.decodeUnknown(CloneBody)(rawBody);
     const startedAtMs = Date.now();
     const workspaceDir = resolveWorkspaceDir(workspaceId ?? workflowInstanceId);
@@ -92,7 +95,7 @@ const cloneEffect = (
         cwd: workspaceDir,
         branch,
         depth: depth ?? 1,
-        token: process.env.GH_TOKEN,
+        auth: resolveGitAuth(auth),
       })
       .pipe(
         Effect.tapError((err) => rec("failed", { error: err.message })),

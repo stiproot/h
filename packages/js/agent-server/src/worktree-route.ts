@@ -7,6 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { GitClient } from "git-core";
 import { withServerSpan } from "telemetry";
 
+import { resolveGitAuth } from "./git-auth.ts";
 import { runHandler } from "./run-handler.ts";
 import { RunLedger, recordActivityEffect } from "./run-ledger.ts";
 import type { ActivityLedgerConfig, ActivityRecord } from "./run-ledger.ts";
@@ -23,6 +24,8 @@ const WorktreeBody = Schema.Struct({
   // remote rather than the pre-clone's stale local checkout. Defaults to "main"; ignored when baseRef
   // pins an explicit start point. Pass an empty string to skip the refresh (branch from local HEAD).
   remoteBase: Schema.optional(Schema.String),
+  // Auth strategy NAME only (secrets stay in the service env — see resolveGitAuth).
+  auth: Schema.optional(Schema.Literal("pat", "ssh")),
 });
 type WorktreeBody = Schema.Schema.Type<typeof WorktreeBody>;
 
@@ -64,7 +67,7 @@ const worktreeEffect = (
   { sharedRoot, ledger }: Pick<WorktreeRouteEffectConfig, "sharedRoot" | "ledger">,
 ) =>
   Effect.gen(function* () {
-    const { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase } =
+    const { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase, auth } =
       yield* Schema.decodeUnknown(WorktreeBody)(rawBody);
     // Refresh from origin/main by default so a new worktree is cut from the latest remote tip, not
     // the pre-clone's stale local checkout. A pinned baseRef wins; an explicit empty remoteBase
@@ -107,7 +110,7 @@ const worktreeEffect = (
         branch,
         baseRef,
         remoteBase: effectiveRemoteBase,
-        token: process.env.GH_TOKEN,
+        auth: resolveGitAuth(auth),
       });
     }).pipe(
       Effect.tapError((err) => rec("failed", { error: err.message })),

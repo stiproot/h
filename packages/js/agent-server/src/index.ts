@@ -1,6 +1,7 @@
 // Effect surface (Phase 3 of the Effect migration — see plans/effect-refactor-map.md)
 export { registerAgentRoutesEffect, SetupBody, SetupError, SetupItem } from "./agent-routes.ts";
 export type { AgentRoutesEffectConfig, AgentRoutesEffectEnv } from "./agent-routes.ts";
+export { resolveGitAuth } from "./git-auth.ts";
 export { registerCloneRouteEffect } from "./clone-route.ts";
 export type { CloneRouteEffectConfig, CloneRouteEffectEnv } from "./clone-route.ts";
 export { registerWorktreeRouteEffect } from "./worktree-route.ts";

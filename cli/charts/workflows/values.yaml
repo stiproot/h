@@ -38,6 +38,11 @@ feature:
   # carries `Closes #N` so the merge auto-closes the issue. Publish mode leaves it open as the
   # fire-time param issueNumber instead.
   issueNumber: ""
+  # Git auth strategy NAME for the worktree/clone steps and the epilogue's push instruction:
+  # "" = the agent's default (GIT_AUTH env, pat when unset), "pat" = one-shot GH_TOKEN URL,
+  # "ssh" = ssh transport (agent-mounted key via GIT_SSH_KEY_PATH; push is plain `git push
+  # origin`). Family config — bakes at publish time; secrets never render.
+  gitAuth: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     plan: claude-sonnet-4-6

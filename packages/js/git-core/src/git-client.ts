@@ -3,13 +3,28 @@ import type { CommandExecutor } from "@effect/platform";
 import type { PlatformError } from "@effect/platform/Error";
 import { Context, Data, Effect, Layer, Stream } from "effect";
 
+/**
+ * How git authenticates to the remote. Strategies are *named* in workflow/step config; the
+ * secrets stay in env/mounts on the agent service, never in a definition.
+ *  - `pat`: inject a token into the https URL per-invocation (never persisted) — the original
+ *    behaviour; `token` on Clone/Worktree options is shorthand for this strategy.
+ *  - `ssh`: rewrite a github https URL to its `git@github.com:` form and let SSH authenticate
+ *    the transport — via `keyPath` (`GIT_SSH_COMMAND -i`) or the ambient agent/config when
+ *    unset. SSH covers git transport only; API calls (PR creation) authenticate separately.
+ * A `github-app` strategy (mint an installation token per op, then the pat path) can slot in
+ * here without touching callers.
+ */
+export type GitAuth = { kind: "pat"; token?: string } | { kind: "ssh"; keyPath?: string };
+
 export type CloneOptions = {
   url: string;
   dir: string;
   cwd: string;
   branch?: string;
   depth?: number;
+  /** Shorthand for `auth: { kind: "pat", token }`; ignored when `auth` is set. */
   token?: string;
+  auth?: GitAuth;
 };
 
 const GITHUB_HTTPS = "https://github.com/";
@@ -21,6 +36,32 @@ function authenticatedUrl(url: string, token?: string): string {
   if (!token || !url.startsWith(GITHUB_HTTPS)) return url;
   return `https://x-access-token:${token}@github.com/${url.slice(GITHUB_HTTPS.length)}`;
 }
+
+// Rewrite a github https URL to its SSH form so the transport authenticates via SSH keys.
+// Non-github and already-SSH URLs pass through untouched.
+function sshUrl(url: string): string {
+  if (!url.startsWith(GITHUB_HTTPS)) return url;
+  const path = url.slice(GITHUB_HTTPS.length).replace(/\.git$/, "");
+  return `git@github.com:${path}.git`;
+}
+
+const normalizeAuth = (auth: GitAuth | undefined, token: string | undefined): GitAuth =>
+  auth ?? { kind: "pat", token };
+
+// The strategy's two touch points on a git invocation: the remote URL form, and the process env.
+// Exported pure for value tests (the mergeMcpConfig pattern).
+export const resolveUrl = (url: string, auth: GitAuth): string =>
+  auth.kind === "ssh" ? sshUrl(url) : authenticatedUrl(url, auth.token);
+
+export const authEnv = (auth: GitAuth): Record<string, string> | undefined =>
+  auth.kind === "ssh" && auth.keyPath
+    ? {
+        GIT_SSH_COMMAND: `ssh -i ${auth.keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`,
+      }
+    : undefined;
+
+const authToken = (auth: GitAuth): string | undefined =>
+  auth.kind === "pat" ? auth.token : undefined;
 
 export type WorktreeOptions = {
   // Path to an existing clone (holds the .git the worktree shares its object store with).
@@ -38,8 +79,10 @@ export type WorktreeOptions = {
   // (its commits are preserved) or when an explicit baseRef is given (the caller pinned a start point).
   remoteBase?: string;
   // GitHub token to authenticate the origin fetch for a private https repo (injected in-process, as
-  // in clone(); never persisted to the remote or a shell command line).
+  // in clone(); never persisted to the remote or a shell command line). Shorthand for
+  // `auth: { kind: "pat", token }`; ignored when `auth` is set.
   token?: string;
+  auth?: GitAuth;
 };
 
 // ---------------------------------------------------------------------------
@@ -115,11 +158,13 @@ const collectText = (
 const runGit = (
   args: ReadonlyArray<string>,
   cwd?: string,
+  env?: Record<string, string>,
 ): Effect.Effect<string, GitExitError | PlatformError, CommandExecutor.CommandExecutor> =>
   Effect.scoped(
     Effect.gen(function* () {
       const base = Command.make("git", ...args);
-      const command = cwd ? Command.workingDirectory(base, cwd) : base;
+      const withCwd = cwd ? Command.workingDirectory(base, cwd) : base;
+      const command = env ? Command.env(withCwd, env) : withCwd;
       const process = yield* Command.start(command);
       const [stdout, stderr, exitCode] = yield* Effect.all(
         [collectText(process.stdout), collectText(process.stderr), process.exitCode],
@@ -145,11 +190,13 @@ const redactedCause = (failure: GitExitError | PlatformError, token: string | un
 const cloneEffect = (
   opts: CloneOptions,
 ): Effect.Effect<void, GitCloneError, CommandExecutor.CommandExecutor> => {
-  const { url, dir, cwd, branch, depth = 1, token } = opts;
+  const { url, dir, cwd, branch, depth = 1 } = opts;
+  const auth = normalizeAuth(opts.auth, opts.token);
+  const token = authToken(auth);
   const args = ["clone", "--depth", String(depth)];
   if (branch) args.push("--branch", branch);
-  args.push(authenticatedUrl(url, token), dir);
-  return runGit(args, cwd).pipe(
+  args.push(resolveUrl(url, auth), dir);
+  return runGit(args, cwd, authEnv(auth)).pipe(
     Effect.mapError(
       (failure) => new GitCloneError({ cause: redactedCause(failure, token), url, dir }),
     ),
@@ -177,7 +224,9 @@ const branchExistsEffect = (
 const addWorktreeEffect = (
   opts: WorktreeOptions,
 ): Effect.Effect<void, GitWorktreeError, CommandExecutor.CommandExecutor> => {
-  const { repoPath, worktreePath, branch, remoteBase, token } = opts;
+  const { repoPath, worktreePath, branch, remoteBase } = opts;
+  const auth = normalizeAuth(opts.auth, opts.token);
+  const token = authToken(auth);
   return Effect.gen(function* () {
     // Drop admin entries for worktree dirs removed out of band, so re-adding at the same path does
     // not fail with "already registered".
@@ -192,14 +241,18 @@ const addWorktreeEffect = (
     if (!reuseExisting && remoteBase && !baseRef) {
       const originUrl = (yield* runGit(["-C", repoPath, "remote", "get-url", "origin"])).trim();
       const trackingRef = `refs/remotes/origin/${remoteBase}`;
-      yield* runGit([
-        "-C",
-        repoPath,
-        "fetch",
-        "--quiet",
-        authenticatedUrl(originUrl, token),
-        `${remoteBase}:${trackingRef}`,
-      ]);
+      yield* runGit(
+        [
+          "-C",
+          repoPath,
+          "fetch",
+          "--quiet",
+          resolveUrl(originUrl, auth),
+          `${remoteBase}:${trackingRef}`,
+        ],
+        undefined,
+        authEnv(auth),
+      );
       baseRef = trackingRef;
     }
 

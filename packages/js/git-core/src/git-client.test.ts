@@ -7,7 +7,7 @@ import { NodeContext } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ExecGitClient, GitClient } from "./git-client.ts";
+import { ExecGitClient, GitClient, authEnv, resolveUrl } from "./git-client.ts";
 
 // The Effect port + adapter over the same temp-repo fixtures. `@effect/vitest`'s it.effect is
 // avoided per the refactor map (peers on vitest 3.x, repo has 4.x): plain it() + Effect.runPromise.
@@ -171,5 +171,40 @@ describe("GitClient (ExecGitClient layer)", () => {
     expect(err.repoPath).toBe(repo);
     expect(err.worktreePath).toBe(worktree);
     expect(String(err.cause)).toContain("already");
+  });
+});
+
+describe("GitAuth strategy (pure helpers)", () => {
+  it("ssh rewrites a github https URL to its git@ form", () => {
+    expect(resolveUrl("https://github.com/owner/repo", { kind: "ssh" })).toBe(
+      "git@github.com:owner/repo.git",
+    );
+    expect(resolveUrl("https://github.com/owner/repo.git", { kind: "ssh" })).toBe(
+      "git@github.com:owner/repo.git",
+    );
+  });
+
+  it("ssh leaves non-github and already-ssh URLs untouched", () => {
+    expect(resolveUrl("git@github.com:owner/repo.git", { kind: "ssh" })).toBe(
+      "git@github.com:owner/repo.git",
+    );
+    expect(resolveUrl("/local/path/repo", { kind: "ssh" })).toBe("/local/path/repo");
+  });
+
+  it("pat injects the token into a github https URL only", () => {
+    expect(resolveUrl("https://github.com/o/r", { kind: "pat", token: "tok" })).toBe(
+      "https://x-access-token:tok@github.com/o/r",
+    );
+    expect(resolveUrl("https://github.com/o/r", { kind: "pat" })).toBe("https://github.com/o/r");
+    expect(resolveUrl("/local/path/repo", { kind: "pat", token: "tok" })).toBe("/local/path/repo");
+  });
+
+  it("authEnv sets GIT_SSH_COMMAND only for ssh with an explicit key", () => {
+    expect(authEnv({ kind: "ssh", keyPath: "/keys/id_ed25519" })).toEqual({
+      GIT_SSH_COMMAND:
+        "ssh -i /keys/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new",
+    });
+    expect(authEnv({ kind: "ssh" })).toBeUndefined();
+    expect(authEnv({ kind: "pat", token: "tok" })).toBeUndefined();
   });
 });

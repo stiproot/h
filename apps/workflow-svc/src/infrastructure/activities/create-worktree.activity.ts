@@ -12,6 +12,9 @@ type Input = {
   // Branch to refresh from origin before cutting a new branch (defaults to "main" in the agent's
   // /worktree route). Pass an explicit "" to skip the refresh and branch from the local checkout.
   remoteBase?: string;
+  // Git auth strategy NAME ("pat" | "ssh") forwarded to the agent's /worktree; secrets stay
+  // in the agent service's env.
+  auth?: string;
   agentId?: string;
   traceparent?: string;
 };
@@ -29,6 +32,7 @@ export async function createWorktreeActivity(
     branch,
     baseRef,
     remoteBase,
+    auth,
     agentId,
     traceparent,
   } = input as Input;
@@ -38,7 +42,7 @@ export async function createWorktreeActivity(
       label: "create-worktree",
       appId: targetAgent,
       method: "worktree",
-      body: { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase },
+      body: { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase, auth },
       span: "client",
       parse: "json",
     }).pipe(Effect.map((json) => json as { worktreePath: string })),
