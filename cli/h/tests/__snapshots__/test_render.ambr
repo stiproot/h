@@ -494,8 +494,11 @@
                and treat as FAILED above; otherwise leave it.
              - UNKNOWN: a mark-then-fire crash left a dangling entry — revert to
                {status: pending, updatedAt}.
-             For each run that turned terminal in this step, add its costUsd (from the obs run
-             record, when present) into today's h-auto:ledger:<yyyy-mm-dd>.
+             For each run that turned terminal in this step, total its cost into today's
+             h-auto:ledger:<yyyy-mm-dd>: obs runs_list filtered by the instanceId returns one
+             record per agent step (plan, implement, verify — each carries costUsd); SUM them
+             all. Records exist for every completed run — if you cannot find any, that is a
+             LEDGER GAP: say so explicitly in the sweep report instead of silently adding 0.
   
           B. BUDGET (fail-closed). Read today's ledger. runsFired >= maxRunsPerDay, or
              costUsd >= dailyBudgetUsd → report BUDGET EXHAUSTED and STOP.
