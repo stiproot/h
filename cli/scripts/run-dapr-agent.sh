@@ -20,14 +20,14 @@ export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 cd "${APP_DIR}/src"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale dapr-agent 8006 3506 36006 50005
+stop_stale dapr-agent 8006 3506 36006 61005
 
 exec dapr run \
   --app-id dapr-agent \
   --app-port 8006 \
   --dapr-http-port 3506 \
   --dapr-grpc-port 36006 \
-  --dapr-internal-grpc-port 50005 \
+  --dapr-internal-grpc-port 61005 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

@@ -250,26 +250,29 @@ docker compose --profile all down -v
 
 | Service | App port | Dapr HTTP | Dapr gRPC | Dapr internal gRPC |
 | --- | --- | --- | --- | --- |
-| `claude-agent` | 8002 | 3502 | 36002 | 50002 |
-| `workflow-svc` | 8003 | 3503 | 50001 | 50003 |
-| `openhands-agent` | 8004 | 3504 | 36004 | 50004 |
-| `workflow-mcp` | 8005 | 3505 | 36005 | 50010 |
-| `dapr-mcp` | 8011 (MCP) / 8012 (actor) | 3511 | 36011 | 50013 |
+| `claude-agent` | 8002 | 3502 | 36002 | 61002 |
+| `workflow-svc` | 8003 | 3503 | 36003 | 61003 |
+| `openhands-agent` | 8004 | 3504 | 36004 | 61004 |
+| `workflow-mcp` | 8005 | 3505 | 36005 | 61010 |
+| `dapr-mcp` | 8011 (MCP) / 8012 (actor) | 3511 | 36011 | 61013 |
 | `obs-mcp` | 8013 | — (no sidecar) | — | — |
-| `dapr-agent` | 8006 | 3506 | 36006 | 50005 |
-| `dapr-claude-loop-agent` | 8007 | 3507 | 36007 | 50014 |
-| `claude-managed-agent` | 8008 | 3508 | 50008 | 50009 |
-| `langgraph-agent` | 8009 | 3509 | 36009 | 50011 |
-| `workflow-agent` | 8010 | 3510 | 36010 | 50012 |
-| `claude-coder` | 8014 | 3514 | 36014 | 50015 |
+| `dapr-agent` | 8006 | 3506 | 36006 | 61005 |
+| `dapr-claude-loop-agent` | 8007 | 3507 | 36007 | 61014 |
+| `claude-managed-agent` | 8008 | 3508 | 36008 | 61009 |
+| `langgraph-agent` | 8009 | 3509 | 36009 | 61011 |
+| `workflow-agent` | 8010 | 3510 | 36010 | 61012 |
+| `claude-coder` | 8014 | 3514 | 36014 | 61015 |
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 
-Every local service binds a unique set of ports, so any combination can run at once. `workflow-svc`
-keeps Dapr gRPC `50001` (the Dapr Workflow SDK's default); the other sidecars pin a distinct `360xx`
-gRPC port rather than letting the CLI auto-assign, so none can race `workflow-svc` for `50001`. Each
-`cli/scripts/run-*.sh` also frees its own ports on start (see `stop_stale` in `cli/scripts/_lib.sh`), so
-re-running a script cleanly replaces a prior instance.
+Every local service binds a unique set of ports, so any combination can run at once. All sidecars
+pin a distinct `360xx` gRPC port and a `610xx` internal-gRPC port. The `610xx` range is above the
+Linux kernel's default ephemeral outbound port ceiling (60999), so the kernel can never assign these
+as transient source ports for outbound connections — eliminating the "Port N is not available" failure
+that occurs when an unrelated process's outbound connection happens to occupy a pinned port before the
+sidecar binds it. `50006`/`50007` (placement/scheduler) run inside containers and are unaffected.
+Each `cli/scripts/run-*.sh` also frees its own ports on start (see `stop_stale` in `cli/scripts/_lib.sh`),
+so re-running a script cleanly replaces a prior instance.
 
 ## Dapr components
 

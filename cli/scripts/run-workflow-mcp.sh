@@ -15,14 +15,14 @@ bunx turbo build --filter=workflow-mcp
 cd "${APP_DIR}"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale workflow-mcp 8005 3505 36005 50010
+stop_stale workflow-mcp 8005 3505 36005 61010
 
 exec dapr run \
   --app-id workflow-mcp \
   --app-port 8005 \
   --dapr-http-port 3505 \
   --dapr-grpc-port 36005 \
-  --dapr-internal-grpc-port 50010 \
+  --dapr-internal-grpc-port 61010 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

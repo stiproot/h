@@ -19,14 +19,14 @@ export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/dapr-clau
 cd "${APP_DIR}/src"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale dapr-claude-loop-agent 8007 3507 36007 50014
+stop_stale dapr-claude-loop-agent 8007 3507 36007 61014
 
 exec dapr run \
   --app-id dapr-claude-loop-agent \
   --app-port 8007 \
   --dapr-http-port 3507 \
   --dapr-grpc-port 36007 \
-  --dapr-internal-grpc-port 50014 \
+  --dapr-internal-grpc-port 61014 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

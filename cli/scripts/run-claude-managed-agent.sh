@@ -17,14 +17,14 @@ export AGENT_MAX_ITERATIONS="${AGENT_MAX_ITERATIONS:-10}"
 cd "${APP_DIR}/src"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale claude-managed-agent 8008 3508 50008 50009
+stop_stale claude-managed-agent 8008 3508 36008 61009
 
 exec dapr run \
   --app-id claude-managed-agent \
   --app-port 8008 \
   --dapr-http-port 3508 \
-  --dapr-grpc-port 50008 \
-  --dapr-internal-grpc-port 50009 \
+  --dapr-grpc-port 36008 \
+  --dapr-internal-grpc-port 61009 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

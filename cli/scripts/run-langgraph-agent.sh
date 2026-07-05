@@ -19,14 +19,14 @@ export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/langgraph
 cd "${APP_DIR}/src"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale langgraph-agent 8009 3509 36009 50011
+stop_stale langgraph-agent 8009 3509 36009 61011
 
 exec dapr run \
   --app-id langgraph-agent \
   --app-port 8009 \
   --dapr-http-port 3509 \
   --dapr-grpc-port 36009 \
-  --dapr-internal-grpc-port 50011 \
+  --dapr-internal-grpc-port 61011 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \
