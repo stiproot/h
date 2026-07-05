@@ -34,6 +34,10 @@ feature:
   # run --pr`); a published family always carries the epilogue keyed off the fire-time param
   # instead — -p createPr=true (absent = worktree-only run).
   createPr: false
+  # GitHub issue number this run implements. When set (and the PR epilogue runs), the PR body
+  # carries `Closes #N` so the merge auto-closes the issue. Publish mode leaves it open as the
+  # fire-time param issueNumber instead.
+  issueNumber: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     plan: claude-sonnet-4-6

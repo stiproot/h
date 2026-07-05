@@ -31,6 +31,10 @@
           "type": "boolean",
           "$comment": "Append a commit/push/PR epilogue to the run's final step. Direct renders only; a published family carries the epilogue keyed off the fire-time createPr param instead."
         },
+        "issueNumber": {
+          "type": ["string", "integer"],
+          "$comment": "GitHub issue number for the PR's `Closes #N` line. Direct renders only; published families take the fire-time issueNumber param instead."
+        },
         "models": {
           "type": "object",
           "properties": {

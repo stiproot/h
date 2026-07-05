@@ -91,6 +91,8 @@ def test_feature_publish_mode_opens_param_slots() -> None:
     # The PR epilogue is always present in a family, keyed off the fire-time createPr param
     # (absent at fire time → resolves to '' → the agent leaves the worktree uncommitted).
     assert "{{params.createPr}}" in definition["steps"][3]["input"]["task"]
+    # Issue linkage rides the same pattern: fire with -p issueNumber=N for a `Closes #N` PR.
+    assert "{{params.issueNumber}}" in definition["steps"][3]["input"]["task"]
 
 
 def test_plugin_improvement_golden(snapshot) -> None:

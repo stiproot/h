@@ -41,6 +41,14 @@ fire-time param token; direct mode includes it (as a literal 'true') only when o
 {{- else if $f.createPr }}
 {{- $createPr = "true" }}
 {{- end }}
+{{- /* The GitHub issue this run implements (if any): the PR epilogue adds `Closes #N` so the
+merge auto-closes it. Publish mode leaves it open as a fire-time param, like createPr. */ -}}
+{{- $issueNumber := "" }}
+{{- if $publish }}
+{{- $issueNumber = include "h.token" "params.issueNumber" }}
+{{- else if $f.issueNumber }}
+{{- $issueNumber = $f.issueNumber | toString }}
+{{- end }}
 {{- $slug := "" }}
 {{- $spec := "" }}
 {{- if $publish }}
@@ -121,6 +129,9 @@ steps:
         ===CREATE PR===
         {{ $createPr }}
 
+        ===ISSUE===
+        {{ $issueNumber }}
+
         The value under ===CREATE PR=== above decides how this run ends. If it is not
         exactly 'true', leave everything as uncommitted working-tree changes — do not
         commit or push. If it IS 'true':
@@ -133,7 +144,9 @@ steps:
            skip the push and say so under ===PR===.
         3. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body summarizing the
-           spec, the plan, and what you implemented. If a PR for this branch already
+           spec, the plan, and what you implemented. If the value under ===ISSUE===
+           above is a number N, include the line `Closes #N` on its own line in the PR
+           body, so the merge auto-closes that issue. If a PR for this branch already
            exists, your push has updated it — do not open a duplicate.
         End your response with the exact marker ===PR=== on its own line, then the PR
         URL — or SKIPPED and the reason — on the next line.
@@ -176,6 +189,9 @@ steps:
         ===CREATE PR===
         {{ $createPr }}
 
+        ===ISSUE===
+        {{ $issueNumber }}
+
         The value under ===CREATE PR=== above decides how this run ends. If it is not
         exactly 'true', leave everything as uncommitted working-tree changes. If it IS
         'true' and your verdict is PASS (never open a PR for a failing change):
@@ -188,7 +204,9 @@ steps:
            skip the push and say so under ===PR===.
         3. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body summarizing the
-           spec, the plan, and the verify verdict. If a PR for this branch already
+           spec, the plan, and the verify verdict. If the value under ===ISSUE===
+           above is a number N, include the line `Closes #N` on its own line in the PR
+           body, so the merge auto-closes that issue. If a PR for this branch already
            exists, your push has updated it — do not open a duplicate.
         After the ===VERIFY=== block, end your response with the exact marker ===PR===
         on its own line, then the PR URL — or SKIPPED and the reason — on the next line.

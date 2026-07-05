@@ -61,6 +61,9 @@
           ===CREATE PR===
           {{params.createPr}}
   
+          ===ISSUE===
+          {{params.issueNumber}}
+  
           The value under ===CREATE PR=== above decides how this run ends. If it is not
           exactly 'true', leave everything as uncommitted working-tree changes — do not
           commit or push. If it IS 'true':
@@ -73,7 +76,9 @@
              skip the push and say so under ===PR===.
           3. Open a pull request against the repository's default branch with the github
              MCP tool create_pull_request: title from the feature, body summarizing the
-             spec, the plan, and what you implemented. If a PR for this branch already
+             spec, the plan, and what you implemented. If the value under ===ISSUE===
+             above is a number N, include the line `Closes #N` on its own line in the PR
+             body, so the merge auto-closes that issue. If a PR for this branch already
              exists, your push has updated it — do not open a duplicate.
           End your response with the exact marker ===PR=== on its own line, then the PR
           URL — or SKIPPED and the reason — on the next line.
@@ -168,6 +173,9 @@
           ===CREATE PR===
           true
   
+          ===ISSUE===
+          
+  
           The value under ===CREATE PR=== above decides how this run ends. If it is not
           exactly 'true', leave everything as uncommitted working-tree changes — do not
           commit or push. If it IS 'true':
@@ -180,7 +188,9 @@
              skip the push and say so under ===PR===.
           3. Open a pull request against the repository's default branch with the github
              MCP tool create_pull_request: title from the feature, body summarizing the
-             spec, the plan, and what you implemented. If a PR for this branch already
+             spec, the plan, and what you implemented. If the value under ===ISSUE===
+             above is a number N, include the line `Closes #N` on its own line in the PR
+             body, so the merge auto-closes that issue. If a PR for this branch already
              exists, your push has updated it — do not open a duplicate.
           End your response with the exact marker ===PR=== on its own line, then the PR
           URL — or SKIPPED and the reason — on the next line.
