@@ -25,6 +25,7 @@ STATE_URL = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/state/statestore"
 # submit-and-babysit endpoint; a full http(s) URL is also accepted wherever a name is.
 AGENT_URLS = {
     "claude-agent": "http://localhost:8002",
+    "claude-coder": "http://localhost:8014",
     "openhands-agent": "http://localhost:8004",
     "dapr-agent": "http://localhost:8006",
     "dapr-claude-loop-agent": "http://localhost:8007",

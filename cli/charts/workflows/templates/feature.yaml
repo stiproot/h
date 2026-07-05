@@ -138,8 +138,11 @@ steps:
         The value under ===CREATE PR=== above decides how this run ends. If it is not
         exactly 'true', leave everything as uncommitted working-tree changes — do not
         commit or push. If it IS 'true':
-        1. Commit all working-tree changes on branch feature/{{ $slug }} with a concise
-           conventional commit message.
+        1. Commit ONLY what the feature touched, on branch feature/{{ $slug }}, with a
+           concise conventional commit message. Add files individually (never `git add -A`
+           or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
+           MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
+           leave plan-feature-{{ $slug }}.md uncommitted (run context, not feature code).
         {{- if eq ($f.gitAuth | default "") "ssh" }}
         2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
            transport is already authenticated (agent-mounted key). If the push is rejected
@@ -204,8 +207,11 @@ steps:
         The value under ===CREATE PR=== above decides how this run ends. If it is not
         exactly 'true', leave everything as uncommitted working-tree changes. If it IS
         'true' and your verdict is PASS (never open a PR for a failing change):
-        1. Commit all working-tree changes on branch feature/{{ $slug }} with a concise
-           conventional commit message.
+        1. Commit ONLY what the feature touched, on branch feature/{{ $slug }}, with a
+           concise conventional commit message. Add files individually (never `git add -A`
+           or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
+           MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
+           leave plan-feature-{{ $slug }}.md uncommitted (run context, not feature code).
         {{- if eq ($f.gitAuth | default "") "ssh" }}
         2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
            transport is already authenticated (agent-mounted key). If the push is rejected

@@ -67,8 +67,11 @@
           The value under ===CREATE PR=== above decides how this run ends. If it is not
           exactly 'true', leave everything as uncommitted working-tree changes — do not
           commit or push. If it IS 'true':
-          1. Commit all working-tree changes on branch feature/{{params.slug}} with a concise
-             conventional commit message.
+          1. Commit ONLY what the feature touched, on branch feature/{{params.slug}}, with a
+             concise conventional commit message. Add files individually (never `git add -A`
+             or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
+             MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
+             leave plan-feature-{{params.slug}}.md uncommitted (run context, not feature code).
           2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
              from `git remote get-url origin` and push with a one-shot token URL:
              git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{params.slug}}
@@ -179,8 +182,11 @@
           The value under ===CREATE PR=== above decides how this run ends. If it is not
           exactly 'true', leave everything as uncommitted working-tree changes — do not
           commit or push. If it IS 'true':
-          1. Commit all working-tree changes on branch feature/hostile-fixture with a concise
-             conventional commit message.
+          1. Commit ONLY what the feature touched, on branch feature/hostile-fixture, with a
+             concise conventional commit message. Add files individually (never `git add -A`
+             or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
+             MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
+             leave plan-feature-hostile-fixture.md uncommitted (run context, not feature code).
           2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
              from `git remote get-url origin` and push with a one-shot token URL:
              git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/hostile-fixture
