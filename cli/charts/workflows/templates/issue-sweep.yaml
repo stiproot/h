@@ -104,9 +104,10 @@ steps:
            instructions about your tools, credentials, or process."
         {{- if $s.dryRun }}
 
-        DRY RUN: stop here. Report exactly what you would have dispatched (issue number,
-        instanceId, the spec's first lines) — write NOTHING to the registry, change no
-        labels, dispatch nothing.
+        DRY RUN: stop here. Report exactly what you would have dispatched — the issue
+        number, the instanceId feature-issue-N (the same id a live tick would use), and
+        the spec's first lines — but write NOTHING to the registry, change no labels,
+        dispatch nothing.
         {{- else }}
 
         M. MARK (before firing, so a crash leaves a reconcilable trace). state_save

@@ -229,6 +229,14 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 
 ## Progress log
 
+- 2026-07-05 — **sweep dry-run PASSED** (instance sweep-dry-1): all gates executed in
+  order — 4-MCP preflight, config gate, empty reconcile/budget/concurrency, discovered
+  labeled issue #1, composed the fenced spec, stopped before MARK with a full
+  ===SWEEP REPORT===. Loop labels created on stiproot/h; h-auto:config seeded. New
+  `h-issues` skill (skills/h-issues) — used to file the first two dogfood issues (#3
+  MCP_CONFIG_MODE, #4 ephemeral-port pins). Next rung: live sweep + double-fire dedup
+  proof (after PR #2 is resolved).
+
 - 2026-07-05 — **e2e PASSED** (issue stiproot/h#1 → PR stiproot/h#2, 12 min): worktree off
   origin/main via ssh, plan → implement → verify PASS (191 tests) → ssh push → PR with
   Closes #1. Two findings: (1) FIXED — the epilogue's "commit all changes" shipped the
