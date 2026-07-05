@@ -25,11 +25,26 @@ def status(instance_id: str) -> Any:
     return resp.json()
 
 
-def save(key: str, steps: list[Any], params: dict[str, Any] | None = None) -> Any:
-    """Persist a (possibly parameterized) workflow definition under a key."""
+def save(
+    key: str,
+    steps: list[Any],
+    params: dict[str, Any] | None = None,
+    schedule: str | None = None,
+    workspace_id: str | None = None,
+    disabled: bool | None = None,
+) -> Any:
+    """Persist a (possibly parameterized) workflow definition under a key. A cron schedule
+    makes workflow-svc fire it on its own; disabled parks the schedule without deleting it;
+    a workspace_id pins every run to one reusable agent workspace."""
     body: dict[str, Any] = {"key": key, "steps": steps}
     if params:
         body["params"] = params
+    if schedule:
+        body["schedule"] = schedule
+    if workspace_id:
+        body["workspaceId"] = workspace_id
+    if disabled is not None:
+        body["disabled"] = disabled
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/save", json=body, timeout=10)
     resp.raise_for_status()
     return resp.json()

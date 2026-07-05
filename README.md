@@ -261,6 +261,7 @@ docker compose --profile all down -v
 | `claude-managed-agent` | 8008 | 3508 | 50008 | 50009 |
 | `langgraph-agent` | 8009 | 3509 | 36009 | 50011 |
 | `workflow-agent` | 8010 | 3510 | 36010 | 50012 |
+| `claude-coder` | 8014 | 3514 | 36014 | 50015 |
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 

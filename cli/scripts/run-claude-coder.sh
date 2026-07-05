@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# claude-coder — the STRIPPED claude-agent instance for the h-builds-h loop
+# (docs/plans/h-builds-h.md): it executes feature runs whose specs originate from untrusted
+# issue text, so its MCP surface is the hosted `github` server ONLY (.mcp.coder.json — no
+# workflows, no dapr, no obs, no notion) and its env carries no Linear/Notion secrets.
+# Same app code and image as claude-agent; only configuration differs.
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 APP_DIR="${PROJECT_DIR}/apps/claude-agent"
@@ -23,18 +29,19 @@ else
 fi
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-}"
 export AGENT_MODEL="${AGENT_MODEL:-claude-haiku-4-5}"
-export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/claude-agent}"
+export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/claude-coder}"
 export AGENT_APP_DIR="${APP_DIR}"
-# Root-level h skills (harness skill source), reusable by any agent — delivered to the agent's
-# ~/.claude/skills/ by a workflow setup step. Lives at the repo root, not inside an agent app.
 export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
-export TESSL_TOKEN="${TESSL_API_KEY:-}"
-export GH_TOKEN="${GH_TOKEN:-}"
-# Git transport strategy for /clone + /worktree (git-core GitAuth): "ssh" | "pat" (default).
+# The coder's GitHub credential: a fine-grained PAT with contents:write + pull_requests:write
+# + issues:read ONLY (it must not be able to file or edit issues). Falls back to GH_TOKEN for
+# owner-repo trials where one identity does everything.
+export GH_TOKEN="${GH_CODER_TOKEN:-${GH_TOKEN:-}}"
+# Git transport strategy for /clone + /worktree (git-core GitAuth): "ssh" pushes/fetches over
+# an ssh remote (GIT_SSH_KEY_PATH names a key; empty = ambient ssh config/agent), default pat.
 export GIT_AUTH="${GIT_AUTH:-}"
 export GIT_SSH_KEY_PATH="${GIT_SSH_KEY_PATH:-}"
-export NOTION_API_KEY="${NOTION_API_KEY:-}"
-export MCP_CONFIG_SRC="${AGENT_APP_DIR}/.mcp.local.json"
+# github MCP only — the agent that executes untrusted specs gets no control-plane tools.
+export MCP_CONFIG_SRC="${APP_DIR}/.mcp.coder.json"
 
 cd "${PROJECT_DIR}"
 bunx turbo build --filter=claude-agent
@@ -42,17 +49,17 @@ bunx turbo build --filter=claude-agent
 cd "${APP_DIR}"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale claude-agent 8002 3502 36002 50002
+stop_stale claude-coder 8014 3514 36014 50015
 
 exec dapr run \
-  --app-id claude-agent \
-  --app-port 8002 \
-  --dapr-http-port 3502 \
-  --dapr-grpc-port 36002 \
-  --dapr-internal-grpc-port 50002 \
+  --app-id claude-coder \
+  --app-port 8014 \
+  --dapr-http-port 3514 \
+  --dapr-grpc-port 36014 \
+  --dapr-internal-grpc-port 50015 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \
   --config "${PROJECT_DIR}/dapr/local/appconfig.yaml" \
   --log-level info \
-  -- env APP_PORT=8002 bun run src/index.ts
+  -- env APP_PORT=8014 bun run src/index.ts

@@ -77,6 +77,30 @@ def publish(
     key: Annotated[
         str | None, typer.Option(help="Saved-workflow key; defaults to the family name.")
     ] = None,
+    schedule: Annotated[
+        str | None,
+        typer.Option(
+            "--schedule",
+            help="Cron expression (5-field, UTC): workflow-svc fires the saved workflow "
+            "on this schedule.",
+        ),
+    ] = None,
+    workspace_id: Annotated[
+        str | None,
+        typer.Option(
+            "--workspace-id",
+            help="Stable workspace key: every run (incl. cron fires) reuses one agent "
+            "workspace dir instead of a per-run one.",
+        ),
+    ] = None,
+    disabled: Annotated[
+        bool,
+        typer.Option(
+            "--disabled",
+            help="Save with the schedule parked: the cron tick skips it until re-saved "
+            "without this flag (the kill switch).",
+        ),
+    ] = False,
 ) -> None:
     """Render a family in publish mode ({{params.*}} slots open) and save it to workflow-svc.
 
@@ -95,8 +119,19 @@ def publish(
         err_console.print(f"[red]Family '{family}' rendered no steps[/red] — check its values.")
         raise typer.Exit(1)
     resolved_key = key or family
-    result = _guarded(lambda: workflow_svc.save(resolved_key, steps))
+    result = _guarded(
+        lambda: workflow_svc.save(
+            resolved_key,
+            steps,
+            schedule=schedule,
+            workspace_id=workspace_id,
+            disabled=disabled if (disabled or schedule) else None,
+        )
+    )
     console.print(f"==> Published family '{family}' as saved workflow '{result['key']}'")
+    if schedule:
+        state = "DISABLED — re-publish without --disabled to arm" if disabled else "armed"
+        console.print(f"    schedule: '{schedule}' ({state})")
     console.print(f"    fire it: h workflow run {result['key']} -p slug=... -p spec=@file.md")
 
 
