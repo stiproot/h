@@ -11,6 +11,13 @@
     "obs": {
       "type": "sse",
       "url": "http://localhost:8013/sse"
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GH_TOKEN}"
+      }
     }
   }
 }
