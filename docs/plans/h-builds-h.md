@@ -229,6 +229,16 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 
 ## Progress log
 
+- 2026-07-05 — **revise flow shipped and live-proven on PR #2.** New sweep step V. REVISE
+  (between C and D): open agent PRs with a merge conflict or changes-requested/new human
+  review comments get a revise run — same branch/worktree, fresh: true, push updates the
+  PR, harness artifacts resolve to main's side and are removed — before any new issue is
+  discovered. sweep-live-6 caught PR #2 dirty, dispatched the revise; the run merged main,
+  stripped .mcp.json + plan-*.md from the PR, verified PASS, and PR #2 is now
+  mergeable:clean with a CONTRIBUTING.md-only diff. sweep-live-7 reconciled it and the
+  LEDGER GAP branch fired correctly (no silent zero) — root cause: obs runs_list has no
+  instanceId filter (filed #10; sweep prose now prefix-matches runIds meanwhile).
+
 - 2026-07-05 — **live sweep acceptance PASSED, full gate coverage.** Five manual ticks:
   sweep-live-1 dispatched #3 (oldest eligible, mark-before-fire); sweep-live-2 stopped at
   gate C mid-run (double-fire dedup proof); sweep-live-3 reconciled #3 done + commented

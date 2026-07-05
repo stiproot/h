@@ -82,9 +82,10 @@ steps:
            - UNKNOWN: a mark-then-fire crash left a dangling entry — revert to
              {status: pending, updatedAt}.
            For each run that turned terminal in this step, total its cost into today's
-           h-auto:ledger:<yyyy-mm-dd>: obs runs_list filtered by the instanceId returns one
-           record per agent step (plan, implement, verify — each carries costUsd); SUM them
-           all. Records exist for every completed run — if you cannot find any, that is a
+           h-auto:ledger:<yyyy-mm-dd>: obs runs_list has NO instance filter yet — call it
+           with a generous limit and keep the records whose runId STARTS WITH
+           "<instanceId>:" (runIds are <group>:<agentId>:<ts>); one record per agent step
+           (plan, implement, verify — each carries costUsd); SUM them all. Records exist for every completed run — if you cannot find any, that is a
            LEDGER GAP: say so explicitly in the sweep report instead of silently adding 0.
 
         B. BUDGET (fail-closed). Read today's ledger. runsFired >= maxRunsPerDay, or
