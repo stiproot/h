@@ -229,6 +229,19 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 
 ## Progress log
 
+- 2026-07-05 — **live sweep acceptance PASSED, full gate coverage.** Five manual ticks:
+  sweep-live-1 dispatched #3 (oldest eligible, mark-before-fire); sweep-live-2 stopped at
+  gate C mid-run (double-fire dedup proof); sweep-live-3 reconciled #3 done + commented
+  PR #6 + advanced to #4; sweep-live-4 reconciled #4 (cost summed into the ledger after a
+  prose sharpening — the original "when present" wording silently added $0) + advanced to
+  #5; sweep-live-5 stopped at gate B (3/3 runs, $1.79/$5). Three autonomous PRs: #6
+  (MCP_CONFIG_MODE=replace — the loop fixed its own security hole), #8 (internal-gRPC
+  ports → 610xx), #9 (fleet supervision + NR busy_timeout). Selective-commit epilogue
+  verified live (clean diffs, .mcp.json restored). New issue #7 (hardcoded ledger agentId
+  misattributes claude-coder runs). Known nick: #3's ~$1.36 predates the prose fix and is
+  missing from the day ledger (one-time undercount). Next: human review/merge of PRs
+  #6/#8/#9, then arm the cron (--schedule "*/30 * * * *" --disabled first).
+
 - 2026-07-05 — **sweep dry-run PASSED** (instance sweep-dry-1): all gates executed in
   order — 4-MCP preflight, config gate, empty reconcile/budget/concurrency, discovered
   labeled issue #1, composed the fenced spec, stopped before MARK with a full
