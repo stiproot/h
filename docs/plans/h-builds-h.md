@@ -229,6 +229,20 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 
 ## Progress log
 
+- 2026-07-06 — **e2e wrap: revise loop under the durable watcher engine, PRs merged.**
+  Three manual ticks closed out the exercise. sweep-live-8 caught PRs #8/#9 dirty (human
+  review comments post-push), dispatched the revise for #8 (feature-issue-4, oldest-first;
+  watch row registered at fire, epoch 1, 40 min budget, engine retry). The engine finalized
+  it (completed, $3.32, no costGap). sweep-live-9 reconciled #4 done + commented, then
+  dispatched #9's revise (feature-issue-5; finalized completed, $3.21). sweep-live-10
+  reconciled #5 done and STOPPED at gate B — watch:ledger:2026-07-06 {runsFired: 2,
+  runsFinalized: 2, costUsd: $6.53} ≥ $5 daily budget, the fail-closed accounting proof.
+  Both revise diffs verified against every review-comment acceptance check, including a
+  live sidecar smoke of the sqlite NR `busyTimeout` metadata on Dapr 1.17.9 (clean init).
+  Human gate: PRs #2/#8/#9 reviewed and merged (issues #1/#4/#5 auto-closed); one human
+  touch-up commit on #8 (a newline the revise run swallowed in CLAUDE.md). Producer-side
+  gap filed as #11 (pr-review chart family — reviews an existing PR, posts line comments).
+
 - 2026-07-05 — **revise flow shipped and live-proven on PR #2.** New sweep step V. REVISE
   (between C and D): open agent PRs with a merge conflict or changes-requested/new human
   review comments get a revise run — same branch/worktree, fresh: true, push updates the
