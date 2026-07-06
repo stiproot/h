@@ -12,3 +12,4 @@ spec:
     version: "v1"
     configuration:
       connectionString: "/tmp/dapr-h-nr.db"
+      busyTimeout: "10s"

@@ -1,0 +1,23 @@
+// h-builds-h supervised stack — services required for the unattended h-builds-h cron loop.
+// Uses cli/scripts/_supervise.sh instead of _pane.sh: services auto-restart on exit with
+// capped exponential backoff. Ctrl+C kills the child (stops that one run) but the supervisor
+// immediately restarts it — use `zellij action close-pane` or kill the whole tab to stop.
+// Includes claude-coder (the stripped coding agent that executes untrusted feature specs).
+// Assumes `make infra-up` has redis, placement, and scheduler running.
+layout {
+    pane split_direction="vertical" {
+        pane split_direction="horizontal" {
+            pane name="workflow-svc" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-workflow-svc.sh"; }
+            pane name="claude-agent" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-claude-agent.sh"; }
+            pane name="workflow-agent" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-workflow-agent.sh"; }
+        }
+        pane split_direction="horizontal" {
+            pane name="workflow-mcp" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-workflow-mcp.sh"; }
+            pane name="claude-coder" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-claude-coder.sh"; }
+        }
+        pane split_direction="horizontal" {
+            pane name="dapr-mcp" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-dapr-mcp.sh"; }
+            pane name="obs-mcp" command="bash" { args "cli/scripts/_supervise.sh" "cli/scripts/run-obs-mcp.sh"; }
+        }
+    }
+}
