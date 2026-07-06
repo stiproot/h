@@ -128,12 +128,18 @@ def test_plugin_improvement_golden(snapshot) -> None:
 
 def test_families_do_not_cross_demand_values(hostile_spec: Path) -> None:
     """The family gate: rendering one family never trips another family's `required`."""
-    # feature renders without pluginImprovement.tile set…
+    # feature renders without pluginImprovement.tile or prReview.repo set…
     _render_hostile(hostile_spec)
-    # …and plugin-improvement renders without feature.slug/spec set.
+    # …plugin-improvement renders without feature.slug/spec or prReview.repo set…
     helm.render_workflow(
         "plugin-improvement",
         values={"pluginImprovement.tile": "plugins/linear"},
+        include_local=False,
+    )
+    # …and pr-review renders without feature.slug/spec or pluginImprovement.tile set.
+    helm.render_workflow(
+        "pr-review",
+        values={"prReview.repo": "owner/h"},
         include_local=False,
     )
 
@@ -179,6 +185,44 @@ def test_issue_sweep_golden(snapshot) -> None:
         include_local=False,
     )
     assert rendered == snapshot
+
+
+def test_pr_review_golden(snapshot) -> None:
+    """The pr-review family (publish-native): setup → review with engine tokens."""
+    rendered = helm.render_workflow(
+        "pr-review",
+        values={"prReview.repo": "owner/h"},
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_pr_review_publish_mode_opens_param_slots() -> None:
+    """PR number and focus are always engine tokens (publish-native family)."""
+    definition = json.loads(
+        helm.to_wire_json(
+            helm.render_workflow(
+                "pr-review",
+                values={"prReview.repo": "owner/h"},
+                include_local=False,
+            )
+        )
+    )
+    assert [s["id"] for s in definition["steps"]] == ["setup", "review"]
+    review_task = definition["steps"][1]["input"]["task"]
+    assert "{{params.pr}}" in review_task
+    assert "{{params.focus}}" in review_task
+    assert "===REVIEW===" in review_task
+    # Executor must be claude-coder — the security property.
+    assert definition["steps"][0]["input"]["agentId"] == "claude-coder"
+    # Activity must be run-claude-coder, not run-claude.
+    assert definition["steps"][1]["activity"] == "run-claude-coder"
+
+
+def test_missing_pr_review_repo_is_a_render_error() -> None:
+    """prReview.repo is required; omitting it fails the render with an informative error."""
+    with pytest.raises(helm.HelmError, match="prReview.repo is required"):
+        helm.render_workflow("pr-review", values={}, include_local=False)
 
 
 def test_issue_sweep_dry_run_stops_before_mark() -> None:

@@ -103,6 +103,24 @@
       },
       "additionalProperties": false
     },
+    "prReview": {
+      "type": "object",
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "review": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "issueSweep": {
       "type": "object",
       "properties": {

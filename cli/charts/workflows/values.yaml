@@ -66,6 +66,15 @@ pluginImprovement:
     improve: ""
     verify: ""
 
+# pr-review workflow (templates/pr-review.yaml): setup → review. Publish-native — always
+# rendered as a family with {{params.pr}} / {{params.focus}} slots.
+prReview:
+  # Target GitHub repo (owner/name) whose PR is reviewed. Required.
+  repo: ""
+  # Per-step model overrides; empty = the agent's AGENT_MODEL.
+  models:
+    review: ""
+
 # issue-sweep workflow (templates/issue-sweep.yaml): setup → sweep — one judgment tick of the
 # "h builds h" loop (docs/plans/h-builds-h.md). Publish with a cron schedule + a stable
 # workspaceId, disabled until armed. Runtime knobs (enabled, budgets, attempt cap) live in the
