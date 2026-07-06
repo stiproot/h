@@ -266,11 +266,14 @@ docker compose --profile all down -v
 | `scheduler` | — | — | — | 50007 |
 
 Every local service binds a unique set of ports, so any combination can run at once. All sidecars
-pin a distinct `360xx` gRPC port and a `610xx` internal-gRPC port. The `610xx` range is above the
-Linux kernel's default ephemeral outbound port ceiling (60999), so the kernel can never assign these
-as transient source ports for outbound connections — eliminating the "Port N is not available" failure
-that occurs when an unrelated process's outbound connection happens to occupy a pinned port before the
-sidecar binds it. `50006`/`50007` (placement/scheduler) run inside containers and are unaffected.
+pin a distinct `360xx` gRPC port and a `610xx` internal-gRPC port. On Linux (default ephemeral range
+32768–60999), the `610xx` internal-gRPC ports sit above the ceiling and the kernel will not assign
+them as ephemeral source ports — removing that exposure for internal-gRPC specifically. The `360xx`
+sidecar API gRPC ports remain inside the Linux ephemeral range (residual exposure); setting
+`net.ipv4.ip_local_reserved_ports` to cover all pinned ports is the mechanism that would close the
+remaining gap. On macOS (ephemeral range 49152–65535) the `610xx` ports fall inside it, so the
+residual applies there regardless. `50006`/`50007` (placement/scheduler) run inside containers and
+are unaffected.
 Each `cli/scripts/run-*.sh` also frees its own ports on start (see `stop_stale` in `cli/scripts/_lib.sh`),
 so re-running a script cleanly replaces a prior instance.
 

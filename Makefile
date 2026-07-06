@@ -155,8 +155,7 @@ tilt-trigger: ## Force-rebuild and redeploy one service (usage: make tilt-trigge
 #
 # Launch every app service — one pane each, via the dapr CLI run scripts — in a
 # single zellij session. Assumes `make infra-up` is already running (redis,
-# placement, scheduler). The layout omits dapr-claude-loop-agent, which shares
-# internal gRPC port 50005 with dapr-agent.
+# placement, scheduler).
 #
 # zellij refuses to start a session from inside another, so `dev` is for a plain
 # terminal. Use `dev-tab` to add the stack to the session you are already in.
