@@ -57,7 +57,7 @@ class DaprAgentRunner:
         return AgentResponse(
             output=output,
             session_id=str(uuid.uuid4()),
-            model="dapr-agent",
+            model=self._model,
             turns=turns,
             usage={"input": 0, "output": 0},
         )

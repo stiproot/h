@@ -33,10 +33,22 @@ def _system_prompt() -> str:
     return base
 
 
+# Provider-neutral LLM config, honest about naming: an operator points LLM_BASE_URL / LLM_API_KEY
+# at any OpenAI-compatible endpoint (e.g. DeepSeek at https://api.deepseek.com/v1) and selects the
+# model with AGENT_MODEL. The Anthropic-named vars stay the fallback, so the Claude default is
+# unchanged when the neutral vars are unset.
+_base_url = os.getenv("LLM_BASE_URL") or os.getenv("ANTHROPIC_BASE_URL")
+if not _base_url:
+    raise RuntimeError(
+        "No LLM endpoint configured: set LLM_BASE_URL (provider-neutral) or ANTHROPIC_BASE_URL "
+        "to an OpenAI-compatible base URL."
+    )
+_api_key = os.getenv("LLM_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "")
+
 _runner = DaprAgentRunner(
     model=os.getenv("AGENT_MODEL", "claude-haiku-4-5"),
-    base_url=os.environ["ANTHROPIC_BASE_URL"],
-    api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+    base_url=_base_url,
+    api_key=_api_key,
     system_prompt=_system_prompt(),
     max_turns=int(os.getenv("AGENT_MAX_ITERATIONS", "20")),
     workflows_mcp_url=WORKFLOWS_MCP_URL,

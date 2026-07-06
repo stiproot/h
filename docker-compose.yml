@@ -401,6 +401,11 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL}
+      # Provider-neutral LLM config (falls back to ANTHROPIC_* in-app); point these at
+      # DeepSeek etc. DAPR_AGENT_MODEL selects the model (default: claude-haiku-4-5).
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - AGENT_MODEL=${DAPR_AGENT_MODEL:-claude-haiku-4-5}
       - AGENT_BASE_DIR=/workspace/dapr-agent
     volumes:
       - ../h-workspace:/workspace

@@ -48,10 +48,11 @@ export const openhandsStrategy: AgentStrategy = {
 
     const env: Record<string, string> = { LLM_API_KEY: llmConfig.apiKey };
     if (llmConfig.baseUrl) env["LLM_BASE_URL"] = llmConfig.baseUrl;
+    // A model already carrying a LiteLLM provider prefix (e.g. `anthropic/…`, `deepseek/…`)
+    // routes as-is; a bare id (e.g. `deepseek-v4-flash`) is treated as an OpenAI-compatible
+    // endpoint reached via LLM_BASE_URL.
     if (request.model)
-      env["LLM_MODEL"] = request.model.startsWith("anthropic/")
-        ? request.model
-        : `openai/${request.model}`;
+      env["LLM_MODEL"] = request.model.includes("/") ? request.model : `openai/${request.model}`;
     return env;
   },
 

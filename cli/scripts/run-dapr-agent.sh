@@ -9,8 +9,14 @@ if [[ -f "${PROJECT_DIR}/.env" ]]; then
   set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
 
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
-export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL}"
+# LLM config: provider-neutral LLM_* take precedence, the Anthropic-named vars are the fallback
+# (resolved in main.py). Neither key is hard-required here — main.py fails clearly if no base URL is
+# configured — so a DeepSeek-only setup can leave the ANTHROPIC_* vars blank and set LLM_* instead.
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-}"
+export LLM_API_KEY="${LLM_API_KEY:-}"
+export LLM_BASE_URL="${LLM_BASE_URL:-}"
+export AGENT_MODEL="${DAPR_AGENT_MODEL:-${AGENT_MODEL:-claude-haiku-4-5}}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/dapr-agent}"
 # Opt-in workflow orchestration: set WORKFLOWS_MCP_URL (e.g. http://localhost:8005/sse) in .env to
 # let this agent construct/invoke/monitor workflows. H_SKILLS_DIR (defaulted here) then lets it load
