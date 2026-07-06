@@ -68,9 +68,6 @@ steps:
            - Convention: does the code follow patterns already in the repo (naming, structure,
              no unnecessary comments, no emojis unless asked, no backwards-compat hacks for
              things that can just be changed)?
-        {{- with $p.models.review }}
-        {{- else }}
-        {{- end }}
         {{- $focus := include "h.token" "params.focus" }}
            Optional focus steer (empty = ignore): {{ $focus }}
 
