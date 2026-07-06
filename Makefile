@@ -39,6 +39,7 @@ DAPR_NAMESPACE ?= dapr-system
 ZELLIJ_SESSION      ?= h
 DEV_LAYOUT          ?= .zellij/dev.kdl
 H_BUILDS_H_LAYOUT   ?= .zellij/h-builds-h.kdl
+H_BUILDS_H_SESSION  ?= h-builds-h
 
 WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
 # Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
@@ -187,8 +188,8 @@ h-builds-h: ## Launch the supervised h-builds-h stack in a dedicated zellij sess
 	  echo "Already inside a zellij session — run 'make h-builds-h' from a plain terminal, or 'make h-builds-h-tab' to add it here."; \
 	  exit 1; \
 	fi
-	@zellij delete-session $(ZELLIJ_SESSION) --force >/dev/null 2>&1 || true
-	zellij --session $(ZELLIJ_SESSION) --layout $(H_BUILDS_H_LAYOUT)
+	@zellij delete-session $(H_BUILDS_H_SESSION) --force >/dev/null 2>&1 || true
+	zellij --session $(H_BUILDS_H_SESSION) --layout $(H_BUILDS_H_LAYOUT)
 
 h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the current zellij session (needs infra-up)
-	zellij action new-tab --cwd "$(CURDIR)" --name $(ZELLIJ_SESSION) --layout $(H_BUILDS_H_LAYOUT)
+	zellij action new-tab --cwd "$(CURDIR)" --name $(H_BUILDS_H_SESSION) --layout $(H_BUILDS_H_LAYOUT)

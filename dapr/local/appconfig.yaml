@@ -11,4 +11,5 @@ spec:
     component: "sqlite"
     version: "v1"
     configuration:
-      connectionString: "file:/tmp/dapr-h-nr.db?_busy_timeout=10000&_journal_mode=WAL"
+      connectionString: "/tmp/dapr-h-nr.db"
+      busyTimeout: "10s"
