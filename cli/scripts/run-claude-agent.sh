@@ -42,14 +42,14 @@ bunx turbo build --filter=claude-agent
 cd "${APP_DIR}"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale claude-agent 8002 3502 36002 50002
+stop_stale claude-agent 8002 3502 36002 61002
 
 exec dapr run \
   --app-id claude-agent \
   --app-port 8002 \
   --dapr-http-port 3502 \
   --dapr-grpc-port 36002 \
-  --dapr-internal-grpc-port 50002 \
+  --dapr-internal-grpc-port 61002 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

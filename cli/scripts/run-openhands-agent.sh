@@ -29,14 +29,14 @@ bunx turbo build --filter=openhands-agent
 cd "${APP_DIR}"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale openhands-agent 8004 3504 36004 50004
+stop_stale openhands-agent 8004 3504 36004 61004
 
 exec dapr run \
   --app-id openhands-agent \
   --app-port 8004 \
   --dapr-http-port 3504 \
   --dapr-grpc-port 36004 \
-  --dapr-internal-grpc-port 50004 \
+  --dapr-internal-grpc-port 61004 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

@@ -19,14 +19,14 @@ cd "${APP_DIR}"
 # directly by clients. The actor port is 8012 (not 8021 — that is taken by a macOS launchd
 # daemon on this platform).
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale dapr-mcp 8011 8012 3511 36011 50013
+stop_stale dapr-mcp 8011 8012 3511 36011 61013
 
 exec dapr run \
   --app-id dapr-mcp \
   --app-port 8012 \
   --dapr-http-port 3511 \
   --dapr-grpc-port 36011 \
-  --dapr-internal-grpc-port 50013 \
+  --dapr-internal-grpc-port 61013 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \

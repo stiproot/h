@@ -22,14 +22,14 @@ export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 cd "${APP_DIR}/src"
 
 source "${SCRIPT_DIR}/_lib.sh"
-stop_stale workflow-agent 8010 3510 36010 50012
+stop_stale workflow-agent 8010 3510 36010 61012
 
 exec dapr run \
   --app-id workflow-agent \
   --app-port 8010 \
   --dapr-http-port 3510 \
   --dapr-grpc-port 36010 \
-  --dapr-internal-grpc-port 50012 \
+  --dapr-internal-grpc-port 61012 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
   --resources-path "${PROJECT_DIR}/dapr/local" \
