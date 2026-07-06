@@ -49,4 +49,20 @@ describe("mergeMcpConfig", () => {
       obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
     });
   });
+
+  it("replace mode yields only the incoming servers regardless of cwd content", () => {
+    const existing = JSON.stringify({
+      mcpServers: {
+        dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
+        tessl: { type: "stdio", command: "tessl", args: ["mcp", "start"] },
+      },
+      someProjectSetting: true,
+    });
+    const result = mergeMcpConfig(existing, H, "replace");
+    expect(servers(result)).toEqual({
+      dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
+      obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
+    });
+    expect(JSON.parse(result).someProjectSetting).toBeUndefined();
+  });
 });
