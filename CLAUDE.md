@@ -258,10 +258,15 @@ needs interactive OAuth and can't authenticate in an unattended agent — Linear
 `ClaudeRunner` auto-provisions the MCP config into the run's cwd: before invoking the `claude` CLI
 (which auto-discovers `.mcp.json` in its cwd) it merges `MCP_CONFIG_SRC` — defaulting to
 `{AGENT_BASE_DIR}/.mcp.json` (the file Docker/k8s mount there), set to `{AGENT_APP_DIR}/.mcp.local.json`
-locally — into whatever `.mcp.json` the cwd already has, creating it when absent. The merge
-(`mergeMcpConfig`) preserves the cwd's own servers and other top-level keys and lets h's servers win
-on a name conflict, so an agent running in a worktree of a repo that ships its own `.mcp.json` (e.g. a target
-repo's `tessl` server) still gains h's `dapr`/`obs`/`workflows` servers. Docker deployments mount
+locally — into whatever `.mcp.json` the cwd already has, creating it when absent. The provisioning
+mode is `MCP_CONFIG_MODE` (validated at startup — any value other than `merge`/`replace` fails the
+service, fail-closed): the default `merge` (`mergeMcpConfig`) preserves the cwd's own servers and
+other top-level keys and lets h's servers win on a name conflict, so an agent running in a worktree
+of a repo that ships its own `.mcp.json` (e.g. a target repo's `tessl` server) still gains h's
+`dapr`/`obs`/`workflows` servers; `replace` — set on **claude-coder** only — discards the cwd's
+config entirely so the agent executing untrusted specs never inherits any target-repo servers
+(whatever the repo), and a missing `MCP_CONFIG_SRC` aborts the run instead of silently skipping the
+rewrite. Docker deployments mount
 `.mcp.json` directly; in Kubernetes the ConfigMap is mounted at `/workspace/claude-agent/.mcp.json`.
 
 ### h skills (harness skill source)
