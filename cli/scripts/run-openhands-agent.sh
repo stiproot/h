@@ -12,6 +12,10 @@ fi
 export LLM_API_KEY="${LLM_API_KEY:?LLM_API_KEY is required}"
 export LLM_BASE_URL="${LLM_BASE_URL}"
 export AGENT_MODEL="${OPENHANDS_MODEL:-claude-sonnet-4-6}"
+# MCP config source (OpenHands-format): provisioned per run into $HOME/.openhands/mcp.json so the
+# CLI can reach workflow-mcp / github / dapr / obs. GH_TOKEN is substituted into the github header.
+export GH_TOKEN="${GH_TOKEN:-}"
+export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/openhands-agent/.mcp.local.json}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/openhands-agent}"
 export TESSL_TOKEN="${TESSL_API_KEY:?TESSL_API_KEY is required}"
 # Available to the agent process so OpenHands' built-in "linear" skill can authenticate to the

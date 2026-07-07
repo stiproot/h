@@ -358,8 +358,13 @@ services:
       - TESSL_TOKEN=${TESSL_TOKEN:-}
       # Consumed by OpenHands' built-in "linear" skill to authenticate to the Linear API.
       - LINEAR_API_KEY=${LINEAR_API_KEY:-}
+      # MCP config (OpenHands-format, docker URLs): provisioned per run into $HOME/.openhands/mcp.json
+      # so the CLI can reach workflow-mcp / github / dapr / obs. GH_TOKEN is substituted at write time.
+      - GH_TOKEN=${GH_TOKEN:-}
+      - MCP_CONFIG_SRC=/workspace/openhands-agent/.mcp.json
     volumes:
       - ../h-workspace:/workspace
+      - ./apps/openhands-agent/.mcp.json:/workspace/openhands-agent/.mcp.json:ro
     ports:
       - "8004:8000"
       - "3504:3500"

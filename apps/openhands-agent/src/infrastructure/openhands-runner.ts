@@ -8,6 +8,8 @@ import type { AgentRequest, AgentResponse } from "core";
 import { Config, type ConfigError, Data, Effect, Layer, Option } from "effect";
 import { LoggerTag } from "logger";
 
+import { resolveOpenhandsMcpConfig } from "./mcp-config.ts";
+
 /** Default workspace root, shared with the composition root's workspace-dir resolver. */
 export const DEFAULT_AGENT_BASE_DIR = "/workspace/openhands-agent";
 
@@ -42,7 +44,11 @@ const openhandsConfig = Effect.gen(function* () {
     join(baseDir, "..", ".runs"),
   );
   const daprHttpPort = yield* Config.option(Config.string("DAPR_HTTP_PORT"));
-  return { apiKey, baseUrl, model, baseDir, runsDir, daprHttpPort };
+  // Optional OpenHands MCP config source (workflow-mcp, github, dapr, obs). When set, each run
+  // provisions it into a per-run HOME so the CLI reads it ($HOME/.openhands/mcp.json). Unset →
+  // no MCP servers (the legacy behaviour), so this is backward-compatible.
+  const mcpConfigSrc = yield* Config.option(Config.string("MCP_CONFIG_SRC"));
+  return { apiKey, baseUrl, model, baseDir, runsDir, daprHttpPort, mcpConfigSrc };
 });
 
 /**
@@ -76,6 +82,29 @@ export const OpenhandsRunnerLive: Layer.Layer<
             .makeDirectory(cwd, { recursive: true })
             .pipe(Effect.mapError((cause) => new OpenhandsRunError({ cause })));
         }
+
+        // Provision the OpenHands MCP config (workflow-mcp, github, dapr, obs) into a per-run HOME.
+        // OpenHands reads $HOME/.openhands/mcp.json (global, HOME-keyed) — unlike the claude CLI,
+        // which reads .mcp.json from cwd — so HOME points at a dir OUTSIDE the workspace (the agent
+        // never commits its .openhands state) and we write the resolved config there before spawn.
+        const mcpEnv: Record<string, string> = {};
+        const mcpConfigSrc = Option.getOrUndefined(cfg.mcpConfigSrc);
+        if (mcpConfigSrc) {
+          const homeDir = join(cfg.baseDir, ".oh-home", workspaceKey ?? "default");
+          const ohDir = join(homeDir, ".openhands");
+          const source = yield* fs
+            .readFileString(mcpConfigSrc)
+            .pipe(Effect.mapError((cause) => new OpenhandsRunError({ cause })));
+          const resolved = resolveOpenhandsMcpConfig(source, process.env);
+          yield* fs
+            .makeDirectory(ohDir, { recursive: true })
+            .pipe(Effect.mapError((cause) => new OpenhandsRunError({ cause })));
+          yield* fs
+            .writeFileString(join(ohDir, "mcp.json"), resolved)
+            .pipe(Effect.mapError((cause) => new OpenhandsRunError({ cause })));
+          mcpEnv["HOME"] = homeDir;
+        }
+
         const log = yield* logger.child({ workflowInstanceId, workspaceId, agent: "openhands" });
 
         const handle = yield* startRunLedgerEffect({
@@ -93,7 +122,10 @@ export const OpenhandsRunnerLive: Layer.Layer<
             systemPrompt: systemPrompt ?? "",
             taskPrompt: input,
             cwd,
-            env: workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {},
+            env: {
+              ...(workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {}),
+              ...mcpEnv,
+            },
             timeout: 300_000,
             model: cfg.model,
             llmConfig: { apiKey: cfg.apiKey, baseUrl: cfg.baseUrl },

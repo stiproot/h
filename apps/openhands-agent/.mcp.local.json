@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "workflows": {
+      "url": "http://localhost:8005/sse",
+      "transport": "sse",
+      "enabled": true
+    },
+    "dapr": {
+      "url": "http://localhost:8011/sse",
+      "transport": "sse",
+      "enabled": true
+    },
+    "obs": {
+      "url": "http://localhost:8013/sse",
+      "transport": "sse",
+      "enabled": true
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer ${GH_TOKEN}"
+      },
+      "enabled": true
+    }
+  }
+}
