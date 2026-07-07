@@ -19,5 +19,5 @@ allowlist; here it needs nothing).
 */}}
 {{- define "h.setupSteps" -}}
 - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-- cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+- cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
 {{- end }}

@@ -13,7 +13,7 @@
         agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: plan
       activity: run-claude
       input:
@@ -95,7 +95,7 @@
   '''
 # ---
 # name: test_feature_wire_json_golden
-  '{"instanceId": "feature-hostile-fixture", "steps": [{"id": "worktree", "activity": "create-worktree", "input": {"agentId": "claude-agent", "branch": "feature/hostile-fixture"}}, {"id": "setup", "activity": "setup", "input": {"agentId": "claude-agent", "setup": [{"cmd": "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"}, {"cmd": "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"}]}}, {"id": "plan", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-sonnet-4-6", "permissionMode": "plan", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\n\\nFirst check for a persisted plan from a prior run: if plan-feature-hostile-fixture.md\\nexists in the worktree root, read it — if it still matches the spec and the code,\\nreuse it as your plan instead of re-investigating.\\n\\nOtherwise investigate the feature request under ===FEATURE SPEC=== below: explore the\\nrelevant code and produce an implementation plan. Do NOT write code or modify any\\nfiles. If the feature already appears implemented, say so in the plan.\\nEnd your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —"}}, {"id": "implement", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-haiku-4-5", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\n\\nFirst persist the plan you were handed under ===IMPLEMENTATION PLAN=== (the\\nshared-context handoff, so a re-run or another session can pick it up — the planning\\nagent runs read-only and cannot write it itself):\\n1. Write it to plan-feature-hostile-fixture.md in the worktree root.\\n2. Call the dapr MCP tool actor_state_set with actorId \'feature-hostile-fixture\' and key\\n   \'plan\', value the plan text — durable in the state store, inspectable from any\\n   session via actor_state_get.\\nIf either persistence step fails (e.g. the dapr MCP is unreachable), do NOT fail the\\nrun — but you MUST say so explicitly in your final output, so the degradation is\\nvisible instead of silent.\\n\\nThen implement the feature described under ===FEATURE SPEC=== below, following the\\nplan. If the feature already appears implemented, make no changes and say so.\\nLeave the result as uncommitted working-tree changes — do not commit or push.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —\\n\\n\\n===IMPLEMENTATION PLAN===\\n{{plan.output}}"}}]}'
+  '{"instanceId": "feature-hostile-fixture", "steps": [{"id": "worktree", "activity": "create-worktree", "input": {"agentId": "claude-agent", "branch": "feature/hostile-fixture"}}, {"id": "setup", "activity": "setup", "input": {"agentId": "claude-agent", "setup": [{"cmd": "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"}, {"cmd": "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"}]}}, {"id": "plan", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-sonnet-4-6", "permissionMode": "plan", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\n\\nFirst check for a persisted plan from a prior run: if plan-feature-hostile-fixture.md\\nexists in the worktree root, read it — if it still matches the spec and the code,\\nreuse it as your plan instead of re-investigating.\\n\\nOtherwise investigate the feature request under ===FEATURE SPEC=== below: explore the\\nrelevant code and produce an implementation plan. Do NOT write code or modify any\\nfiles. If the feature already appears implemented, say so in the plan.\\nEnd your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —"}}, {"id": "implement", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-haiku-4-5", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\n\\nFirst persist the plan you were handed under ===IMPLEMENTATION PLAN=== (the\\nshared-context handoff, so a re-run or another session can pick it up — the planning\\nagent runs read-only and cannot write it itself):\\n1. Write it to plan-feature-hostile-fixture.md in the worktree root.\\n2. Call the dapr MCP tool actor_state_set with actorId \'feature-hostile-fixture\' and key\\n   \'plan\', value the plan text — durable in the state store, inspectable from any\\n   session via actor_state_get.\\nIf either persistence step fails (e.g. the dapr MCP is unreachable), do NOT fail the\\nrun — but you MUST say so explicitly in your final output, so the degradation is\\nvisible instead of silent.\\n\\nThen implement the feature described under ===FEATURE SPEC=== below, following the\\nplan. If the feature already appears implemented, make no changes and say so.\\nLeave the result as uncommitted working-tree changes — do not commit or push.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —\\n\\n\\n===IMPLEMENTATION PLAN===\\n{{plan.output}}"}}]}'
 # ---
 # name: test_feature_with_pr_golden
   '''
@@ -112,7 +112,7 @@
         agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: plan
       activity: run-claude
       input:
@@ -240,7 +240,7 @@
         agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: plan
       activity: run-claude
       input:
@@ -358,7 +358,7 @@
         agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: plan
       activity: run-claude
       input:
@@ -451,7 +451,7 @@
         agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: sweep
       activity: run-claude
       input:
@@ -616,7 +616,7 @@
         agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: improve
       activity: run-claude
       input:
@@ -644,7 +644,7 @@
         agentId: "claude-coder"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: review
       activity: run-claude-coder
       input:
