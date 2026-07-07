@@ -9,6 +9,10 @@ type Input = {
   task: string;
   workflowInstanceId: string;
   workspaceId?: string;
+  // Explicit working dir (e.g. a shared worktree path); overrides the agent's computed workspace dir.
+  cwd?: string;
+  // Per-step LLM model override; falls back to the service default (AGENT_MODEL).
+  model?: string;
   traceparent?: string;
 };
 
@@ -16,7 +20,7 @@ export async function runOpenhandsActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<AgentResult> {
-  const { task, workflowInstanceId, workspaceId, traceparent } = input as Input;
+  const { task, workflowInstanceId, workspaceId, cwd, model, traceparent } = input as Input;
   // The invoker opens the same CLIENT span as the legacy withClientSpan
   // ("invoke openhands-agent/run") and injects the traceparent into the outgoing headers.
   return runActivity(
@@ -26,6 +30,8 @@ export async function runOpenhandsActivity(
         input: task,
         workflowInstanceId,
         workspaceId,
+        cwd,
+        model,
       });
       return {
         sessionId: response.sessionId,

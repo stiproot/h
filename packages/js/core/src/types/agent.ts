@@ -14,7 +14,7 @@ export const AgentRequest = Schema.Struct({
   workspaceId: Schema.optional(Schema.String),
   /** Explicit working dir for the run; overrides the computed workspace dir when set. */
   cwd: Schema.optional(Schema.String),
-  /** Per-step LLM model override (claude-agent only); falls back to the service default. */
+  /** Per-step LLM model override (claude-agent + openhands-agent); falls back to the service default. */
   model: Schema.optional(Schema.String),
   /** "plan" runs the claude CLI read-only (--permission-mode plan); omit for the default. claude-agent only. */
   permissionMode: Schema.optional(Schema.Literal("plan")),

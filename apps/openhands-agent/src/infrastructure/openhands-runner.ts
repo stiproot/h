@@ -71,10 +71,21 @@ export const OpenhandsRunnerLive: Layer.Layer<
 
     const run = (request: AgentRequest): Effect.Effect<AgentResponse, OpenhandsRunError> =>
       Effect.gen(function* () {
-        const { input, systemPrompt, workflowInstanceId, workspaceId } = request;
+        const {
+          input,
+          systemPrompt,
+          workflowInstanceId,
+          workspaceId,
+          cwd: cwdOverride,
+          model: modelOverride,
+        } = request;
         // A workspaceId pins a reusable workspace dir; without one, fall back to the per-run instance id.
         const workspaceKey = workspaceId ?? workflowInstanceId;
-        const cwd = workspaceKey ? join(cfg.baseDir, workspaceKey) : cfg.baseDir;
+        // An explicit cwd (e.g. a shared worktree path) overrides the computed workspace dir, so a
+        // workflow step can run this agent in the worktree the /worktree route cut.
+        const cwd = cwdOverride ?? (workspaceKey ? join(cfg.baseDir, workspaceKey) : cfg.baseDir);
+        // Per-step model override (a workflow step choosing a model); falls back to AGENT_MODEL.
+        const model = modelOverride ?? cfg.model;
         // Own the workspace dir so a run works without a preceding setup step (spawning with a
         // non-existent cwd fails as `spawn openhands ENOENT`, which masquerades as a missing binary).
         if (workspaceKey) {
@@ -127,7 +138,7 @@ export const OpenhandsRunnerLive: Layer.Layer<
               ...mcpEnv,
             },
             timeout: 300_000,
-            model: cfg.model,
+            model,
             llmConfig: { apiKey: cfg.apiKey, baseUrl: cfg.baseUrl },
             // The invoker delivers events on a sync callback; the logger effect is a sync
             // Pino write, run in place so event order matches the ledger append chain.
@@ -137,7 +148,7 @@ export const OpenhandsRunnerLive: Layer.Layer<
             },
           })
           .pipe(
-            Effect.withSpan("openhands cli", { attributes: { "openhands.model": cfg.model } }),
+            Effect.withSpan("openhands cli", { attributes: { "openhands.model": model } }),
             Effect.mapError((cause) => new OpenhandsRunError({ cause })),
             // The legacy try/catch also caught unexpected throws — keep defects on the same
             // failed-ledger-then-500 path instead of letting them skip the ledger write.
@@ -151,7 +162,7 @@ export const OpenhandsRunnerLive: Layer.Layer<
           status: "completed",
           output: result.stdout,
           sessionId: result.sessionId ?? null,
-          model: result.model ?? cfg.model,
+          model: result.model ?? model,
           turns: result.numTurns ?? 1,
           tokens: result.tokenUsage ?? { input: 0, output: 0 },
           costUsd: result.costUsd ?? null,
@@ -161,7 +172,7 @@ export const OpenhandsRunnerLive: Layer.Layer<
           output: result.stdout,
           sessionId: result.sessionId ?? null,
           usage: result.tokenUsage ?? { input: 0, output: 0 },
-          model: result.model ?? cfg.model,
+          model: result.model ?? model,
           turns: result.numTurns ?? 1,
           workspacePath: cwd,
           costUsd: result.costUsd,
