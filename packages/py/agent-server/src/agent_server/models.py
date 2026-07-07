@@ -9,6 +9,12 @@ class AgentRequest:
     workflow_instance_id: str | None = None
     # Stable workspace key. When set, the workspace dir keys on it instead of workflow_instance_id.
     workspace_id: str | None = None
+    # Explicit working dir for the run; overrides the computed workspace dir when set.
+    cwd: str | None = None
+    # Per-step LLM model override; falls back to the service default.
+    model: str | None = None
+    # "plan" runs the agent read-only; falls back to the default.
+    permission_mode: str | None = None
 
 
 @dataclass
