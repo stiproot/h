@@ -33,6 +33,9 @@ its `required` calls) only runs when the renderer selects it via --set family=<n
 {{- if eq (.Values.family | default "") "feature" }}
 {{- $f := .Values.feature }}
 {{- $publish := .Values.publish | default false }}
+{{- /* The activity that runs the plan/implement/verify steps — run-claude by default, or
+run-openhands to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
 {{- /* The value the PR epilogue keys off: publish mode always carries the epilogue with the
 fire-time param token; direct mode includes it (as a literal 'true') only when opted in. */ -}}
 {{- $createPr := "" }}
@@ -81,7 +84,7 @@ steps:
       setup:
         {{- include "h.setupSteps" . | nindent 8 }}
   - id: plan
-    activity: run-claude
+    activity: {{ $runActivity }}
     input:
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $f.models.plan }}
@@ -103,7 +106,7 @@ steps:
         ===FEATURE SPEC===
         {{- $spec | nindent 8 }}
   - id: implement
-    activity: run-claude
+    activity: {{ $runActivity }}
     input:
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $f.models.implement }}
@@ -173,7 +176,7 @@ steps:
         {{- include "h.token" "plan.output" | nindent 8 }}
   {{- if $f.verifyCmd }}
   - id: verify
-    activity: run-claude
+    activity: {{ $runActivity }}
     input:
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $f.models.verify }}

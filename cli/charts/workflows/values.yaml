@@ -7,6 +7,11 @@
 # Agent that provisions worktrees and executes setup / run steps.
 agentId: claude-agent
 
+# Activity that runs a family's plan/implement/verify steps. Defaults to run-claude; set to
+# run-openhands to run the flow on the openhands-agent (pair with agentId: openhands-agent so the
+# worktree/setup steps run there too).
+runActivity: run-claude
+
 # Publish mode: emit per-run inputs as {{params.*}} engine tokens (and omit the instanceId)
 # so the render is a parameterized *family* for save_workflow, fired later with
 # run_saved_workflow + fire-time params. Family config still bakes in from values.
