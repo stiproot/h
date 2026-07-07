@@ -13,6 +13,8 @@ class AgentRequest:
     cwd: str | None = None
     # Per-step LLM model override; falls back to the service default.
     model: str | None = None
+    # "plan" runs the agent read-only; falls back to the default.
+    permission_mode: str | None = None
 
 
 @dataclass

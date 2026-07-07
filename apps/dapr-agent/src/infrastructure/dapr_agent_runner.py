@@ -38,6 +38,7 @@ class DaprAgentRunner:
         self._workflows_mcp_url = workflows_mcp_url
 
     async def run(self, request: AgentRequest, workspace: Path) -> AgentResponse:
+        # An empty cwd falls back to workspace, never Path("").
         cwd = Path(request.cwd) if request.cwd else workspace
         tool_fns = make_tool_fns(cwd)
         effective_model = request.model or self._model

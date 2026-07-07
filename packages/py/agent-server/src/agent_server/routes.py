@@ -26,6 +26,7 @@ class RunRequest(BaseModel):
     workspaceId: str | None = None
     cwd: str | None = None
     model: str | None = None
+    permissionMode: str | None = None
 
 
 class SetupItem(BaseModel):
@@ -59,6 +60,7 @@ def register_run_route(
             workspace_id=req.workspaceId,
             cwd=req.cwd,
             model=req.model,
+            permission_mode=req.permissionMode,
         )
         try:
             response = await runner.run(request, workspace)
