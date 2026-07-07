@@ -163,6 +163,19 @@ steps:
            above is a number N, include the line `Closes #N` on its own line in the PR
            body, so the merge auto-closes that issue. If a PR for this branch already
            exists, your push has updated it — do not open a duplicate.
+        4. If a PR for this branch already existed before this push (this is a revise
+           run, not a first-time creation), respond to review feedback:
+           a. Find the PR number: use the github MCP tool to list pull requests by
+             head branch feature/{{ $slug }}.
+           b. Fetch UNRESOLVED review threads: pull_request_read with method
+             get_review_comments on that PR. Each thread has an isResolved field, a
+             thread node id (PRRT_...), and comments with numeric ids.
+           c. For each unresolved thread that this run actually addressed, reply inline
+             with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
+             <what changed>"), then resolve it with pull_request_review_write method
+             resolve_thread passing the thread node id.
+           d. Do NOT reply to or resolve threads this run did not address.
+           e. Never APPROVE or REQUEST_CHANGES on the PR.
         End your response with the exact marker ===PR=== on its own line, then the PR
         URL — or SKIPPED and the reason — on the next line.
         {{- else }}
@@ -232,6 +245,19 @@ steps:
            above is a number N, include the line `Closes #N` on its own line in the PR
            body, so the merge auto-closes that issue. If a PR for this branch already
            exists, your push has updated it — do not open a duplicate.
+        4. If a PR for this branch already existed before this push (this is a revise
+           run, not a first-time creation), respond to review feedback:
+           a. Find the PR number: use the github MCP tool to list pull requests by
+             head branch feature/{{ $slug }}.
+           b. Fetch UNRESOLVED review threads: pull_request_read with method
+             get_review_comments on that PR. Each thread has an isResolved field, a
+             thread node id (PRRT_...), and comments with numeric ids.
+           c. For each unresolved thread that this run actually addressed, reply inline
+             with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
+             <what changed>"), then resolve it with pull_request_review_write method
+             resolve_thread passing the thread node id.
+           d. Do NOT reply to or resolve threads this run did not address.
+           e. Never APPROVE or REQUEST_CHANGES on the PR.
         After the ===VERIFY=== block, end your response with the exact marker ===PR===
         on its own line, then the PR URL — or SKIPPED and the reason — on the next line.
         {{- end }}
