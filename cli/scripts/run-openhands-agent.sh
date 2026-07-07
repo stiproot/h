@@ -9,7 +9,9 @@ if [[ -f "${PROJECT_DIR}/.env" ]]; then
   set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
 
-export LLM_API_KEY="${LLM_API_KEY:?LLM_API_KEY is required}"
+# Not enforced at the script level (the strategy validates at run time with a clean error) — a
+# missing credential or a domain-only tool (tessl) should not block starting the service.
+export LLM_API_KEY="${LLM_API_KEY:-}"
 export LLM_BASE_URL="${LLM_BASE_URL}"
 export AGENT_MODEL="${OPENHANDS_MODEL:-claude-sonnet-4-6}"
 # MCP config source (OpenHands-format): provisioned per run into $HOME/.openhands/mcp.json so the
@@ -17,7 +19,7 @@ export AGENT_MODEL="${OPENHANDS_MODEL:-claude-sonnet-4-6}"
 export GH_TOKEN="${GH_TOKEN:-}"
 export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/openhands-agent/.mcp.local.json}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/openhands-agent}"
-export TESSL_TOKEN="${TESSL_API_KEY:?TESSL_API_KEY is required}"
+export TESSL_TOKEN="${TESSL_API_KEY:-}"
 # Available to the agent process so OpenHands' built-in "linear" skill can authenticate to the
 # Linear GraphQL API; leave unset if no scenario needs Linear.
 export LINEAR_API_KEY="${LINEAR_API_KEY:-}"

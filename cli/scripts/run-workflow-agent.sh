@@ -9,7 +9,7 @@ if [[ -f "${PROJECT_DIR}/.env" ]]; then
   set -a; source "${PROJECT_DIR}/.env"; set +a
 fi
 
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL}"
 export AGENT_MODEL="${AGENT_MODEL:-claude-sonnet-4-6}"
 export AGENT_MAX_ITERATIONS="${AGENT_MAX_ITERATIONS:-25}"
