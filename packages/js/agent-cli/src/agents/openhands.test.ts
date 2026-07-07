@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { openhandsStrategy } from "./openhands.ts";
+import { extractAgentMessageText, openhandsStrategy } from "./openhands.ts";
 import type { AgentInvocationRequest } from "./types.ts";
 
 function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvocationRequest {
@@ -40,5 +40,34 @@ describe("openhandsStrategy.prepareEnvironment LLM_MODEL routing", () => {
 
     expect(env["LLM_API_KEY"]).toBe("sk-test");
     expect(env["LLM_BASE_URL"]).toBe("https://api.deepseek.com/v1");
+  });
+});
+
+describe("extractAgentMessageText", () => {
+  it("extracts the text of an agent MessageEvent (the final answer)", () => {
+    const line = JSON.stringify({
+      source: "agent",
+      kind: "MessageEvent",
+      llm_message: { role: "assistant", content: [{ type: "text", text: "the plan" }] },
+    });
+
+    expect(extractAgentMessageText(line)).toBe("the plan");
+  });
+
+  it("ignores the user's echoed message, tool events, and the non-JSON banner", () => {
+    const userMsg = JSON.stringify({
+      source: "user",
+      kind: "MessageEvent",
+      llm_message: { content: [{ type: "text", text: "do the task" }] },
+    });
+    const action = JSON.stringify({
+      source: "agent",
+      kind: "ActionEvent",
+      tool_name: "file_editor",
+    });
+
+    expect(extractAgentMessageText(userMsg)).toBeNull();
+    expect(extractAgentMessageText(action)).toBeNull();
+    expect(extractAgentMessageText("│ - github_list_tags: List git tags │")).toBeNull();
   });
 });
