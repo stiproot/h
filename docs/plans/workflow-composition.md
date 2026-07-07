@@ -245,6 +245,18 @@ and are inspectable like watches (`h chain list`).
 
 ## Progress log
 
-- **2026-07-07** — Design brainstormed and locked into this plan. No code yet. Next: Phase 1 — chain
-  the existing `feature`/`pr-review`/`revise` workflows via a CLI `-t` command + a `chain-${slug}`
-  actor, proving the shared-context contract.
+- **2026-07-07** — Design brainstormed and locked into this plan.
+- **2026-07-07 — Phase 1 landed (CLI, hermetic).** Added `h chain run` (`cli/h/src/h_cli/commands/
+  chain.py`): sequences the existing saved workflows via a `-t` list (default `feature → pr-review →
+  revise`), threading state through an in-process blackboard `{slug, data}` mirrored best-effort to
+  the statestore key `chain:<slug>`. Each hop's port contract is the built-in `CHAIN_TEMPLATES`
+  registry — `feature`/`revise` share the `feature-<slug>` instance (same branch/PR; revise re-runs
+  fresh), `pr-review` reads `data.prNumber` (parsed from the prior hop's `===PR===`), `revise` reads
+  `data.reviewFindings` (from `===REVIEW===`). Chain-level flags (`--slug`, `--spec`, `--issue`,
+  `--watch`) apply to all hops; non-`sequential` strategies error clearly (deferred to the policy
+  engine). 9 respx-mocked tests prove the state threading + failure-stops-the-chain + parser units;
+  full h-cli suite green (71). **Decision realized:** the "chain actor" is realized as a statestore
+  key for Phase 1 (behaviorally identical for sequential); promotes to a hosted actor when the
+  parallel strategy needs turn-based writes (Phase 5). **Not yet done:** a live end-to-end run (needs
+  the stack up + `feature`/`pr-review` published with `runActivity=run-openhands`). Next: live
+  validation, then Phase 2 (decompose `feature` into overlayable templates; kill `--pr`).
