@@ -257,6 +257,17 @@ and are inspectable like watches (`h chain list`).
   engine). 9 respx-mocked tests prove the state threading + failure-stops-the-chain + parser units;
   full h-cli suite green (71). **Decision realized:** the "chain actor" is realized as a statestore
   key for Phase 1 (behaviorally identical for sequential); promotes to a hosted actor when the
-  parallel strategy needs turn-based writes (Phase 5). **Not yet done:** a live end-to-end run (needs
-  the stack up + `feature`/`pr-review` published with `runActivity=run-openhands`). Next: live
-  validation, then Phase 2 (decompose `feature` into overlayable templates; kill `--pr`).
+  parallel strategy needs turn-based writes (Phase 5). Next: live validation, then Phase 2.
+- **2026-07-07 — Phase 1 validated LIVE end to end.** Ran the default chain against a real issue
+  (#21 → PR #22): `feature` on openhands/DeepSeek → `pr-review` on **claude-coder** (real Claude — an
+  independent reviewer, exactly the reviewer-independence the plan wants) → `revise` on openhands.
+  State threaded through the blackboard the whole way (`prNumber` from feature → pr-review's `pr`
+  param; `reviewFindings` from pr-review → revise), and the mirror persisted to `chain:doc-h-chain`
+  (inspectable). Review came back CLEAN (docs were accurate), so revise was a no-op — a valid
+  outcome. The live run earned its keep by catching **two real bugs the mocks missed**: (1) the
+  workflow status `output` is **double** JSON-encoded (Dapr re-serializes the workflow's own
+  `JSON.stringify(results)`), so the marker parser now unwraps successive string layers — the mocked
+  tests were single-encoded and hid it; fixed + a single-vs-double robustness test added. (2)
+  `run-openhands-agent.sh` lacked `H_SKILLS_DIR`/`AGENT_APP_DIR` (a parity gap vs
+  `run-claude-agent.sh`), so a workflow `setup` step would run `cp -r $H_SKILLS_DIR/.` against an
+  empty var — fixed. Next: Phase 2 (decompose `feature` into overlayable templates; kill `--pr`).

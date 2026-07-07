@@ -19,6 +19,12 @@ export AGENT_MODEL="${OPENHANDS_MODEL:-claude-sonnet-4-6}"
 export GH_TOKEN="${GH_TOKEN:-}"
 export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/openhands-agent/.mcp.local.json}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/openhands-agent}"
+# Consumed by a workflow's `setup` step (h.setupSteps): install the h skills into the agent's
+# workspace and copy runtime steering. Parity with run-claude-agent.sh — without these the setup
+# step's `cp -r $H_SKILLS_DIR/.` runs against an empty var. openhands-agent ships no steering/ dir,
+# so the (guarded) steering copy is a clean no-op.
+export AGENT_APP_DIR="${APP_DIR}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 export TESSL_TOKEN="${TESSL_API_KEY:-}"
 # Available to the agent process so OpenHands' built-in "linear" skill can authenticate to the
 # Linear GraphQL API; leave unset if no scenario needs Linear.

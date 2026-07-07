@@ -66,13 +66,20 @@ class ChainTemplate:
 
 
 def _step_outputs(workflow_output: str | None) -> list[str]:
-    """The generic workflow returns JSON.stringify(results); pull each step's `output` text."""
-    if not workflow_output:
-        return []
-    try:
-        results = json.loads(workflow_output)
-    except (json.JSONDecodeError, TypeError):
-        return []
+    """Pull each step's `output` text from the workflow result.
+
+    The generic workflow returns JSON.stringify(results); Dapr serializes that again into the
+    status `output` property, so the value can arrive double-encoded (a JSON string whose content
+    is itself a JSON string). Unwrap successive string layers until a dict surfaces.
+    """
+    results: Any = workflow_output
+    for _ in range(3):
+        if not isinstance(results, str):
+            break
+        try:
+            results = json.loads(results)
+        except (json.JSONDecodeError, TypeError):
+            return []
     if not isinstance(results, dict):
         return []
     return [

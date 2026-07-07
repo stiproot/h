@@ -19,11 +19,18 @@ from h_cli.main import app
 
 runner = CliRunner()
 
+# The real workflow status `output` is DOUBLE JSON-encoded (Dapr re-serializes the workflow's
+# own JSON.stringify(results)), so mirror that here — a single-encoded mock would hide the bug the
+# live run caught.
 FEATURE_OUTPUT = json.dumps(
-    {"implement": {"output": "implemented it\n===PR===\nhttps://github.com/stiproot/h/pull/42"}}
+    json.dumps(
+        {"implement": {"output": "implemented it\n===PR===\nhttps://github.com/stiproot/h/pull/42"}}
+    )
 )
 REVIEW_OUTPUT = json.dumps(
-    {"review": {"output": "reviewed it\n===REVIEW===\nsrc/models.py:17 — missing None guard"}}
+    json.dumps(
+        {"review": {"output": "reviewed it\n===REVIEW===\nsrc/models.py:17 — missing None guard"}}
+    )
 )
 
 
@@ -161,6 +168,14 @@ def test_after_marker_finds_the_step_that_carries_it() -> None:
     assert _after_marker(FEATURE_OUTPUT, "===REVIEW===") is None
     assert _after_marker(None, "===PR===") is None
     assert _after_marker("not json", "===PR===") is None
+
+
+def test_after_marker_unwraps_single_and_double_encoding() -> None:
+    payload = {"implement": {"output": "did it\n===PR===\nhttps://github.com/o/r/pull/9"}}
+    single = json.dumps(payload)  # one layer (a plain workflow return)
+    double = json.dumps(json.dumps(payload))  # what Dapr's status output actually gives
+    assert _after_marker(single, "===PR===") == "https://github.com/o/r/pull/9"
+    assert _after_marker(double, "===PR===") == "https://github.com/o/r/pull/9"
 
 
 def test_capture_pr_extracts_url_and_number() -> None:
