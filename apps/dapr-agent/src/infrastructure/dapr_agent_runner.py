@@ -38,9 +38,11 @@ class DaprAgentRunner:
         self._workflows_mcp_url = workflows_mcp_url
 
     async def run(self, request: AgentRequest, workspace: Path) -> AgentResponse:
-        tool_fns = make_tool_fns(workspace)
+        cwd = Path(request.cwd) if request.cwd else workspace
+        tool_fns = make_tool_fns(cwd)
+        effective_model = request.model or self._model
         adapter = OpenAIChatAdapter(
-            api_key=self._api_key, base_url=self._base_url, model=self._model
+            api_key=self._api_key, base_url=self._base_url, model=effective_model
         )
         messages: list = [
             {"role": "system", "content": self._system_prompt},
@@ -57,7 +59,7 @@ class DaprAgentRunner:
         return AgentResponse(
             output=output,
             session_id=str(uuid.uuid4()),
-            model=self._model,
+            model=effective_model,
             turns=turns,
             usage={"input": 0, "output": 0},
         )
