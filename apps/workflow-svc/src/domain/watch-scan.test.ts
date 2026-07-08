@@ -463,7 +463,9 @@ describe("scanWatchesEffect", () => {
             }),
             stubWorkflowStore({
               get: (key) =>
-                Effect.succeed(key === "escalate-human" ? Option.some(storedTemplate) : Option.none()),
+                Effect.succeed(
+                  key === "escalate-human" ? Option.some(storedTemplate) : Option.none(),
+                ),
             }),
           ),
         ),
