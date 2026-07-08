@@ -270,4 +270,20 @@ and are inspectable like watches (`h chain list`).
   tests were single-encoded and hid it; fixed + a single-vs-double robustness test added. (2)
   `run-openhands-agent.sh` lacked `H_SKILLS_DIR`/`AGENT_APP_DIR` (a parity gap vs
   `run-claude-agent.sh`), so a workflow `setup` step would run `cp -r $H_SKILLS_DIR/.` against an
-  empty var — fixed. Next: Phase 2 (decompose `feature` into overlayable templates; kill `--pr`).
+  empty var — fixed.
+- **2026-07-08 — Phase 2 started: overlay operator landed; decomposition design settled.** Added the
+  pure `overlay(*defs)` operator (`cli/h/src/h_cli/infrastructure/overlay.py`, 8 tests): merge
+  workflow definitions by step id — new id appends, existing id extends the step (APPENDING
+  `input.task` prose, later-winning other fields). This is the spatial-composition primitive that
+  makes `create-pr` extend `implement` with no extra agent run.
+  **Coupling discovered — "kill `--pr`" is a MIGRATION, not a template edit.** `feature`'s `createPr`
+  param / epilogue is fired by: the Phase-1 chain (`chain.py`), `issue-sweep.yaml`, `h feature run
+  --pr`, and `invoke-workflow-feature-helm.sh`. Removing the epilogue from `feature` would break all
+  of them. **Revised plan for Phase 2:** stage it — (1) extract the PR epilogue into a shared helm
+  partial so the prose has ONE home (DRY); (2) `feature` includes it (so `--pr`/`createPr` keep
+  working — no breakage); (3) add `create-pr.yaml` as an overlay template using the same partial +
+  the CLI overlay path (`h workflow compose -t feature -t create-pr`); (4) LATER, migrate the callers
+  (chain/issue-sweep/scripts) to the overlay path and only then delete `--pr`. The epilogue has two
+  near-identical variants (implement vs verify) sharing steps 1/2/4 (commit/push/#20-inline-resolve)
+  verbatim, differing in step 3 + intro/end — a delicate extraction on the load-bearing template, so
+  it is deferred to a focused pass rather than rushed. Next: the shared-partial extraction (step 1).
