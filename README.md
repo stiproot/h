@@ -4,7 +4,9 @@ A lab for experimenting with AI agent frameworks coordinated via [Dapr Workflows
 
 The agents span several frameworks — Claude Code CLI, OpenHands, Dapr Agents SDK, raw Anthropic SDK, and Claude Managed Agents — demonstrating that the orchestration layer is framework-agnostic.
 
-See [WORKFLOWS.md](./WORKFLOWS.md) for the patterns in use and their `invoke-workflow-*` scripts.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the foundational building blocks (the primitives, the
+composition stack, and the design principles), and [WORKFLOWS.md](./WORKFLOWS.md) for the patterns in
+use and their `invoke-workflow-*` scripts.
 
 ## Agents
 

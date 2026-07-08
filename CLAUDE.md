@@ -12,7 +12,9 @@ run h --help`). The two construction strategies co-exist deliberately.
 ## h primitives (vocabulary)
 
 The standard vocabulary for composing components (adopted 2026-07-05; see
-[docs/plans/watcher-primitive.md](./docs/plans/watcher-primitive.md) for the rulings behind it):
+[docs/plans/watcher-primitive.md](./docs/plans/watcher-primitive.md) for the rulings behind it).
+**[ARCHITECTURE.md](./ARCHITECTURE.md) is the conceptual home** — the primitives, the composition
+stack, and the design principles; this section is the terse runtime-facing index.
 
 - **Workflow** — a durable step sequence that does work and leaves durable traces (Dapr instance
   status, run ledger + `run:<id>` mirrors, Zipkin spans, joined on `workflowInstanceId`). It never
@@ -24,16 +26,28 @@ The standard vocabulary for composing components (adopted 2026-07-05; see
   workflow-cron-tick), rows are `watch:sub:<instanceId>` written by every fire path; the old
   in-process babysitter loops (JS + Python) are deleted — `POST /workflow` forwards a `watch`
   field. Inspect with `h watch list` or `GET /watch/list`.
+- **Chain** — the sequencing sibling of the watcher: a durable registration `{hops, strategy, data}`
+  plus a shared engine that, on the same cron tick, reads the current hop's persisted state and acts
+  through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher RE-fires one
+  instance, a chain FIRES THE NEXT hop. State threads hop-to-hop through the row's `data`, filled by
+  the engine parsing each hop's `===MARKER===` output (no actor), so chained workflows stay
+  chain-agnostic. IMPLEMENTED: engine in workflow-svc (`domain/chain-*.ts`, scan on the
+  workflow-cron-tick beside the watch scan), rows `chain:sub:<chainId>`; `h chain run` registers
+  (fire-and-forget) and `h chain list` inspects. Strategies: `sequential`, `loop-until-clean`.
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
 - **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
   (the `__workflow_index__` pattern): saved workflows, `sweep:*`, `run:*` mirrors, `watch:*`.
   The convention: a registry prefix names the single component that owns writing it.
 
-A watcher is deliberately a *composition* of the other three — a policy row in a registry,
-evaluated on a trigger's clock, acting on workflows. It gets its own name because supervision
-recurs often enough to deserve one name and one home, not because it is a new runtime concept.
-Watched workflows never depend on their watchers; only judgment consumers read watch rows.
+The watcher and the chain are two instances of one build-pattern — a policy row in a registry,
+evaluated by a pure `decide` on the cron-tick clock, acting on workflows through a closed vocabulary,
+epoch-fenced, single-writer. Neither is a new runtime concept; each is a composition of
+Workflow + Trigger + Registry that earns its own name because its job (supervise; sequence) recurs.
+The load-bearing invariant: **a workflow never supervises or sequences itself — those live in
+engines outside it** (which is why sequencing is the Chain primitive, not an overload of the
+watcher's `escalate`). Watched/chained workflows never depend on their engines; only judgment
+consumers read the rows. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full treatment.
 
 ## App layouts
 
