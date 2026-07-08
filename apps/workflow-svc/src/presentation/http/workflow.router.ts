@@ -22,13 +22,19 @@ import {
   toRequest,
 } from "../../domain/models/workflow.model.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
+import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { WatchStore } from "../../domain/ports/IWatchStore.ts";
 import { WorkflowInvoker } from "../../domain/ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
 import { invokeWithWatch } from "../../domain/watch-scan.ts";
 
-/** Everything the workflow routes yield from the shared runtime. */
-export type WorkflowRoutesEnv = WorkflowInvoker | WorkflowStore | WatchStore | DaprPublisherTag;
+/** Everything the workflow routes (and the cron tick's chain/watch scans) yield from the runtime. */
+export type WorkflowRoutesEnv =
+  | WorkflowInvoker
+  | WorkflowStore
+  | WatchStore
+  | ChainStore
+  | DaprPublisherTag;
 
 export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutesEnv, never>;
 

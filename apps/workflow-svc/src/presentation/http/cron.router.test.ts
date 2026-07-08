@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import { emptyChainLedger } from "../../domain/models/chain.model.ts";
+import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import {
   WorkflowInvoker,
@@ -52,6 +54,22 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
 
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
 
+// An empty chain store: the cron tests exercise the schedule-fire + watch scan; the chain scan
+// rides the same tick but finds no chains, so a no-rows stub keeps it a clean no-op.
+const emptyChainStore: ChainStoreService = {
+  getRow: () => Effect.succeed(Option.none()),
+  listRows: () => Effect.succeed([]),
+  saveRow: () => Effect.void,
+  deleteRow: () => Effect.void,
+  getConfig: () => Effect.succeed(Option.none()),
+  getHeartbeat: () => Effect.succeed(Option.none()),
+  heartbeat: () => Effect.void,
+  getLedger: () => Effect.succeed(emptyChainLedger),
+  bumpLedger: () => Effect.void,
+  listRunKeys: () => Effect.succeed([]),
+  getRunCost: () => Effect.succeed(null),
+};
+
 const envLayer = (
   invoker: WorkflowInvokerService,
   store: WorkflowStoreService,
@@ -61,6 +79,7 @@ const envLayer = (
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, store),
     Layer.succeed(WatchStore, watch),
+    Layer.succeed(ChainStore, emptyChainStore),
     Layer.succeed(DaprPublisherTag, stubPublisher),
   );
 

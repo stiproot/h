@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import { emptyChainLedger } from "../../domain/models/chain.model.ts";
+import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import {
   WorkflowInvoker,
@@ -24,6 +26,21 @@ const stubWatchStore = (): WatchStoreService => ({
   getHeartbeat: () => Effect.succeed(Option.none()),
   heartbeat: () => Effect.void,
   getLedger: () => Effect.succeed(emptyLedger),
+  bumpLedger: () => Effect.void,
+  listRunKeys: () => Effect.succeed([]),
+  getRunCost: () => Effect.succeed(null),
+});
+
+// The trigger router never touches chains, but the shared runtime type now includes ChainStore.
+const stubChainStore = (): ChainStoreService => ({
+  getRow: () => Effect.succeed(Option.none()),
+  listRows: () => Effect.succeed([]),
+  saveRow: () => Effect.void,
+  deleteRow: () => Effect.void,
+  getConfig: () => Effect.succeed(Option.none()),
+  getHeartbeat: () => Effect.succeed(Option.none()),
+  heartbeat: () => Effect.void,
+  getLedger: () => Effect.succeed(emptyChainLedger),
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
   getRunCost: () => Effect.succeed(null),
@@ -61,6 +78,7 @@ async function makeApp(
       Layer.succeed(WorkflowInvoker, invoker),
       Layer.succeed(WorkflowStore, store),
       Layer.succeed(WatchStore, stubWatchStore()),
+      Layer.succeed(ChainStore, stubChainStore()),
       Layer.succeed(DaprPublisherTag, stubPublisher),
     ),
   );
@@ -91,7 +109,9 @@ describe("POST /workflow-trigger", () => {
       }),
       stubStore({
         get: (key) =>
-          Effect.succeed(key === "plugin-improvement" ? Option.some(storedTemplate) : Option.none()),
+          Effect.succeed(
+            key === "plugin-improvement" ? Option.some(storedTemplate) : Option.none(),
+          ),
       }),
     );
     const res = await app.inject({

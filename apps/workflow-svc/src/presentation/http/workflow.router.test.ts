@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import { emptyChainLedger } from "../../domain/models/chain.model.ts";
+import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import {
   WorkflowInvoker,
@@ -51,6 +53,21 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
   };
 }
 
+// The workflow routes never touch chains, but the shared runtime type now includes ChainStore.
+const stubChainStore: ChainStoreService = {
+  getRow: () => Effect.succeed(Option.none()),
+  listRows: () => Effect.succeed([]),
+  saveRow: () => Effect.void,
+  deleteRow: () => Effect.void,
+  getConfig: () => Effect.succeed(Option.none()),
+  getHeartbeat: () => Effect.succeed(Option.none()),
+  heartbeat: () => Effect.void,
+  getLedger: () => Effect.succeed(emptyChainLedger),
+  bumpLedger: () => Effect.void,
+  listRunKeys: () => Effect.succeed([]),
+  getRunCost: () => Effect.succeed(null),
+};
+
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
 
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -68,6 +85,7 @@ async function makeApp(
       Layer.succeed(WorkflowInvoker, invoker),
       Layer.succeed(WorkflowStore, store),
       Layer.succeed(WatchStore, watch),
+      Layer.succeed(ChainStore, stubChainStore),
       Layer.succeed(DaprPublisherTag, stubPublisher),
     ),
   );

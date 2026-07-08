@@ -3,6 +3,7 @@ import { Effect, Ref } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
+import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
@@ -31,7 +32,12 @@ export const tickEffect = (
   ticking: Ref.Ref<boolean>,
   traceparent: string | undefined,
 ): Effect.Effect<
-  { fired: string[]; watch: WatchScanReport | { error: string } } | { skipped: string },
+  | {
+      fired: string[];
+      watch: WatchScanReport | { error: string };
+      chain: ChainScanReport | { error: string };
+    }
+  | { skipped: string },
   WorkflowError,
   WorkflowRoutesEnv
 > =>
@@ -41,12 +47,15 @@ export const tickEffect = (
     if (!won) return { skipped: "previous tick still processing" };
     return yield* Effect.gen(function* () {
       const { fired } = yield* scanAndFire(traceparent);
-      // The watch scan rides the same tick (ruling W2) but its failure must never fail the
-      // tick — a broken scan reply would make Dapr treat the binding as unsubscribed.
+      // The watch and chain scans ride the same tick (ruling W2), but neither's failure may fail
+      // the tick — a broken scan reply would make Dapr treat the binding as unsubscribed.
       const watch = yield* scanWatchesEffect(traceparent).pipe(
         Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
       );
-      return { fired, watch };
+      const chain = yield* scanChainsEffect(traceparent).pipe(
+        Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
+      );
+      return { fired, watch, chain };
     }).pipe(Effect.ensuring(Ref.set(ticking, false)));
   });
 

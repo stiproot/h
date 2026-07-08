@@ -6,10 +6,12 @@ import Fastify from "fastify";
 import { makeTracingLive } from "telemetry";
 
 import { activities, setActivityRuntime } from "./infrastructure/activity-registry.ts";
+import { ChainStoreLive } from "./infrastructure/dapr-chain-store.ts";
 import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
 import { WorkflowStoreLive } from "./infrastructure/dapr-workflow-store.ts";
 import { genericWorkflow } from "./infrastructure/workflows/generic.workflow.ts";
+import { registerChainRoutes } from "./presentation/http/chain.router.ts";
 import { registerCronRoutes } from "./presentation/http/cron.router.ts";
 import { registerTriggerRoutes } from "./presentation/http/trigger.router.ts";
 import { registerWatchRoutes } from "./presentation/http/watch.router.ts";
@@ -30,6 +32,7 @@ const appLayer = Layer.mergeAll(
   WorkflowInvokerLive.pipe(Layer.provide(NodeHttpClient.layer)),
   WorkflowStoreLive,
   WatchStoreLive,
+  ChainStoreLive,
   DaprInvokerLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   DaprPublisherLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   NodeHttpClient.layer,
@@ -59,6 +62,7 @@ registerWorkflowRoutes(fastify, runtime);
 registerCronRoutes(fastify, runtime);
 registerTriggerRoutes(fastify, runtime);
 registerWatchRoutes(fastify, runtime);
+registerChainRoutes(fastify, runtime);
 
 // The sidecar must be up (components loaded, placement connected) before the workflow
 // worker connects to it.
