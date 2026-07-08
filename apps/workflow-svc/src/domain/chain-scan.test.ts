@@ -241,6 +241,96 @@ describe("scanChainsEffect: advance threads state to the next hop", () => {
   });
 });
 
+describe("scanChainsEffect: loop-until-clean", () => {
+  // A loop chain parked on a given cursor/iteration, ready for one scan tick.
+  function loopStore(over: Partial<ChainRow>): { mem: MemoryChainStore } {
+    const mem = memoryChainStore();
+    mem.rows.set("x", {
+      chainId: "x",
+      epoch: 1,
+      slug: "x",
+      hops: [...DEFAULT_HOPS],
+      strategy: "loop-until-clean",
+      loop: { startCursor: 1, maxIterations: 3, iterations: 0 },
+      cursor: 1,
+      currentInstanceId: "pr-review-x",
+      data: { slug: "x", spec: "do it", prNumber: "42" },
+      status: "running",
+      lastStatus: "RUNNING",
+      unknownStreak: 0,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...over,
+    });
+    return { mem };
+  }
+
+  it("finalizes completed when the review comes back CLEAN — no revise", async () => {
+    const { mem } = loopStore({ cursor: 1, currentInstanceId: "pr-review-x" });
+    const inv = recordingInvoker({
+      "pr-review-x": {
+        instanceId: "pr-review-x",
+        runtimeStatus: "COMPLETED",
+        output: review("CLEAN"),
+      },
+    });
+    const report = await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    expect(report.finalized).toEqual(["x:completed"]);
+    expect(inv.invokes).toHaveLength(0); // did NOT advance to revise
+  });
+
+  it("advances to revise when the review still has findings", async () => {
+    const { mem } = loopStore({ cursor: 1, currentInstanceId: "pr-review-x" });
+    const inv = recordingInvoker({
+      "pr-review-x": {
+        instanceId: "pr-review-x",
+        runtimeStatus: "COMPLETED",
+        output: review("src/x.ts:9 — missing guard"),
+      },
+    });
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    expect(mem.rows.get("x")?.cursor).toBe(2);
+    expect(inv.invokes[0].instanceId).toBe("feature-x"); // revise fired
+  });
+
+  it("loops back to re-review after revise, fresh, bumping the iteration", async () => {
+    const { mem } = loopStore({ cursor: 2, currentInstanceId: "feature-x" });
+    const inv = recordingInvoker({
+      "feature-x": { instanceId: "feature-x", runtimeStatus: "COMPLETED", output: pr("pull/42") },
+    });
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    const row = mem.rows.get("x");
+    expect(row?.cursor).toBe(1); // back to pr-review
+    expect(row?.loop?.iterations).toBe(1);
+    expect(inv.invokes[0].instanceId).toBe("pr-review-x");
+    expect(inv.invokes[0].fresh).toBe(true); // re-review must purge the terminal prior run
+  });
+
+  it("stops (finalizes completed) once max iterations is reached", async () => {
+    // iterations 2, max 3 → 2+1 == 3, not < 3, so no more loops.
+    const { mem } = loopStore({
+      cursor: 2,
+      currentInstanceId: "feature-x",
+      loop: { startCursor: 1, maxIterations: 3, iterations: 2 },
+    });
+    const inv = recordingInvoker({
+      "feature-x": { instanceId: "feature-x", runtimeStatus: "COMPLETED", output: pr("pull/42") },
+    });
+    const report = await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    expect(report.finalized).toEqual(["x:completed"]);
+    expect(mem.rows.get("x")?.note).toContain("stopped after 3 iterations");
+    expect(inv.invokes).toHaveLength(0);
+  });
+});
+
 describe("scanChainsEffect: finalize", () => {
   it("finalizes completed when the LAST hop completes", async () => {
     const { mem } = await seedAt(2, {

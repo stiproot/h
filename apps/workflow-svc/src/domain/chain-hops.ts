@@ -89,6 +89,17 @@ export function captureReview(output: string | undefined, data: Blackboard): voi
   data.reviewFindings = afterMarker(output, "===REVIEW===") ?? "";
 }
 
+/**
+ * The loop-until-clean predicate: is a review hop's output CLEAN? The pr-review template ends
+ * `===REVIEW===` then either the findings or `CLEAN`, so no marker, an empty tail, or a first line of
+ * `CLEAN` (case-insensitive) all mean nothing left to address — the loop stops.
+ */
+export function reviewIsClean(output: string | undefined): boolean {
+  const tail = afterMarker(output, "===REVIEW===");
+  if (!tail) return true;
+  return (tail.split("\n")[0] ?? "").trim().toUpperCase() === "CLEAN";
+}
+
 function requireStr(data: Blackboard, key: string, hint: string): string {
   const v = data[key];
   if (typeof v !== "string" || v === "") throw new ChainThreadError(hint);

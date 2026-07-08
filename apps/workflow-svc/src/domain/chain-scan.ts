@@ -3,7 +3,7 @@ import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
 import { decide } from "./chain-engine.ts";
-import { type Blackboard, ChainThreadError, HOP_KINDS } from "./chain-hops.ts";
+import { type Blackboard, ChainThreadError, HOP_KINDS, reviewIsClean } from "./chain-hops.ts";
 import {
   type ChainHop,
   type ChainOutcome,
@@ -57,6 +57,8 @@ export type ChainRegistration = {
   /** Initial blackboard — the inputs the first hop reads (slug, spec, issueNumber?). */
   readonly data: Blackboard;
   readonly strategy?: ChainStrategy;
+  /** For strategy "loop-until-clean": where the loop body starts (the review hop) + the cap. */
+  readonly loop?: { readonly startCursor: number; readonly maxIterations: number };
   readonly budgetMs?: number;
   readonly meta?: Blackboard;
 };
@@ -84,6 +86,7 @@ export const registerChainForFire = (
       slug: reg.slug,
       hops: reg.hops,
       strategy: reg.strategy ?? "sequential",
+      ...(reg.loop ? { loop: { ...reg.loop, iterations: 0 } } : {}),
       ...(reg.budgetMs !== undefined ? { budgetMs: reg.budgetMs } : {}),
       cursor: 0,
       currentInstanceId: instanceId,
@@ -113,6 +116,7 @@ const fireHop = (
   row: ChainRow,
   cursor: number,
   traceparent: string | undefined,
+  forceFresh = false,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
@@ -138,7 +142,8 @@ const fireHop = (
     yield* invoker.invoke({
       ...toRequest(stored.value, traceparent, params),
       instanceId,
-      fresh: hop.fresh ?? false,
+      // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
+      fresh: forceFresh || (hop.fresh ?? false),
     });
     yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { hopsFired: 1 });
   });
@@ -197,22 +202,51 @@ const processRow = (
       .getStatus(instanceId)
       .pipe(Effect.catchAll(() => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" })));
     const decision = decide(row, status.runtimeStatus, nowMs);
+    const output = (status as { output?: string }).output;
+    // loop-until-clean reinterprets the linear advance/finalize the pure engine gives (the engine
+    // stays strategy-agnostic; the predicate + loop-back need the output and the hop kinds, which
+    // live here). The review hop completing CLEAN finalizes; the last hop (revise) completing loops
+    // back to re-review, until the iteration budget trips.
+    const loop = row.strategy === "loop-until-clean" ? row.loop : undefined;
     switch (decision.kind) {
       case "wait": {
         if (decision.changed) yield* saveFenced(row.epoch, stamp(decision.row, nowMs));
         return;
       }
-      case "advance":
+      case "advance": {
+        if (loop && row.cursor === loop.startCursor && reviewIsClean(output)) {
+          const note = `clean after ${loop.iterations} revise iteration(s)`;
+          return yield* executeFinalize({ ...row, note }, "completed", nowMs, report);
+        }
         return yield* executeAdvance(
           row,
-          (status as { output?: string }).output,
+          output,
           decision.nextCursor,
+          false,
           nowMs,
           traceparent,
           report,
         );
-      case "finalize":
+      }
+      case "finalize": {
+        if (loop && decision.outcome === "completed") {
+          if (loop.iterations + 1 < loop.maxIterations) {
+            // The revise hop finished: loop back to the review hop (fresh re-fire), bump the counter.
+            return yield* executeAdvance(
+              row,
+              output,
+              loop.startCursor,
+              true,
+              nowMs,
+              traceparent,
+              report,
+            );
+          }
+          const note = `stopped after ${loop.maxIterations} iterations (findings may remain)`;
+          return yield* executeFinalize({ ...decision.row, note }, "completed", nowMs, report);
+        }
         return yield* executeFinalize(decision.row, decision.outcome, nowMs, report);
+      }
       case "budget-terminate": {
         // Terminate the current hop; the loser of a terminate race re-checks and treats an
         // already-terminal instance as success. Anything else waits for the next tick.
@@ -264,6 +298,7 @@ const executeAdvance = (
   row: ChainRow,
   completedOutput: string | undefined,
   nextCursor: number,
+  loopBack: boolean,
   nowMs: number,
   traceparent: string | undefined,
   report: ChainScanReport,
@@ -275,6 +310,10 @@ const executeAdvance = (
 
     const now = new Date(nowMs).toISOString();
     const instanceId = hopInstanceId(row.chainId, row.hops, nextCursor);
+    // A loop-back re-enters the loop body: bump the iteration counter and re-fire fresh (the target
+    // instance is terminal from the prior pass).
+    const loop =
+      loopBack && row.loop ? { ...row.loop, iterations: row.loop.iterations + 1 } : row.loop;
     const next: ChainRow = {
       ...row,
       epoch: row.epoch + 1,
@@ -284,13 +323,16 @@ const executeAdvance = (
       status: "scheduling",
       lastStatus: "SCHEDULED",
       unknownStreak: 0,
-      note: `advanced to hop ${nextCursor} (${row.hops[nextCursor].kind})`,
+      ...(loop ? { loop } : {}),
+      note: loopBack
+        ? `loop back to hop ${nextCursor} (${row.hops[nextCursor].kind}), iteration ${loop?.iterations}`
+        : `advanced to hop ${nextCursor} (${row.hops[nextCursor].kind})`,
       updatedAt: now,
     };
     // Mark-before-fire, fenced on the OLD epoch — a concurrent re-registration wins and this drops.
     const saved = yield* saveFenced(row.epoch, next);
     if (!saved) return;
-    yield* fireHop(next, nextCursor, traceparent).pipe(
+    yield* fireHop(next, nextCursor, traceparent, loopBack).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
           report.advanced.push(`${row.chainId}:h${nextCursor}:${row.hops[nextCursor].kind}`);

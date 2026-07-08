@@ -335,17 +335,20 @@ Chain-level flags:
 - `--issue` — GitHub issue number; the PR body gets `Closes #N`
 - `--fresh` — re-run the first hop's instance if it already finished
 - `--budget` — chain wall-clock budget in minutes (default 45 min/hop); on breach the engine terminates the current hop and finalizes the chain
+- `--strategy` — `sequential` (run the hops once) or `loop-until-clean`
+- `--max-iterations` — loop-until-clean only: cap on review→revise cycles (default 3)
 
-Only the `sequential` strategy exists today; `parallel` and `loop-until-clean` are the next chain-engine strategies. **Prerequisite:** publish `feature-pr` and `pr-review` once (`h workflow compose -t feature -t verify -t create-pr --save feature-pr`; `h workflow publish pr-review`).
+**Strategies.** `sequential` runs the hops once, stopping if any fails. `loop-until-clean` repeats the `pr-review → revise` segment: after each review the engine checks for a `===REVIEW=== CLEAN` verdict — CLEAN finalizes the chain, otherwise it revises and re-reviews, until `--max-iterations` trips (so an implementer/reviewer disagreement can't spin forever). (`parallel` fan-out is deferred until a multi-reviewer chain needs it.) **Prerequisite:** publish `feature-pr` and `pr-review` once (`h workflow compose -t feature -t verify -t create-pr --save feature-pr`; `h workflow publish pr-review`).
 
 ```text
-h chain run --slug my-feature --spec @spec.md --issue 42   # register (returns immediately)
-h chain list                                               # inspect the durable registry
+h chain run --slug my-feature --spec @spec.md --issue 42                    # sequential, one pass
+h chain run --slug my-feature --spec @spec.md --strategy loop-until-clean   # iterate until CLEAN
+h chain list                                                                # inspect the registry
 ```
 
 **Hop kinds:** `feature-pr`, `pr-review`, `revise`
 **Default chain:** `feature-pr` → `pr-review` → `revise`
-**Strategy:** `sequential`
+**Strategies:** `sequential`, `loop-until-clean`
 **Engine:** `apps/workflow-svc/src/domain/chain-{engine,scan,hops}.ts` (registry `chain:*`)
 **CLI source:** `cli/h/src/h_cli/commands/chain.py`
 **Design doc:** `docs/plans/workflow-composition.md`

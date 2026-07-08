@@ -14,6 +14,9 @@ const ChainRunRequest = Schema.Struct({
   hops: Schema.Array(ChainHop),
   data: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
   strategy: Schema.optional(ChainStrategy),
+  loop: Schema.optional(
+    Schema.Struct({ startCursor: Schema.Number, maxIterations: Schema.Number }),
+  ),
   budgetMs: Schema.optional(Schema.Number),
   meta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });

@@ -13,10 +13,23 @@ import { Schema } from "effect";
  * replacing Phase 1's best-effort `chain:<slug>` mirror.
  */
 
-// Phase 4 ships "sequential"; "parallel" and "loop-until-clean" arrive with the strategy work
-// (Phase 5). A closed literal so an unknown strategy fails validation at registration, never silently.
-export const ChainStrategy = Schema.Literal("sequential");
+// Sequencing strategy. "sequential" runs the hops once, front to back. "loop-until-clean" repeats a
+// loop body (the review→revise segment) until the review hop reports CLEAN or the iteration budget
+// trips (see ChainLoop). A closed literal so an unknown strategy fails validation, never silently.
+// ("parallel" fan-out is deferred until a multi-reviewer chain needs it.)
+export const ChainStrategy = Schema.Literal("sequential", "loop-until-clean");
 export type ChainStrategy = Schema.Schema.Type<typeof ChainStrategy>;
+
+// loop-until-clean control: when the hop at `startCursor` (the review hop) completes CLEAN the chain
+// finalizes; when the last hop (revise) completes, the engine loops back to `startCursor` and bumps
+// `iterations`, until `iterations` reaches `maxIterations` (the budget — an implementer/reviewer
+// disagreement can't spin forever). Re-fires within the loop are always fresh (terminal instances).
+export const ChainLoop = Schema.Struct({
+  startCursor: Schema.Number,
+  maxIterations: Schema.Number,
+  iterations: Schema.Number,
+});
+export type ChainLoop = Schema.Schema.Type<typeof ChainLoop>;
 
 export const ChainOutcome = Schema.Literal(
   "completed",
@@ -75,6 +88,8 @@ export const ChainRow = Schema.Struct({
   // The sequence to run, in order. `cursor` points into it.
   hops: Schema.Array(ChainHop),
   strategy: ChainStrategy,
+  // Present iff strategy is "loop-until-clean" — the loop body + iteration budget/counter.
+  loop: Schema.optional(ChainLoop),
   // Optional wall-clock budget for the whole chain; on breach the current hop is terminated and the
   // chain finalizes budget-terminated. Absent → no chain-level budget (each hop may carry its own watch).
   budgetMs: Schema.optional(Schema.Number),

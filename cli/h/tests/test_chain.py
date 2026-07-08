@@ -106,6 +106,32 @@ def test_chain_run_default_budget_scales_with_hops(tmp_path: Path) -> None:
     assert json.loads(route.calls[0].request.content)["budgetMs"] == 3 * 45 * 60_000
 
 
+@respx.mock
+def test_chain_run_loop_until_clean(tmp_path: Path) -> None:
+    route = respx.post(f"{WORKFLOW_URL}/chain/run").mock(
+        return_value=Response(202, json={"chainId": "x", "firing": True})
+    )
+    args = ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))]
+    result = runner.invoke(app, [*args, "--strategy", "loop-until-clean", "--max-iterations", "5"])
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["strategy"] == "loop-until-clean"
+    # the loop body starts at the pr-review hop (index 1 in feature-pr → pr-review → revise).
+    assert body["loop"] == {"startCursor": 1, "maxIterations": 5}
+
+
+def test_chain_run_loop_needs_a_review_hop(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "-t", "feature-pr", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "--strategy", "loop-until-clean",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "pr-review" in _all_output(result)
+
+
 def test_chain_run_unknown_hop(tmp_path: Path) -> None:
     result = runner.invoke(
         app, ["chain", "run", "-t", "nope", "--slug", "x", "--spec", str(_spec(tmp_path))]

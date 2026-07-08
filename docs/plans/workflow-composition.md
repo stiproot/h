@@ -376,6 +376,20 @@ output, it can aggregate parallel outputs too — the actor likely evaporates th
   (chain, issue-sweep, scripts, `h feature run`) migrate onto the compose path — only then delete
   `--pr`. **Open (Decision 8 / verify coupling):** a `verify` overlay atom + create-pr-after-verify
   ordering, so `-t feature -t create-pr -t verify` composes verification back in.
+- **2026-07-08 — Phase 5 (partial): `loop-until-clean` strategy landed; `parallel` deferred.** The
+  chain engine now sequences a loop: `loop-until-clean` repeats the review→revise segment until the
+  review hop reports `===REVIEW=== CLEAN` (predicate, `chain-hops.ts reviewIsClean`) or `maxIterations`
+  trips (budget — no infinite implementer/reviewer disagreement). The pure engine stays strategy-
+  agnostic (linear advance/finalize); the SCAN reinterprets its decision for loop chains (the predicate
+  + loop-back need the output and hop kinds, which live in the scan): review COMPLETED+CLEAN →
+  finalize; last hop (revise) COMPLETED → loop back to the review hop (fresh re-fire, `iterations`++);
+  cap reached → finalize with a note. Model gains `ChainStrategy "loop-until-clean"` + `ChainLoop
+  {startCursor, maxIterations, iterations}`; the CLI gains `--strategy loop-until-clean
+  --max-iterations` (validates a pr-review + a following hop). +14 tests (reviewIsClean, the four loop
+  transitions, CLI). Suites green: workflow-svc 137, h-cli 91. **`parallel` deliberately deferred:** it
+  fans out N *review kinds* (review-security ∥ review-perf ∥ …) and we have only one `pr-review` kind,
+  so building it now would be speculative (no exercisable chain) — revisit when a multi-reviewer chain
+  exists. Next: the live end-to-end test (feature → PR → review → revise).
 - **2026-07-08 — Phase 4 COMPLETE: the durable chain engine, and the CLI cut over to it.** Chains
   are now a durable primitive, sibling of the watcher — built in six workflow-svc slices then cut over
   atomically. **Engine (`apps/workflow-svc/src/domain/chain-*.ts`):** `chain.model.ts` (ChainRow =

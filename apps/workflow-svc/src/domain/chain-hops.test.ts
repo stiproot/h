@@ -6,6 +6,7 @@ import {
   capturePr,
   ChainThreadError,
   HOP_KINDS,
+  reviewIsClean,
   stepOutputs,
 } from "./chain-hops.ts";
 
@@ -61,6 +62,25 @@ describe("capturePr", () => {
     capturePr(result({ implement: "===PR===\nSKIPPED — GH_TOKEN unset" }), data);
     expect(data.prUrl).toBe("SKIPPED — GH_TOKEN unset");
     expect(data.prNumber).toBeUndefined();
+  });
+});
+
+describe("reviewIsClean (loop-until-clean predicate)", () => {
+  it("is clean when the review reports CLEAN", () => {
+    expect(reviewIsClean(result({ review: "reviewed\n===REVIEW===\nCLEAN" }))).toBe(true);
+    expect(reviewIsClean(result({ review: "===REVIEW===\n  clean  " }))).toBe(true);
+  });
+
+  it("is clean when there is no marker or an empty tail (nothing to address)", () => {
+    expect(reviewIsClean(result({ review: "no marker" }))).toBe(true);
+    expect(reviewIsClean(result({ review: "===REVIEW===\n" }))).toBe(true);
+    expect(reviewIsClean(undefined)).toBe(true);
+  });
+
+  it("is NOT clean when the review lists findings", () => {
+    expect(reviewIsClean(result({ review: "===REVIEW===\nsrc/x.ts:9 — missing guard" }))).toBe(
+      false,
+    );
   });
 });
 

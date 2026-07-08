@@ -74,8 +74,19 @@ def run(
         int | None, typer.Option("--issue", help="GitHub issue this chain implements (Closes #N).")
     ] = None,
     strategy: Annotated[
-        str, typer.Option(help="Chain strategy. 'sequential' only (parallel/loop-until-clean TBD).")
+        str,
+        typer.Option(
+            help="Chain strategy: 'sequential' (run the hops once) or 'loop-until-clean' "
+            "(repeat pr-review→revise until the review is CLEAN or --max-iterations)."
+        ),
     ] = "sequential",
+    max_iterations: Annotated[
+        int,
+        typer.Option(
+            "--max-iterations",
+            help="loop-until-clean only: cap on review→revise cycles before the chain finalizes.",
+        ),
+    ] = 3,
     fresh: Annotated[
         bool,
         typer.Option("--fresh", help="Re-run the first hop's instance if it already finished."),
@@ -97,10 +108,10 @@ def run(
     cron tick. Watch it with `h chain list`. Prerequisite: publish `feature-pr` and `pr-review`.
     """
     templates = template or DEFAULT_CHAIN
-    if strategy != "sequential":
+    if strategy not in ("sequential", "loop-until-clean"):
         err_console.print(
-            f"[red]strategy '{strategy}' not implemented[/red] — only 'sequential' for now "
-            "(parallel and loop-until-clean are the next chain-engine strategies)."
+            f"[red]strategy '{strategy}' not implemented[/red] — 'sequential' or "
+            "'loop-until-clean' (parallel is deferred until a multi-reviewer chain needs it)."
         )
         raise typer.Exit(1)
     unknown = [t for t in templates if t not in HOP_SPECS]
@@ -131,6 +142,20 @@ def run(
         data["issueNumber"] = str(issue)
     body: dict[str, Any] = {"slug": slug, "hops": hops, "data": data, "strategy": strategy}
     body["budgetMs"] = (budget * 60_000) if budget is not None else len(hops) * PER_HOP_BUDGET_MS
+
+    if strategy == "loop-until-clean":
+        # The loop body is pr-review→revise: the review hop is the predicate (CLEAN stops the loop),
+        # and the last hop loops back to it. Require both, in order.
+        if "pr-review" not in templates:
+            err_console.print("[red]loop-until-clean needs a 'pr-review' hop[/red] (predicate).")
+            raise typer.Exit(1)
+        start = templates.index("pr-review")
+        if start >= len(templates) - 1:
+            err_console.print(
+                "[red]loop-until-clean needs a hop after 'pr-review'[/red] (e.g. 'revise') to loop."
+            )
+            raise typer.Exit(1)
+        body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
     try:
         result = workflow_svc.chain_run(body)
