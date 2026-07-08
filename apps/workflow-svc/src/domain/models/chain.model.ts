@@ -27,13 +27,23 @@ export const ChainOutcome = Schema.Literal(
 );
 export type ChainOutcome = Schema.Schema.Type<typeof ChainOutcome>;
 
+// The hop KIND selects the engine-coded port contract (chain-hops.ts): how the hop builds its
+// fire-params from the blackboard and captures its output back into it. Threading is engine code,
+// not a config DSL (mirrors the watcher's ruling W3) — a novel chain adds a kind here + in
+// chain-hops.ts. Closed literal so an unknown kind fails validation at registration.
+export const ChainHopKind = Schema.Literal("feature-pr", "pr-review", "revise");
+export type ChainHopKind = Schema.Schema.Type<typeof ChainHopKind>;
+
 /**
- * One hop in the sequence: which saved workflow to fire, and how. The declarative port contract
- * (how a hop builds fire-params from the blackboard and captures its output back into it) is added
- * to this struct with `chain-scan.ts` — the pure engine (chain-engine.ts) sequences on cursor +
- * status alone and never reads these fields, so they are deliberately absent here for now.
+ * One hop in the sequence: its kind (selecting the engine-coded threading logic) and which saved
+ * workflow to fire, and how. The pure engine (chain-engine.ts) sequences on cursor + status alone
+ * and reads none of these; the scan (chain-scan.ts) uses `kind` to pick the buildParams/capture
+ * contract and `key`/`fresh`/`instanceId` to fire.
  */
 export const ChainHop = Schema.Struct({
+  // Selects the buildParams/capture contract in chain-hops.ts. Distinct from `key`: e.g. the
+  // `revise` kind fires the `feature-pr` key but threads reviewFindings into its spec.
+  kind: ChainHopKind,
   // Saved-workflow key this hop fires (resolved via WorkflowStore.get + toRequest).
   key: Schema.String,
   // Re-fire semantics: purge a terminal instance and re-run (a revise hop re-runs its feature-pr

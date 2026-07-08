@@ -239,16 +239,22 @@ engine that mirrors the watch engine **exactly**. Design (grounded in a read of 
   `--watch` registers a watch); `h chain list`/`GET /chain/list` inspect. The Phase-1 in-process
   sequencing loop is deleted in the same change set (atomic cutover).
 
-**OPEN DECISION — the hop port contract (how state threads without shipping code).** Phase 1 threaded
-state with Python closures (`build_params(data)`, `capture(output, data)`) in the CLI's
-`CHAIN_TEMPLATES`. A durable engine can't ship closures, so the hop's contract must be **declarative
-data** on the row. Candidates: (a) a small value/capture mini-language on each hop — `params: {name:
-{fromData: k} | {const: v} | {concat: [...]}}` and `capture: [{marker, into, extract:[{regex,into}]}]`
-(covers feature→pr-review→revise: `===PR===`→prNumber via `/pull/(\d+)`, `===REVIEW===`→reviewFindings,
-revise's preamble+findings concat); (b) named built-in hop kinds keyed by a registry the engine ships
-(less flexible, no DSL); (c) the CLI keeps threading and the engine only sequences fixed pre-resolved
-hops (fails — later params depend on earlier *outputs*, unknown at registration). Leaning (a), minimal.
-Settle before building `chain-scan.ts`. The pure engine + model + registry land first (fork-free).
+**RESOLVED — the hop port contract is engine code, not a DSL, and there is no chain actor.** The
+engine is machine code (not agentic), and it is what *strings workflows together*, so the threading
+logic lives in the engine. It reads each completed hop's **output** (already returned by
+`invoker.getStatus`) and parses it as engine code to build the next hop's params, threading state
+through the chain row's `data` (engine = single writer). This mirrors the watcher's ruling W3
+(behavior is engine code, never config-expressed logic). Decisive reason a *chain actor* is NOT used:
+a workflow like `feature-pr` runs standalone (issue-sweep fires it directly, no chain), so making its
+template read/write a `chain-<slug>` actor would couple a chain-agnostic workflow to chain machinery
+and require an actor even for non-chained runs. Instead workflows stay chain-agnostic — params in,
+`===MARKER===` out — and the engine ships a small set of **hop kinds** (porting Phase 1's live-validated
+`CHAIN_TEMPLATES`, incl. the Dapr double-encoding unwrap): `feature-pr` (reads slug/spec/issueNumber →
+params; `===PR===` → prUrl/prNumber via `/pull/(\d+)`), `pr-review` (prNumber → `pr`; `===REVIEW===` →
+reviewFindings), `revise` (slug + preamble·reviewFindings → spec; `===PR===`). A novel chain adds a hop
+kind in engine code, exactly like adding a watch behavior. (The actor was only ever proposed for
+*parallel* turn-based writes in Phase 5; since the engine is the single writer that reads each hop's
+output, it can aggregate parallel outputs too — the actor likely evaporates there as well.)
 
 **Phase 5 — Strategies.** Add `parallel` (fan-out → actor aggregation → join) and `loop-until-clean`
 (predicate + budget). The concurrency experiments live here.

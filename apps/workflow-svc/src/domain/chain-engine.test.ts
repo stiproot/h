@@ -12,7 +12,11 @@ function row(overrides: Partial<ChainRow> = {}): ChainRow {
     chainId: "dark-mode",
     epoch: 1,
     slug: "dark-mode",
-    hops: [{ key: "feature-pr" }, { key: "pr-review" }, { key: "revise" }],
+    hops: [
+      { kind: "feature-pr", key: "feature-pr" },
+      { kind: "pr-review", key: "pr-review" },
+      { kind: "revise", key: "feature-pr" },
+    ],
     strategy: "sequential",
     cursor: 0,
     currentInstanceId: "feature-dark-mode",
