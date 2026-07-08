@@ -40,17 +40,6 @@
           "type": "string",
           "$comment": "Shell command that proves the implementation (run in the worktree by a trailing verify step). Empty omits the step."
         },
-        "createPr": {
-          "type": "boolean",
-          "$comment": "Append a commit/push/PR epilogue to the run's final step. Direct renders only; a published template carries the epilogue keyed off the fire-time createPr param instead."
-        },
-        "issueNumber": {
-          "type": [
-            "string",
-            "integer"
-          ],
-          "$comment": "GitHub issue number for the PR's `Closes #N` line. Direct renders only; published templates take the fire-time issueNumber param instead."
-        },
         "gitAuth": {
           "enum": [
             "",

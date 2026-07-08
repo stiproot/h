@@ -186,7 +186,7 @@ def compose(
     `-t feature -t create-pr` is the explicit form of the retired `feature --pr` flag: create-pr's
     commit/push/open-PR epilogue extends feature's implement step in ONE workflow (one instanceId,
     one worktree, one agent context — no re-read). Publish-native: {{params.*}} slots stay open, so
-    the saved result is fired with `h workflow run <key> -p slug=... -p createPr=true`.
+    the saved result is fired with `h workflow run <key> -p slug=... -p spec=@file`.
     """
     if not template:
         err_console.print("[red]at least one -t/--template is required[/red]")

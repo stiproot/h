@@ -79,16 +79,10 @@ def _warn_missing_source_repo(rendered: str) -> None:
             )
 
 
-def _render(
-    spec: str, slug: str | None, create_pr: bool = False, issue: int | None = None
-) -> tuple[str, str]:
+def _render(spec: str, slug: str | None) -> tuple[str, str]:
     spec_file = _resolve_spec(spec)
     resolved_slug = slug or _derive_slug(spec_file)
     values = {"feature.slug": resolved_slug}
-    if create_pr:
-        values["feature.createPr"] = "true"
-    if issue is not None:
-        values["feature.issueNumber"] = str(issue)
     try:
         rendered = helm.render_workflow(
             "feature",
@@ -110,37 +104,22 @@ SlugOpt = Annotated[
     str | None,
     typer.Option(help="Branch/run slug (branch feature/<slug>); default: sanitized filename."),
 ]
-PrOpt = Annotated[
-    bool,
-    typer.Option(
-        "--pr",
-        help="Have the final step commit the worktree, push feature/<slug>, and open a PR "
-        "(via the github MCP); the run ends with a ===PR=== marker. Without it, changes "
-        "stay as uncommitted working-tree changes.",
-    ),
-]
-IssueOpt = Annotated[
-    int | None,
-    typer.Option(
-        "--issue",
-        help="GitHub issue number this run implements; with --pr the PR body carries "
-        "`Closes #N` so the merge auto-closes it.",
-    ),
-]
 
 
 @app.command()
 def render(
     spec: SpecArg,
     slug: SlugOpt = None,
-    pr: PrOpt = False,
-    issue: IssueOpt = None,
     as_json: Annotated[
         bool, typer.Option("--json", help="Apply the JSON wire step instead of canonical YAML.")
     ] = False,
 ) -> None:
-    """Render the workflow definition and print it — no seeding, no run."""
-    rendered, _ = _render(spec, slug, create_pr=pr, issue=issue)
+    """Render the workflow definition and print it — no seeding, no run.
+
+    feature never opens a PR: to compose a feature-to-a-PR run, use
+    `h workflow compose -t feature -t create-pr`.
+    """
+    rendered, _ = _render(spec, slug)
     if as_json:
         print(helm.to_wire_json(rendered))
     elif sys.stdout.isatty():
@@ -153,8 +132,6 @@ def render(
 def run(
     spec: SpecArg,
     slug: SlugOpt = None,
-    pr: PrOpt = False,
-    issue: IssueOpt = None,
     fresh: Annotated[
         bool,
         typer.Option(
@@ -183,7 +160,7 @@ def run(
     (watch with `h workflow status <id>`). Without: the legacy blocking path (seed a task,
     long-poll workflow-agent).
     """
-    rendered, resolved_slug = _render(spec, slug, create_pr=pr, issue=issue)
+    rendered, resolved_slug = _render(spec, slug)
     console.print(
         f"==> Feature request -> slug '{resolved_slug}' "
         f"(branch feature/{resolved_slug}, chart-rendered)"

@@ -232,15 +232,17 @@ prod diagnosis, no plugin-feedback publish). Specs live in the gitignored
    a machine-checkable `===VERIFY===` PASS/FAIL verdict. Without it, the implement step's
    self-report is an unchecked claim.
 
-**Optional PR ending (`feature.createPr` / `--pr`):** by default the run ends as uncommitted
-working-tree changes. Opting in appends a commit/push/PR epilogue to the *final* step's prose
-(verify when present — gated on a PASS verdict — else implement): the agent commits the worktree,
-pushes `feature/<slug>` with a one-shot `GH_TOKEN` URL (never persisted into git config), opens
-the PR via the github MCP, and ends with a machine-checkable `===PR===` marker (URL or SKIPPED +
-reason). Direct renders opt in with `h feature run <spec> --pr` (or `--set feature.createPr=true`);
-a *published template* always carries the epilogue keyed off the fire-time `createPr` param —
-`-p createPr=true` to end as a PR, param absent for a worktree-only run — so one saved template
-serves both endings.
+**Opening a PR is a composition, not a flag.** feature always ends as uncommitted working-tree
+changes — it has no `--pr`/`createPr` option. To take a feature all the way to a PR, overlay the
+**create-pr** template: `h workflow compose -t feature -t create-pr` merges create-pr's
+commit/push/open-PR epilogue onto feature's implement step, producing one workflow definition (one
+instanceId, one worktree, one agent context — no re-read). The agent commits the worktree, pushes
+`feature/<slug>` with a one-shot `GH_TOKEN` URL (never persisted into git config), opens the PR via
+the github MCP, and ends with a machine-checkable `===PR===` marker (URL or SKIPPED + reason).
+Composing create-pr *is* the intent to open a PR — save the composed definition
+(`… --save feature-pr`) and fire it with `-p slug=… -p spec=@file [-p issueNumber=N]`
+(`issueNumber` gives the PR body a `Closes #N`). See
+[docs/plans/workflow-composition.md](./docs/plans/workflow-composition.md).
 
 The invocation reads the `.md` and injects it into the task with `jq --rawfile` (JSON-safe for
 arbitrary Markdown — quotes, backslashes, `$`), so it is a dedicated wrapper rather than a payload run
@@ -256,7 +258,7 @@ against `cli/scripts/payloads/domain/feature-requests/` (with or without the `.m
 `cli/scripts/clone.sh` once. claude-agent + workflow-agent running, and `GH_TOKEN` set in `.env`.
 
 **Chart strategy (co-existing):** `cli/scripts/invoke-workflow-feature-helm.sh <spec> [SLUG=<slug>]
-[--pr] [--render-only]` renders the same workflow deterministically from
+[--render-only]` renders the same workflow deterministically from
 `cli/charts/workflows/templates/feature.yaml` (`helm template`, client-side only) and seeds a task
 carrying the pre-built definition — the workflow-agent then runs it verbatim and monitors, instead
 of constructing the steps itself. YAML is the rendered artifact; JSON conversion happens only at
@@ -284,8 +286,9 @@ in-process babysitter loops.
 One judgment tick of the self-build loop (`docs/plans/h-builds-h.md`, operate via
 `docs/h-builds-h-runbook.md`): reconcile in-flight `feature-issue-<n>` runs, enforce
 budget/concurrency gates from the `sweep:config` statestore key, pick the oldest OPEN issue
-labeled `agent-approved`, and dispatch ONE `feature` run (params `slug`/`spec`/`createPr`/
-`issueNumber`, `fresh: true` on retries) to the coding agent's `POST /workflow`. Publish with a
+labeled `agent-approved`, and dispatch ONE `feature-pr` run (the composed feature ⊕ create-pr
+template; params `slug`/`spec`/`issueNumber`, `fresh: true` on retries) to the coding agent's
+`POST /workflow`. Publish with a
 cron schedule + `--workspace-id h-issue-sweep` (start `--disabled`); the sweep agent is the only
 writer of the `sweep:*` registry. `issueSweep.dryRun` renders a tick that reports what it would
 dispatch and touches nothing.

@@ -113,7 +113,9 @@ def _capture_review(workflow_output: str | None, data: dict[str, Any]) -> None:
 
 
 def _feature_params(data: dict[str, Any]) -> dict[str, Any]:
-    params = {"slug": data["slug"], "spec": data["spec"], "createPr": "true"}
+    # Fires the composed `feature-pr` template (feature ⊕ create-pr) — the PR comes from the
+    # overlay, not a createPr flag. issueNumber is create-pr's optional `Closes #N` param.
+    params = {"slug": data["slug"], "spec": data["spec"]}
     if data.get("issueNumber"):
         params["issueNumber"] = data["issueNumber"]
     return params
@@ -133,21 +135,24 @@ def _revise_params(data: dict[str, Any]) -> dict[str, Any]:
     params = {
         "slug": data["slug"],
         "spec": _REVISE_SPEC_PREAMBLE + (data.get("reviewFindings") or "(no findings reported)"),
-        "createPr": "true",
     }
     if data.get("issueNumber"):
         params["issueNumber"] = data["issueNumber"]
     return params
 
 
-# Phase-1 built-in registry — the chainable templates and their port contracts. `feature` and
-# `revise` share the `feature-<slug>` instance (same worktree/branch/PR); `revise` re-runs it fresh.
+# Phase-1 built-in registry — the chainable templates and their port contracts. The `feature` and
+# `revise` hops both fire the composed `feature-pr` saved template (feature ⊕ create-pr — publish it
+# once with `h workflow compose -t feature -t create-pr --save feature-pr`); they share the
+# `feature-<slug>` instance (same worktree/branch/PR), and `revise` re-runs it fresh.
 CHAIN_TEMPLATES: dict[str, ChainTemplate] = {
-    "feature": ChainTemplate("feature", "feature", False, "feature", _feature_params, _capture_pr),
+    "feature": ChainTemplate(
+        "feature", "feature-pr", False, "feature", _feature_params, _capture_pr
+    ),
     "pr-review": ChainTemplate(
         "pr-review", "pr-review", False, "pr-review", _pr_review_params, _capture_review
     ),
-    "revise": ChainTemplate("revise", "feature", True, "feature", _revise_params, _capture_pr),
+    "revise": ChainTemplate("revise", "feature-pr", True, "feature", _revise_params, _capture_pr),
 }
 
 DEFAULT_CHAIN = ["feature", "pr-review", "revise"]
@@ -282,7 +287,7 @@ def run(
             status = _poll_terminal(fired["instanceId"], poll_interval, timeout)
         except httpx.HTTPError as err:
             err_console.print(f"[red]hop {position} ({name}) http:[/red] {err}")
-            err_console.print("Is workflow-svc running and are `feature`/`pr-review` published?")
+            err_console.print("Is workflow-svc running and are `feature-pr`/`pr-review` published?")
             raise typer.Exit(1) from err
         except ChainError as err:
             err_console.print(f"[red]hop {position} ({name}):[/red] {err}")

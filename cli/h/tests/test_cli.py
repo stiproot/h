@@ -101,7 +101,7 @@ def test_workflow_compose_prints_merged_definition() -> None:
     result = runner.invoke(app, ["workflow", "compose", "-t", "feature", "-t", "create-pr"])
     assert result.exit_code == 0, _all_output(result)
     # The merged YAML carries feature's four steps with create-pr's epilogue folded into implement.
-    assert "worktree" in result.output and "===CREATE PR===" in result.output
+    assert "worktree" in result.output and "===PR===" in result.output
     assert "feature ⊕ create-pr" in result.output
 
 

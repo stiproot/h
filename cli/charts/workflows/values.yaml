@@ -37,17 +37,6 @@ feature:
   # ends with a ===VERIFY=== PASS/FAIL verdict. Empty = no verify step; the implement step's
   # self-report then goes unchecked.
   verifyCmd: ""
-  # Append a commit/push/PR epilogue to the run's final step (verify when verifyCmd is set,
-  # else implement): the agent commits the worktree, pushes feature/<slug> with a one-shot
-  # $GH_TOKEN URL (never persisted), and opens the PR via the github MCP, ending with a
-  # ===PR=== marker. Direct renders opt in here (--set feature.createPr=true / `h feature
-  # run --pr`); a published template always carries the epilogue keyed off the fire-time param
-  # instead — -p createPr=true (absent = worktree-only run).
-  createPr: false
-  # GitHub issue number this run implements. When set (and the PR epilogue runs), the PR body
-  # carries `Closes #N` so the merge auto-closes the issue. Publish mode leaves it open as the
-  # fire-time param issueNumber instead.
-  issueNumber: ""
   # Git auth strategy NAME for the worktree/clone steps and the epilogue's push instruction:
   # "" = the agent's default (GIT_AUTH env, pat when unset), "pat" = one-shot GH_TOKEN URL,
   # "ssh" = ssh transport (agent-mounted key via GIT_SSH_KEY_PATH; push is plain `git push

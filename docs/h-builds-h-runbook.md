@@ -53,11 +53,12 @@ preflight step turns that into an explicit `TOOLS UNAVAILABLE` stop.
 ## Publish, seed, arm
 
 ```sh
-# 1. The feature family (params: slug, spec, createPr, issueNumber; config baked from values.local)
-uv run h workflow publish feature
+# 1. The feature-pr template (feature ⊕ create-pr; params: slug, spec, issueNumber; config baked
+#    from values.local). The sweep fires this so each run implements the issue AND opens its PR.
+uv run h workflow compose -t feature -t create-pr --save feature-pr
 
 # 2. Phase-1 acceptance: hand-fire one issue-linked run before any automation
-uv run h workflow run feature -p slug=issue-X -p spec=@toy.md -p createPr=true \
+uv run h workflow run feature-pr -p slug=issue-X -p spec=@toy.md \
   -p issueNumber=X --instance-id feature-issue-X --agent claude-coder
 
 # 3. Seed the runtime config (dapr MCP state_save, or curl the state API):

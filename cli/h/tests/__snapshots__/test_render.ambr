@@ -5,15 +5,10 @@
     - id: implement
       input:
         task: |-
-          ===CREATE PR===
-          {{params.createPr}}
-  
           ===ISSUE===
           {{params.issueNumber}}
   
-          The value under ===CREATE PR=== above decides how this run ends. If it is not
-          exactly 'true', leave everything as uncommitted working-tree changes — do not
-          commit or push. If it IS 'true':
+          Now commit what you implemented and open (or update) a pull request.
           1. Commit ONLY what the feature touched, on branch feature/{{params.slug}}, with a
              concise conventional commit message. Add files individually (never `git add -A`
              or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
@@ -28,8 +23,8 @@
              MCP tool create_pull_request: title from the feature, body summarizing the
              spec, the plan, and what you implemented. If the value under ===ISSUE===
              above is a number N, include the line `Closes #N` on its own line in the PR
-             body, so the merge auto-closes that issue. If a PR for this branch already
-             exists, your push has updated it — do not open a duplicate.
+             body, so the merge auto-closes that issue; otherwise omit it. If a PR for this
+             branch already exists, your push has updated it — do not open a duplicate.
           4. If a PR for this branch already existed before this push (this is a revise
              run, not a first-time creation), respond to review feedback:
              a. Find the PR number: use the github MCP tool to list pull requests by
@@ -104,49 +99,7 @@
   
           Then implement the feature described under ===FEATURE SPEC=== below, following the
           plan. If the feature already appears implemented, make no changes and say so.
-          Leave the result as working-tree changes while you work; whether the run ends
-          committed, pushed, and opened as a PR is decided under ===CREATE PR=== below.
-  
-          ===CREATE PR===
-          {{params.createPr}}
-  
-          ===ISSUE===
-          {{params.issueNumber}}
-  
-          The value under ===CREATE PR=== above decides how this run ends. If it is not
-          exactly 'true', leave everything as uncommitted working-tree changes — do not
-          commit or push. If it IS 'true':
-          1. Commit ONLY what the feature touched, on branch feature/{{params.slug}}, with a
-             concise conventional commit message. Add files individually (never `git add -A`
-             or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
-             MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
-             leave plan-feature-{{params.slug}}.md uncommitted (run context, not feature code).
-          2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
-             from `git remote get-url origin` and push with a one-shot token URL:
-             git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{params.slug}}
-             Never write the token into git config or the remote URL; if GH_TOKEN is unset,
-             skip the push and say so under ===PR===.
-          3. Open a pull request against the repository's default branch with the github
-             MCP tool create_pull_request: title from the feature, body summarizing the
-             spec, the plan, and what you implemented. If the value under ===ISSUE===
-             above is a number N, include the line `Closes #N` on its own line in the PR
-             body, so the merge auto-closes that issue. If a PR for this branch already
-             exists, your push has updated it — do not open a duplicate.
-          4. If a PR for this branch already existed before this push (this is a revise
-             run, not a first-time creation), respond to review feedback:
-             a. Find the PR number: use the github MCP tool to list pull requests by
-               head branch feature/{{params.slug}}.
-             b. Fetch UNRESOLVED review threads: pull_request_read with method
-               get_review_comments on that PR. Each thread has an isResolved field, a
-               thread node id (PRRT_...), and comments with numeric ids.
-             c. For each unresolved thread that this run actually addressed, reply inline
-               with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
-               <what changed>"), then resolve it with pull_request_review_write method
-               resolve_thread passing the thread node id.
-             d. Do NOT reply to or resolve threads this run did not address.
-             e. Never APPROVE or REQUEST_CHANGES on the PR.
-          End your response with the exact marker ===PR=== on its own line, then the PR
-          URL — or SKIPPED and the reason — on the next line.
+          Leave the result as uncommitted working-tree changes — do not commit or push.
   
           ===FEATURE SPEC===
           {{params.spec}}
@@ -158,147 +111,6 @@
 # ---
 # name: test_feature_wire_json_golden
   '{"instanceId": "feature-hostile-fixture", "steps": [{"id": "worktree", "activity": "create-worktree", "input": {"agentId": "claude-agent", "branch": "feature/hostile-fixture"}}, {"id": "setup", "activity": "setup", "input": {"agentId": "claude-agent", "setup": [{"cmd": "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"}, {"cmd": "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"}]}}, {"id": "plan", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-sonnet-4-6", "permissionMode": "plan", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\n\\nFirst check for a persisted plan from a prior run: if plan-feature-hostile-fixture.md\\nexists in the worktree root, read it — if it still matches the spec and the code,\\nreuse it as your plan instead of re-investigating.\\n\\nOtherwise investigate the feature request under ===FEATURE SPEC=== below: explore the\\nrelevant code and produce an implementation plan. Do NOT write code or modify any\\nfiles. If the feature already appears implemented, say so in the plan.\\nEnd your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —"}}, {"id": "implement", "activity": "run-claude", "input": {"cwd": "{{worktree.worktreePath}}", "model": "claude-haiku-4-5", "task": "You are in a git worktree of the target repository, on branch feature/hostile-fixture.\\n\\nFirst persist the plan you were handed under ===IMPLEMENTATION PLAN=== (the\\nshared-context handoff, so a re-run or another session can pick it up — the planning\\nagent runs read-only and cannot write it itself):\\n1. Write it to plan-feature-hostile-fixture.md in the worktree root.\\n2. Call the dapr MCP tool actor_state_set with actorId \'feature-hostile-fixture\' and key\\n   \'plan\', value the plan text — durable in the state store, inspectable from any\\n   session via actor_state_get.\\nIf either persistence step fails (e.g. the dapr MCP is unreachable), do NOT fail the\\nrun — but you MUST say so explicitly in your final output, so the degradation is\\nvisible instead of silent.\\n\\nThen implement the feature described under ===FEATURE SPEC=== below, following the\\nplan. If the feature already appears implemented, make no changes and say so.\\nLeave the result as uncommitted working-tree changes — do not commit or push.\\n\\n===FEATURE SPEC===\\n# Hostile-content fixture\\n\\nThis spec deliberately carries every token class that must survive rendering untouched.\\nIt is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,\\nthe JSON wire step) mangles one of these, the golden snapshot diff catches it.\\n\\n- agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}\\n- envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}\\n- engine-style tokens: {{step.field}} and {\\"$ref\\": \\"step.field\\"}\\n- \\"double quotes\\", \'single quotes\', back\\\\slashes, a lone $ sign\\n- markdown: `inline code`, **bold**, a [link](https://example.invalid)\\n\\n  an indented block\\n    a deeper one\\n\\nTrailing punctuation and unicode: café, emoji ✅, em-dash —\\n\\n\\n===IMPLEMENTATION PLAN===\\n{{plan.output}}"}}]}'
-# ---
-# name: test_feature_with_pr_golden
-  '''
-  instanceId: "feature-hostile-fixture"
-  steps:
-    - id: worktree
-      activity: create-worktree
-      input:
-        agentId: "claude-agent"
-        branch: "feature/hostile-fixture"
-    - id: setup
-      activity: setup
-      input:
-        agentId: "claude-agent"
-        setup:
-          - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
-          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
-    - id: plan
-      activity: run-claude
-      input:
-        cwd: "{{worktree.worktreePath}}"
-        model: "claude-sonnet-4-6"
-        permissionMode: plan
-        task: |-
-          You are in a git worktree of the target repository, on branch feature/hostile-fixture.
-  
-          First check for a persisted plan from a prior run: if plan-feature-hostile-fixture.md
-          exists in the worktree root, read it — if it still matches the spec and the code,
-          reuse it as your plan instead of re-investigating.
-  
-          Otherwise investigate the feature request under ===FEATURE SPEC=== below: explore the
-          relevant code and produce an implementation plan. Do NOT write code or modify any
-          files. If the feature already appears implemented, say so in the plan.
-          End your response with the plan under the exact marker ===IMPLEMENTATION PLAN===.
-  
-          ===FEATURE SPEC===
-          # Hostile-content fixture
-          
-          This spec deliberately carries every token class that must survive rendering untouched.
-          It is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,
-          the JSON wire step) mangles one of these, the golden snapshot diff catches it.
-          
-          - agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}
-          - envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}
-          - engine-style tokens: {{step.field}} and {"$ref": "step.field"}
-          - "double quotes", 'single quotes', back\slashes, a lone $ sign
-          - markdown: `inline code`, **bold**, a [link](https://example.invalid)
-          
-            an indented block
-              a deeper one
-          
-          Trailing punctuation and unicode: café, emoji ✅, em-dash —
-          
-    - id: implement
-      activity: run-claude
-      input:
-        cwd: "{{worktree.worktreePath}}"
-        model: "claude-haiku-4-5"
-        task: |-
-          You are in a git worktree of the target repository, on branch feature/hostile-fixture.
-  
-          First persist the plan you were handed under ===IMPLEMENTATION PLAN=== (the
-          shared-context handoff, so a re-run or another session can pick it up — the planning
-          agent runs read-only and cannot write it itself):
-          1. Write it to plan-feature-hostile-fixture.md in the worktree root.
-          2. Call the dapr MCP tool actor_state_set with actorId 'feature-hostile-fixture' and key
-             'plan', value the plan text — durable in the state store, inspectable from any
-             session via actor_state_get.
-          If either persistence step fails (e.g. the dapr MCP is unreachable), do NOT fail the
-          run — but you MUST say so explicitly in your final output, so the degradation is
-          visible instead of silent.
-  
-          Then implement the feature described under ===FEATURE SPEC=== below, following the
-          plan. If the feature already appears implemented, make no changes and say so.
-          Leave the result as working-tree changes while you work; whether the run ends
-          committed, pushed, and opened as a PR is decided under ===CREATE PR=== below.
-  
-          ===CREATE PR===
-          true
-  
-          ===ISSUE===
-  
-  
-          The value under ===CREATE PR=== above decides how this run ends. If it is not
-          exactly 'true', leave everything as uncommitted working-tree changes — do not
-          commit or push. If it IS 'true':
-          1. Commit ONLY what the feature touched, on branch feature/hostile-fixture, with a
-             concise conventional commit message. Add files individually (never `git add -A`
-             or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
-             MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
-             leave plan-feature-hostile-fixture.md uncommitted (run context, not feature code).
-          2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
-             from `git remote get-url origin` and push with a one-shot token URL:
-             git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/hostile-fixture
-             Never write the token into git config or the remote URL; if GH_TOKEN is unset,
-             skip the push and say so under ===PR===.
-          3. Open a pull request against the repository's default branch with the github
-             MCP tool create_pull_request: title from the feature, body summarizing the
-             spec, the plan, and what you implemented. If the value under ===ISSUE===
-             above is a number N, include the line `Closes #N` on its own line in the PR
-             body, so the merge auto-closes that issue. If a PR for this branch already
-             exists, your push has updated it — do not open a duplicate.
-          4. If a PR for this branch already existed before this push (this is a revise
-             run, not a first-time creation), respond to review feedback:
-             a. Find the PR number: use the github MCP tool to list pull requests by
-               head branch feature/hostile-fixture.
-             b. Fetch UNRESOLVED review threads: pull_request_read with method
-               get_review_comments on that PR. Each thread has an isResolved field, a
-               thread node id (PRRT_...), and comments with numeric ids.
-             c. For each unresolved thread that this run actually addressed, reply inline
-               with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
-               <what changed>"), then resolve it with pull_request_review_write method
-               resolve_thread passing the thread node id.
-             d. Do NOT reply to or resolve threads this run did not address.
-             e. Never APPROVE or REQUEST_CHANGES on the PR.
-          End your response with the exact marker ===PR=== on its own line, then the PR
-          URL — or SKIPPED and the reason — on the next line.
-  
-          ===FEATURE SPEC===
-          # Hostile-content fixture
-          
-          This spec deliberately carries every token class that must survive rendering untouched.
-          It is the committed proof of the delimiter-coexistence story — if any layer (helm, YAML,
-          the JSON wire step) mangles one of these, the golden snapshot diff catches it.
-          
-          - agent-side shell vars: $AGENT_APP_DIR and ${H_SKILLS_DIR}
-          - envsubst-style tokens: ${VARS} and ${NOT_A_REAL_VAR}
-          - engine-style tokens: {{step.field}} and {"$ref": "step.field"}
-          - "double quotes", 'single quotes', back\slashes, a lone $ sign
-          - markdown: `inline code`, **bold**, a [link](https://example.invalid)
-          
-            an indented block
-              a deeper one
-          
-          Trailing punctuation and unicode: café, emoji ✅, em-dash —
-          
-  
-          ===IMPLEMENTATION PLAN===
-          {{plan.output}}
-  
-  '''
 # ---
 # name: test_feature_with_verify_golden
   '''
@@ -654,10 +466,13 @@
              the engine's watch row) and do NOT touch any ledger (watch:ledger:<date> is
              engine-written — the watched fire increments runsFired by itself).
   
-          F. FIRE. POST (curl via Bash) to http://localhost:8002/workflow with JSON body:
-               {"key": "feature",
+          F. FIRE. POST (curl via Bash) to http://localhost:8002/workflow with JSON body — key `feature-pr`, the
+             composed feature ⊕ create-pr template (published once with
+             `h workflow compose -t feature -t create-pr --save feature-pr`), so the run implements
+             the issue AND opens/updates its PR; issueNumber gives the PR a `Closes #N`:
+               {"key": "feature-pr",
                 "params": {"slug": "issue-N", "spec": <the composed spec>,
-                           "createPr": "true", "issueNumber": "N"},
+                           "issueNumber": "N"},
                 "instanceId": "feature-issue-N", "workspaceId": "feature-issue-N",
                 "fresh": <true only when re-dispatching over a terminal prior instance
                           (agent-retry re-arm, or a step-V revise), else false>,

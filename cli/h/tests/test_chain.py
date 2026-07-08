@@ -50,7 +50,7 @@ def _spec(tmp_path: Path) -> Path:
 
 
 def _mock_terminal(slug: str, feature_out: str, review_out: str) -> None:
-    respx.post(f"{WORKFLOW_URL}/workflow/run/feature").mock(
+    respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
         return_value=Response(200, json={"instanceId": f"feature-{slug}", "watching": False})
     )
     respx.get(f"{WORKFLOW_URL}/workflow/status/feature-{slug}").mock(
@@ -99,7 +99,7 @@ def test_chain_threads_state_between_hops(tmp_path: Path) -> None:
     assert review_body["params"]["pr"] == "42"
 
     # feature fired twice: the initial implement and the revise re-run (same instance).
-    feature_calls = [c for c in respx.calls if c.request.url.path == "/workflow/run/feature"]
+    feature_calls = [c for c in respx.calls if c.request.url.path == "/workflow/run/feature-pr"]
     assert len(feature_calls) == 2
     revise_body = json.loads(feature_calls[1].request.content)
     assert revise_body["fresh"] is True  # revise re-runs the feature instance fresh
@@ -121,12 +121,13 @@ def test_chain_default_is_feature_review_revise(tmp_path: Path) -> None:
     paths = [
         c.request.url.path for c in respx.calls if c.request.url.path.startswith("/workflow/run")
     ]
-    assert paths == ["/workflow/run/feature", "/workflow/run/pr-review", "/workflow/run/feature"]
+    run = "/workflow/run"
+    assert paths == [f"{run}/feature-pr", f"{run}/pr-review", f"{run}/feature-pr"]
 
 
 @respx.mock
 def test_chain_stops_when_a_hop_fails(tmp_path: Path) -> None:
-    respx.post(f"{WORKFLOW_URL}/workflow/run/feature").mock(
+    respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
         return_value=Response(200, json={"instanceId": "feature-demo"})
     )
     respx.get(f"{WORKFLOW_URL}/workflow/status/feature-demo").mock(
@@ -193,7 +194,7 @@ def test_capture_review_stores_findings() -> None:
 
 def test_pr_review_hop_errors_without_a_pr_number(tmp_path: Path) -> None:
     with respx.mock:
-        respx.post(f"{WORKFLOW_URL}/workflow/run/feature").mock(
+        respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
             return_value=Response(200, json={"instanceId": "feature-demo"})
         )
         # feature completes but its output carries no ===PR=== marker

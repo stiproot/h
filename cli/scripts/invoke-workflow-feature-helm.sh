@@ -13,14 +13,15 @@ set -euo pipefail
 # Rendered YAML is the canonical artifact; it is converted to JSON as a final processing step at
 # the wire boundary only (see cli/scripts/_render.sh).
 #
-# Usage: invoke-workflow-feature-helm.sh <spec> [SLUG=<slug>] [--pr] [--render-only]
+# Usage: invoke-workflow-feature-helm.sh <spec> [SLUG=<slug>] [--render-only]
 #   <spec>          the feature request, in Markdown. Either a path to a .md file, or a bare name
 #                   resolved against cli/scripts/payloads/domain/feature-requests/ (with or
 #                   without the .md suffix).
 #   SLUG=...        optional branch/run slug; defaults to a sanitized form of the .md filename.
-#   --pr            have the final step commit the worktree, push feature/<slug>, and open a PR
-#                   (github MCP + one-shot GH_TOKEN push); without it, changes stay uncommitted.
 #   --render-only   print the rendered workflow definition (YAML) and exit — no seeding, no run.
+#
+# feature never opens a PR: the run leaves uncommitted working-tree changes. To take a feature to a
+# PR, compose it explicitly — `h workflow compose -t feature -t create-pr` (there is no --pr flag).
 #
 # Org-specific defaults (e.g. feature.sourceRepo, model ids) go in the gitignored
 # cli/charts/workflows/values.local.yaml, merged automatically by render_workflow.
@@ -66,11 +67,9 @@ shift
 # token (lowercase, runs of non-alphanumerics collapsed to '-', trimmed).
 SLUG=""
 RENDER_ONLY=0
-CREATE_PR=0
 for arg in "$@"; do
   case "$arg" in
     SLUG=*) SLUG="${arg#SLUG=}" ;;
-    --pr) CREATE_PR=1 ;;
     --render-only) RENDER_ONLY=1 ;;
   esac
 done
@@ -81,9 +80,7 @@ fi
 [[ -z "$SLUG" ]] && { echo "Could not derive a slug from '${SPEC_FILE}' — pass SLUG=<slug>"; exit 1; }
 
 # Render the workflow definition from the chart. YAML is the artifact of record here.
-PR_ARGS=()
-[[ $CREATE_PR -eq 1 ]] && PR_ARGS=(--set feature.createPr=true)
-DEF_YAML="$(render_workflow feature --set "feature.slug=${SLUG}" --set-file "feature.spec=${SPEC_FILE}" ${PR_ARGS[@]+"${PR_ARGS[@]}"})"
+DEF_YAML="$(render_workflow feature --set "feature.slug=${SLUG}" --set-file "feature.spec=${SPEC_FILE}")"
 
 if [[ $RENDER_ONLY -eq 1 ]]; then
   printf '%s\n' "$DEF_YAML"

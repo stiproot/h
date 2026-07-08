@@ -189,10 +189,13 @@ steps:
            the engine's watch row) and do NOT touch any ledger (watch:ledger:<date> is
            engine-written — the watched fire increments runsFired by itself).
 
-        F. FIRE. POST (curl via Bash) to {{ $coderUrl }} with JSON body:
-             {"key": "feature",
+        F. FIRE. POST (curl via Bash) to {{ $coderUrl }} with JSON body — key `feature-pr`, the
+           composed feature ⊕ create-pr template (published once with
+           `h workflow compose -t feature -t create-pr --save feature-pr`), so the run implements
+           the issue AND opens/updates its PR; issueNumber gives the PR a `Closes #N`:
+             {"key": "feature-pr",
               "params": {"slug": "issue-N", "spec": <the composed spec>,
-                         "createPr": "true", "issueNumber": "N"},
+                         "issueNumber": "N"},
               "instanceId": "feature-issue-N", "workspaceId": "feature-issue-N",
               "fresh": <true only when re-dispatching over a terminal prior instance
                         (agent-retry re-arm, or a step-V revise), else false>,

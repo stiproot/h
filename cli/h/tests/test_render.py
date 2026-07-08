@@ -55,39 +55,33 @@ def test_verify_step_omitted_by_default(hostile_spec: Path) -> None:
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
 
 
-def test_feature_with_pr_golden(hostile_spec: Path, snapshot) -> None:
-    """createPr appends the commit/push/PR epilogue to the final step's prose (here: implement)."""
+def test_git_auth_ssh_on_worktree_step(hostile_spec: Path) -> None:
+    """feature.gitAuth=ssh names the auth strategy on the worktree step."""
     rendered = helm.render_workflow(
         "feature",
-        values={"feature.slug": "hostile-fixture", "feature.createPr": "true"},
-        file_values={"feature.spec": hostile_spec},
-        include_local=False,
-    )
-    assert rendered == snapshot
-
-
-def test_git_auth_ssh_switches_transport(hostile_spec: Path) -> None:
-    """gitAuth=ssh names the strategy on the worktree step and swaps the push instruction."""
-    rendered = helm.render_workflow(
-        "feature",
-        values={
-            "feature.slug": "hostile-fixture",
-            "feature.createPr": "true",
-            "feature.gitAuth": "ssh",
-        },
+        values={"feature.slug": "hostile-fixture", "feature.gitAuth": "ssh"},
         file_values={"feature.spec": hostile_spec},
         include_local=False,
     )
     definition = json.loads(helm.to_wire_json(rendered))
     assert definition["steps"][0]["input"]["auth"] == "ssh"
-    assert "git push origin feature/hostile-fixture" in definition["steps"][3]["input"]["task"]
-    assert "x-access-token" not in definition["steps"][3]["input"]["task"]
 
 
-def test_pr_epilogue_omitted_by_default(hostile_spec: Path) -> None:
-    """Chart default (createPr false) keeps the worktree-only prose — no ===CREATE PR=== block."""
+def test_create_pr_gitauth_ssh_swaps_push() -> None:
+    """createPr.gitAuth=ssh swaps create-pr's push instruction to the ssh transport."""
+    rendered = helm.render_workflow(
+        "create-pr", values={"publish": "true", "createPr.gitAuth": "ssh"}, include_local=False
+    )
+    task = json.loads(helm.to_wire_json(rendered))["steps"][0]["input"]["task"]
+    assert "git push origin feature/{{params.slug}}" in task
+    assert "x-access-token" not in task
+
+
+def test_feature_never_opens_a_pr(hostile_spec: Path) -> None:
+    """feature carries no PR machinery — a PR only ever comes from the create-pr overlay."""
     rendered = _render_hostile(hostile_spec)
     assert "===CREATE PR===" not in rendered
+    assert "===PR===" not in rendered
     assert "do not commit or push" in rendered
 
 
@@ -106,11 +100,8 @@ def test_feature_publish_mode_opens_param_slots() -> None:
     assert "instanceId" not in definition
     assert definition["steps"][0]["input"]["branch"] == "feature/{{params.slug}}"
     assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
-    # The PR epilogue is always present in a template, keyed off the fire-time createPr param
-    # (absent at fire time → resolves to '' → the agent leaves the worktree uncommitted).
-    assert "{{params.createPr}}" in definition["steps"][3]["input"]["task"]
-    # Issue linkage rides the same pattern: fire with -p issueNumber=N for a `Closes #N` PR.
-    assert "{{params.issueNumber}}" in definition["steps"][3]["input"]["task"]
+    # feature carries no PR params — opening a PR is the create-pr overlay's job, not feature's.
+    assert "{{params.createPr}}" not in definition["steps"][3]["input"]["task"]
 
 
 def test_plugin_improvement_golden(snapshot) -> None:
@@ -187,7 +178,6 @@ def test_composable_feature_omits_pr_epilogue(hostile_spec: Path) -> None:
         values={
             "feature.slug": "hostile-fixture",
             "composable": "true",
-            "feature.createPr": "true",
             "feature.verifyCmd": "bun run lint",  # would add a verify step; composable drops it
         },
         file_values={"feature.spec": hostile_spec},
@@ -197,8 +187,7 @@ def test_composable_feature_omits_pr_epilogue(hostile_spec: Path) -> None:
     # verify is its own overlay atom in the composition vision — composable never fuses it in.
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
     implement = definition["steps"][3]["input"]["task"]
-    assert "===CREATE PR===" not in implement  # the overlay supplies it, not the base
-    assert "do not commit or push" not in implement  # neither the standalone closer
+    assert "do not commit or push" not in implement  # no standalone closer either
     assert implement.rstrip().endswith("{{plan.output}}")  # ends at the plan handoff
 
 
@@ -224,9 +213,9 @@ def test_compose_feature_create_pr_extends_implement() -> None:
     implement = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
     # The base implement prose AND the epilogue both live on the one step, in order.
     assert "First persist the plan" in implement
-    assert implement.index("{{plan.output}}") < implement.index("===CREATE PR===")
+    assert implement.index("{{plan.output}}") < implement.index("open (or update) a pull request")
     # The epilogue's fire-time params thread through unresolved for a saved template.
-    assert "{{params.createPr}}" in implement
+    assert "{{params.issueNumber}}" in implement
     assert "feature/{{params.slug}}" in implement
 
 

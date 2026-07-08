@@ -338,6 +338,23 @@ and are inspectable like watches (`h chain list`).
   (chain, issue-sweep, scripts, `h feature run`) migrate onto the compose path — only then delete
   `--pr`. **Open (Decision 8 / verify coupling):** a `verify` overlay atom + create-pr-after-verify
   ordering, so `-t feature -t create-pr -t verify` composes verification back in.
+- **2026-07-08 — Phase 2 step 4 landed: `--pr`/`createPr` deleted; a PR is only ever a composition.**
+  The atomic cutover the primitive-simplification wanted: feature no longer has any PR machinery, and
+  every caller moved to explicit composition in the same change set. **Templates:** feature drops
+  `createPr`/`issueNumber` (values + schema + both epilogue branches) — a run always ends as
+  uncommitted working-tree changes; the `composable` seam stays (neutral implement end + verify
+  dropped). create-pr becomes **always-PR**: composing it IS the intent, so the `createPr` opt-in gate
+  is gone — no `===CREATE PR===` decision block, just commit → push → open/update PR (issueNumber
+  optional for `Closes #N`). The `h.prEpilogue` partial (single-use once feature dropped it) is
+  **inlined** back into create-pr.yaml and deleted from _helpers.tpl — no indirection for one consumer.
+  **Callers:** `chain.py` fires the composed `feature-pr` saved template (not `feature`+createPr);
+  `issue-sweep` FIRE step dispatches `feature-pr`; `h feature run`/`feature render` lose `--pr`/`--issue`;
+  `invoke-workflow-feature-helm.sh` loses `--pr`. **Docs:** WORKFLOWS.md, the h-builds-h runbook, and
+  values comments now describe composing a PR in. Prerequisite: publish `feature-pr` once
+  (`h workflow compose -t feature -t create-pr --save feature-pr`). Goldens re-blessed (feature-publish
+  lost its epilogue; feature-with-pr golden deleted; create-pr rewritten). Full h-cli suite green (86),
+  ruff clean. **Decision 8 (verify coupling) now the last open item:** a `verify` overlay atom so
+  `-t feature -t create-pr -t verify` composes verification back in (composable currently drops verify).
 - **2026-07-08 — Phase 3 landed: "family" retired, "template" adopted in code + docs.** The model,
   restated (per the ruling): a **template** is a parameterized workflow template; helm populates it
   into a **workflow definition**; workflow definitions **compose** (overlay); an executing workflow
