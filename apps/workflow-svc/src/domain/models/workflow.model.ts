@@ -60,7 +60,7 @@ export const SaveWorkflowRequest = Schema.Struct({
   schedule: Schema.optional(Schema.String),
   // When true, the scheduler skips this workflow — a way to pause a schedule without deleting it.
   disabled: Schema.optional(Schema.Boolean),
-  // Default parameter values for this saved workflow (a "family"); fire-time params override
+  // Default parameter values for this saved workflow (a "template"); fire-time params override
   // these key-by-key.
   params: Schema.optional(WorkflowParams),
   // Stored watch policy: every fire of this saved workflow (HTTP, trigger event, cron tick)
@@ -95,7 +95,7 @@ export const StoredWorkflow = Schema.Struct({
 export type StoredWorkflow = Schema.Schema.Type<typeof StoredWorkflow>;
 
 // Projects a stored workflow into the run-time request handed to the invoker. Fire-time params
-// merge over the stored defaults key-by-key, so a family can ship defaults and a caller can
+// merge over the stored defaults key-by-key, so a template can ship defaults and a caller can
 // override just the slots it cares about.
 export function toRequest(
   stored: StoredWorkflow,

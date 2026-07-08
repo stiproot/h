@@ -338,3 +338,15 @@ and are inspectable like watches (`h chain list`).
   (chain, issue-sweep, scripts, `h feature run`) migrate onto the compose path — only then delete
   `--pr`. **Open (Decision 8 / verify coupling):** a `verify` overlay atom + create-pr-after-verify
   ordering, so `-t feature -t create-pr -t verify` composes verification back in.
+- **2026-07-08 — Phase 3 landed: "family" retired, "template" adopted in code + docs.** The model,
+  restated (per the ruling): a **template** is a parameterized workflow template; helm populates it
+  into a **workflow definition**; workflow definitions **compose** (overlay); an executing workflow
+  definition is a **workflow**. Two commits: (1) the chart-layer identifier rename — the `family`
+  helm gate value → `template` (`--set template=<name>`, `.Values.template`, `render_workflow(
+  template=…)`, the `template` schema property, `h workflow publish <template>`), behavior-preserving
+  (the gate value is never emitted, so every golden is byte-identical, no re-bless). (2) the prose
+  sweep — README.md, WORKFLOWS.md, cli/README.md, CLAUDE.md, and current TS/py comments + test-local
+  identifiers (`storedFamily` → `storedTemplate`) all say "template" now. Deliberately preserved:
+  `packages/js/core/src/errors.ts` "tagged-error family" (a different sense), and the historical plan
+  docs under docs/plans/ (point-in-time records). Suites green: h-cli 86, workflow-svc 94, py
+  agent-server 10.

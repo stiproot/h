@@ -30,7 +30,7 @@ export interface WatchPolicy {
 }
 
 export interface WorkflowSubmit {
-  /** Saved-workflow key (a published family) to fire… */
+  /** Saved-workflow key (a published template) to fire… */
   key?: string;
   /** …or inline step definitions. Exactly one of key/steps is required. */
   steps?: unknown[];

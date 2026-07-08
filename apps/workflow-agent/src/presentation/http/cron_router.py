@@ -63,8 +63,8 @@ def create_router(runner: WorkflowAgentRunner, store: StateStore) -> APIRouter:
     @router.get("/dapr/subscribe")
     async def subscribe():
         # No subscriptions. The plugin-feedback → plugin-improvement flow moved out of this
-        # service: it is now the `plugin-improvement` chart family (cli/charts) fired by
-        # workflow-svc's generic `workflow-trigger` topic — a family + an event, no domain
+        # service: it is now the `plugin-improvement` chart template (cli/charts) fired by
+        # workflow-svc's generic `workflow-trigger` topic — a template + an event, no domain
         # routes in any agent service. See docs/plans/workflow-unification.md.
         return []
 

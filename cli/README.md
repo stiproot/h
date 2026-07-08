@@ -14,7 +14,7 @@ cli/
 │   ├── _lib.sh · _workflow.sh      # shared shell helpers (idempotent restarts, submit/poll)
 │   └── _render.sh                  # shared chart-rendering helpers (strategy 2's entrypoint)
 ├── charts/     # strategy 2 — helm as a client-side templating engine
-│   └── workflows/                  # one chart; one template per workflow family
+│   └── workflows/                  # one chart; one template file per workflow
 │       ├── values.yaml             # defaults; values.local.yaml (gitignored) for org overrides
 │       ├── values.schema.json      # shape validation of inputs
 │       └── templates/
@@ -37,7 +37,7 @@ a dedicated jq `--rawfile` wrapper (`invoke-workflow-feature-request.sh`).
 
 ## Strategy 2 — charts (helm as the templating engine)
 
-`helm template` renders a workflow family's template into a concrete **run_workflow request
+`helm template` renders a workflow template into a concrete **run_workflow request
 body**. No cluster involved — helm is used purely client-side. Construction becomes
 deterministic; the workflow-agent's job narrows to run + monitor + self-heal.
 
@@ -89,8 +89,8 @@ uv run h feature render <spec> --json     # wire-format edge applied
 uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow-agent (legacy, blocking)
 uv run h feature run <spec> --agent claude-agent   # render → agent's POST /workflow (babysat, non-blocking)
 uv run h workflow list|get|status         # read-side views over workflow-svc
-uv run h workflow publish <family>        # render publish-mode ({{params.*}} slots) → save_workflow
-uv run h workflow run <key> -p k=v [-p spec=@file] [--instance-id id] [--agent name]  # fire a family
+uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
+uv run h workflow run <key> -p k=v [-p spec=@file] [--instance-id id] [--agent name]  # fire a template
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
 ```
 
@@ -120,7 +120,7 @@ spinners) is deliberately *not* snapshotted: assert behavior, not box-drawing ch
 ## Where this is heading
 
 The CLI subsumes both strategies one vertical slice at a time: chart-rendered definitions
-for the known workflow families, free-form tasks for everything else, with the
+for the known workflow templates, free-form tasks for everything else, with the
 render → (optional) wire-format → seed → trigger → observe pipeline as subcommands.
 `h feature` is the first slice; each shell script remains the executable spec for its flow
 until the corresponding subcommand has demonstrably replaced it.

@@ -11,9 +11,9 @@ import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./
 /**
  * The single well-known trigger topic (MVP of "triggers as data"): any event published to it
  * fires the saved workflow it names, with fire-time params — the pub/sub sibling of
- * `POST /workflow/run/:key`. One topic (not one per family) because Dapr subscriptions are
- * declared at sidecar startup; per-family topics would need a workflow-svc restart whenever a
- * family with a new topic is published. Event data: `{ key, params? }`.
+ * `POST /workflow/run/:key`. One topic (not one per template) because Dapr subscriptions are
+ * declared at sidecar startup; per-template topics would need a workflow-svc restart whenever a
+ * template with a new topic is published. Event data: `{ key, params? }`.
  */
 export const TRIGGER_TOPIC = "workflow-trigger";
 const ROUTE = "/workflow-trigger";
@@ -26,7 +26,7 @@ const TriggerEvent = Schema.Struct({
 
 /**
  * One trigger delivery: unwrap the CloudEvents envelope, resolve the saved workflow, fire it.
- * Payload problems (malformed data, unknown key, disabled family) resolve to `{ skipped }`
+ * Payload problems (malformed data, unknown key, disabled template) resolve to `{ skipped }`
  * (2xx) — a non-2xx makes Dapr redeliver, and redelivery cannot fix a bad payload. Infra
  * failures (store or scheduler down) stay in the error channel → 500 → Dapr redelivers, which
  * is exactly what a transient outage wants. Exported for tests; the route handler below is

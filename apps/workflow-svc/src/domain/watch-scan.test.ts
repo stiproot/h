@@ -438,7 +438,7 @@ describe("scanWatchesEffect", () => {
   it("escalates on a matching outcome: gated, budgeted child watch row, facts as params", async () => {
     const mem = memoryWatchStore({ enabled: true, maxEngineFiresPerDay: 10 });
     const invoked: WorkflowRequest[] = [];
-    const family: StoredWorkflow = { steps: [{ activity: "run-claude" }] };
+    const storedTemplate: StoredWorkflow = { steps: [{ activity: "run-claude" }] };
     mem.rows.set(
       "wf-1",
       activeRow({
@@ -463,7 +463,7 @@ describe("scanWatchesEffect", () => {
             }),
             stubWorkflowStore({
               get: (key) =>
-                Effect.succeed(key === "escalate-human" ? Option.some(family) : Option.none()),
+                Effect.succeed(key === "escalate-human" ? Option.some(storedTemplate) : Option.none()),
             }),
           ),
         ),

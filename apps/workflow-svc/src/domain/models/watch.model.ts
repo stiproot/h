@@ -33,7 +33,7 @@ export const WatchRetryPolicy = Schema.Struct({
 });
 export type WatchRetryPolicy = Schema.Schema.Type<typeof WatchRetryPolicy>;
 
-// The ONLY judgment hook (agreement 6): fire a published saved-workflow family with the
+// The ONLY judgment hook (agreement 6): fire a published saved-workflow template with the
 // watcher's facts merged into params. Gated fail-closed on the daily engine-fire cap (§6).
 export const WatchEscalatePolicy = Schema.Struct({
   onOutcome: Schema.Array(WatchOutcome),

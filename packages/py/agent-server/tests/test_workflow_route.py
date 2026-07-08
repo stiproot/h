@@ -58,10 +58,10 @@ def make_client(babysitter: WorkflowBabysitter) -> TestClient:
 
 async def test_policy_max_duration_translates_to_watch_field() -> None:
     b = FakeBabysitter()
-    result = await b.submit(WorkflowSubmit(key="my-family", policy={"maxDurationMs": 120_000}))
+    result = await b.submit(WorkflowSubmit(key="my-template", policy={"maxDurationMs": 120_000}))
 
     url, body = b.posts[0]
-    assert url.endswith("/v1.0/invoke/workflow-svc/method/workflow/run/my-family")
+    assert url.endswith("/v1.0/invoke/workflow-svc/method/workflow/run/my-template")
     assert body["watch"] == {"maxDurationMs": 120_000}
     assert result == {"instanceId": "wf-1", "watching": True}
 

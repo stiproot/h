@@ -42,7 +42,7 @@ export class NotFoundError extends Data.TaggedError("NotFoundError")<{
 
 /**
  * Optional body of POST /workflow/run/:key — fire-time params for the saved workflow, plus an
- * optional caller-chosen instanceId/workspaceId so a family run gets a readable, stable
+ * optional caller-chosen instanceId/workspaceId so a template run gets a readable, stable
  * worktree/workspace key instead of a generated GUID.
  */
 const RunSavedBody = Schema.Struct({

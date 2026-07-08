@@ -203,7 +203,7 @@ The machinery they compose is all committed: `create-worktree` for isolated per-
 pre-cloned repo, the `workflow-trigger` pub/sub topic (an agent publishes `{key, params}` via the
 dapr MCP; `workflow-svc` subscribes and fires the named saved workflow with those params — e.g.
 `{key: "plugin-improvement", params: {feedback, slug}}` fires the published `plugin-improvement`
-chart family), and the report-marker convention (`===ISSUE REPORT===`, `===PLUGIN FEEDBACK===`,
+chart template), and the report-marker convention (`===ISSUE REPORT===`, `===PLUGIN FEEDBACK===`,
 `===VERIFY===`, …) for extracting structured sections from agent output.
 
 ### Feature request (feature-request)
@@ -238,8 +238,8 @@ working-tree changes. Opting in appends a commit/push/PR epilogue to the *final*
 pushes `feature/<slug>` with a one-shot `GH_TOKEN` URL (never persisted into git config), opens
 the PR via the github MCP, and ends with a machine-checkable `===PR===` marker (URL or SKIPPED +
 reason). Direct renders opt in with `h feature run <spec> --pr` (or `--set feature.createPr=true`);
-a *published family* always carries the epilogue keyed off the fire-time `createPr` param —
-`-p createPr=true` to end as a PR, param absent for a worktree-only run — so one saved family
+a *published template* always carries the epilogue keyed off the fire-time `createPr` param —
+`-p createPr=true` to end as a PR, param absent for a worktree-only run — so one saved template
 serves both endings.
 
 The invocation reads the `.md` and injects it into the task with `jq --rawfile` (JSON-safe for
@@ -271,11 +271,11 @@ The `h` CLI supersedes both scripts:
   `workflow-events`; see `docs/plans/watcher-primitive.md` and `h watch list`). Without
   `--agent`, the legacy blocking workflow-agent path runs.
 - `h workflow publish feature` — render in publish mode ({{params.slug}}/{{params.spec}} slots
-  open, family config baked from values) and save as a reusable *family*; fire it with
+  open, template config baked from values) and save as a reusable *template*; fire it with
   `h workflow run feature -p slug=… -p spec=@file.md [--instance-id feature-<slug>] [--agent …]`,
   the `run_saved_workflow` MCP tool, or a `workflow-trigger` pub/sub event `{key, params}`.
 
-See `docs/plans/workflow-unification.md` for the architecture (families, triggers-as-data) and
+See `docs/plans/workflow-unification.md` for the architecture (templates, triggers-as-data) and
 its progress log, and `docs/plans/watcher-primitive.md` for the watcher engine that replaced the
 in-process babysitter loops.
 

@@ -74,13 +74,13 @@ async function makeApp(
   return app;
 }
 
-const storedFamily: StoredWorkflow = {
+const storedTemplate: StoredWorkflow = {
   steps: [{ id: "improve", activity: "run-claude", input: { task: "{{params.feedback}}" } }],
   params: { slug: "default-slug" },
 };
 
 describe("POST /workflow-trigger", () => {
-  it("fires the named family with fire-time params merged over defaults (CloudEvents envelope)", async () => {
+  it("fires the named template with fire-time params merged over defaults (CloudEvents envelope)", async () => {
     const seen: WorkflowRequest[] = [];
     const app = await makeApp(
       stubInvoker({
@@ -91,7 +91,7 @@ describe("POST /workflow-trigger", () => {
       }),
       stubStore({
         get: (key) =>
-          Effect.succeed(key === "plugin-improvement" ? Option.some(storedFamily) : Option.none()),
+          Effect.succeed(key === "plugin-improvement" ? Option.some(storedTemplate) : Option.none()),
       }),
     );
     const res = await app.inject({
@@ -111,7 +111,7 @@ describe("POST /workflow-trigger", () => {
   it("tolerates a JSON-string data payload (defensive parse, like the old handler)", async () => {
     const app = await makeApp(
       stubInvoker(),
-      stubStore({ get: () => Effect.succeed(Option.some(storedFamily)) }),
+      stubStore({ get: () => Effect.succeed(Option.some(storedTemplate)) }),
     );
     const res = await app.inject({
       method: "POST",
@@ -135,13 +135,13 @@ describe("POST /workflow-trigger", () => {
     expect(res.json()).toEqual({ skipped: "event data lacks a workflow key" });
   });
 
-  it("acks an unknown key and a disabled family", async () => {
+  it("acks an unknown key and a disabled template", async () => {
     const app = await makeApp(
       stubInvoker(),
       stubStore({
         get: (key) =>
           Effect.succeed(
-            key === "paused" ? Option.some({ ...storedFamily, disabled: true }) : Option.none(),
+            key === "paused" ? Option.some({ ...storedTemplate, disabled: true }) : Option.none(),
           ),
       }),
     );
@@ -167,7 +167,7 @@ describe("POST /workflow-trigger", () => {
         invoke: () =>
           Effect.fail(new WorkflowError({ cause: new Error("scheduler down"), instanceId: "" })),
       }),
-      stubStore({ get: () => Effect.succeed(Option.some(storedFamily)) }),
+      stubStore({ get: () => Effect.succeed(Option.some(storedTemplate)) }),
     );
     const res = await app.inject({
       method: "POST",
@@ -181,7 +181,7 @@ describe("POST /workflow-trigger", () => {
   it("also accepts a plain application/json publish (no envelope)", async () => {
     const app = await makeApp(
       stubInvoker(),
-      stubStore({ get: () => Effect.succeed(Option.some(storedFamily)) }),
+      stubStore({ get: () => Effect.succeed(Option.some(storedTemplate)) }),
     );
     const res = await app.inject({
       method: "POST",

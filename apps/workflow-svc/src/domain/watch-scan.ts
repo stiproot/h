@@ -25,7 +25,7 @@ import { decide, settle } from "./watch-engine.ts";
  * the fire paths, and the per-tick scan that reads every active row, asks the pure engine
  * (watch-engine.ts) what to do, and executes the closed action vocabulary — terminate (own
  * subject only), record (own watch:* row only), publish (workflow-events), retry (re-fire the
- * stored resubmit), escalate (fire a published family, budgeted and fail-closed gated).
+ * stored resubmit), escalate (fire a published template, budgeted and fail-closed gated).
  *
  * Every row-mutating action is epoch-fenced (ruling W5): it re-reads the row and no-ops when
  * the epoch moved — a re-fire created a new incarnation and this decision is stale.
@@ -433,7 +433,7 @@ const executeEscalate = (
     }
 
     // The escalated run is itself watched and budgeted (agreement 7): its watch row lands
-    // before the fire, inheriting the parent's budget unless the family stores its own policy.
+    // before the fire, inheriting the parent's budget unless the template stores its own policy.
     const childId = `esc-${row.instanceId}-e${row.epoch}`;
     const facts = {
       watchedInstanceId: row.instanceId,
