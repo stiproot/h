@@ -92,7 +92,7 @@ def test_pr_epilogue_omitted_by_default(hostile_spec: Path) -> None:
 
 
 def test_feature_publish_mode_golden(snapshot) -> None:
-    """Publish mode: slug/spec become {{params.*}} slots, no instanceId — a saveable family."""
+    """Publish mode: slug/spec become {{params.*}} slots, no instanceId — a saveable template."""
     rendered = helm.render_workflow("feature", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
@@ -106,7 +106,7 @@ def test_feature_publish_mode_opens_param_slots() -> None:
     assert "instanceId" not in definition
     assert definition["steps"][0]["input"]["branch"] == "feature/{{params.slug}}"
     assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
-    # The PR epilogue is always present in a family, keyed off the fire-time createPr param
+    # The PR epilogue is always present in a template, keyed off the fire-time createPr param
     # (absent at fire time → resolves to '' → the agent leaves the worktree uncommitted).
     assert "{{params.createPr}}" in definition["steps"][3]["input"]["task"]
     # Issue linkage rides the same pattern: fire with -p issueNumber=N for a `Closes #N` PR.
@@ -114,7 +114,7 @@ def test_feature_publish_mode_opens_param_slots() -> None:
 
 
 def test_plugin_improvement_golden(snapshot) -> None:
-    """The plugin-improvement family (publish-native), hermetic with explicit family config."""
+    """The plugin-improvement template (publish-native), hermetic with explicit template config."""
     rendered = helm.render_workflow(
         "plugin-improvement",
         values={
@@ -126,8 +126,8 @@ def test_plugin_improvement_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
-def test_families_do_not_cross_demand_values(hostile_spec: Path) -> None:
-    """The family gate: rendering one family never trips another family's `required`."""
+def test_templates_do_not_cross_demand_values(hostile_spec: Path) -> None:
+    """The template gate: rendering one template never trips another template's `required`."""
     # feature renders without pluginImprovement.tile or prReview.repo set…
     _render_hostile(hostile_spec)
     # …plugin-improvement renders without feature.slug/spec or prReview.repo set…
@@ -225,13 +225,13 @@ def test_compose_feature_create_pr_extends_implement() -> None:
     # The base implement prose AND the epilogue both live on the one step, in order.
     assert "First persist the plan" in implement
     assert implement.index("{{plan.output}}") < implement.index("===CREATE PR===")
-    # The epilogue's fire-time params thread through unresolved for a saved family.
+    # The epilogue's fire-time params thread through unresolved for a saved template.
     assert "{{params.createPr}}" in implement
     assert "feature/{{params.slug}}" in implement
 
 
 def test_issue_sweep_golden(snapshot) -> None:
-    """The issue-sweep family (h-builds-h): one judgment tick, family config baked."""
+    """The issue-sweep template (h-builds-h): one judgment tick, template config baked."""
     rendered = helm.render_workflow(
         "issue-sweep",
         values={
@@ -244,7 +244,7 @@ def test_issue_sweep_golden(snapshot) -> None:
 
 
 def test_pr_review_golden(snapshot) -> None:
-    """The pr-review family (publish-native): setup → review with engine tokens."""
+    """The pr-review template (publish-native): setup → review with engine tokens."""
     rendered = helm.render_workflow(
         "pr-review",
         values={"prReview.repo": "owner/h"},
@@ -254,7 +254,7 @@ def test_pr_review_golden(snapshot) -> None:
 
 
 def test_pr_review_publish_mode_opens_param_slots() -> None:
-    """PR number and focus are always engine tokens (publish-native family)."""
+    """PR number and focus are always engine tokens (publish-native template)."""
     definition = json.loads(
         helm.to_wire_json(
             helm.render_workflow(

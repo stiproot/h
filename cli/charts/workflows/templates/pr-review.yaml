@@ -3,7 +3,7 @@ pr-review workflow — setup → review (read PR, post GitHub review comments).
 
 Reads an existing PR on the target repo and posts a submitted PR review with line-anchored
 comments via the GitHub MCP. Publish-native: per-run inputs are always emitted as
-{{params.*}} engine tokens — this family only makes sense saved and fired with
+{{params.*}} engine tokens — this template only makes sense saved and fired with
 run_saved_workflow (by the CLI, an agent, or a pub/sub trigger), never rendered as a one-off.
 
 Executor: claude-coder (hardcoded — its MCP surface is github-only; the reviewing agent must
@@ -14,7 +14,7 @@ Fire-time params:
   pr      PR number to review (required)
   focus   Optional free-text steer, e.g. "docs accuracy" (empty = full review)
 
-Family config (values, baked at publish time): prReview.repo (owner/name — required),
+Template config (values, baked at publish time): prReview.repo (owner/name — required),
 models.review.
 
 Review comment shape consumed by the revise flow: concrete defect, fix direction, acceptance
@@ -24,10 +24,10 @@ review is observable on the PR.
 
 Publish:
   helm template pr-review cli/charts/workflows -s templates/pr-review.yaml \
-    --set family=pr-review --set prReview.repo=owner/h
+    --set template=pr-review --set prReview.repo=owner/h
 */ -}}
-{{- /* Family gate — see feature.yaml: bodies only evaluate for the selected family. */ -}}
-{{- if eq (.Values.family | default "") "pr-review" }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "pr-review" }}
 {{- $p := .Values.prReview }}
 {{- $repo := required "prReview.repo is required (--set prReview.repo=<owner/name>)" $p.repo }}
 steps:

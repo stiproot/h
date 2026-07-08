@@ -4,10 +4,10 @@ issue-sweep workflow — setup → sweep (one judgment tick of the "h builds h" 
 One bounded pass over the target repo's issue board (docs/plans/h-builds-h.md): reconcile
 in-flight feature runs off the watcher engine's durable rows, enforce budget/concurrency
 gates, pick the oldest maintainer-approved issue, and dispatch ONE run of the published
-`feature` family to the coding agent's standard POST /workflow — carrying a `watch` policy,
+`feature` template to the coding agent's standard POST /workflow — carrying a `watch` policy,
 so workflow-svc's durable watcher engine (docs/plans/watcher-primitive.md) owns budget
 termination, mechanical retries, and cost accounting. The cron owns the loop (publish this
-family with a schedule); the agent owns only this tick's judgment. Fail-closed: any gate
+template with a schedule); the agent owns only this tick's judgment. Fail-closed: any gate
 that cannot be verified stops the tick with a ===SWEEP REPORT===.
 
 Statestore conventions (Redis, flat keyspace):
@@ -26,7 +26,7 @@ Statestore conventions (Redis, flat keyspace):
     watch:__tick__              {at, enabled} — scan heartbeat, the staleness guard
     watch:ledger:<yyyy-mm-dd>   {runsFired, runsFinalized, engineFires, costUsd}
 
-Family config (values, baked at publish): issueSweep.repo (owner/name), label, maxInFlight,
+Template config (values, baked at publish): issueSweep.repo (owner/name), label, maxInFlight,
 coderWorkflowUrl (the coding agent service's POST /workflow), models.sweep, dryRun.
 Runtime knobs a human tunes without republishing live in sweep:config (seeded via dapr-mcp).
 
@@ -34,8 +34,8 @@ Publish (then save with a cron schedule + workspaceId, disabled until armed):
   helm template issue-sweep cli/charts/workflows -s templates/issue-sweep.yaml \
     --set issueSweep.repo=owner/h --set issueSweep.coderWorkflowUrl=http://localhost:8002/workflow
 */ -}}
-{{- /* Family gate — see feature.yaml: bodies only evaluate for the selected family. */ -}}
-{{- if eq (.Values.family | default "") "issue-sweep" }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "issue-sweep" }}
 {{- $s := .Values.issueSweep }}
 {{- $repo := required "issueSweep.repo is required (--set issueSweep.repo=<owner/name>)" $s.repo }}
 {{- $coderUrl := required "issueSweep.coderWorkflowUrl is required (--set issueSweep.coderWorkflowUrl=<url>)" $s.coderWorkflowUrl }}

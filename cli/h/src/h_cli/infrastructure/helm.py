@@ -20,12 +20,12 @@ class HelmError(RuntimeError):
 
 
 def render_workflow(
-    family: str,
+    template: str,
     values: dict[str, str] | None = None,
     file_values: dict[str, Path] | None = None,
     include_local: bool = True,
 ) -> str:
-    """Render one workflow family's template (charts/workflows/templates/<family>.yaml) to YAML.
+    """Render one workflow template (charts/workflows/templates/<template>.yaml) to YAML.
 
     Merges the gitignored org-specific overrides (values.local.yaml) when present, then the given
     --set / --set-file values. Output is stripped of helm's document separator and "# Source:"
@@ -36,17 +36,17 @@ def render_workflow(
     if shutil.which("helm") is None:
         raise HelmError("helm is required on PATH (https://helm.sh) — it renders cli/charts")
     chart = CHARTS_DIR / "workflows"
-    # --set family=… gates which template body evaluates: helm renders every template even under
-    # -s, so without the gate one family's `required` values would break another family's render.
+    # --set template=… gates which template body evaluates: helm renders every template even under
+    # -s, so without the gate one template's `required` values would break another's render.
     cmd = [
         "helm",
         "template",
-        family,
+        template,
         str(chart),
         "-s",
-        f"templates/{family}.yaml",
+        f"templates/{template}.yaml",
         "--set",
-        f"family={family}",
+        f"template={template}",
     ]
     local_values = chart / "values.local.yaml"
     if include_local and local_values.is_file():

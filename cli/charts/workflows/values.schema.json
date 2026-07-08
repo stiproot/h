@@ -1,19 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$comment": "Shape validation only. Required-ness is enforced per-template with helm's `required` function, so rendering one workflow family never demands another family's values.",
+  "$comment": "Shape validation only. Required-ness is enforced per-template with helm's `required` function, so rendering one workflow template never demands another template's values.",
   "type": "object",
   "properties": {
     "agentId": {
       "type": "string",
       "minLength": 1
     },
-    "family": {
+    "template": {
       "type": "string",
-      "$comment": "Set by the renderer to the selected family; gates which template body evaluates (helm evaluates all templates even under -s)."
+      "$comment": "Set by the renderer to the selected template; gates which template body evaluates (helm evaluates all templates even under -s)."
     },
     "publish": {
       "type": "boolean",
-      "$comment": "Emit per-run inputs as {{params.*}} tokens (a saveable family) instead of literals."
+      "$comment": "Emit per-run inputs as {{params.*}} tokens (a saveable template) instead of literals."
     },
     "composable": {
       "type": "boolean",
@@ -42,14 +42,14 @@
         },
         "createPr": {
           "type": "boolean",
-          "$comment": "Append a commit/push/PR epilogue to the run's final step. Direct renders only; a published family carries the epilogue keyed off the fire-time createPr param instead."
+          "$comment": "Append a commit/push/PR epilogue to the run's final step. Direct renders only; a published template carries the epilogue keyed off the fire-time createPr param instead."
         },
         "issueNumber": {
           "type": [
             "string",
             "integer"
           ],
-          "$comment": "GitHub issue number for the PR's `Closes #N` line. Direct renders only; published families take the fire-time issueNumber param instead."
+          "$comment": "GitHub issue number for the PR's `Closes #N` line. Direct renders only; published templates take the fire-time issueNumber param instead."
         },
         "gitAuth": {
           "enum": [

@@ -1,17 +1,17 @@
 {{- /*
 plugin-improvement workflow — worktree → setup → improve (→ verify).
 
-The chart-family port of workflow-agent's `_improvement_problem` prose (the plugin-feedback
+The chart-template port of workflow-agent's `_improvement_problem` prose (the plugin-feedback
 use-case: a triage run produces feedback on an h plugin; this workflow applies that feedback
 to the plugin's source repo and bumps its version). Publish-native: per-run inputs are always
-emitted as {{params.*}} engine tokens — this family only makes sense saved and fired with
+emitted as {{params.*}} engine tokens — this template only makes sense saved and fired with
 run_saved_workflow (by the CLI, an agent, or a pub/sub trigger), never rendered as a one-off.
 
 Fire-time params:
   slug      branch token — the run works on branch improve/<slug> (e.g. linear-AE-42)
   feedback  the improvement to apply, plain text/Markdown
 
-Family config (values, baked at publish time): pluginImprovement.sourceRepo (pre-cloned plugin
+Template config (values, baked at publish time): pluginImprovement.sourceRepo (pre-cloned plugin
 repo), pluginImprovement.tile (plugin source dir within the repo — the plugin name is its last
 path segment), models, optional verifyCmd.
 
@@ -19,8 +19,8 @@ Publish:
   helm template plugin-improvement cli/charts/workflows -s templates/plugin-improvement.yaml \
     --set pluginImprovement.tile=plugins/linear --set pluginImprovement.sourceRepo=/path/repo
 */ -}}
-{{- /* Family gate — see feature.yaml: bodies only evaluate for the selected family. */ -}}
-{{- if eq (.Values.family | default "") "plugin-improvement" }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "plugin-improvement" }}
 {{- $p := .Values.pluginImprovement }}
 {{- $tile := required "pluginImprovement.tile is required (--set pluginImprovement.tile=<dir>)" $p.tile | trimSuffix "/" }}
 {{- $plugin := $tile | splitList "/" | last }}

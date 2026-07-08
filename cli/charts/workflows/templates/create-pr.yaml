@@ -17,10 +17,10 @@ param).
 Compose (the intended path):
   h workflow compose -t feature -t create-pr
 Render alone (for inspection):
-  helm template create-pr cli/charts/workflows -s templates/create-pr.yaml --set family=create-pr
+  helm template create-pr cli/charts/workflows -s templates/create-pr.yaml --set template=create-pr
 */ -}}
-{{- /* Family gate — see feature.yaml: bodies only evaluate for the selected family. */ -}}
-{{- if eq (.Values.family | default "") "create-pr" }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "create-pr" }}
 {{- $c := .Values.createPr }}
 steps:
   - id: implement

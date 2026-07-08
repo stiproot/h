@@ -15,7 +15,7 @@ agent itself commits the worktree, pushes feature/<slug> with a one-shot $GH_TOK
 persisted into git config), and opens the PR via the github MCP, ending with a machine-checkable
 ===PR=== marker. The epilogue keys off the value under its ===CREATE PR=== heading: a literal
 'true' in direct renders (--set feature.createPr=true / `h feature run --pr`); in publish mode
-the {{params.createPr}} engine token, so the SAME saved family opts in per run with
+the {{params.createPr}} engine token, so the SAME saved template opts in per run with
 -p createPr=true (param absent → resolves to '' → worktree-only run).
 
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
@@ -24,13 +24,13 @@ Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts
 
 Publish mode (--set publish=true): instead of literal slug/spec values, the per-run inputs are
 emitted as {{params.slug}} / {{params.spec}} engine tokens and the top-level instanceId is
-omitted — the render becomes a *family*: a parameterized definition for save_workflow, fired
-later with run_saved_workflow + fire-time params. Family config (sourceRepo, models,
+omitted — the render becomes a *template*: a parameterized definition for save_workflow, fired
+later with run_saved_workflow + fire-time params. Template config (sourceRepo, models,
 verifyCmd) still bakes in from values at publish time.
 */ -}}
-{{- /* Family gate: helm evaluates every template even under -s, so each family's body (and
-its `required` calls) only runs when the renderer selects it via --set family=<name>. */ -}}
-{{- if eq (.Values.family | default "") "feature" }}
+{{- /* Template gate: helm evaluates every template even under -s, so each template's body (and
+its `required` calls) only runs when the renderer selects it via --set template=<name>. */ -}}
+{{- if eq (.Values.template | default "") "feature" }}
 {{- $f := .Values.feature }}
 {{- $publish := .Values.publish | default false }}
 {{- /* Composable (overlay) mode: render feature as an overlay-able atom — worktree → setup →

@@ -8,20 +8,20 @@
 
 CHARTS_DIR="${CHARTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../charts" && pwd)}"
 
-# render_workflow <family> [helm-value-args...]
-# Renders one workflow family's template (cli/charts/workflows/templates/<family>.yaml) with the
-# given helm value args (--set / --set-file / --values). Merges the gitignored org-specific
-# overrides (values.local.yaml) when present. Emits the workflow definition as YAML on stdout,
-# stripped of helm's document separator and "# Source:" comment.
+# render_workflow <template> [helm-value-args...]
+# Renders one workflow template (cli/charts/workflows/templates/<template>.yaml) with the given
+# helm value args (--set / --set-file / --values). Merges the gitignored org-specific overrides
+# (values.local.yaml) when present. Emits the workflow definition as YAML on stdout, stripped of
+# helm's document separator and "# Source:" comment.
 render_workflow() {
-  local family="$1"; shift
+  local template="$1"; shift
   command -v helm >/dev/null || { echo "render_workflow: helm is required (https://helm.sh)" >&2; return 1; }
   local chart="${CHARTS_DIR}/workflows"
   local -a extra=()
   [[ -f "${chart}/values.local.yaml" ]] && extra+=(--values "${chart}/values.local.yaml")
-  # --set family=… gates which template body evaluates: helm renders every template even under
-  # -s, so without the gate one family's `required` values would break another family's render.
-  helm template "$family" "$chart" -s "templates/${family}.yaml" --set "family=${family}" \
+  # --set template=… gates which template body evaluates: helm renders every template even under
+  # -s, so without the gate one template's `required` values would break another's render.
+  helm template "$template" "$chart" -s "templates/${template}.yaml" --set "template=${template}" \
     "${extra[@]}" "$@" \
     | sed '/^---$/d; /^# Source: /d'
 }

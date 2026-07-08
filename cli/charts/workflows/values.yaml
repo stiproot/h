@@ -1,5 +1,5 @@
 # Values for the h workflows chart. Shared knobs sit at the top level; each workflow
-# family gets its own block, consumed by its template under templates/.
+# template gets its own block, consumed by its template under templates/.
 #
 # Org-specific defaults (real repo paths, model ids) belong in values.local.yaml next to
 # this file — gitignored, merged automatically by the invoke scripts — not here.
@@ -7,14 +7,14 @@
 # Agent that provisions worktrees and executes setup / run steps.
 agentId: claude-agent
 
-# Activity that runs a family's plan/implement/verify steps. Defaults to run-claude; set to
+# Activity that runs a template's plan/implement/verify steps. Defaults to run-claude; set to
 # run-openhands to run the flow on the openhands-agent (pair with agentId: openhands-agent so the
 # worktree/setup steps run there too).
 runActivity: run-claude
 
 # Publish mode: emit per-run inputs as {{params.*}} engine tokens (and omit the instanceId)
-# so the render is a parameterized *family* for save_workflow, fired later with
-# run_saved_workflow + fire-time params. Family config still bakes in from values.
+# so the render is a parameterized *template* for save_workflow, fired later with
+# run_saved_workflow + fire-time params. Template config still bakes in from values.
 publish: false
 
 # Composable (overlay) mode: render a template as an overlay-able atom — omit the standalone
@@ -41,7 +41,7 @@ feature:
   # else implement): the agent commits the worktree, pushes feature/<slug> with a one-shot
   # $GH_TOKEN URL (never persisted), and opens the PR via the github MCP, ending with a
   # ===PR=== marker. Direct renders opt in here (--set feature.createPr=true / `h feature
-  # run --pr`); a published family always carries the epilogue keyed off the fire-time param
+  # run --pr`); a published template always carries the epilogue keyed off the fire-time param
   # instead — -p createPr=true (absent = worktree-only run).
   createPr: false
   # GitHub issue number this run implements. When set (and the PR epilogue runs), the PR body
@@ -51,7 +51,7 @@ feature:
   # Git auth strategy NAME for the worktree/clone steps and the epilogue's push instruction:
   # "" = the agent's default (GIT_AUTH env, pat when unset), "pat" = one-shot GH_TOKEN URL,
   # "ssh" = ssh transport (agent-mounted key via GIT_SSH_KEY_PATH; push is plain `git push
-  # origin`). Family config — bakes at publish time; secrets never render.
+  # origin`). Template config — bakes at publish time; secrets never render.
   gitAuth: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
@@ -67,7 +67,7 @@ createPr:
   gitAuth: ""
 
 # plugin-improvement workflow (templates/plugin-improvement.yaml): worktree → setup →
-# improve (→ verify). Publish-native — always rendered as a family with {{params.slug}} /
+# improve (→ verify). Publish-native — always rendered as a template with {{params.slug}} /
 # {{params.feedback}} slots; see the template header.
 pluginImprovement:
   # Pre-cloned plugin source repo; empty = the agent's default shared clone.
@@ -84,7 +84,7 @@ pluginImprovement:
     verify: ""
 
 # pr-review workflow (templates/pr-review.yaml): setup → review. Publish-native — always
-# rendered as a family with {{params.pr}} / {{params.focus}} slots.
+# rendered as a template with {{params.pr}} / {{params.focus}} slots.
 prReview:
   # Target GitHub repo (owner/name) whose PR is reviewed. Required.
   repo: ""

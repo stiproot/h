@@ -113,7 +113,7 @@ def test_workflow_compose_requires_a_template() -> None:
 
 @needs_helm
 def test_workflow_compose_unknown_template_exits_1() -> None:
-    result = runner.invoke(app, ["workflow", "compose", "-t", "no-such-family"])
+    result = runner.invoke(app, ["workflow", "compose", "-t", "no-such-template"])
     assert result.exit_code == 1
 
 

@@ -1,4 +1,4 @@
-"""h workflow — workflow-svc surface: saved workflows/families, runs, instance status."""
+"""h workflow — workflow-svc surface: saved workflows/templates, runs, instance status."""
 
 from pathlib import Path
 from typing import Annotated, Any
@@ -72,11 +72,12 @@ def status(instance_id: Annotated[str, typer.Argument(help="Workflow instance id
 
 @app.command()
 def publish(
-    family: Annotated[
-        str, typer.Argument(help="Chart family (cli/charts/workflows/templates/<family>.yaml).")
+    template: Annotated[
+        str,
+        typer.Argument(help="Chart template (cli/charts/workflows/templates/<template>.yaml)."),
     ],
     key: Annotated[
-        str | None, typer.Option(help="Saved-workflow key; defaults to the family name.")
+        str | None, typer.Option(help="Saved-workflow key; defaults to the template name.")
     ] = None,
     schedule: Annotated[
         str | None,
@@ -103,23 +104,23 @@ def publish(
         ),
     ] = False,
 ) -> None:
-    """Render a family in publish mode ({{params.*}} slots open) and save it to workflow-svc.
+    """Render a template in publish mode ({{params.*}} slots open) and save it to workflow-svc.
 
-    Family config (sourceRepo, models, verifyCmd, …) bakes in from values.yaml +
+    Template config (sourceRepo, models, verifyCmd, …) bakes in from values.yaml +
     values.local.yaml at publish time; per-run inputs stay open as params, supplied later via
     `h workflow run <key> -p k=v` (or run_saved_workflow from any agent).
     """
     try:
-        rendered = helm.render_workflow(family, values={"publish": "true"})
+        rendered = helm.render_workflow(template, values={"publish": "true"})
     except helm.HelmError as err:
         err_console.print(f"[red]helm:[/red] {err}")
         raise typer.Exit(1) from err
     definition = yaml.safe_load(rendered)
     steps = definition.get("steps") if isinstance(definition, dict) else None
     if not steps:
-        err_console.print(f"[red]Family '{family}' rendered no steps[/red] — check its values.")
+        err_console.print(f"[red]Template '{template}' rendered no steps[/red] — check its values.")
         raise typer.Exit(1)
-    resolved_key = key or family
+    resolved_key = key or template
     result = _guarded(
         lambda: workflow_svc.save(
             resolved_key,
@@ -129,7 +130,7 @@ def publish(
             disabled=disabled if (disabled or schedule) else None,
         )
     )
-    console.print(f"==> Published family '{family}' as saved workflow '{result['key']}'")
+    console.print(f"==> Published template '{template}' as saved workflow '{result['key']}'")
     if schedule:
         state = "DISABLED — re-publish without --disabled to arm" if disabled else "armed"
         console.print(f"    schedule: '{schedule}' ({state})")
@@ -146,15 +147,15 @@ def _compose(templates: list[str]) -> dict[str, Any]:
     """
     overlay_values = {"publish": "true", "composable": "true"}
     definitions: list[dict[str, Any]] = []
-    for family in templates:
+    for name in templates:
         try:
-            rendered = helm.render_workflow(family, values=overlay_values)
+            rendered = helm.render_workflow(name, values=overlay_values)
         except helm.HelmError as err:
-            err_console.print(f"[red]helm ({family}):[/red] {err}")
+            err_console.print(f"[red]helm ({name}):[/red] {err}")
             raise typer.Exit(1) from err
         loaded = yaml.safe_load(rendered)
         if not isinstance(loaded, dict) or not loaded.get("steps"):
-            err_console.print(f"[red]Template '{family}' rendered no steps[/red] — check values.")
+            err_console.print(f"[red]Template '{name}' rendered no steps[/red] — check values.")
             raise typer.Exit(1)
         definitions.append(loaded)
     return overlay(*definitions)
@@ -176,7 +177,7 @@ def compose(
         typer.Option(
             "--save",
             help="Persist the composed definition to workflow-svc under this key (a saveable "
-            "family). Without it, the merged definition is printed for inspection.",
+            "template). Without it, the merged definition is printed for inspection.",
         ),
     ] = None,
 ) -> None:
@@ -240,7 +241,7 @@ def _resolve_agent(agent: str) -> str:
 
 @app.command()
 def run(
-    key: Annotated[str, typer.Argument(help="Saved workflow key (a published family).")],
+    key: Annotated[str, typer.Argument(help="Saved workflow key (a published template).")],
     param: Annotated[
         list[str] | None,
         typer.Option(
