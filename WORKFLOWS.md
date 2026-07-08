@@ -321,28 +321,31 @@ The run-claude output is returned verbatim and written back to the task entry as
 
 ---
 
-## Chain workflows (`h chain run`)
+## Chain workflows (`h chain run` / `h chain list`)
 
-**Scenario:** Run a sequence of saved workflows as a pipeline, threading state between hops through a shared blackboard keyed by slug.
+**Scenario:** Sequence saved workflows as a pipeline that takes a feature all the way to a reviewed PR, threading state hop-to-hop.
 
-The `h chain run` command composes several workflows into a single end-to-end run. Each hop reads its inputs from — and writes its outputs to — the blackboard, so the chain acts as one logical invocation even though each hop is an independent workflow-svc instance.
+A chain is a **durable registration** the chain engine (workflow-svc) sequences on the cron tick — the sibling of the watcher engine (`docs/plans/workflow-composition.md` Phase 4). `h chain run` **registers** the chain and returns immediately: it does **not** block or poll. The engine fires hop 0, and when a hop reaches terminal it captures that hop's `===MARKER===` output into the chain's blackboard (the `chain:sub:<slug>` row), builds the next hop's params, and fires it. So the chain survives a closed laptop, and the chained workflows stay chain-agnostic (params in, markers out — runnable standalone). Watch it with `h chain list` (or `h workflow status feature-<slug>`).
 
-The `-t` / `--template` flag is repeatable and selects chain members in order. The default chain is `feature` → `pr-review` → `revise` — implement and open a PR, post inline review comments, then address the feedback on the same branch.
+The `-t` / `--template` flag is repeatable and names the hop kinds in order. The default chain is `feature-pr` → `pr-review` → `revise` — implement + open a PR, post inline review comments, then address the feedback on the same branch. `feature-pr` and `revise` share the `feature-<slug>` instance (same branch/PR); `revise` re-runs it fresh.
 
-Chain-level flags apply to every hop:
-- `--slug` — branch token (`feature/<slug>`) and blackboard key
+Chain-level flags:
+- `--slug` — branch token (`feature/<slug>`) and chain id
 - `--spec` — feature spec (`.md` path or bare name under spec home)
-- `--issue` — GitHub issue number; PR body gets `Closes #N`
-- `--watch` — register every hop with the durable watcher engine (45m budget)
+- `--issue` — GitHub issue number; the PR body gets `Closes #N`
+- `--fresh` — re-run the first hop's instance if it already finished
+- `--budget` — chain wall-clock budget in minutes (default 45 min/hop); on breach the engine terminates the current hop and finalizes the chain
 
-Phase 1 supports the `sequential` strategy only: each hop runs one at a time and the chain stops if any hop fails. Parallel and loop-until-clean strategies are deferred to the chain-as-policy engine.
+Only the `sequential` strategy exists today; `parallel` and `loop-until-clean` are the next chain-engine strategies. **Prerequisite:** publish `feature-pr` and `pr-review` once (`h workflow compose -t feature -t verify -t create-pr --save feature-pr`; `h workflow publish pr-review`).
 
 ```text
-h chain run --slug my-feature --spec @spec.md --issue 42
+h chain run --slug my-feature --spec @spec.md --issue 42   # register (returns immediately)
+h chain list                                               # inspect the durable registry
 ```
 
-**Built-in templates:** `feature`, `pr-review`, `revise`
-**Default chain:** `feature` → `pr-review` → `revise`
-**Strategy:** `sequential` (Phase 1)
+**Hop kinds:** `feature-pr`, `pr-review`, `revise`
+**Default chain:** `feature-pr` → `pr-review` → `revise`
+**Strategy:** `sequential`
+**Engine:** `apps/workflow-svc/src/domain/chain-{engine,scan,hops}.ts` (registry `chain:*`)
 **CLI source:** `cli/h/src/h_cli/commands/chain.py`
 **Design doc:** `docs/plans/workflow-composition.md`

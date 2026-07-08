@@ -1,8 +1,8 @@
-"""h chain — the sequential pipeline threads state between hops (respx-mocked wire).
+"""h chain — registers a chain with the durable chain engine and inspects the registry.
 
-The core contract under test: hop N's output lands in the blackboard and hop N+1 reads it —
-pr-review fires with the PR number parsed from the feature hop's ===PR===, and revise fires with
-the review findings parsed from pr-review's ===REVIEW===.
+The CLI is now a thin client: `run` POSTs /chain/run (fire-and-forget), `list` reads /chain/list.
+The state-threading contract (hop N's output → hop N+1's params) moved into the engine and is tested
+there (workflow-svc chain-scan.test.ts); here we pin the request the CLI builds and the list view.
 """
 
 import json
@@ -12,26 +12,10 @@ import respx
 from httpx import Response
 from typer.testing import CliRunner
 
-from h_cli.commands.chain import _after_marker, _capture_pr, _capture_review
-from h_cli.config import STATE_URL
 from h_cli.infrastructure.workflow_svc import WORKFLOW_URL
 from h_cli.main import app
 
 runner = CliRunner()
-
-# The real workflow status `output` is DOUBLE JSON-encoded (Dapr re-serializes the workflow's
-# own JSON.stringify(results)), so mirror that here — a single-encoded mock would hide the bug the
-# live run caught.
-FEATURE_OUTPUT = json.dumps(
-    json.dumps(
-        {"implement": {"output": "implemented it\n===PR===\nhttps://github.com/stiproot/h/pull/42"}}
-    )
-)
-REVIEW_OUTPUT = json.dumps(
-    json.dumps(
-        {"review": {"output": "reviewed it\n===REVIEW===\nsrc/models.py:17 — missing None guard"}}
-    )
-)
 
 
 def _all_output(result) -> str:
@@ -49,110 +33,88 @@ def _spec(tmp_path: Path) -> Path:
     return p
 
 
-def _mock_terminal(slug: str, feature_out: str, review_out: str) -> None:
-    respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
-        return_value=Response(200, json={"instanceId": f"feature-{slug}", "watching": False})
-    )
-    respx.get(f"{WORKFLOW_URL}/workflow/status/feature-{slug}").mock(
-        return_value=Response(200, json={"runtimeStatus": "COMPLETED", "output": feature_out})
-    )
-    respx.post(f"{WORKFLOW_URL}/workflow/run/pr-review").mock(
-        return_value=Response(200, json={"instanceId": f"pr-review-{slug}"})
-    )
-    respx.get(f"{WORKFLOW_URL}/workflow/status/pr-review-{slug}").mock(
-        return_value=Response(200, json={"runtimeStatus": "COMPLETED", "output": review_out})
-    )
-    respx.post(STATE_URL).mock(return_value=Response(204))
-
-
 @respx.mock
-def test_chain_threads_state_between_hops(tmp_path: Path) -> None:
-    _mock_terminal("demo", FEATURE_OUTPUT, REVIEW_OUTPUT)
-
+def test_chain_run_registers_default_hops(tmp_path: Path) -> None:
+    route = respx.post(f"{WORKFLOW_URL}/chain/run").mock(
+        return_value=Response(202, json={"chainId": "demo", "firing": True})
+    )
     result = runner.invoke(
-        app,
-        [
-            "chain",
-            "run",
-            "-t",
-            "feature",
-            "-t",
-            "pr-review",
-            "-t",
-            "revise",
-            "--slug",
-            "demo",
-            "--spec",
-            str(_spec(tmp_path)),
-            "--issue",
-            "7",
-            "--poll-interval",
-            "0",
-        ],
+        app, ["chain", "run", "--slug", "demo", "--spec", str(_spec(tmp_path)), "--issue", "7"]
     )
     assert result.exit_code == 0, _all_output(result)
 
-    # pr-review fired with the PR number parsed from the feature hop's ===PR=== (42).
-    review_route = [c for c in respx.calls if c.request.url.path == "/workflow/run/pr-review"]
-    assert len(review_route) == 1
-    review_body = json.loads(review_route[0].request.content)
-    assert review_body["params"]["pr"] == "42"
-
-    # feature fired twice: the initial implement and the revise re-run (same instance).
-    feature_calls = [c for c in respx.calls if c.request.url.path == "/workflow/run/feature-pr"]
-    assert len(feature_calls) == 2
-    revise_body = json.loads(feature_calls[1].request.content)
-    assert revise_body["fresh"] is True  # revise re-runs the feature instance fresh
-    assert "missing None guard" in revise_body["params"]["spec"]  # review findings threaded in
-    assert revise_body["params"]["issueNumber"] == "7"
-
-    # the final PR url is reported
-    assert "github.com/stiproot/h/pull/42" in result.output
+    body = json.loads(route.calls[0].request.content)
+    assert body["slug"] == "demo"
+    assert body["strategy"] == "sequential"
+    assert [h["kind"] for h in body["hops"]] == ["feature-pr", "pr-review", "revise"]
+    hop = {h["kind"]: h for h in body["hops"]}
+    # feature-pr + revise share the branch instance; pr-review has its own; revise re-runs fresh.
+    assert hop["feature-pr"]["instanceId"] == "feature-demo"
+    assert hop["feature-pr"]["fresh"] is False
+    assert hop["revise"]["instanceId"] == "feature-demo"
+    assert hop["revise"]["fresh"] is True
+    assert hop["pr-review"]["instanceId"] == "pr-review-demo"
+    # The initial blackboard carries the first hop's inputs.
+    assert body["data"]["slug"] == "demo"
+    assert body["data"]["issueNumber"] == "7"
+    assert "Do the thing" in body["data"]["spec"]
+    assert "chain 'demo' registered" in result.output
+    assert "does not block" in result.output
 
 
 @respx.mock
-def test_chain_default_is_feature_review_revise(tmp_path: Path) -> None:
-    _mock_terminal("demo", FEATURE_OUTPUT, REVIEW_OUTPUT)
+def test_chain_run_custom_hop_list(tmp_path: Path) -> None:
+    route = respx.post(f"{WORKFLOW_URL}/chain/run").mock(
+        return_value=Response(202, json={"chainId": "x", "firing": True})
+    )
     result = runner.invoke(
-        app,
-        ["chain", "run", "--slug", "demo", "--spec", str(_spec(tmp_path)), "--poll-interval", "0"],
+        app, ["chain", "run", "-t", "feature-pr", "--slug", "x", "--spec", str(_spec(tmp_path))]
     )
     assert result.exit_code == 0, _all_output(result)
-    paths = [
-        c.request.url.path for c in respx.calls if c.request.url.path.startswith("/workflow/run")
-    ]
-    run = "/workflow/run"
-    assert paths == [f"{run}/feature-pr", f"{run}/pr-review", f"{run}/feature-pr"]
+    body = json.loads(route.calls[0].request.content)
+    assert [h["kind"] for h in body["hops"]] == ["feature-pr"]
 
 
 @respx.mock
-def test_chain_stops_when_a_hop_fails(tmp_path: Path) -> None:
-    respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
-        return_value=Response(200, json={"instanceId": "feature-demo"})
+def test_chain_run_fresh_first_hop(tmp_path: Path) -> None:
+    route = respx.post(f"{WORKFLOW_URL}/chain/run").mock(
+        return_value=Response(202, json={"chainId": "x", "firing": True})
     )
-    respx.get(f"{WORKFLOW_URL}/workflow/status/feature-demo").mock(
-        return_value=Response(200, json={"runtimeStatus": "FAILED"})
-    )
-    respx.post(STATE_URL).mock(return_value=Response(204))
-    result = runner.invoke(
-        app,
-        ["chain", "run", "--slug", "demo", "--spec", str(_spec(tmp_path)), "--poll-interval", "0"],
-    )
-    assert result.exit_code == 1
-    assert "FAILED" in _all_output(result)
-    # pr-review must never fire after a failed feature hop
-    assert not any(c.request.url.path == "/workflow/run/pr-review" for c in respx.calls)
+    args = ["chain", "run", "-t", "feature-pr", "--slug", "x", "--spec", str(_spec(tmp_path))]
+    runner.invoke(app, [*args, "--fresh"])
+    body = json.loads(route.calls[0].request.content)
+    assert body["hops"][0]["fresh"] is True
 
 
-def test_chain_rejects_unknown_template(tmp_path: Path) -> None:
+@respx.mock
+def test_chain_run_budget_override(tmp_path: Path) -> None:
+    route = respx.post(f"{WORKFLOW_URL}/chain/run").mock(
+        return_value=Response(202, json={"chainId": "x", "firing": True})
+    )
+    runner.invoke(
+        app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "--budget", "90"]
+    )
+    assert json.loads(route.calls[0].request.content)["budgetMs"] == 90 * 60_000
+
+
+@respx.mock
+def test_chain_run_default_budget_scales_with_hops(tmp_path: Path) -> None:
+    route = respx.post(f"{WORKFLOW_URL}/chain/run").mock(
+        return_value=Response(202, json={"chainId": "x", "firing": True})
+    )
+    runner.invoke(app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))])
+    assert json.loads(route.calls[0].request.content)["budgetMs"] == 3 * 45 * 60_000
+
+
+def test_chain_run_unknown_hop(tmp_path: Path) -> None:
     result = runner.invoke(
         app, ["chain", "run", "-t", "nope", "--slug", "x", "--spec", str(_spec(tmp_path))]
     )
     assert result.exit_code == 1
-    assert "unknown template" in _all_output(result)
+    assert "unknown hop" in _all_output(result)
 
 
-def test_chain_rejects_unimplemented_strategy(tmp_path: Path) -> None:
+def test_chain_run_non_sequential_strategy(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "--strategy", "parallel"],
@@ -161,65 +123,49 @@ def test_chain_rejects_unimplemented_strategy(tmp_path: Path) -> None:
     assert "not implemented" in _all_output(result)
 
 
-# --- parser units ---
-
-
-def test_after_marker_finds_the_step_that_carries_it() -> None:
-    assert _after_marker(FEATURE_OUTPUT, "===PR===") == "https://github.com/stiproot/h/pull/42"
-    assert _after_marker(FEATURE_OUTPUT, "===REVIEW===") is None
-    assert _after_marker(None, "===PR===") is None
-    assert _after_marker("not json", "===PR===") is None
-
-
-def test_after_marker_unwraps_single_and_double_encoding() -> None:
-    payload = {"implement": {"output": "did it\n===PR===\nhttps://github.com/o/r/pull/9"}}
-    single = json.dumps(payload)  # one layer (a plain workflow return)
-    double = json.dumps(json.dumps(payload))  # what Dapr's status output actually gives
-    assert _after_marker(single, "===PR===") == "https://github.com/o/r/pull/9"
-    assert _after_marker(double, "===PR===") == "https://github.com/o/r/pull/9"
-
-
-def test_capture_pr_extracts_url_and_number() -> None:
-    data: dict = {}
-    _capture_pr(FEATURE_OUTPUT, data)
-    assert data["prUrl"] == "https://github.com/stiproot/h/pull/42"
-    assert data["prNumber"] == "42"
-
-
-def test_capture_review_stores_findings() -> None:
-    data: dict = {}
-    _capture_review(REVIEW_OUTPUT, data)
-    assert "missing None guard" in data["reviewFindings"]
-
-
-def test_pr_review_hop_errors_without_a_pr_number(tmp_path: Path) -> None:
-    with respx.mock:
-        respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
-            return_value=Response(200, json={"instanceId": "feature-demo"})
-        )
-        # feature completes but its output carries no ===PR=== marker
-        respx.get(f"{WORKFLOW_URL}/workflow/status/feature-demo").mock(
-            return_value=Response(
-                200,
-                json={
-                    "runtimeStatus": "COMPLETED",
-                    "output": json.dumps({"implement": {"output": "no pr here"}}),
-                },
-            )
-        )
-        respx.post(STATE_URL).mock(return_value=Response(204))
-        result = runner.invoke(
-            app,
-            [
-                "chain",
-                "run",
-                "--slug",
-                "demo",
-                "--spec",
-                str(_spec(tmp_path)),
-                "--poll-interval",
-                "0",
-            ],
-        )
+def test_chain_run_requires_slug_and_spec() -> None:
+    result = runner.invoke(app, ["chain", "run", "--slug", "x"])
     assert result.exit_code == 1
-    assert "pr-review needs a PR number" in _all_output(result)
+
+
+@respx.mock
+def test_chain_run_http_error_exits_1(tmp_path: Path) -> None:
+    respx.post(f"{WORKFLOW_URL}/chain/run").mock(return_value=Response(500))
+    result = runner.invoke(app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))])
+    assert result.exit_code == 1
+
+
+@respx.mock
+def test_chain_list_renders_registry() -> None:
+    respx.get(f"{WORKFLOW_URL}/chain/list").mock(
+        return_value=Response(
+            200,
+            json={
+                "heartbeat": {"at": "2026-07-08T09:00:00Z", "enabled": True},
+                "chains": [
+                    {
+                        "chainId": "dark-mode",
+                        "status": "running",
+                        "cursor": 1,
+                        "hops": [
+                            {"kind": "feature-pr"},
+                            {"kind": "pr-review"},
+                            {"kind": "revise"},
+                        ],
+                        "outcome": None,
+                    }
+                ],
+            },
+        )
+    )
+    result = runner.invoke(app, ["chain", "list"])
+    assert result.exit_code == 0, _all_output(result)
+    assert "dark-mode" in result.output
+    assert "running" in result.output
+
+
+@respx.mock
+def test_chain_list_http_error_exits_1() -> None:
+    respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(500))
+    result = runner.invoke(app, ["chain", "list"])
+    assert result.exit_code == 1

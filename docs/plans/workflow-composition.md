@@ -376,6 +376,23 @@ output, it can aggregate parallel outputs too — the actor likely evaporates th
   (chain, issue-sweep, scripts, `h feature run`) migrate onto the compose path — only then delete
   `--pr`. **Open (Decision 8 / verify coupling):** a `verify` overlay atom + create-pr-after-verify
   ordering, so `-t feature -t create-pr -t verify` composes verification back in.
+- **2026-07-08 — Phase 4 COMPLETE: the durable chain engine, and the CLI cut over to it.** Chains
+  are now a durable primitive, sibling of the watcher — built in six workflow-svc slices then cut over
+  atomically. **Engine (`apps/workflow-svc/src/domain/chain-*.ts`):** `chain.model.ts` (ChainRow =
+  durable blackboard `data` + sequencing state, epoch-fenced); pure `chain-engine.ts` `decide` →
+  wait/advance/finalize/budget-terminate (advance is where watch retries); `chain-hops.ts` the
+  engine-coded hop contracts (feature-pr/pr-review/revise, porting Phase 1's live-validated parsing incl.
+  the Dapr double-encoding unwrap); `IChainStore`/`dapr-chain-store.ts` the `chain:` registry;
+  `chain-scan.ts` `registerChainForFire` + `scanChainsEffect` (reads each hop's OUTPUT — no actor —
+  captures into the blackboard, fires the next hop, epoch-fenced mark-before-fire, cost tally, publish).
+  Wired onto the same cron `tickEffect` as the watch scan (same catchAll isolation); `chain.router.ts`
+  (`POST /chain/run`, `GET /chain/list`, `GET`/`DELETE /chain/:id`); `ChainStoreLive` in the app layer.
+  **CLI cutover (atomic):** `h chain run` now REGISTERS via `POST /chain/run` and returns immediately
+  (no blocking poll); `h chain list` inspects the registry; the Phase-1 in-process machinery (poll loop,
+  `chain:<slug>` blackboard mirror, the Python `CHAIN_TEMPLATES` threading closures) is DELETED — the CLI
+  is a thin client that only names the hops' fire identity, the engine owns threading. Suites green:
+  workflow-svc 130, h-cli 89. Docs updated (WORKFLOWS.md, CLAUDE.md keyspace). Remaining: **Phase 5**
+  (parallel + loop-until-clean strategies).
 - **2026-07-08 — verify atom landed: verification is compose-only, and it gates the PR.** The last
   composition gap closed, parallel to how PR became compose-only. New `verify.yaml` overlay atom
   extends the implement step (merge-by-id) with an acceptance-check block: the one implement agent
