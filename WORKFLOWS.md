@@ -313,3 +313,31 @@ The run-claude output is returned verbatim and written back to the task entry as
 **Built workflow's activities:** `clone-repo` (claude-agent) → `run-claude`
 **Task config:** `cli/scripts/payloads/repo-qa-task.template.json`
 **Script:** `cli/scripts/invoke-workflow-agent.sh repo-qa REPO_URL=<url> BRANCH=<branch> QUESTIONS="<questions>"`
+
+---
+
+## Chain workflows (`h chain run`)
+
+**Scenario:** Run a sequence of saved workflows as a pipeline, threading state between hops through a shared blackboard keyed by slug.
+
+The `h chain run` command composes several workflows into a single end-to-end run. Each hop reads its inputs from — and writes its outputs to — the blackboard, so the chain acts as one logical invocation even though each hop is an independent workflow-svc instance.
+
+The `-t` / `--template` flag is repeatable and selects chain members in order. The default chain is `feature` → `pr-review` → `revise` — implement and open a PR, post inline review comments, then address the feedback on the same branch.
+
+Chain-level flags apply to every hop:
+- `--slug` — branch token (`feature/<slug>`) and blackboard key
+- `--spec` — feature spec (`.md` path or bare name under spec home)
+- `--issue` — GitHub issue number; PR body gets `Closes #N`
+- `--watch` — register every hop with the durable watcher engine (45m budget)
+
+Phase 1 supports the `sequential` strategy only: each hop runs one at a time and the chain stops if any hop fails. Parallel and loop-until-clean strategies are deferred to the chain-as-policy engine.
+
+```text
+h chain run --slug my-feature --spec @spec.md --issue 42
+```
+
+**Built-in templates:** `feature`, `pr-review`, `revise`
+**Default chain:** `feature` → `pr-review` → `revise`
+**Strategy:** `sequential` (Phase 1)
+**CLI source:** `cli/h/src/h_cli/commands/chain.py`
+**Design doc:** `docs/plans/workflow-composition.md`
