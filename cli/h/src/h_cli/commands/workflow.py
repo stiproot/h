@@ -12,6 +12,7 @@ from rich.table import Table
 
 from h_cli.config import AGENT_URLS, resolve_agent_url
 from h_cli.infrastructure import agent_service, helm, workflow_svc
+from h_cli.infrastructure.overlay import overlay
 
 app = typer.Typer(no_args_is_help=True, help="Saved workflows and instance status (workflow-svc).")
 console = Console()
@@ -133,6 +134,72 @@ def publish(
         state = "DISABLED — re-publish without --disabled to arm" if disabled else "armed"
         console.print(f"    schedule: '{schedule}' ({state})")
     console.print(f"    fire it: h workflow run {result['key']} -p slug=... -p spec=@file.md")
+
+
+def _compose(templates: list[str]) -> dict[str, Any]:
+    """Render each template in publish+composable mode and overlay them into one definition.
+
+    Spatial composition (docs/plans/workflow-composition.md): every template renders as an
+    overlay-able atom ({{params.*}} slots open, standalone closers omitted), then overlay() merges
+    them by step id — a shared step id extends its `input.task`, so create-pr's PR epilogue lands on
+    feature's implement step without a second agent run. Raises typer.Exit on a helm/render failure.
+    """
+    overlay_values = {"publish": "true", "composable": "true"}
+    definitions: list[dict[str, Any]] = []
+    for family in templates:
+        try:
+            rendered = helm.render_workflow(family, values=overlay_values)
+        except helm.HelmError as err:
+            err_console.print(f"[red]helm ({family}):[/red] {err}")
+            raise typer.Exit(1) from err
+        loaded = yaml.safe_load(rendered)
+        if not isinstance(loaded, dict) or not loaded.get("steps"):
+            err_console.print(f"[red]Template '{family}' rendered no steps[/red] — check values.")
+            raise typer.Exit(1)
+        definitions.append(loaded)
+    return overlay(*definitions)
+
+
+@app.command()
+def compose(
+    template: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--template",
+            "-t",
+            help="A template to overlay, repeatable (compose's -f). Merged left-to-right by step "
+            "id. E.g. -t feature -t create-pr for feature-to-a-PR in one workflow.",
+        ),
+    ] = None,
+    save: Annotated[
+        str | None,
+        typer.Option(
+            "--save",
+            help="Persist the composed definition to workflow-svc under this key (a saveable "
+            "family). Without it, the merged definition is printed for inspection.",
+        ),
+    ] = None,
+) -> None:
+    """Overlay templates into one workflow definition (spatial composition).
+
+    `-t feature -t create-pr` is the explicit form of the retired `feature --pr` flag: create-pr's
+    commit/push/open-PR epilogue extends feature's implement step in ONE workflow (one instanceId,
+    one worktree, one agent context — no re-read). Publish-native: {{params.*}} slots stay open, so
+    the saved result is fired with `h workflow run <key> -p slug=... -p createPr=true`.
+    """
+    if not template:
+        err_console.print("[red]at least one -t/--template is required[/red]")
+        raise typer.Exit(1)
+    merged = _compose(template)
+    joined = " ⊕ ".join(template)
+    if save:
+        result = _guarded(lambda: workflow_svc.save(save, merged["steps"]))
+        console.print(f"==> Composed [{joined}] saved as '{result['key']}'")
+        console.print(f"    fire it: h workflow run {result['key']} -p slug=... -p spec=@file.md")
+    else:
+        rendered = yaml.safe_dump(merged, sort_keys=False)
+        console.print(f"[dim]# composed: {joined} — pass --save <key> to persist[/dim]")
+        console.print(Syntax(rendered, "yaml", background_color="default"))
 
 
 DEFAULT_BUDGET_MS = 45 * 60_000

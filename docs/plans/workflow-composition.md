@@ -194,8 +194,25 @@ through the chain actor.
 workflow definition; `{{step.output}}` handoff preserved). `feature --pr` becomes `-t implement -t
 create-pr`. "Family" is fully retired here. Re-bless chart goldens.
 
-**Phase 3 — Land the vocabulary in core docs.** CLAUDE.md / README.md / WORKFLOWS.md adopt
-template/workflow-definition/workflow/overlay/chain/chain-actor/strategy. (Can land alongside Phase 2.)
+**Phase 3 — Adopt the vocabulary in docs AND code; retire "family" as a word.** "Template" replaces
+"family" everywhere — this phase makes the new language real, not just aspirational. (Can land
+alongside Phase 2.) Two fronts:
+
+- **Docs** — CLAUDE.md, README.md, WORKFLOWS.md, and cli/README.md adopt
+  template/workflow-definition/workflow/overlay/chain/chain-actor/strategy, and every remaining
+  prose use of "family" becomes "template" (or "parameterized template" where the params sense
+  matters). The h primitives list in CLAUDE.md gains "template" alongside
+  workflow/watcher/trigger/registry.
+- **Code identifiers** — the `family` token is load-bearing in the chart layer: the `--set
+  family=<name>` gate, the `{{- if eq .Values.family "<name>" }}` wrapper in every template,
+  `render_workflow(family=…)` / `helm.py`, `values.yaml`/`values.schema.json` comments, and CLI
+  help/arg names (`h workflow publish <family>`). Rename these to `template`. This is mechanical but
+  wide (it re-blesses every chart golden and touches the gate in all templates), so stage it as its
+  own commit with the goldens re-blessed deliberately — do NOT fold it into an unrelated change. The
+  `-t` compose/chain flag is already spelled "template"; this aligns the rest.
+
+Intent captured so the rename isn't lost: until it lands, new code should prefer "template" in prose
+and comments even while the `family` gate identifier persists, so the drift shrinks rather than grows.
 
 **Phase 4 — Chain-as-policy engine.** Lift sequencing off the CLI into a durable `chain:` registry +
 engine on the `workflow-events` clock (mirrors the watch engine). Now chains survive a closed laptop
@@ -287,3 +304,37 @@ and are inspectable like watches (`h chain list`).
   near-identical variants (implement vs verify) sharing steps 1/2/4 (commit/push/#20-inline-resolve)
   verbatim, differing in step 3 + intro/end — a delicate extraction on the load-bearing template, so
   it is deferred to a focused pass rather than rushed. Next: the shared-partial extraction (step 1).
+- **2026-07-08 — Phase 2 step 1 landed: PR epilogue extracted to a shared partial (DRY).** The
+  ~40-line commit/push/open-PR/respond-to-review prose that was duplicated verbatim between
+  `feature.yaml`'s `implement` and `verify` steps now has ONE home: the `h.prEpilogue` helm partial
+  (`cli/charts/workflows/templates/_helpers.tpl`). It takes `{variant, slug, createPr, issueNumber,
+  gitAuth}`; the only three per-step differences (decision preamble, step-3 PR-body phrase, closing
+  marker line) switch on `.variant` ("implement" | "verify"). Each call site is now one line:
+  `regexReplaceAll " +\n" (include "h.prEpilogue" (dict …) | nindent 8) "\n"` — the regex strips the
+  trailing spaces `nindent` leaves on blank lines so the block scalar's separators stay truly empty.
+  feature.yaml shrank 96 lines. Proven a **pure refactor**: rendered output byte-identical across all
+  six variants (implement/verify × pr/ssh/publish/base) — wire JSON identical — save for one
+  incidental cleanup (an empty `===ISSUE===` value line now renders truly-empty instead of with 8
+  trailing spaces; that was the single re-blessed golden line). Full h-cli suite green (80). Next:
+  step 3 — add `create-pr.yaml` as an overlay template reusing the same partial + the CLI overlay
+  path (`overlay.py`), leaving `feature`'s epilogue in place until the callers migrate (step 4).
+- **2026-07-08 — Phase 2 step 3 landed: the overlay path is real end-to-end.** Three pieces:
+  (1) **`create-pr.yaml`** — a publish-native overlay atom: a lone `implement` step whose task is
+  ONLY the PR epilogue (reusing the same `h.prEpilogue` partial, `variant: implement`, with
+  `{{params.slug/createPr/issueNumber}}` tokens; `createPr.gitAuth` bakes from values). (2) A
+  **`composable` top-level render mode** (`.Values.composable`, sibling of `publish`): feature
+  renders as an overlay-able atom — implement ends neutrally at `{{plan.output}}` (no standalone
+  commit-decision closer) and the verify step is **dropped** (verification is its own future overlay
+  atom, `-t implement -t create-pr -t verify`; fusing it here would collide with create-pr's
+  epilogue). (3) **`h workflow compose -t … -t …`** — renders each template in publish+composable
+  mode and `overlay()`s them into one definition, printed or `--save`d as a family. So
+  `compose -t feature -t create-pr` is the explicit form of `feature --pr`: create-pr's epilogue
+  extends feature's `implement` in ONE workflow (verified: 4 steps `worktree/setup/plan/implement`,
+  exactly one epilogue, appended after the plan). +6 tests (create-pr golden, composable-omits-and-
+  drops-verify, overlay-extends-implement, 3 CLI wiring); full h-cli suite green (86), ruff clean.
+  **Decisions realized:** composable is a top-level mode not a feature knob (any atom can honor it);
+  create-pr is publish-native (the composed family fires with `-p createPr=true`, like feature).
+  **Deferred to step 4:** feature's own `createPr` epilogue and `--pr` stay until the callers
+  (chain, issue-sweep, scripts, `h feature run`) migrate onto the compose path — only then delete
+  `--pr`. **Open (Decision 8 / verify coupling):** a `verify` overlay atom + create-pr-after-verify
+  ordering, so `-t feature -t create-pr -t verify` composes verification back in.

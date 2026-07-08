@@ -174,6 +174,62 @@ def test_branch_unsafe_slug_fails_schema(hostile_spec: Path) -> None:
         )
 
 
+def test_create_pr_golden(snapshot) -> None:
+    """The create-pr overlay atom (publish-native): a lone implement step with the PR epilogue."""
+    rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_composable_feature_omits_pr_epilogue(hostile_spec: Path) -> None:
+    """composable=true ends implement neutrally at the plan and drops verify — an overlay atom."""
+    rendered = helm.render_workflow(
+        "feature",
+        values={
+            "feature.slug": "hostile-fixture",
+            "composable": "true",
+            "feature.createPr": "true",
+            "feature.verifyCmd": "bun run lint",  # would add a verify step; composable drops it
+        },
+        file_values={"feature.spec": hostile_spec},
+        include_local=False,
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    # verify is its own overlay atom in the composition vision — composable never fuses it in.
+    assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
+    implement = definition["steps"][3]["input"]["task"]
+    assert "===CREATE PR===" not in implement  # the overlay supplies it, not the base
+    assert "do not commit or push" not in implement  # neither the standalone closer
+    assert implement.rstrip().endswith("{{plan.output}}")  # ends at the plan handoff
+
+
+def test_compose_feature_create_pr_extends_implement() -> None:
+    """overlay(feature[composable], create-pr) == feature-to-a-PR in one workflow (--pr seam)."""
+    from h_cli.infrastructure.overlay import overlay
+
+    feature = json.loads(
+        helm.to_wire_json(
+            helm.render_workflow(
+                "feature", values={"publish": "true", "composable": "true"}, include_local=False
+            )
+        )
+    )
+    create_pr = json.loads(
+        helm.to_wire_json(
+            helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
+        )
+    )
+    merged = overlay(feature, create_pr)
+    # No extra step — create-pr extended the existing implement, not appended a new run.
+    assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement"]
+    implement = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
+    # The base implement prose AND the epilogue both live on the one step, in order.
+    assert "First persist the plan" in implement
+    assert implement.index("{{plan.output}}") < implement.index("===CREATE PR===")
+    # The epilogue's fire-time params thread through unresolved for a saved family.
+    assert "{{params.createPr}}" in implement
+    assert "feature/{{params.slug}}" in implement
+
+
 def test_issue_sweep_golden(snapshot) -> None:
     """The issue-sweep family (h-builds-h): one judgment tick, family config baked."""
     rendered = helm.render_workflow(

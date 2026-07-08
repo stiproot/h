@@ -96,6 +96,27 @@ def test_feature_render_bad_slug_surfaces_helm_error(hostile_spec: Path) -> None
     assert "does not match pattern" in _all_output(result)
 
 
+@needs_helm
+def test_workflow_compose_prints_merged_definition() -> None:
+    result = runner.invoke(app, ["workflow", "compose", "-t", "feature", "-t", "create-pr"])
+    assert result.exit_code == 0, _all_output(result)
+    # The merged YAML carries feature's four steps with create-pr's epilogue folded into implement.
+    assert "worktree" in result.output and "===CREATE PR===" in result.output
+    assert "feature ⊕ create-pr" in result.output
+
+
+def test_workflow_compose_requires_a_template() -> None:
+    result = runner.invoke(app, ["workflow", "compose"])
+    assert result.exit_code == 1
+    assert "at least one" in _all_output(result)
+
+
+@needs_helm
+def test_workflow_compose_unknown_template_exits_1() -> None:
+    result = runner.invoke(app, ["workflow", "compose", "-t", "no-such-family"])
+    assert result.exit_code == 1
+
+
 def test_workflow_list_unreachable_service_exits_1(monkeypatch: pytest.MonkeyPatch) -> None:
     from h_cli.infrastructure import workflow_svc
 

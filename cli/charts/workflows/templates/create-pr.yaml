@@ -1,0 +1,30 @@
+{{- /*
+create-pr overlay template — the commit / push / open-PR / respond-to-review epilogue as an
+overlay fragment.
+
+This is a SPATIAL-composition (overlay) atom, not a standalone workflow: it renders a single
+`implement` step carrying ONLY the PR epilogue (the shared h.prEpilogue partial, variant
+"implement"). Overlaid onto a composable feature definition (rendered with composable=true, which
+ends its implement step neutrally at the plan), the merge-by-id extends implement's task with this
+epilogue — producing `feature ⊕ create-pr`, the explicit composition that supersedes the flag-driven
+`feature --pr`. It reuses the SAME partial as feature.yaml, so the epilogue prose has one home.
+
+Publish-native: slug / createPr / issueNumber are {{params.*}} engine tokens resolved at fire time,
+so the composed, saved workflow opts into the PR per run (-p createPr=true) exactly like a published
+feature. Only gitAuth bakes from values at publish time (a secret-adjacent knob, never a fire-time
+param).
+
+Compose (the intended path):
+  h workflow compose -t feature -t create-pr
+Render alone (for inspection):
+  helm template create-pr cli/charts/workflows -s templates/create-pr.yaml --set family=create-pr
+*/ -}}
+{{- /* Family gate — see feature.yaml: bodies only evaluate for the selected family. */ -}}
+{{- if eq (.Values.family | default "") "create-pr" }}
+{{- $c := .Values.createPr }}
+steps:
+  - id: implement
+    input:
+      task: |-
+        {{- regexReplaceAll " +\n" (include "h.prEpilogue" (dict "variant" "implement" "slug" (include "h.token" "params.slug") "createPr" (include "h.token" "params.createPr") "issueNumber" (include "h.token" "params.issueNumber") "gitAuth" $c.gitAuth) | nindent 8) "\n" }}
+{{- end }}

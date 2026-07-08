@@ -15,6 +15,10 @@
       "type": "boolean",
       "$comment": "Emit per-run inputs as {{params.*}} tokens (a saveable family) instead of literals."
     },
+    "composable": {
+      "type": "boolean",
+      "$comment": "Overlay mode: render a template as an overlay-able atom — feature omits its standalone commit-decision closer so a create-pr overlay supplies it. Set by `h workflow compose`."
+    },
     "feature": {
       "type": "object",
       "properties": {
@@ -69,6 +73,20 @@
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "createPr": {
+      "type": "object",
+      "$comment": "create-pr overlay template (templates/create-pr.yaml). Publish-native: slug/createPr/issueNumber are fire-time params; only gitAuth bakes here.",
+      "properties": {
+        "gitAuth": {
+          "enum": [
+            "",
+            "pat",
+            "ssh"
+          ]
         }
       },
       "additionalProperties": false

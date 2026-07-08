@@ -33,6 +33,13 @@ its `required` calls) only runs when the renderer selects it via --set family=<n
 {{- if eq (.Values.family | default "") "feature" }}
 {{- $f := .Values.feature }}
 {{- $publish := .Values.publish | default false }}
+{{- /* Composable (overlay) mode: render feature as an overlay-able atom — worktree → setup →
+plan → implement, with implement ending neutrally at the plan (no standalone commit-decision
+closer) so a create-pr overlay (templates/create-pr.yaml) appends the commit/push/PR epilogue to
+its tail. The verify step is dropped: verification is its own overlay atom in the composition
+vision (`-t implement -t create-pr -t verify`), not fused in here where it would collide with
+create-pr's epilogue. See docs/plans/workflow-composition.md. `h workflow compose` sets this. */ -}}
+{{- $composable := .Values.composable | default false }}
 {{- /* The activity that runs the plan/implement/verify steps — run-claude by default, or
 run-openhands to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
@@ -128,56 +135,11 @@ steps:
 
         Then implement the feature described under ===FEATURE SPEC=== below, following the
         plan. If the feature already appears implemented, make no changes and say so.
-        {{- if and $createPr (not $f.verifyCmd) }}
+        {{- if $composable }}{{- /* overlay base: end neutrally; a create-pr overlay appends the closer */}}
+        {{- else if and $createPr (not $f.verifyCmd) }}
         Leave the result as working-tree changes while you work; whether the run ends
         committed, pushed, and opened as a PR is decided under ===CREATE PR=== below.
-
-        ===CREATE PR===
-        {{ $createPr }}
-
-        ===ISSUE===
-        {{ $issueNumber }}
-
-        The value under ===CREATE PR=== above decides how this run ends. If it is not
-        exactly 'true', leave everything as uncommitted working-tree changes — do not
-        commit or push. If it IS 'true':
-        1. Commit ONLY what the feature touched, on branch feature/{{ $slug }}, with a
-           concise conventional commit message. Add files individually (never `git add -A`
-           or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
-           MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
-           leave plan-feature-{{ $slug }}.md uncommitted (run context, not feature code).
-        {{- if eq ($f.gitAuth | default "") "ssh" }}
-        2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
-           transport is already authenticated (agent-mounted key). If the push is rejected
-           for auth, skip it and say so under ===PR=== — do not retry with credentials.
-        {{- else }}
-        2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
-           from `git remote get-url origin` and push with a one-shot token URL:
-           git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
-           Never write the token into git config or the remote URL; if GH_TOKEN is unset,
-           skip the push and say so under ===PR===.
-        {{- end }}
-        3. Open a pull request against the repository's default branch with the github
-           MCP tool create_pull_request: title from the feature, body summarizing the
-           spec, the plan, and what you implemented. If the value under ===ISSUE===
-           above is a number N, include the line `Closes #N` on its own line in the PR
-           body, so the merge auto-closes that issue. If a PR for this branch already
-           exists, your push has updated it — do not open a duplicate.
-        4. If a PR for this branch already existed before this push (this is a revise
-           run, not a first-time creation), respond to review feedback:
-           a. Find the PR number: use the github MCP tool to list pull requests by
-             head branch feature/{{ $slug }}.
-           b. Fetch UNRESOLVED review threads: pull_request_read with method
-             get_review_comments on that PR. Each thread has an isResolved field, a
-             thread node id (PRRT_...), and comments with numeric ids.
-           c. For each unresolved thread that this run actually addressed, reply inline
-             with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
-             <what changed>"), then resolve it with pull_request_review_write method
-             resolve_thread passing the thread node id.
-           d. Do NOT reply to or resolve threads this run did not address.
-           e. Never APPROVE or REQUEST_CHANGES on the PR.
-        End your response with the exact marker ===PR=== on its own line, then the PR
-        URL — or SKIPPED and the reason — on the next line.
+{{ regexReplaceAll " +\n" (include "h.prEpilogue" (dict "variant" "implement" "slug" $slug "createPr" $createPr "issueNumber" $issueNumber "gitAuth" $f.gitAuth) | nindent 8) "\n" }}
         {{- else }}
         Leave the result as uncommitted working-tree changes — do not commit or push.
         {{- end }}
@@ -187,7 +149,7 @@ steps:
 
         ===IMPLEMENTATION PLAN===
         {{- include "h.token" "plan.output" | nindent 8 }}
-  {{- if $f.verifyCmd }}
+  {{- if and $f.verifyCmd (not $composable) }}
   - id: verify
     activity: {{ $runActivity }}
     input:
@@ -213,53 +175,7 @@ steps:
         End your response with the exact marker ===VERIFY=== on its own line, then PASS or
         FAIL on the next line, then a short summary of the final command output as evidence.
         {{- if $createPr }}
-
-        ===CREATE PR===
-        {{ $createPr }}
-
-        ===ISSUE===
-        {{ $issueNumber }}
-
-        The value under ===CREATE PR=== above decides how this run ends. If it is not
-        exactly 'true', leave everything as uncommitted working-tree changes. If it IS
-        'true' and your verdict is PASS (never open a PR for a failing change):
-        1. Commit ONLY what the feature touched, on branch feature/{{ $slug }}, with a
-           concise conventional commit message. Add files individually (never `git add -A`
-           or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
-           MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
-           leave plan-feature-{{ $slug }}.md uncommitted (run context, not feature code).
-        {{- if eq ($f.gitAuth | default "") "ssh" }}
-        2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
-           transport is already authenticated (agent-mounted key). If the push is rejected
-           for auth, skip it and say so under ===PR=== — do not retry with credentials.
-        {{- else }}
-        2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
-           from `git remote get-url origin` and push with a one-shot token URL:
-           git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
-           Never write the token into git config or the remote URL; if GH_TOKEN is unset,
-           skip the push and say so under ===PR===.
-        {{- end }}
-        3. Open a pull request against the repository's default branch with the github
-           MCP tool create_pull_request: title from the feature, body summarizing the
-           spec, the plan, and the verify verdict. If the value under ===ISSUE===
-           above is a number N, include the line `Closes #N` on its own line in the PR
-           body, so the merge auto-closes that issue. If a PR for this branch already
-           exists, your push has updated it — do not open a duplicate.
-        4. If a PR for this branch already existed before this push (this is a revise
-           run, not a first-time creation), respond to review feedback:
-           a. Find the PR number: use the github MCP tool to list pull requests by
-             head branch feature/{{ $slug }}.
-           b. Fetch UNRESOLVED review threads: pull_request_read with method
-             get_review_comments on that PR. Each thread has an isResolved field, a
-             thread node id (PRRT_...), and comments with numeric ids.
-           c. For each unresolved thread that this run actually addressed, reply inline
-             with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
-             <what changed>"), then resolve it with pull_request_review_write method
-             resolve_thread passing the thread node id.
-           d. Do NOT reply to or resolve threads this run did not address.
-           e. Never APPROVE or REQUEST_CHANGES on the PR.
-        After the ===VERIFY=== block, end your response with the exact marker ===PR===
-        on its own line, then the PR URL — or SKIPPED and the reason — on the next line.
+{{ regexReplaceAll " +\n" (include "h.prEpilogue" (dict "variant" "verify" "slug" $slug "createPr" $createPr "issueNumber" $issueNumber "gitAuth" $f.gitAuth) | nindent 8) "\n" }}
         {{- end }}
 
         ===IMPLEMENTED===

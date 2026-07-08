@@ -1,4 +1,53 @@
 # serializer version: 1
+# name: test_create_pr_golden
+  '''
+  steps:
+    - id: implement
+      input:
+        task: |-
+          ===CREATE PR===
+          {{params.createPr}}
+  
+          ===ISSUE===
+          {{params.issueNumber}}
+  
+          The value under ===CREATE PR=== above decides how this run ends. If it is not
+          exactly 'true', leave everything as uncommitted working-tree changes — do not
+          commit or push. If it IS 'true':
+          1. Commit ONLY what the feature touched, on branch feature/{{params.slug}}, with a
+             concise conventional commit message. Add files individually (never `git add -A`
+             or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
+             MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
+             leave plan-feature-{{params.slug}}.md uncommitted (run context, not feature code).
+          2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
+             from `git remote get-url origin` and push with a one-shot token URL:
+             git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{params.slug}}
+             Never write the token into git config or the remote URL; if GH_TOKEN is unset,
+             skip the push and say so under ===PR===.
+          3. Open a pull request against the repository's default branch with the github
+             MCP tool create_pull_request: title from the feature, body summarizing the
+             spec, the plan, and what you implemented. If the value under ===ISSUE===
+             above is a number N, include the line `Closes #N` on its own line in the PR
+             body, so the merge auto-closes that issue. If a PR for this branch already
+             exists, your push has updated it — do not open a duplicate.
+          4. If a PR for this branch already existed before this push (this is a revise
+             run, not a first-time creation), respond to review feedback:
+             a. Find the PR number: use the github MCP tool to list pull requests by
+               head branch feature/{{params.slug}}.
+             b. Fetch UNRESOLVED review threads: pull_request_read with method
+               get_review_comments on that PR. Each thread has an isResolved field, a
+               thread node id (PRRT_...), and comments with numeric ids.
+             c. For each unresolved thread that this run actually addressed, reply inline
+               with add_reply_to_pull_request_comment (body: "Addressed in <sha>:
+               <what changed>"), then resolve it with pull_request_review_write method
+               resolve_thread passing the thread node id.
+             d. Do NOT reply to or resolve threads this run did not address.
+             e. Never APPROVE or REQUEST_CHANGES on the PR.
+          End your response with the exact marker ===PR=== on its own line, then the PR
+          URL — or SKIPPED and the reason — on the next line.
+  
+  '''
+# ---
 # name: test_feature_publish_mode_golden
   '''
   steps:
@@ -190,7 +239,7 @@
           true
   
           ===ISSUE===
-          
+  
   
           The value under ===CREATE PR=== above decides how this run ends. If it is not
           exactly 'true', leave everything as uncommitted working-tree changes — do not

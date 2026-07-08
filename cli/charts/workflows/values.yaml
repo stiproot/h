@@ -17,6 +17,11 @@ runActivity: run-claude
 # run_saved_workflow + fire-time params. Family config still bakes in from values.
 publish: false
 
+# Composable (overlay) mode: render a template as an overlay-able atom — omit the standalone
+# closers a create-pr/verify overlay will supply (feature ends its implement step neutrally at
+# the plan). Set by `h workflow compose`; see docs/plans/workflow-composition.md.
+composable: false
+
 # feature workflow (templates/feature.yaml): worktree → setup → plan → implement (→ verify).
 feature:
   # Git-branch-safe token; the run works on branch feature/<slug>. Required at render time.
@@ -53,6 +58,13 @@ feature:
     plan: claude-sonnet-4-6
     implement: claude-haiku-4-5
     verify: ""
+
+# create-pr overlay template (templates/create-pr.yaml): the commit/push/open-PR epilogue as an
+# overlay fragment that extends a composable feature's implement step. Publish-native — slug,
+# createPr, and issueNumber are fire-time {{params.*}}; only gitAuth bakes here (mirrors
+# feature.gitAuth: "" = agent default, "pat" = one-shot GH_TOKEN URL, "ssh" = ssh transport).
+createPr:
+  gitAuth: ""
 
 # plugin-improvement workflow (templates/plugin-improvement.yaml): worktree → setup →
 # improve (→ verify). Publish-native — always rendered as a family with {{params.slug}} /
