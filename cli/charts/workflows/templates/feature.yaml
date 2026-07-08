@@ -1,18 +1,16 @@
 {{- /*
-feature workflow — worktree → setup → plan → implement (→ verify).
+feature workflow — worktree → setup → plan → implement.
 
 Renders a run_workflow request body (WORKFLOWS.md "Feature request"): a run-specific worktree
 of the pre-cloned target repo on branch feature/<slug>, h skills + runtime steering installed,
 a read-only plan pass over the spec, then an implement pass that leaves the result as
-uncommitted working-tree changes. When feature.verifyCmd is set, a trailing verify step runs
-that command in the worktree and fixes forward until it passes (bounded attempts), ending with
-a machine-checkable ===VERIFY=== PASS/FAIL verdict — without it, an implement step's
-self-report is an unchecked claim.
+uncommitted working-tree changes.
 
-feature does NOT open a PR. A run leaves its work as uncommitted working-tree changes; opening a
-PR is a separate, explicit composition — overlay the create-pr template (`h workflow compose -t
-feature -t create-pr`), which appends the commit/push/open-PR epilogue to the implement step. There
-is no `--pr`/`createPr` flag: if you want a PR, you compose one in. See
+feature is a pure atom: it does NOT verify and does NOT open a PR — both are separate, explicit
+compositions. Overlay the verify template to gate the run on an acceptance check, and the create-pr
+template to commit/push/open a PR: `h workflow compose -t feature -t verify -t create-pr` (create-pr
+last — it is the finishing move, gated by verify's "stop on FAIL"). There is no verifyCmd or
+--pr/createPr flag: if you want a check or a PR, you compose one in. See
 docs/plans/workflow-composition.md.
 
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
@@ -30,15 +28,12 @@ its `required` calls) only runs when the renderer selects it via --set template=
 {{- if eq (.Values.template | default "") "feature" }}
 {{- $f := .Values.feature }}
 {{- $publish := .Values.publish | default false }}
-{{- /* Composable (overlay) mode: render feature as an overlay-able atom — worktree → setup →
-plan → implement, with implement ending neutrally at the plan (no standalone commit-decision
-closer) so a create-pr overlay (templates/create-pr.yaml) appends the commit/push/PR epilogue to
-its tail. The verify step is dropped: verification is its own overlay atom in the composition
-vision (`-t implement -t create-pr -t verify`), not fused in here where it would collide with
-create-pr's epilogue. See docs/plans/workflow-composition.md. `h workflow compose` sets this. */ -}}
+{{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement ends neutrally
+at the plan (no standalone commit-decision closer) so verify/create-pr overlays can append their
+prose to its tail. See docs/plans/workflow-composition.md. `h workflow compose` sets this. */ -}}
 {{- $composable := .Values.composable | default false }}
-{{- /* The activity that runs the plan/implement/verify steps — run-claude by default, or
-run-openhands to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
+{{- /* The activity that runs the plan/implement steps — run-claude by default, or run-openhands
+to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
 {{- $slug := "" }}
 {{- $spec := "" }}
@@ -126,28 +121,4 @@ steps:
 
         ===IMPLEMENTATION PLAN===
         {{- include "h.token" "plan.output" | nindent 8 }}
-  {{- if and $f.verifyCmd (not $composable) }}
-  - id: verify
-    activity: {{ $runActivity }}
-    input:
-      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
-      {{- with $f.models.verify }}
-      model: {{ . | quote }}
-      {{- end }}
-      task: |-
-        You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
-        A change was just implemented (summary under ===IMPLEMENTED=== below). Verify it:
-        run exactly this command in the worktree root:
-
-            {{ $f.verifyCmd }}
-
-        If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
-        until it passes or you have made 3 fix attempts. Do not weaken the check (no
-        skipping tests, no suppressing errors); do not commit or push.
-        End your response with the exact marker ===VERIFY=== on its own line, then PASS or
-        FAIL on the next line, then a short summary of the final command output as evidence.
-
-        ===IMPLEMENTED===
-        {{- include "h.token" "implement.output" | nindent 8 }}
-  {{- end }}
 {{- end }}

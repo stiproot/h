@@ -29,8 +29,11 @@ Local:
    ```yaml
    feature:
      sourceRepo: /workspace/repo            # the pre-clone (agent-visible path)
-     verifyCmd: "bun install --frozen-lockfile && bun run build && bun run test"  # pure build+unit ONLY
      gitAuth: ssh                           # or omit for the GH_TOKEN pat path
+   verify:
+     cmd: "bun install --frozen-lockfile && bun run build && bun run test"  # pure build+unit ONLY
+   createPr:
+     gitAuth: ssh                           # match feature.gitAuth
    issueSweep:
      repo: <owner>/h
      coderWorkflowUrl: http://localhost:8014/workflow   # claude-coder; claude-agent (8002) until the split
@@ -53,9 +56,10 @@ preflight step turns that into an explicit `TOOLS UNAVAILABLE` stop.
 ## Publish, seed, arm
 
 ```sh
-# 1. The feature-pr template (feature ⊕ create-pr; params: slug, spec, issueNumber; config baked
-#    from values.local). The sweep fires this so each run implements the issue AND opens its PR.
-uv run h workflow compose -t feature -t create-pr --save feature-pr
+# 1. The feature-pr template (feature ⊕ verify ⊕ create-pr; params: slug, spec, issueNumber;
+#    verify.cmd + config baked from values.local). The sweep fires this so each run implements the
+#    issue, gates on the acceptance check, and opens its PR — all in the one implement agent.
+uv run h workflow compose -t feature -t verify -t create-pr --save feature-pr
 
 # 2. Phase-1 acceptance: hand-fire one issue-linked run before any automation
 uv run h workflow run feature-pr -p slug=issue-X -p spec=@toy.md \

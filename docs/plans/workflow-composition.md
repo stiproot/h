@@ -338,6 +338,20 @@ and are inspectable like watches (`h chain list`).
   (chain, issue-sweep, scripts, `h feature run`) migrate onto the compose path — only then delete
   `--pr`. **Open (Decision 8 / verify coupling):** a `verify` overlay atom + create-pr-after-verify
   ordering, so `-t feature -t create-pr -t verify` composes verification back in.
+- **2026-07-08 — verify atom landed: verification is compose-only, and it gates the PR.** The last
+  composition gap closed, parallel to how PR became compose-only. New `verify.yaml` overlay atom
+  extends the implement step (merge-by-id) with an acceptance-check block: the one implement agent
+  runs `verify.cmd` (baked config), fixes forward (≤3, no weakening), and **gates** — on failure it
+  STOPS before any commit/PR and ends `===VERIFY=== FAIL`; on pass it continues. So
+  `h workflow compose -t feature -t verify -t create-pr` yields ONE implement step ordered
+  implement → check → PR-if-green (create-pr **last** — verify's gate must precede it), all in one
+  agent/worktree/run. `feature.verifyCmd` and the separate verify step are **deleted** (feature is now
+  a pure four-step atom: worktree/setup/plan/implement); `feature.models.verify` gone too (the atom is
+  prose on implement, no own activity/model). Migrated `values.local.yaml` (`feature.verifyCmd` →
+  `verify.cmd`), the chain/issue-sweep/runbook compose commands (`-t feature -t verify -t create-pr`),
+  and WORKFLOWS.md. Goldens: `feature-with-verify` deleted, `verify` added, issue-sweep re-blessed.
+  Full h-cli suite green (88), ruff clean. **Composition primitive now complete:** feature is pure;
+  verify and create-pr are overlay atoms that extend it; a chain sequences the reviewed-PR loop.
 - **2026-07-08 — Phase 2 step 4 landed: `--pr`/`createPr` deleted; a PR is only ever a composition.**
   The atomic cutover the primitive-simplification wanted: feature no longer has any PR machinery, and
   every caller moved to explicit composition in the same change set. **Templates:** feature drops

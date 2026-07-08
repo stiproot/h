@@ -190,9 +190,10 @@ steps:
            engine-written — the watched fire increments runsFired by itself).
 
         F. FIRE. POST (curl via Bash) to {{ $coderUrl }} with JSON body — key `feature-pr`, the
-           composed feature ⊕ create-pr template (published once with
-           `h workflow compose -t feature -t create-pr --save feature-pr`), so the run implements
-           the issue AND opens/updates its PR; issueNumber gives the PR a `Closes #N`:
+           composed feature ⊕ verify ⊕ create-pr template (published once with
+           `h workflow compose -t feature -t verify -t create-pr --save feature-pr`), so the run
+           implements the issue, gates on the acceptance check, and opens/updates its PR;
+           issueNumber gives the PR a `Closes #N`:
              {"key": "feature-pr",
               "params": {"slug": "issue-N", "spec": <the composed spec>,
                          "issueNumber": "N"},

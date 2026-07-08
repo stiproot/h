@@ -142,9 +142,9 @@ def _revise_params(data: dict[str, Any]) -> dict[str, Any]:
 
 
 # Phase-1 built-in registry — the chainable templates and their port contracts. The `feature` and
-# `revise` hops both fire the composed `feature-pr` saved template (feature ⊕ create-pr — publish it
-# once with `h workflow compose -t feature -t create-pr --save feature-pr`); they share the
-# `feature-<slug>` instance (same worktree/branch/PR), and `revise` re-runs it fresh.
+# `revise` hops both fire the composed `feature-pr` saved template (feature ⊕ verify ⊕ create-pr —
+# publish it once with `h workflow compose -t feature -t verify -t create-pr --save feature-pr`);
+# they share the `feature-<slug>` instance (same worktree/branch/PR), and `revise` re-runs it fresh.
 CHAIN_TEMPLATES: dict[str, ChainTemplate] = {
     "feature": ChainTemplate(
         "feature", "feature-pr", False, "feature", _feature_params, _capture_pr

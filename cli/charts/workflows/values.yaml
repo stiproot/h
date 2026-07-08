@@ -22,7 +22,8 @@ publish: false
 # the plan). Set by `h workflow compose`; see docs/plans/workflow-composition.md.
 composable: false
 
-# feature workflow (templates/feature.yaml): worktree → setup → plan → implement (→ verify).
+# feature workflow (templates/feature.yaml): worktree → setup → plan → implement. A pure atom —
+# it neither verifies nor opens a PR (compose the verify / create-pr templates for those).
 feature:
   # Git-branch-safe token; the run works on branch feature/<slug>. Required at render time.
   slug: ""
@@ -32,11 +33,6 @@ feature:
   sourceRepo: ""
   # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
   remoteBase: ""
-  # Shell command that proves the implementation (e.g. "bun install && bun run lint"), run in
-  # the worktree by a trailing verify step that fixes forward until it passes (≤3 attempts) and
-  # ends with a ===VERIFY=== PASS/FAIL verdict. Empty = no verify step; the implement step's
-  # self-report then goes unchecked.
-  verifyCmd: ""
   # Git auth strategy NAME for the worktree/clone steps and the epilogue's push instruction:
   # "" = the agent's default (GIT_AUTH env, pat when unset), "pat" = one-shot GH_TOKEN URL,
   # "ssh" = ssh transport (agent-mounted key via GIT_SSH_KEY_PATH; push is plain `git push
@@ -46,12 +42,19 @@ feature:
   models:
     plan: claude-sonnet-4-6
     implement: claude-haiku-4-5
-    verify: ""
+
+# verify overlay template (templates/verify.yaml): an acceptance check that gates the run,
+# extending a composable feature's implement step. Replaces feature.verifyCmd — verification is
+# only ever composed in (`h workflow compose -t feature -t verify -t create-pr`).
+verify:
+  # Acceptance command (e.g. "bun install && bun run lint"), run in the worktree by the implement
+  # agent after the change; a failure stops the run before any commit/PR. Required when composed.
+  cmd: ""
 
 # create-pr overlay template (templates/create-pr.yaml): the commit/push/open-PR epilogue as an
-# overlay fragment that extends a composable feature's implement step. Publish-native — slug,
-# createPr, and issueNumber are fire-time {{params.*}}; only gitAuth bakes here (mirrors
-# feature.gitAuth: "" = agent default, "pat" = one-shot GH_TOKEN URL, "ssh" = ssh transport).
+# overlay fragment that extends a composable feature's implement step. Publish-native — slug and
+# issueNumber are fire-time {{params.*}}; only gitAuth bakes here (mirrors feature.gitAuth: "" =
+# agent default, "pat" = one-shot GH_TOKEN URL, "ssh" = ssh transport).
 createPr:
   gitAuth: ""
 

@@ -38,21 +38,51 @@ def test_feature_wire_json_golden(hostile_spec: Path, snapshot) -> None:
     assert helm.to_wire_json(_render_hostile(hostile_spec)) == snapshot
 
 
-def test_feature_with_verify_golden(hostile_spec: Path, snapshot) -> None:
-    """verifyCmd adds the trailing verify step (canonical YAML) — omitted from the base golden."""
+def test_feature_is_always_four_pure_steps(hostile_spec: Path) -> None:
+    """feature is a pure atom — worktree/setup/plan/implement, never a verify or PR step."""
+    definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))
+    assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
+
+
+def test_verify_golden(snapshot) -> None:
+    """The verify overlay atom: a lone implement step carrying the gating acceptance check."""
     rendered = helm.render_workflow(
-        "feature",
-        values={"feature.slug": "hostile-fixture", "feature.verifyCmd": "bun run lint"},
-        file_values={"feature.spec": hostile_spec},
-        include_local=False,
+        "verify", values={"publish": "true", "verify.cmd": "bun run lint"}, include_local=False
     )
     assert rendered == snapshot
 
 
-def test_verify_step_omitted_by_default(hostile_spec: Path) -> None:
-    """Chart default (empty verifyCmd) keeps the pre-verify four-step shape."""
-    definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))
-    assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
+def test_verify_requires_a_cmd() -> None:
+    """verify.cmd is required — composing verify without it fails loud, never a silent no-op."""
+    with pytest.raises(helm.HelmError, match="verify.cmd is required"):
+        helm.render_workflow("verify", values={"publish": "true"}, include_local=False)
+
+
+def test_compose_feature_verify_create_pr_orders_and_gates() -> None:
+    """feature ⊕ verify ⊕ create-pr: one implement step, ordered implement → check → PR-if-green."""
+    from h_cli.infrastructure.overlay import overlay
+
+    def _atom(name: str, **vals: str) -> dict:
+        return json.loads(
+            helm.to_wire_json(
+                helm.render_workflow(
+                    name,
+                    values={"publish": "true", "composable": "true", **vals},
+                    include_local=False,
+                )
+            )
+        )
+
+    merged = overlay(
+        _atom("feature"),
+        _atom("verify", **{"verify.cmd": "bun run lint"}),
+        _atom("create-pr"),
+    )
+    assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement"]
+    task = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
+    # the check gates the PR: verify prose (and its stop-on-fail) precede the open-PR prose
+    assert task.index("===VERIFY===") < task.index("open (or update) a pull request")
+    assert "do not open a pull request" in task  # the gate
 
 
 def test_git_auth_ssh_on_worktree_step(hostile_spec: Path) -> None:
@@ -171,23 +201,18 @@ def test_create_pr_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
-def test_composable_feature_omits_pr_epilogue(hostile_spec: Path) -> None:
-    """composable=true ends implement neutrally at the plan and drops verify — an overlay atom."""
+def test_composable_feature_ends_implement_neutrally(hostile_spec: Path) -> None:
+    """composable=true ends implement neutrally at the plan — the overlay attach point."""
     rendered = helm.render_workflow(
         "feature",
-        values={
-            "feature.slug": "hostile-fixture",
-            "composable": "true",
-            "feature.verifyCmd": "bun run lint",  # would add a verify step; composable drops it
-        },
+        values={"feature.slug": "hostile-fixture", "composable": "true"},
         file_values={"feature.spec": hostile_spec},
         include_local=False,
     )
     definition = json.loads(helm.to_wire_json(rendered))
-    # verify is its own overlay atom in the composition vision — composable never fuses it in.
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
     implement = definition["steps"][3]["input"]["task"]
-    assert "do not commit or push" not in implement  # no standalone closer either
+    assert "do not commit or push" not in implement  # no standalone closer to collide with overlays
     assert implement.rstrip().endswith("{{plan.output}}")  # ends at the plan handoff
 
 

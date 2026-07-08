@@ -227,21 +227,22 @@ prod diagnosis, no plugin-feedback publish). Specs live in the gitignored
    `actor_state_set(actorId='feature-<slug>', key='plan')` via the dapr MCP — reporting
    explicitly if a persistence step fails), then implements, left as uncommitted working-tree
    changes. Makes no change if the feature already appears done.
-5. `run-claude` (`verify`, cwd = the worktree; only when `feature.verifyCmd` is set) — runs the
-   acceptance command, fixes forward on failure (≤3 attempts, no check-weakening), and ends with
-   a machine-checkable `===VERIFY===` PASS/FAIL verdict. Without it, the implement step's
-   self-report is an unchecked claim.
 
-**Opening a PR is a composition, not a flag.** feature always ends as uncommitted working-tree
-changes — it has no `--pr`/`createPr` option. To take a feature all the way to a PR, overlay the
-**create-pr** template: `h workflow compose -t feature -t create-pr` merges create-pr's
-commit/push/open-PR epilogue onto feature's implement step, producing one workflow definition (one
-instanceId, one worktree, one agent context — no re-read). The agent commits the worktree, pushes
-`feature/<slug>` with a one-shot `GH_TOKEN` URL (never persisted into git config), opens the PR via
-the github MCP, and ends with a machine-checkable `===PR===` marker (URL or SKIPPED + reason).
-Composing create-pr *is* the intent to open a PR — save the composed definition
-(`… --save feature-pr`) and fire it with `-p slug=… -p spec=@file [-p issueNumber=N]`
-(`issueNumber` gives the PR body a `Closes #N`). See
+**feature is a pure atom — verifying and opening a PR are separate compositions.** feature ends as
+uncommitted working-tree changes; it has no `verifyCmd` and no `--pr`/`createPr`. Two overlay
+templates extend its implement step (merge-by-id, so the *same* implement agent does all of it in one
+worktree — no second run, no re-read):
+
+- **verify** (`-t verify`, config `verify.cmd`) — the implement agent runs the acceptance command,
+  fixes forward (≤3 attempts, no check-weakening), and **gates** the run: on failure it stops before
+  any commit/PR and ends `===VERIFY=== FAIL`; on success `===VERIFY=== PASS`, then continues.
+- **create-pr** (`-t create-pr`) — commit → push `feature/<slug>` with a one-shot `GH_TOKEN` URL
+  (never persisted) → open/update the PR via the github MCP, ending with a `===PR===` marker (URL or
+  SKIPPED). Composing it *is* the intent to open a PR (`issueNumber` param → `Closes #N`).
+
+Canonical order — create-pr **last**, so verify's gate precedes it:
+`h workflow compose -t feature -t verify -t create-pr --save feature-pr`, then fire with
+`-p slug=… -p spec=@file [-p issueNumber=N]`. See
 [docs/plans/workflow-composition.md](./docs/plans/workflow-composition.md).
 
 The invocation reads the `.md` and injects it into the task with `jq --rawfile` (JSON-safe for
@@ -250,7 +251,8 @@ through `invoke-workflow-agent.sh`. The spec arg is either a `.md` path or a bar
 against `cli/scripts/payloads/domain/feature-requests/` (with or without the `.md` suffix).
 
 **Built workflow's activities:** `create-worktree` → `setup` (claude-agent) →
-`run-claude` (plan) → `run-claude` (implement) → [`run-claude` (verify)]
+`run-claude` (plan) → `run-claude` (implement) — verify/create-pr overlays extend the implement
+step, they do not add activities
 **Task config:** `cli/scripts/payloads/domain/feature-request-task.template.json` (gitignored)
 **Spec home:** `cli/scripts/payloads/domain/feature-requests/*.md` (gitignored)
 **Script:** `cli/scripts/invoke-workflow-feature-request.sh <spec> [SLUG=<slug>]`

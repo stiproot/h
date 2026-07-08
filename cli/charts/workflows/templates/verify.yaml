@@ -1,0 +1,48 @@
+{{- /*
+verify overlay template — an acceptance check that GATES the run, as an overlay fragment.
+
+A SPATIAL-composition (overlay) atom: it renders a single `implement` step carrying only the verify
+prose, which the overlay merges onto feature's implement step (same id → task extension). So the one
+implement agent, after writing the code, runs the acceptance command and fixes forward — no separate
+verify step, no second agent (independent review is the downstream pr-review chain hop, a different
+agent). It replaces the retired `feature.verifyCmd`: verification is now only ever composed in.
+
+The check is a GATE: on failure the agent stops before any commit/PR steps that follow. So the
+canonical order puts verify before create-pr — `h workflow compose -t feature -t verify -t create-pr`
+— and create-pr's "open a PR" prose is only reached when the check passed.
+
+Config: verify.cmd (the acceptance command, e.g. "bun install && bun run lint") bakes from values at
+publish/compose time — it is a property of the target repo, not a per-run input.
+
+Compose (the intended path):
+  h workflow compose -t feature -t verify -t create-pr --save feature-pr
+Render alone (for inspection):
+  helm template verify cli/charts/workflows -s templates/verify.yaml --set template=verify \
+    --set verify.cmd="bun run lint"
+*/ -}}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "verify" }}
+{{- $v := .Values.verify }}
+{{- $cmd := required "verify.cmd is required (--set verify.cmd=<command>)" $v.cmd }}
+steps:
+  - id: implement
+    input:
+      task: |-
+        ===VERIFY===
+        Before you finish, prove the change with the acceptance check. Run exactly this
+        command in the worktree root:
+
+            {{ $cmd }}
+
+        If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
+        until it passes or you have made 3 fix attempts. Do not weaken the check (no
+        skipping tests, no suppressing errors).
+
+        This check GATES everything below it. If the command STILL fails after your
+        attempts, STOP here: do not commit, do not push, do not open a pull request. End
+        your response with the exact marker ===VERIFY=== on its own line, then FAIL, then a
+        short summary of the command output as evidence.
+
+        If it passes, note ===VERIFY=== PASS with that evidence, then carry out any
+        remaining instructions below.
+{{- end }}

@@ -36,10 +36,6 @@
         "remoteBase": {
           "type": "string"
         },
-        "verifyCmd": {
-          "type": "string",
-          "$comment": "Shell command that proves the implementation (run in the worktree by a trailing verify step). Empty omits the step."
-        },
         "gitAuth": {
           "enum": [
             "",
@@ -56,12 +52,19 @@
             },
             "implement": {
               "type": "string"
-            },
-            "verify": {
-              "type": "string"
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "verify": {
+      "type": "object",
+      "$comment": "verify overlay template (templates/verify.yaml). cmd bakes from values at compose/publish time.",
+      "properties": {
+        "cmd": {
+          "type": "string"
         }
       },
       "additionalProperties": false
