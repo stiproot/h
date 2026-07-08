@@ -71,6 +71,12 @@ why `implement`+`create-pr` must overlay, not chain.
 
 ## 3. Shared state: the chain actor (generic by design)
 
+> **SUPERSEDED (Phase 4, 2026-07-08).** This section is the original pre-implementation design. It was
+> reversed: there is **no chain actor**. The shared context is the `chain:sub:<id>` row's `data`
+> field, written only by the engine, which threads state by parsing each hop's OUTPUT (see Decision 4
+> and the Phase-4 progress entries). The `{slug, data}` shape and generic-blackboard reasoning below
+> still hold — they just live on the row, not in an actor. Kept for the record.
+
 Cross-workflow sharing is the load-bearing problem. Decision: a **Dapr actor keyed by the chain
 `slug`** is the shared-context object. Params carry only the *handle* (the slug → the actor address);
 the actor carries the *state*. Precedent: `issue-sweep` already keys shared findings by a stable id.
@@ -281,20 +287,30 @@ output, it can aggregate parallel outputs too — the actor likely evaporates th
 
 ## 9. Decisions
 
-1. **Adopt template/workflow/chain vocabulary, retire "family"?** (Locked: yes.)
-2. **Generic dynamic chain-actor state (`{slug, data: Record<string, any>}`)** over a typed struct?
-   (Locked: yes — flexibility over static guarantees; contract is documented convention.)
+> Note: decisions 4–6 below were made pre-implementation around a **chain actor**; building Phase 4
+> REVERSED that (see the 2026-07-08 progress entries). The shared context is the **chain row's
+> `data`**, written only by the engine, which threads state by parsing each hop's OUTPUT — no actor.
+> The originals are kept struck-through for the record.
+
+1. **Adopt template/workflow/chain vocabulary, retire "family"?** (Locked: yes — landed, Phase 3.)
+2. **Generic dynamic shared state (`{slug, data: Record<string, any>}`)** over a typed struct?
+   (Locked: yes. Realized as the `chain:sub:<id>` row's `data` field, not actor state.)
 3. **Overlay = authoring-time, chain = invocation-time (flat hops) for v1?** (Locked: yes; inline
    overlay-in-hop deferred to v2.)
-4. **Actors as the cross-workflow sharing mechanism?** (Locked: yes.)
-5. **Chain's durable home is a `chain:` policy engine mirroring watch?** (Locked as destination;
-   prototype on the CLI first.)
-6. **Open — the chain actor's conventional key set.** First cut: `worktreePath, branch, spec, plan,
-   prNumber, prUrl, reviewFindings, sha`. Refine during Phase 1.
-7. **Open — `loop-until-clean` predicate + budget wiring.** Predicate = reviewer `===REVIEW=== CLEAN`
-   marker; budget via the watch engine or a chain-local cap. Settle in Phase 5.
-8. **Open — reviewer independence.** Enforce that the review member uses a different agent/model than
-   the implement member (implement on openhands/DeepSeek, review on claude-coder)?
+4. ~~**Actors as the cross-workflow sharing mechanism?** (Locked: yes.)~~ **REVERSED (Phase 4):** no
+   actor. The engine is machine code and strings the workflows together, so it reads each completed
+   hop's OUTPUT (via `getStatus`) and threads the next hop's params — keeping the chained workflows
+   chain-agnostic (they run standalone; a chain actor would couple them to chain machinery). Mirrors
+   the watcher's ruling W3 (behavior is engine code, never config/actor state).
+5. **Chain's durable home is a `chain:` policy engine mirroring watch?** (Locked; **landed, Phase 4** —
+   `chain:` registry + pure `decide` + scan on the cron tick, sibling of the watch engine.)
+6. ~~**Open — the chain actor's conventional key set.**~~ **Moot** (no actor). The blackboard keys
+   (`slug, spec, issueNumber, prNumber, prUrl, reviewFindings`) live in the row's `data`, produced by
+   the engine-coded hop contracts (`chain-hops.ts`).
+7. **`loop-until-clean` predicate + budget wiring.** (Resolved, **Phase 5**: predicate =
+   `reviewIsClean` off the `===REVIEW=== CLEAN` marker; budget = `maxIterations` on the chain row.)
+8. **Reviewer independence.** (Satisfied by composition: `pr-review` runs on **claude-coder** — a
+   distinct agent from the implement hop — so independence is structural, not an enforced flag.)
 
 ---
 
