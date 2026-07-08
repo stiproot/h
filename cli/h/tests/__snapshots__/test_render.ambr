@@ -436,7 +436,7 @@
              - If the PR body mentions a linked issue, issue_read to understand the stated intent.
   
           2. REVIEW. Check the diff against the repository's conventions (CLAUDE.md, README.md,
-             WORKFLOWS.md if present) and against correctness, scope, and docs accuracy:
+             ARCHITECTURE.md if present) and against correctness, scope, and docs accuracy:
              - Correctness: does the code do what the PR claims? Are there logic errors, missing
                edge cases, or broken invariants?
              - Scope: does the PR include only what the linked issue (or PR description) asks for?

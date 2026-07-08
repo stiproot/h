@@ -1,7 +1,7 @@
 {{- /*
 feature workflow — worktree → setup → plan → implement.
 
-Renders a run_workflow request body (WORKFLOWS.md "Feature request"): a run-specific worktree
+Renders a run_workflow request body: a run-specific worktree
 of the pre-cloned target repo on branch feature/<slug>, h skills + runtime steering installed,
 a read-only plan pass over the spec, then an implement pass that leaves the result as
 uncommitted working-tree changes.
