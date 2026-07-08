@@ -215,8 +215,40 @@ Intent captured so the rename isn't lost: until it lands, new code should prefer
 and comments even while the `family` gate identifier persists, so the drift shrinks rather than grows.
 
 **Phase 4 — Chain-as-policy engine.** Lift sequencing off the CLI into a durable `chain:` registry +
-engine on the `workflow-events` clock (mirrors the watch engine). Now chains survive a closed laptop
-and are inspectable like watches (`h chain list`).
+engine that mirrors the watch engine **exactly**. Design (grounded in a read of the watcher impl):
+
+- **Clock = the cron tick, NOT `workflow-events`.** Nothing in the repo subscribes to `workflow-events`
+  today; the watch engine advances entirely on the `workflow-cron-tick` scan, reading each row's
+  already-persisted status via `invoker.getStatus`. So `scanChainsEffect(traceparent)` rides the same
+  `tickEffect` (`cron.router.ts`) beside `scanWatchesEffect`, same `catchAll` isolation. (Event-driven
+  advance would be a *new* pattern, not a mirror — deferred.)
+- **Registry (`chain:` prefix, workflow-svc single-writer):** `chain:sub:<chainId>` rows,
+  `chain:index`, `chain:config` (kill switch), `chain:__tick__` heartbeat, `chain:ledger:<date>`.
+  Replaces Phase 1's best-effort `chain:<slug>` blackboard mirror — the row now IS the durable
+  blackboard (`data`) plus the sequencing state. Epoch-fenced exactly like `watch:sub:*`.
+- **Pure engine (`chain-engine.ts` `decide(row, hopStatus, nowMs)`):** sibling of `watch-engine.ts`.
+  Union `wait | advance | finalize | budget-terminate`. Current hop COMPLETED → advance (fire next) or
+  finalize `completed` if last; FAILED/TERMINATED → finalize; UNKNOWN-streak → `orphaned`; live +
+  budget breach → `budget-terminate`. "advance" is where "retry" sits in watch.
+- **Scan (`chain-scan.ts`):** `registerChainForFire` (the fire choke point — writes the row + fires
+  hop 0), `scanChainsEffect` (per active chain: read current-hop status, `decide`, act). On `advance`:
+  capture the completed hop's output into `data`, build the next hop's params from `data`, fire it via
+  `WorkflowInvoker.invoke` + `WorkflowStore.get`/`toRequest` (exactly what `executeEscalate` does),
+  bump the ledger. Finalize publishes a terminal `chain-events` (or reuses `workflow-events`).
+- **CLI cutover:** `h chain run` stops blocking/polling and instead REGISTERS a chain (mirrors how
+  `--watch` registers a watch); `h chain list`/`GET /chain/list` inspect. The Phase-1 in-process
+  sequencing loop is deleted in the same change set (atomic cutover).
+
+**OPEN DECISION — the hop port contract (how state threads without shipping code).** Phase 1 threaded
+state with Python closures (`build_params(data)`, `capture(output, data)`) in the CLI's
+`CHAIN_TEMPLATES`. A durable engine can't ship closures, so the hop's contract must be **declarative
+data** on the row. Candidates: (a) a small value/capture mini-language on each hop — `params: {name:
+{fromData: k} | {const: v} | {concat: [...]}}` and `capture: [{marker, into, extract:[{regex,into}]}]`
+(covers feature→pr-review→revise: `===PR===`→prNumber via `/pull/(\d+)`, `===REVIEW===`→reviewFindings,
+revise's preamble+findings concat); (b) named built-in hop kinds keyed by a registry the engine ships
+(less flexible, no DSL); (c) the CLI keeps threading and the engine only sequences fixed pre-resolved
+hops (fails — later params depend on earlier *outputs*, unknown at registration). Leaning (a), minimal.
+Settle before building `chain-scan.ts`. The pure engine + model + registry land first (fork-free).
 
 **Phase 5 — Strategies.** Add `parallel` (fan-out → actor aggregation → join) and `loop-until-clean`
 (predicate + budget). The concurrency experiments live here.
