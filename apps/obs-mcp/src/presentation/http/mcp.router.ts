@@ -51,6 +51,9 @@ const RunsListInput = Schema.Struct({
   status: Schema.optional(
     Schema.String.annotations({ description: "Filter by status (completed/failed)" }),
   ),
+  instanceId: Schema.optional(
+    Schema.String.annotations({ description: "Filter by workflow instance id (group key)" }),
+  ),
 });
 
 const RunGetInput = Schema.Struct({
@@ -198,6 +201,7 @@ function createServer(runtime: ObsMcpRuntime): Server {
             limit: { type: "number", description: "Max runs (default 20)" },
             agentId: { type: "string", description: "Filter by agent id" },
             status: { type: "string", description: "Filter by status (completed/failed)" },
+            instanceId: { type: "string", description: "Filter by workflow instance id (group key)" },
           },
         },
       },

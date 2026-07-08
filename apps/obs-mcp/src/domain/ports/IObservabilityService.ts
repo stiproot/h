@@ -32,6 +32,7 @@ export type RunsListParams = {
   limit?: number;
   agentId?: string;
   status?: string;
+  instanceId?: string;
 };
 
 export type RunSummary = Record<string, unknown>;

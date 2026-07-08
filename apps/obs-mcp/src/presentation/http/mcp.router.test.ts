@@ -76,8 +76,12 @@ describe("toolEffect", () => {
         return Effect.succeed([{ agentId: "claude" }]);
       },
     });
-    const result = await callTool("runs_list", { agentId: "claude", limit: 5 }, layer);
-    expect(seen).toEqual([{ agentId: "claude", limit: 5 }]);
+    const result = await callTool(
+      "runs_list",
+      { agentId: "claude", limit: 5, instanceId: "inst-1" },
+      layer,
+    );
+    expect(seen).toEqual([{ agentId: "claude", limit: 5, instanceId: "inst-1" }]);
     expect(JSON.parse(result.content[0]!.text)).toEqual([{ agentId: "claude" }]);
   });
 });
