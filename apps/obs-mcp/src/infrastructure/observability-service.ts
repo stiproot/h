@@ -1,4 +1,4 @@
-import { join } from "path";
+import { basename, dirname, join } from "path";
 
 import { FileSystem, HttpClient } from "@effect/platform";
 import { Config, Effect, Layer, Option } from "effect";
@@ -92,6 +92,12 @@ export const ObservabilityServiceLive: Layer.Layer<
           // Swallow site (legacy): a run with a missing/unparsable summary.json is skipped.
           const summary = Option.getOrNull(yield* readJson(join(dir, "summary.json")));
           if (!summary) continue;
+          if (params.instanceId) {
+            const group = basename(dirname(dir));
+            const byGroup = group === params.instanceId;
+            const byField = summary.workflowInstanceId === params.instanceId;
+            if (!byGroup && !byField) continue;
+          }
           if (params.agentId && summary.agentId !== params.agentId) continue;
           if (params.status && summary.status !== params.status) continue;
           summaries.push(summary);

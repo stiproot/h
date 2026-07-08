@@ -232,4 +232,24 @@ describe("swallow semantics: run ledger (legacy #runDirs / #readJson / runGet tr
     const detail = await run((obs) => obs.runGet("wf-1:claude:9"), { fs });
     expect(detail.events).toEqual([{ e: 1 }]);
   });
+
+  it("runsList filters by instanceId, returning only runs under that group", async () => {
+    const fs = fsLayer({
+      dirs: {
+        "/runs": ["inst-1", "inst-2"],
+        "/runs/inst-1": ["claude-100"],
+        "/runs/inst-1/claude-100": [],
+        "/runs/inst-2": ["claude-200"],
+        "/runs/inst-2/claude-200": [],
+      },
+      files: {
+        "/runs/inst-1/claude-100/summary.json":
+          '{"agentId":"claude","workflowInstanceId":"inst-1"}',
+        "/runs/inst-2/claude-200/summary.json":
+          '{"agentId":"claude","workflowInstanceId":"inst-2"}',
+      },
+    });
+    const result = await run((obs) => obs.runsList({ instanceId: "inst-1" }), { fs });
+    expect(result).toEqual([{ agentId: "claude", workflowInstanceId: "inst-1" }]);
+  });
 });
