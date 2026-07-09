@@ -4,7 +4,7 @@ verify overlay template — an acceptance check that GATES the run, as an overla
 A SPATIAL-composition (overlay) atom: it renders a single `implement` step carrying only the verify
 prose, which the overlay merges onto feature's implement step (same id → task extension). So the one
 implement agent, after writing the code, runs the acceptance command and fixes forward — no separate
-verify step, no second agent (independent review is the downstream pr-review chain hop, a different
+verify step, no second agent (independent review is the downstream pr-review chained workflow, a different
 agent). It replaces the retired `feature.verifyCmd`: verification is now only ever composed in.
 
 The check is a GATE: on failure the agent stops before any commit/PR steps that follow. So the

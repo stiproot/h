@@ -96,7 +96,7 @@ def watch_delete(instance_id: str) -> Any:
 
 def chain_run(body: dict[str, Any]) -> Any:
     """Register a chain with the durable chain engine (POST /chain/run). Returns immediately
-    ({chainId, firing}); the engine fires hop 0 and sequences the rest on the cron tick."""
+    ({chainId, firing}); the engine fires workflow 0 and sequences the rest on the cron tick."""
     resp = httpx.post(f"{WORKFLOW_URL}/chain/run", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()

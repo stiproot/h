@@ -32,7 +32,7 @@ COMPOSABLE_VALUES = {"publish": "true", "composable": "true"}
 def compose_templates(templates: list[str]) -> dict[str, Any]:
     """Render each template as an overlay atom and merge them into one workflow definition.
 
-    The reusable core of `h template compose` — chain's compose-on-fire (a `-t` hop group) calls
+    The reusable core of `h template compose` — chain's compose-on-fire (a `-t` group) calls
     this too. Raises typer.Exit with a user-facing message on a helm/render failure.
     """
     definitions: list[dict[str, Any]] = []

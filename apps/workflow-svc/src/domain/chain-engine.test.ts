@@ -6,13 +6,13 @@ import { decide } from "./chain-engine.ts";
 
 const T0 = Date.parse("2026-07-08T09:00:00Z");
 
-// A three-hop chain (feature-pr → pr-review → revise), cursor on the first hop by default.
+// A three-workflow chain (feature-pr → pr-review → revise), cursor on the first workflow by default.
 function row(overrides: Partial<ChainRow> = {}): ChainRow {
   return {
     chainId: "dark-mode",
     epoch: 1,
     slug: "dark-mode",
-    hops: [
+    workflows: [
       { kind: "feature-pr", key: "feature-pr" },
       { kind: "pr-review", key: "pr-review" },
       { kind: "revise", key: "feature-pr" },
@@ -30,39 +30,39 @@ function row(overrides: Partial<ChainRow> = {}): ChainRow {
   };
 }
 
-describe("decide: current hop terminal", () => {
-  it("advances to the next hop when the current one completes and more remain", () => {
+describe("decide: current workflow terminal", () => {
+  it("advances to the next workflow when the current one completes and more remain", () => {
     const d = decide(row({ cursor: 0 }), "COMPLETED", T0 + 1000);
     expect(d.kind).toBe("advance");
     if (d.kind === "advance") expect(d.nextCursor).toBe(1);
   });
 
-  it("advances from the middle hop", () => {
+  it("advances from the middle workflow", () => {
     const d = decide(row({ cursor: 1 }), "COMPLETED", T0 + 1000);
     expect(d.kind).toBe("advance");
     if (d.kind === "advance") expect(d.nextCursor).toBe(2);
   });
 
-  it("finalizes completed when the LAST hop completes", () => {
+  it("finalizes completed when the LAST workflow completes", () => {
     const d = decide(row({ cursor: 2 }), "COMPLETED", T0 + 1000);
     expect(d.kind).toBe("finalize");
     if (d.kind === "finalize") expect(d.outcome).toBe("completed");
   });
 
-  it("finalizes failed when any hop fails — no advance past a failure", () => {
+  it("finalizes failed when any workflow fails — no advance past a failure", () => {
     const d = decide(row({ cursor: 0 }), "FAILED", T0 + 1000);
     expect(d.kind).toBe("finalize");
     if (d.kind === "finalize") expect(d.outcome).toBe("failed");
   });
 
-  it("finalizes terminated when a hop is terminated", () => {
+  it("finalizes terminated when a workflow is terminated", () => {
     const d = decide(row({ cursor: 1 }), "TERMINATED", T0 + 1000);
     expect(d.kind).toBe("finalize");
     if (d.kind === "finalize") expect(d.outcome).toBe("terminated");
   });
 });
 
-describe("decide: live hop", () => {
+describe("decide: live workflow", () => {
   it("waits inside a budget, promoting scheduling → running", () => {
     const d = decide(
       row({ status: "scheduling", lastStatus: "SCHEDULED", budgetMs: 45 * 60_000 }),
@@ -88,7 +88,7 @@ describe("decide: live hop", () => {
     expect(d.kind).toBe("budget-terminate");
   });
 
-  it("never budget-terminates without a chain budget (hops carry their own)", () => {
+  it("never budget-terminates without a chain budget (workflows carry their own)", () => {
     const d = decide(row({ budgetMs: undefined }), "RUNNING", T0 + 10 * 60 * 60_000);
     expect(d.kind).toBe("wait");
   });

@@ -41,7 +41,7 @@ function memoryChainStore(config?: ChainConfig): MemoryChainStore {
         const current = ledgers.get(date) ?? emptyChainLedger;
         ledgers.set(date, {
           chainsRegistered: current.chainsRegistered + (delta.chainsRegistered ?? 0),
-          hopsFired: current.hopsFired + (delta.hopsFired ?? 0),
+          workflowsFired: current.workflowsFired + (delta.workflowsFired ?? 0),
           chainsFinalized: current.chainsFinalized + (delta.chainsFinalized ?? 0),
           costUsd: current.costUsd + (delta.costUsd ?? 0),
         });
@@ -52,7 +52,7 @@ function memoryChainStore(config?: ChainConfig): MemoryChainStore {
   return { service, rows, ledgers, heartbeats, runRecords };
 }
 
-// Records every invoke so tests can assert on the fired hop (key/params/instanceId), and drives
+// Records every invoke so tests can assert on the fired workflow (key/params/instanceId), and drives
 // getStatus per instanceId (default RUNNING).
 function recordingInvoker(statuses: Record<string, WorkflowStatus> = {}): {
   service: WorkflowInvokerService;
@@ -75,7 +75,7 @@ function recordingInvoker(statuses: Record<string, WorkflowStatus> = {}): {
 }
 
 // A saved workflow whose stored key rides on its (single) step's activity, so tests can see which
-// template each hop resolved to. toRequest merges the hop's built params over these (empty) defaults.
+// template each workflow resolved to. toRequest merges the workflow's built params over these (empty) defaults.
 const stubWorkflowStore = (
   overrides: Partial<WorkflowStoreService> = {},
 ): WorkflowStoreService => ({
@@ -114,7 +114,7 @@ function env(
 
 // The default feature-pr → pr-review → revise chain, with explicit shared instanceIds
 // (feature + revise share the branch instance; pr-review has its own).
-const DEFAULT_HOPS = [
+const DEFAULT_WORKFLOWS = [
   { kind: "feature-pr", key: "feature-pr", instanceId: "feature-x" },
   { kind: "pr-review", key: "pr-review", instanceId: "pr-review-x" },
   { kind: "revise", key: "feature-pr", instanceId: "feature-x", fresh: true },
@@ -132,12 +132,12 @@ function review(findings: string): string {
 // ---------------------------------------------------------------------------
 
 describe("registerChainForFire", () => {
-  it("writes a scheduling row (epoch 1, cursor 0) and fires hop 0 under its instanceId", async () => {
+  it("writes a scheduling row (epoch 1, cursor 0) and fires workflow 0 under its instanceId", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", hops: [...DEFAULT_HOPS], data: { slug: "x", spec: "do it" } },
+        { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -145,33 +145,33 @@ describe("registerChainForFire", () => {
     expect(row?.epoch).toBe(1);
     expect(row?.cursor).toBe(0);
     expect(row?.currentInstanceId).toBe("feature-x");
-    // hop 0 fired: feature-pr resolved, under feature-x, with the spec threaded in.
+    // workflow 0 fired: feature-pr resolved, under feature-x, with the spec threaded in.
     expect(inv.invokes).toHaveLength(1);
     expect(inv.invokes[0].instanceId).toBe("feature-x");
     expect(inv.invokes[0].steps).toEqual([{ activity: "run-feature-pr" }]);
     expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "do it" });
     expect(mem.ledgers.get(new Date().toISOString().slice(0, 10))).toMatchObject({
       chainsRegistered: 1,
-      hopsFired: 1,
+      workflowsFired: 1,
     });
   });
 
-  it("merges the hop's own params OVER the kind contract's threading params", async () => {
+  it("merges the workflow's own params OVER the kind contract's threading params", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
-    const hops = [
+    const workflows = [
       {
         kind: "feature-pr",
         key: "feature-pr",
         instanceId: "feature-x",
-        // Fire-time identity from the CLI (chain-composition-surface §1.9): rides the hop row,
+        // Fire-time identity from the CLI (chain-composition-surface §1.9): rides the workflow row,
         // merged over buildParams' threading keys at fire time.
         params: { runActivity: "run-openhands", agentId: "openhands-agent" },
       },
-    ];
+    ] as const;
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", hops, data: { slug: "x", spec: "do it" } },
+        { slug: "x", workflows, data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -183,13 +183,13 @@ describe("registerChainForFire", () => {
     });
   });
 
-  it("finalizes the chain failed when hop 0 cannot be resolved", async () => {
+  it("finalizes the chain failed when workflow 0 cannot be resolved", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
     const wfStore = stubWorkflowStore({ get: () => Effect.succeed(Option.none()) });
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", hops: [...DEFAULT_HOPS], data: { slug: "x", spec: "do it" } },
+        { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service, wfStore))),
     );
@@ -206,10 +206,10 @@ describe("registerChainForFire", () => {
 async function seedAt(cursor: number, statuses: Record<string, WorkflowStatus>) {
   const mem = memoryChainStore();
   const inv = recordingInvoker(statuses);
-  // Register (fires hop 0), then fast-forward the row's cursor for the test.
+  // Register (fires workflow 0), then fast-forward the row's cursor for the test.
   await Effect.runPromise(
     registerChainForFire(
-      { slug: "x", hops: [...DEFAULT_HOPS], data: { slug: "x", spec: "do it" } },
+      { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
       undefined,
     ).pipe(Effect.provide(env(mem.service, inv.service))),
   );
@@ -226,7 +226,7 @@ async function seedAt(cursor: number, statuses: Record<string, WorkflowStatus>) 
   return { mem, inv };
 }
 
-describe("scanChainsEffect: advance threads state to the next hop", () => {
+describe("scanChainsEffect: advance threads state to the next workflow", () => {
   it("captures ===PR=== and fires pr-review with the parsed pr number", async () => {
     const { mem, inv } = await seedAt(0, {
       "feature-x": {
@@ -238,7 +238,7 @@ describe("scanChainsEffect: advance threads state to the next hop", () => {
     const report = await Effect.runPromise(
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
-    expect(report.advanced).toEqual(["x:h1:pr-review"]);
+    expect(report.advanced).toEqual(["x:w1:pr-review"]);
     const row = mem.rows.get("x");
     expect(row?.cursor).toBe(1);
     expect(row?.data.prNumber).toBe("42");
@@ -276,7 +276,7 @@ describe("scanChainsEffect: loop-until-clean", () => {
       chainId: "x",
       epoch: 1,
       slug: "x",
-      hops: [...DEFAULT_HOPS],
+      workflows: [...DEFAULT_WORKFLOWS],
       strategy: "loop-until-clean",
       loop: { startCursor: 1, maxIterations: 3, iterations: 0 },
       cursor: 1,
@@ -359,7 +359,7 @@ describe("scanChainsEffect: loop-until-clean", () => {
 });
 
 describe("scanChainsEffect: finalize", () => {
-  it("finalizes completed when the LAST hop completes", async () => {
+  it("finalizes completed when the LAST workflow completes", async () => {
     const { mem } = await seedAt(2, {
       "feature-x": { instanceId: "feature-x", runtimeStatus: "COMPLETED", output: pr("no-url") },
     });
@@ -383,7 +383,7 @@ describe("scanChainsEffect: finalize", () => {
     expect(mem.rows.get("x")?.status).toBe("finalized");
   });
 
-  it("finalizes failed when a hop fails — no advance past a failure", async () => {
+  it("finalizes failed when a workflow fails — no advance past a failure", async () => {
     const { mem, inv } = await seedAt(0, {
       "feature-x": { instanceId: "feature-x", runtimeStatus: "FAILED" },
     });
@@ -391,7 +391,7 @@ describe("scanChainsEffect: finalize", () => {
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
     expect(report.finalized).toEqual(["x:failed"]);
-    expect(inv.invokes).toHaveLength(0); // never fired the next hop
+    expect(inv.invokes).toHaveLength(0); // never fired the next workflow
   });
 });
 
@@ -408,7 +408,7 @@ describe("scanChainsEffect: isolation and kill switch", () => {
       terminate: () => Effect.void,
     };
     const base = {
-      hops: [...DEFAULT_HOPS],
+      workflows: [...DEFAULT_WORKFLOWS],
       strategy: "sequential" as const,
       data: {},
       unknownStreak: 0,
@@ -445,7 +445,7 @@ describe("scanChainsEffect: isolation and kill switch", () => {
       chainId: "x",
       epoch: 1,
       slug: "x",
-      hops: [...DEFAULT_HOPS],
+      workflows: [...DEFAULT_WORKFLOWS],
       strategy: "sequential",
       cursor: 0,
       currentInstanceId: "feature-x",

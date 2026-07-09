@@ -6,7 +6,7 @@ import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "../mode
 /**
  * The chain-registry port, sibling of IWatchStore: `chain:sub:<chainId>` rows + `chain:index`, the
  * `chain:config` kill switch, the `chain:__tick__` heartbeat, the daily `chain:ledger:<date>`, and
- * read-only access to the `run:` mirrors for the cost tally (a chain's cost sums every hop's runs).
+ * read-only access to the `run:` mirrors for the cost tally (a chain's cost sums every workflow's runs).
  * A missing row/config is `Option.none`, not a failure. All writes to `chain:*` go through this port
  * and only workflow-svc holds it — single-writer per key is structural.
  */

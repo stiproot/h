@@ -10,9 +10,9 @@ Small primitives; everything larger is a composition of them.
 - **Registry** — durable rows under a single-writer prefix in the flat keyspace.
 - **Watcher** — a registered policy + engine that *supervises* one workflow on the cron tick
   (terminate / retry / escalate). Registry `watch:*`; `h watch list`.
-- **Chain** — a registered policy + engine that *sequences* workflows on the cron tick (fire the next
-  hop when the last lands, threading state by parsing each hop's output). Registry `chain:*`;
-  `h chain list`.
+- **Chain** — a registered policy + engine that *sequences* workflows on the cron tick (fire the
+  next workflow when the last lands, threading state by parsing each one's output). Registry
+  `chain:*`; `h chain list`.
 
 Watcher and Chain are the same shape — a policy row + a pure `decide` + a cron-tick scan,
 single-writer, epoch-fenced — with different vocabularies. The invariant: **a workflow never
@@ -33,7 +33,7 @@ template ─(overlay ⊕)→ workflow definition ─(execute)→ workflow ─(ch
   `feature-pr → pr-review → revise`.
 
 Overlay vs chain is *where the agent's context breaks* — and a performance call: shared-context units
-must overlay, or you re-read context per hop.
+must overlay, or you re-read context per chained workflow.
 
 ## Principles
 

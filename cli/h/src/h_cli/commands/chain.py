@@ -1,24 +1,25 @@
 """h chain — temporal composition: sequence workflows through the durable chain engine.
 
 A chain is a registered policy the chain engine (workflow-svc) sequences on the cron tick,
-mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the hops
-run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable registry.
-State threads hop-to-hop IN THE ENGINE (it parses each hop's `===MARKER===` output into the
-chain's blackboard and builds the next hop's params), so the chained workflows stay chain-agnostic.
+mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the
+workflows run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable
+registry. State threads workflow-to-workflow IN THE ENGINE (it parses each workflow's
+`===MARKER===` output into the chain's blackboard and builds the next workflow's params), so the
+chained workflows stay chain-agnostic.
 
-The hop list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5), hand-parsed
-from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the EXPR flag
-names). Chain-identity flags (--slug/--spec/--issue/--strategy/--max-iterations) are ordinary
-options; everything hop-scoped is positional in the expression:
+The workflow list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5),
+hand-parsed from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the
+EXPR flag names). Chain-identity flags (--slug/--spec/--issue/--strategy/--max-iterations) are
+ordinary options; everything workflow-scoped is positional in the expression:
 
-    EXPR    := HOPFLAG* STAGE STAGE*        # HOPFLAGs before the first hop = chain-wide defaults
-    STAGE   := HOP ( --parallel HOP )*      # infix; parallel groups need the Phase-5 engine
-    HOP     := ( -w KEY | -t ATOM ATOM... ) HOPFLAG*
-    HOPFLAG := --agent A | --model M | --budget DUR | --fresh | --kind K
+    EXPR    := FLAG* STAGE STAGE*         # FLAGs before the first workflow = chain-wide defaults
+    STAGE   := WF ( --parallel WF )*      # infix; parallel groups need the Phase-5 engine
+    WF      := ( -w KEY | -t ATOM ATOM... ) FLAG*
+    FLAG    := --agent A | --model M | --budget DUR | --fresh | --kind K
 
 A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
-chain-scoped key `<slug>-h<N>`. Identity flags become fire-time params (§1.9): --agent maps to
-{runActivity, agentId}, --model to the hop kind's model params.
+chain-scoped key `<slug>-w<N>`. Identity flags become fire-time params (§1.9): --agent maps to
+{runActivity, agentId}, --model to the workflow kind's model params.
 """
 
 from typing import Annotated, Any
@@ -34,8 +35,8 @@ from h_cli.config import AGENT_IDENTITY
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
-    Hop,
-    HopConfig,
+    WorkflowConfig,
+    WorkflowRef,
     effective_config,
     parse_expr,
 )
@@ -46,12 +47,12 @@ app = typer.Typer(
 console = Console()
 err_console = Console(stderr=True)
 
-PER_HOP_BUDGET_MS = 45 * 60_000
+PER_WORKFLOW_BUDGET_MS = 45 * 60_000
 _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
 KNOWN_KINDS = ("feature-pr", "pr-review", "revise")
-# Well-known -w names → (kind, key fired). `revise` is a hop NAME, not a saved key: it re-fires
-# the implement hop's definition fresh (its key is rewritten to that hop's key after resolution).
+# Well-known -w names → (kind, key fired). `revise` is a workflow NAME, not a saved key: it
+# re-fires the implement workflow's definition fresh (its key is rewritten after resolution).
 WELL_KNOWN: dict[str, tuple[str, str]] = {
     "feature-pr": ("feature-pr", "feature-pr"),
     "pr-review": ("pr-review", "pr-review"),
@@ -93,7 +94,7 @@ def _guarded(fn: Any) -> Any:
         return fn()
     except httpx.HTTPError as err:
         err_console.print(f"[red]http:[/red] {err}")
-        err_console.print("Is workflow-svc running, and are the hops' workflows published?")
+        err_console.print("Is workflow-svc running, and are the chained workflows published?")
         raise typer.Exit(1) from err
 
 
@@ -104,8 +105,8 @@ def _budget_ms(raw: str) -> int:
     return int(digits) * unit
 
 
-def _identity_params(kind: str, cfg: HopConfig, label: str) -> dict[str, str]:
-    """HOPFLAG identity → the fire-time params the hop's template consumes (§1.9)."""
+def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, str]:
+    """FLAG identity → the fire-time params the workflow's template consumes (§1.9)."""
     params: dict[str, str] = {}
     if cfg.agent:
         if kind in FROZEN_EXECUTOR_KINDS:
@@ -129,7 +130,7 @@ def _identity_params(kind: str, cfg: HopConfig, label: str) -> dict[str, str]:
     return params
 
 
-def _check_identity_slots(key: str, cfg: HopConfig, kind: str) -> None:
+def _check_identity_slots(key: str, cfg: WorkflowConfig, kind: str) -> None:
     """A saved workflow published before fire-time identity has no param slots — fail loud on
     --agent (it would silently fire the baked identity), warn on --model (accepted limitation)."""
     stored = _guarded(lambda: workflow_svc.get(key))
@@ -149,46 +150,49 @@ def _check_identity_slots(key: str, cfg: HopConfig, kind: str) -> None:
             )
 
 
-def _resolve_hop(hop: Hop, cfg: HopConfig, slug: str, index: int) -> dict[str, Any]:
-    """One parsed hop → the engine's ChainHop entry {kind, key, instanceId, fresh, params?}."""
-    if hop.workflow:
-        if hop.workflow in WELL_KNOWN and not cfg.kind:
-            kind, key = WELL_KNOWN[hop.workflow]
+def _resolve_workflow(
+    workflow: WorkflowRef, cfg: WorkflowConfig, slug: str, index: int
+) -> dict[str, Any]:
+    """A parsed workflow → the engine's ChainWorkflow {kind, key, instanceId, fresh, params?}."""
+    if workflow.key:
+        if workflow.key in WELL_KNOWN and not cfg.kind:
+            kind, key = WELL_KNOWN[workflow.key]
         else:
-            key = hop.workflow
+            key = workflow.key
             if cfg.kind is None:
                 _fail(
-                    f"-w '{hop.workflow}' is not a well-known hop name "
+                    f"-w '{workflow.key}' is not a well-known workflow name "
                     f"({', '.join(WELL_KNOWN)}) — follow it with --kind "
                     f"(one of: {', '.join(KNOWN_KINDS)}) so the engine knows its threading "
                     "contract"
                 )
             kind = cfg.kind or ""
     else:
-        inferred = cfg.kind or TERMINAL_ATOM_KIND.get(hop.templates[-1])
+        inferred = cfg.kind or TERMINAL_ATOM_KIND.get(workflow.templates[-1])
         if inferred is None:
             _fail(
-                f"cannot infer the hop kind for `-t {' '.join(hop.templates)}` — end the group "
-                "with create-pr (its ===PR=== marker is the feature-pr contract) or pass --kind"
+                f"cannot infer the workflow kind for `-t {' '.join(workflow.templates)}` — "
+                "end the group with create-pr (its ===PR=== marker is the feature-pr contract) "
+                "or pass --kind"
             )
         kind = inferred or ""
-        key = f"{slug}-h{index}"
+        key = f"{slug}-w{index}"
     if kind not in KNOWN_KINDS:
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
-    params = _identity_params(kind, cfg, hop.label)
-    if hop.workflow is None:
+    params = _identity_params(kind, cfg, workflow.label)
+    if workflow.key is None:
         # Compose-on-fire: overlay the group's templates into one definition and publish it under
         # the chain-scoped key (idempotent — re-firing the chain republishes the same key).
-        merged = compose_templates(list(hop.templates))
+        merged = compose_templates(list(workflow.templates))
         _guarded(lambda: workflow_svc.save(key, merged["steps"], params=merged.get("params")))
-        console.print(f"==> composed [{' ⊕ '.join(hop.templates)}] published as '{key}'")
+        console.print(f"==> composed [{' ⊕ '.join(workflow.templates)}] published as '{key}'")
     elif params:
         _check_identity_slots(key, cfg, kind)
     if cfg.budget:
         _warn(
-            f"per-hop --budget on '{hop.label}' is not yet enforced (per-hop watch lands with "
-            "the engine's next slice); ignored"
+            f"per-workflow --budget on '{workflow.label}' is not yet enforced "
+            "(per-workflow watch lands with the engine's next slice); ignored"
         )
 
     prefix, fresh_default = KIND_FIRE[kind]
@@ -220,7 +224,7 @@ def run(
     strategy: Annotated[
         str,
         typer.Option(
-            help="Chain strategy: 'sequential' (run the hops once) or 'loop-until-clean' "
+            help="Chain strategy: 'sequential' (run the workflows once) or 'loop-until-clean' "
             "(repeat pr-review→revise until the review is CLEAN or --max-iterations)."
         ),
     ] = "sequential",
@@ -232,19 +236,19 @@ def run(
         ),
     ] = 3,
 ) -> None:
-    """Register a chain with the durable engine; it sequences the hops fire-and-forget.
+    """Register a chain with the durable engine; it sequences the workflows fire-and-forget.
 
-    The hop list is the chain EXPRESSION — everything after the chain-identity flags:
+    The workflow list is the chain EXPRESSION — everything after the chain-identity flags:
 
       -w KEY            fire this saved workflow (well-known names: feature-pr, pr-review, revise)
 
-      -t ATOM ATOM...   overlay these templates into ONE hop (composed and published on fire)
+      -t ATOM ATOM...   overlay these templates into ONE workflow (composed and published on fire)
 
-      --agent A --model M --budget DUR --fresh --kind K   bind to the hop they FOLLOW;
-                        before the first hop they set chain-wide defaults (a prefix --budget is
+      --agent A --model M --budget DUR --fresh --kind K   bind to the workflow they FOLLOW;
+                        before the first workflow they set chain-wide defaults (a prefix --budget is
                         the whole-chain wall clock: <n>m, <n>h, or milliseconds)
 
-      --parallel        joins adjacent hops into a parallel group (needs the Phase-5 engine)
+      --parallel        joins adjacent workflows into a parallel group (needs the Phase-5 engine)
 
     Default expression: -w feature-pr -w pr-review -w revise (a feature to a reviewed PR).
     Example:  h chain run --slug dark-mode --spec dark-mode.md \\
@@ -272,48 +276,57 @@ def run(
         if len(stage) > 1:
             _fail(
                 "--parallel groups need the 'parallel' chain strategy, which is not in the "
-                "engine yet (workflow-composition Phase 5) — sequence the hops for now."
+                "engine yet (workflow-composition Phase 5) — sequence the workflows for now."
             )
 
     spec_text = _resolve_spec(spec).read_text()
-    hops: list[dict[str, Any]] = []
-    for index, hop in enumerate(expr.hops):
-        cfg = effective_config(expr.defaults, hop.config)
-        hops.append(_resolve_hop(hop, cfg, slug, index))
-    # A revise hop re-fires the implement hop's INSTANCE, so it must fire that hop's definition —
-    # including a composed-on-fire derived key, not just the published 'feature-pr'.
-    implement_key = next((entry["key"] for entry in hops if entry["kind"] == "feature-pr"), None)
+    workflows: list[dict[str, Any]] = []
+    for index, workflow in enumerate(expr.workflows):
+        cfg = effective_config(expr.defaults, workflow.config)
+        workflows.append(_resolve_workflow(workflow, cfg, slug, index))
+    # A revise workflow re-fires the implement workflow's INSTANCE, so it must fire that same
+    # definition — including a composed-on-fire derived key, not just the published 'feature-pr'.
+    implement_key = next(
+        (entry["key"] for entry in workflows if entry["kind"] == "feature-pr"), None
+    )
     if implement_key:
-        for entry in hops:
+        for entry in workflows:
             if entry["kind"] == "revise":
                 entry["key"] = implement_key
 
     data: dict[str, Any] = {"slug": slug, "spec": spec_text}
     if issue is not None:
         data["issueNumber"] = str(issue)
-    body: dict[str, Any] = {"slug": slug, "hops": hops, "data": data, "strategy": strategy}
+    body: dict[str, Any] = {
+        "slug": slug,
+        "workflows": workflows,
+        "data": data,
+        "strategy": strategy,
+    }
     chain_budget = expr.defaults.budget
-    body["budgetMs"] = _budget_ms(chain_budget) if chain_budget else len(hops) * PER_HOP_BUDGET_MS
+    body["budgetMs"] = (
+        _budget_ms(chain_budget) if chain_budget else len(workflows) * PER_WORKFLOW_BUDGET_MS
+    )
 
     if strategy == "loop-until-clean":
-        # The loop body is pr-review→revise: the review hop is the predicate (CLEAN stops the
-        # loop), and the last hop loops back to it. Require both, in order.
-        kinds = [entry["kind"] for entry in hops]
+        # The loop body is pr-review→revise: the review workflow is the predicate (CLEAN stops the
+        # loop), and the last workflow loops back to it. Require both, in order.
+        kinds = [entry["kind"] for entry in workflows]
         if "pr-review" not in kinds:
-            _fail("loop-until-clean needs a 'pr-review' hop (the predicate).")
+            _fail("loop-until-clean needs a 'pr-review' workflow (the predicate).")
         start = kinds.index("pr-review")
-        if start >= len(hops) - 1:
-            _fail("loop-until-clean needs a hop after 'pr-review' (e.g. 'revise') to loop.")
+        if start >= len(workflows) - 1:
+            _fail("loop-until-clean needs a workflow after 'pr-review' (e.g. 'revise') to loop.")
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
     result = _guarded(lambda: workflow_svc.chain_run(body))
 
-    labels = [hop.label for hop in expr.hops]
+    labels = [workflow.label for workflow in expr.workflows]
     console.print(
         f"==> chain '{result['chainId']}' registered [{' -> '.join(labels)}] "
         f"(branch feature/{slug}, strategy={strategy})"
     )
-    console.print("    the chain engine sequences the hops on the cron tick — this does not block.")
+    console.print("    the chain engine sequences the workflows on the cron tick; non-blocking.")
     console.print(f"    watch it: h chain list  (or h workflow status feature-{slug})")
     console.print_json(data=result)
 
@@ -328,15 +341,15 @@ def list_() -> None:
         err_console.print("Is workflow-svc running? (make dev-tab)")
         raise typer.Exit(1) from err
     chains = result.get("chains", [])
-    table = Table("chain", "status", "hop", "outcome", title=f"chains ({len(chains)})")
+    table = Table("chain", "status", "workflow", "outcome", title=f"chains ({len(chains)})")
     for c in chains:
-        hops = c.get("hops", [])
+        workflows = c.get("workflows", [])
         cursor = c.get("cursor", 0)
-        kind = hops[cursor]["kind"] if 0 <= cursor < len(hops) else "-"
+        kind = workflows[cursor]["kind"] if 0 <= cursor < len(workflows) else "-"
         table.add_row(
             c.get("chainId", ""),
             c.get("status", ""),
-            f"{cursor + 1}/{len(hops)} ({kind})",
+            f"{cursor + 1}/{len(workflows)} ({kind})",
             c.get("outcome") or "-",
         )
     console.print(table)

@@ -3,15 +3,15 @@ import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { registerChainForFire } from "../../domain/chain-scan.ts";
-import { ChainHop, ChainStrategy } from "../../domain/models/chain.model.ts";
+import { ChainWorkflow, ChainStrategy } from "../../domain/models/chain.model.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
-// POST /chain/run body: the chain to register (the CLI builds the hops + their instanceIds). The
-// engine marks a row and fires hop 0, then the cron-tick scan sequences the rest — no blocking poll.
+// POST /chain/run body: the chain to register (the CLI builds the workflows + their instanceIds). The
+// engine marks a row and fires workflow 0, then the cron-tick scan sequences the rest — no blocking poll.
 const ChainRunRequest = Schema.Struct({
   slug: Schema.String,
-  hops: Schema.Array(ChainHop),
+  workflows: Schema.Array(ChainWorkflow),
   data: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
   strategy: Schema.optional(ChainStrategy),
   loop: Schema.optional(

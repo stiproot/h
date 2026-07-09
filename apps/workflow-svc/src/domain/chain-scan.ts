@@ -3,9 +3,14 @@ import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
 import { decide } from "./chain-engine.ts";
-import { type Blackboard, ChainThreadError, HOP_KINDS, reviewIsClean } from "./chain-hops.ts";
 import {
-  type ChainHop,
+  type Blackboard,
+  ChainThreadError,
+  WORKFLOW_KINDS,
+  reviewIsClean,
+} from "./chain-workflows.ts";
+import {
+  type ChainWorkflow,
   type ChainOutcome,
   type ChainRow,
   type ChainStrategy,
@@ -19,9 +24,9 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 /**
  * The effectful half of the chain engine, sibling of watch-scan.ts: registration on the fire path,
  * and the per-tick scan that reads each active chain row, asks the pure engine (chain-engine.ts)
- * what to do, and executes the closed vocabulary — wait, ADVANCE (capture the completed hop's
- * output into the blackboard, then fire the next hop), finalize (record + publish + cost tally),
- * budget-terminate. Where the watch engine RE-fires one instance, the chain FIRES THE NEXT hop.
+ * what to do, and executes the closed vocabulary — wait, ADVANCE (capture the completed workflow's
+ * output into the blackboard, then fire the next workflow), finalize (record + publish + cost tally),
+ * budget-terminate. Where the watch engine RE-fires one instance, the chain FIRES THE NEXT workflow.
  *
  * Every row-mutating action is epoch-fenced: it re-reads the row and no-ops when the epoch moved
  * (a re-registration created a new incarnation and this decision is stale).
@@ -42,29 +47,33 @@ export type ChainScanReport = {
   disabled?: boolean;
 };
 
-/** The instanceId a hop runs under: explicit on the hop, else derived from the chain + cursor. */
-export function hopInstanceId(chainId: string, hops: readonly ChainHop[], cursor: number): string {
-  return hops[cursor]?.instanceId ?? `${chainId}-h${cursor}`;
+/** The instanceId a workflow runs under: explicit on the workflow, else derived from the chain + cursor. */
+export function instanceIdAt(
+  chainId: string,
+  workflows: readonly ChainWorkflow[],
+  cursor: number,
+): string {
+  return workflows[cursor]?.instanceId ?? `${chainId}-w${cursor}`;
 }
 
 // ---------------------------------------------------------------------------
-// Registration (the fire choke point — marks the row, then fires hop 0)
+// Registration (the fire choke point — marks the row, then fires workflow 0)
 // ---------------------------------------------------------------------------
 
 export type ChainRegistration = {
   readonly slug: string;
-  readonly hops: readonly ChainHop[];
-  /** Initial blackboard — the inputs the first hop reads (slug, spec, issueNumber?). */
+  readonly workflows: readonly ChainWorkflow[];
+  /** Initial blackboard — the inputs the first workflow reads (slug, spec, issueNumber?). */
   readonly data: Blackboard;
   readonly strategy?: ChainStrategy;
-  /** For strategy "loop-until-clean": where the loop body starts (the review hop) + the cap. */
+  /** For strategy "loop-until-clean": where the loop body starts (the review workflow) + the cap. */
   readonly loop?: { readonly startCursor: number; readonly maxIterations: number };
   readonly budgetMs?: number;
   readonly meta?: Blackboard;
 };
 
 /**
- * Registers a chain (chainId = slug) and fires hop 0. Mark-before-fire: the `scheduling` row lands
+ * Registers a chain (chainId = slug) and fires workflow 0. Mark-before-fire: the `scheduling` row lands
  * before the invoke, so a crash between the two leaves a row the scan heals (UNKNOWN → orphaned)
  * instead of a silently unsequenced chain. Re-registering a slug bumps the epoch (fences any
  * in-flight scan decision). A dispatch failure finalizes the chain failed, never a dangling row.
@@ -79,12 +88,12 @@ export const registerChainForFire = (
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
     const data: Blackboard = { ...reg.data };
-    const instanceId = hopInstanceId(reg.slug, reg.hops, 0);
+    const instanceId = instanceIdAt(reg.slug, reg.workflows, 0);
     const row: ChainRow = {
       chainId: reg.slug,
       epoch: (Option.getOrUndefined(existing)?.epoch ?? 0) + 1,
       slug: reg.slug,
-      hops: reg.hops,
+      workflows: reg.workflows,
       strategy: reg.strategy ?? "sequential",
       ...(reg.loop ? { loop: { ...reg.loop, iterations: 0 } } : {}),
       ...(reg.budgetMs !== undefined ? { budgetMs: reg.budgetMs } : {}),
@@ -100,19 +109,21 @@ export const registerChainForFire = (
     };
     yield* cs.saveRow(row);
     yield* cs.bumpLedger(chainLedgerDate(nowMs), { chainsRegistered: 1 });
-    yield* fireHop(row, 0, traceparent).pipe(
-      Effect.catchAll((err) => finalizeFailed(row, `hop 0 dispatch failed: ${messageOf(err)}`)),
+    yield* fireWorkflow(row, 0, traceparent).pipe(
+      Effect.catchAll((err) =>
+        finalizeFailed(row, `workflow 0 dispatch failed: ${messageOf(err)}`),
+      ),
     );
     return { chainId: reg.slug, firing: true };
   });
 
 /**
- * Fires the hop at `cursor`: build its params from the blackboard (the engine-coded contract),
- * resolve its saved workflow, invoke under the hop's instanceId, and bump the ledger. Fails with a
+ * Fires the workflow at `cursor`: build its params from the blackboard (the engine-coded contract),
+ * resolve its saved workflow, invoke under the workflow's instanceId, and bump the ledger. Fails with a
  * WorkflowError the caller turns into a failed-chain finalize. Assumes the row already reflects this
  * cursor (registration and advance both mark-before-fire).
  */
-const fireHop = (
+const fireWorkflow = (
   row: ChainRow,
   cursor: number,
   traceparent: string | undefined,
@@ -121,32 +132,35 @@ const fireHop = (
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
     const wfStore = yield* WorkflowStore;
-    const hop = row.hops[cursor];
-    if (!hop) return;
+    const workflow = row.workflows[cursor];
+    if (!workflow) return;
     // A missing blackboard input (ChainThreadError) or any other build failure surfaces as a
-    // WorkflowError the caller turns into a failed-chain finalize. The hop's own params (fire-time
-    // identity from the CLI) merge OVER the threading params — disjoint by convention, hop wins.
+    // WorkflowError the caller turns into a failed-chain finalize. The workflow's own params (fire-time
+    // identity from the CLI) merge OVER the threading params — disjoint by convention, workflow wins.
     const params = yield* Effect.try({
-      try: () => ({ ...HOP_KINDS[hop.kind].buildParams(row.data), ...(hop.params ?? {}) }),
+      try: () => ({
+        ...WORKFLOW_KINDS[workflow.kind].buildParams(row.data),
+        ...(workflow.params ?? {}),
+      }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),
     });
-    const stored = yield* wfStore.get(hop.key);
+    const stored = yield* wfStore.get(workflow.key);
     if (Option.isNone(stored) || stored.value.disabled) {
       return yield* Effect.fail(
         new WorkflowError({
-          cause: `chain hop '${hop.kind}' key '${hop.key}' missing or disabled`,
+          cause: `chain workflow '${workflow.kind}' key '${workflow.key}' missing or disabled`,
           instanceId: row.chainId,
         }),
       );
     }
-    const instanceId = hopInstanceId(row.chainId, row.hops, cursor);
+    const instanceId = instanceIdAt(row.chainId, row.workflows, cursor);
     yield* invoker.invoke({
       ...toRequest(stored.value, traceparent, params),
       instanceId,
       // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
-      fresh: forceFresh || (hop.fresh ?? false),
+      fresh: forceFresh || (workflow.fresh ?? false),
     });
-    yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { hopsFired: 1 });
+    yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { workflowsFired: 1 });
   });
 
 // ---------------------------------------------------------------------------
@@ -196,7 +210,8 @@ const processRow = (
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
-    const instanceId = row.currentInstanceId ?? hopInstanceId(row.chainId, row.hops, row.cursor);
+    const instanceId =
+      row.currentInstanceId ?? instanceIdAt(row.chainId, row.workflows, row.cursor);
     // Transport failures read as UNKNOWN so the streak machinery owns them — sequencing must
     // outlive infra hiccups, exactly like the watch scan.
     const status = yield* invoker
@@ -205,8 +220,8 @@ const processRow = (
     const decision = decide(row, status.runtimeStatus, nowMs);
     const output = (status as { output?: string }).output;
     // loop-until-clean reinterprets the linear advance/finalize the pure engine gives (the engine
-    // stays strategy-agnostic; the predicate + loop-back need the output and the hop kinds, which
-    // live here). The review hop completing CLEAN finalizes; the last hop (revise) completing loops
+    // stays strategy-agnostic; the predicate + loop-back need the output and the workflow kinds, which
+    // live here). The review workflow completing CLEAN finalizes; the last workflow (revise) completing loops
     // back to re-review, until the iteration budget trips.
     const loop = row.strategy === "loop-until-clean" ? row.loop : undefined;
     switch (decision.kind) {
@@ -232,7 +247,7 @@ const processRow = (
       case "finalize": {
         if (loop && decision.outcome === "completed") {
           if (loop.iterations + 1 < loop.maxIterations) {
-            // The revise hop finished: loop back to the review hop (fresh re-fire), bump the counter.
+            // The revise workflow finished: loop back to the review workflow (fresh re-fire), bump the counter.
             return yield* executeAdvance(
               row,
               output,
@@ -249,7 +264,7 @@ const processRow = (
         return yield* executeFinalize(decision.row, decision.outcome, nowMs, report);
       }
       case "budget-terminate": {
-        // Terminate the current hop; the loser of a terminate race re-checks and treats an
+        // Terminate the current workflow; the loser of a terminate race re-checks and treats an
         // already-terminal instance as success. Anything else waits for the next tick.
         const terminated = yield* invoker.terminate(instanceId).pipe(
           Effect.as(true),
@@ -291,8 +306,8 @@ const saveFenced = (
   });
 
 /**
- * The current hop completed and a next hop remains: capture the completed hop's OUTPUT into the
- * blackboard (engine code, not an actor), build the next hop's params, and fire it. Mark-before-fire
+ * The current workflow completed and a next workflow remains: capture the completed workflow's OUTPUT into the
+ * blackboard (engine code, not an actor), build the next workflow's params, and fire it. Mark-before-fire
  * fenced on the OLD epoch; a build/dispatch failure finalizes the chain failed so it never loops.
  */
 const executeAdvance = (
@@ -305,12 +320,12 @@ const executeAdvance = (
   report: ChainScanReport,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
-    // Capture what the just-completed hop produced (===PR===/===REVIEW===) into a fresh blackboard.
+    // Capture what the just-completed workflow produced (===PR===/===REVIEW===) into a fresh blackboard.
     const data: Blackboard = { ...row.data };
-    HOP_KINDS[row.hops[row.cursor].kind].capture(completedOutput, data);
+    WORKFLOW_KINDS[row.workflows[row.cursor].kind].capture(completedOutput, data);
 
     const now = new Date(nowMs).toISOString();
-    const instanceId = hopInstanceId(row.chainId, row.hops, nextCursor);
+    const instanceId = instanceIdAt(row.chainId, row.workflows, nextCursor);
     // A loop-back re-enters the loop body: bump the iteration counter and re-fire fresh (the target
     // instance is terminal from the prior pass).
     const loop =
@@ -326,17 +341,17 @@ const executeAdvance = (
       unknownStreak: 0,
       ...(loop ? { loop } : {}),
       note: loopBack
-        ? `loop back to hop ${nextCursor} (${row.hops[nextCursor].kind}), iteration ${loop?.iterations}`
-        : `advanced to hop ${nextCursor} (${row.hops[nextCursor].kind})`,
+        ? `loop back to workflow ${nextCursor} (${row.workflows[nextCursor].kind}), iteration ${loop?.iterations}`
+        : `advanced to workflow ${nextCursor} (${row.workflows[nextCursor].kind})`,
       updatedAt: now,
     };
     // Mark-before-fire, fenced on the OLD epoch — a concurrent re-registration wins and this drops.
     const saved = yield* saveFenced(row.epoch, next);
     if (!saved) return;
-    yield* fireHop(next, nextCursor, traceparent, loopBack).pipe(
+    yield* fireWorkflow(next, nextCursor, traceparent, loopBack).pipe(
       Effect.tap(() =>
         Effect.sync(() => {
-          report.advanced.push(`${row.chainId}:h${nextCursor}:${row.hops[nextCursor].kind}`);
+          report.advanced.push(`${row.chainId}:w${nextCursor}:${row.workflows[nextCursor].kind}`);
         }),
       ),
       // A failed advance finalizes the chain failed (fenced on the NEW epoch) — never loop.
@@ -345,7 +360,7 @@ const executeAdvance = (
           ...next,
           status: "finalized",
           outcome: "failed",
-          note: `advance to hop ${nextCursor} failed: ${messageOf(err)}`,
+          note: `advance to workflow ${nextCursor} failed: ${messageOf(err)}`,
           lastStatus: "FAILED",
           endedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -385,7 +400,7 @@ const executeFinalize = (
         runtimeStatus: final.lastStatus,
         watcher: "workflow-svc",
         slug: row.slug,
-        hops: row.hops.length,
+        workflows: row.workflows.length,
         reachedCursor: row.cursor,
         startedAt: row.startedAt,
         endedAt,
@@ -411,12 +426,12 @@ const finalizeFailed = (
   }).pipe(Effect.asVoid);
 
 // ---------------------------------------------------------------------------
-// Cost tally — sum over the run mirrors of every hop instance the chain ran
+// Cost tally — sum over the run mirrors of every workflow instance the chain ran
 // ---------------------------------------------------------------------------
 
 /**
- * A chain's cost is every hop's cost: sum costUsd over run mirrors grouping under any instanceId the
- * chain ran (hops 0..cursor; a shared instanceId, e.g. feature+revise, is counted once via the set).
+ * A chain's cost is every workflow's cost: sum costUsd over run mirrors grouping under any instanceId the
+ * chain ran (workflows 0..cursor; a shared instanceId, e.g. feature+revise, is counted once via the set).
  * Zero matching records is a LEDGER GAP — flagged, never a silent $0 (the watch tally's rule).
  */
 export const tallyChainCost = (
@@ -425,8 +440,8 @@ export const tallyChainCost = (
   Effect.gen(function* () {
     const cs = yield* ChainStore;
     const ran = new Set<string>();
-    for (let c = 0; c <= row.cursor && c < row.hops.length; c++) {
-      ran.add(hopInstanceId(row.chainId, row.hops, c));
+    for (let c = 0; c <= row.cursor && c < row.workflows.length; c++) {
+      ran.add(instanceIdAt(row.chainId, row.workflows, c));
     }
     const keys = yield* cs.listRunKeys();
     const mine = keys.filter((key) => [...ran].some((id) => key.startsWith(`run:${id}:`)));

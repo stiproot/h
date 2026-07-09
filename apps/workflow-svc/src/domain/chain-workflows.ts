@@ -1,10 +1,10 @@
-import type { ChainHopKind } from "./models/chain.model.ts";
+import type { ChainWorkflowKind } from "./models/chain.model.ts";
 
 /**
- * The engine-coded hop port contracts — how each hop KIND threads state through the chain's
+ * The engine-coded workflow port contracts — how each workflow KIND threads state through the chain's
  * blackboard (the row's `data`). This is the durable, machine-code home of what Phase 1 proved live
  * as the CLI's `CHAIN_TEMPLATES` closures (cli/h/src/h_cli/commands/chain.py): `buildParams(data)`
- * reads the blackboard for a hop's fire-params, `capture(output, data)` parses the hop's OUTPUT
+ * reads the blackboard for a workflow's fire-params, `capture(output, data)` parses the workflow's OUTPUT
  * markers back into it. Threading is engine code, never a config DSL (mirrors the watcher's ruling
  * W3), and it reads the workflow's output — NOT a chain actor — so the workflows it chains stay
  * chain-agnostic (params in, `===MARKER===` out) and runnable standalone.
@@ -18,14 +18,14 @@ export type Blackboard = Record<string, unknown>;
 
 export class ChainThreadError extends Error {}
 
-export interface HopContract {
-  /** Blackboard → the hop's fire-time params. Throws ChainThreadError if a required input is absent. */
+export interface WorkflowContract {
+  /** Blackboard → the workflow's fire-time params. Throws ChainThreadError if a required input is absent. */
   readonly buildParams: (data: Blackboard) => Record<string, unknown>;
-  /** Parse the hop's workflow output and write what it produced back into the blackboard (in place). */
+  /** Parse the workflow's workflow output and write what it produced back into the blackboard (in place). */
   readonly capture: (output: string | undefined, data: Blackboard) => void;
 }
 
-// The revise hop re-fires feature-pr on the same branch; its spec tells the agent to address the
+// The revise workflow re-fires feature-pr on the same branch; its spec tells the agent to address the
 // review feedback. With the #20 epilogue, the agent fetches the unresolved threads itself, then
 // replies inline and resolves them — so the spec just hands over the review summary as context.
 const REVISE_SPEC_PREAMBLE =
@@ -90,7 +90,7 @@ export function captureReview(output: string | undefined, data: Blackboard): voi
 }
 
 /**
- * The loop-until-clean predicate: is a review hop's output CLEAN? The pr-review template ends
+ * The loop-until-clean predicate: is a review workflow's output CLEAN? The pr-review template ends
  * `===REVIEW===` then either the findings or `CLEAN`, so no marker, an empty tail, or a first line of
  * `CLEAN` (case-insensitive) all mean nothing left to address — the loop stops.
  */
@@ -106,7 +106,7 @@ function requireStr(data: Blackboard, key: string, hint: string): string {
   return v;
 }
 
-export const HOP_KINDS: Record<ChainHopKind, HopContract> = {
+export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
   // Implements the issue and opens/updates its PR. Reads the feature spec; captures the PR it opened.
   "feature-pr": {
     buildParams: (data) => {
@@ -120,14 +120,14 @@ export const HOP_KINDS: Record<ChainHopKind, HopContract> = {
     },
     capture: capturePr,
   },
-  // Reviews the PR the previous hop opened; captures the review findings for a revise hop.
+  // Reviews the PR the previous workflow opened; captures the review findings for a revise workflow.
   "pr-review": {
     buildParams: (data) => {
       const pr = data.prNumber;
       if (typeof pr !== "string" || pr === "") {
         throw new ChainThreadError(
-          "pr-review needs a PR number, but the previous hop produced none " +
-            "(no ===PR=== marker in its output). Did the feature hop open a PR?",
+          "pr-review needs a PR number, but the previous workflow produced none " +
+            "(no ===PR=== marker in its output). Did the feature workflow open a PR?",
         );
       }
       return { pr };

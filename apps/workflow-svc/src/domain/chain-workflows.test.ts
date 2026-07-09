@@ -5,10 +5,10 @@ import {
   type Blackboard,
   capturePr,
   ChainThreadError,
-  HOP_KINDS,
+  WORKFLOW_KINDS,
   reviewIsClean,
   stepOutputs,
-} from "./chain-hops.ts";
+} from "./chain-workflows.ts";
 
 // A workflow result as the generic workflow returns it: { <stepId>: { output: "..." }, ... }.
 function result(outputs: Record<string, string>): string {
@@ -84,9 +84,9 @@ describe("reviewIsClean (loop-until-clean predicate)", () => {
   });
 });
 
-describe("HOP_KINDS.feature-pr", () => {
+describe("WORKFLOW_KINDS.feature-pr", () => {
   it("builds slug/spec params and passes issueNumber through when present", () => {
-    const params = HOP_KINDS["feature-pr"].buildParams({
+    const params = WORKFLOW_KINDS["feature-pr"].buildParams({
       slug: "x",
       spec: "do it",
       issueNumber: "7",
@@ -95,37 +95,40 @@ describe("HOP_KINDS.feature-pr", () => {
   });
 
   it("omits issueNumber when absent", () => {
-    expect(HOP_KINDS["feature-pr"].buildParams({ slug: "x", spec: "do it" })).toEqual({
+    expect(WORKFLOW_KINDS["feature-pr"].buildParams({ slug: "x", spec: "do it" })).toEqual({
       slug: "x",
       spec: "do it",
     });
   });
 
   it("throws when a required input is missing", () => {
-    expect(() => HOP_KINDS["feature-pr"].buildParams({ slug: "x" })).toThrow(ChainThreadError);
+    expect(() => WORKFLOW_KINDS["feature-pr"].buildParams({ slug: "x" })).toThrow(ChainThreadError);
   });
 });
 
-describe("HOP_KINDS.pr-review", () => {
+describe("WORKFLOW_KINDS.pr-review", () => {
   it("maps the captured prNumber to the pr param", () => {
-    expect(HOP_KINDS["pr-review"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
+    expect(WORKFLOW_KINDS["pr-review"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
   });
 
-  it("throws a clear error when the previous hop produced no PR number", () => {
-    expect(() => HOP_KINDS["pr-review"].buildParams({})).toThrow(/needs a PR number/);
+  it("throws a clear error when the previous workflow produced no PR number", () => {
+    expect(() => WORKFLOW_KINDS["pr-review"].buildParams({})).toThrow(/needs a PR number/);
   });
 });
 
-describe("HOP_KINDS.revise", () => {
+describe("WORKFLOW_KINDS.revise", () => {
   it("folds the review findings into the spec preamble", () => {
-    const params = HOP_KINDS.revise.buildParams({ slug: "x", reviewFindings: "file.ts:12 — bug" });
+    const params = WORKFLOW_KINDS.revise.buildParams({
+      slug: "x",
+      reviewFindings: "file.ts:12 — bug",
+    });
     expect(params.slug).toBe("x");
     expect(String(params.spec)).toContain("===REVIEW SUMMARY===");
     expect(String(params.spec)).toContain("file.ts:12 — bug");
   });
 
   it("uses a placeholder when there were no findings (a CLEAN review)", () => {
-    const params = HOP_KINDS.revise.buildParams({ slug: "x", reviewFindings: "" });
+    const params = WORKFLOW_KINDS.revise.buildParams({ slug: "x", reviewFindings: "" });
     expect(String(params.spec)).toContain("(no findings reported)");
   });
 });

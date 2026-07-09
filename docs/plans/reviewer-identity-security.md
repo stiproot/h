@@ -15,7 +15,7 @@ re-point the reviewer at a full-tool agent. It got the `modelReview` param only.
 
 ## Interim ruling (2026-07-09)
 
-`--agent` on a frozen-executor hop **logs a warning and defaults to the hardcoded executor** — it
+`--agent` on a frozen-executor workflow **logs a warning and defaults to the hardcoded executor** — it
 does not error, and it must never silently comply. The warning names the invariant and this doc.
 
 ## To flesh out later

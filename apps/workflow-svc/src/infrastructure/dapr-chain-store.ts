@@ -137,7 +137,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
         const current = yield* getLedger(date);
         const next: ChainLedger = {
           chainsRegistered: current.chainsRegistered + (delta.chainsRegistered ?? 0),
-          hopsFired: current.hopsFired + (delta.hopsFired ?? 0),
+          workflowsFired: current.workflowsFired + (delta.workflowsFired ?? 0),
           chainsFinalized: current.chainsFinalized + (delta.chainsFinalized ?? 0),
           costUsd: Math.round((current.costUsd + (delta.costUsd ?? 0)) * 10_000) / 10_000,
         };

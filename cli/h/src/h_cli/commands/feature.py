@@ -170,9 +170,7 @@ def run(
         agent_url = resolve_agent_url(agent)
         if agent_url is None:
             err_console.print(f"[red]Unknown agent[/red] '{agent}'")
-            err_console.print(
-                "Known agents: " + ", ".join(sorted(AGENT_URLS)) + " (or a full URL)"
-            )
+            err_console.print("Known agents: " + ", ".join(sorted(AGENT_URLS)) + " (or a full URL)")
             raise typer.Exit(1)
         definition = yaml.safe_load(rendered)
         body = {k: definition[k] for k in ("instanceId", "steps") if k in definition}

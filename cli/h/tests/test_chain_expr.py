@@ -9,8 +9,8 @@ import pytest
 from h_cli.infrastructure.chain_expr import (
     ChainExpr,
     ExprError,
-    Hop,
-    HopConfig,
+    WorkflowConfig,
+    WorkflowRef,
     effective_config,
     parse_expr,
 )
@@ -20,28 +20,28 @@ from h_cli.infrastructure.chain_expr import (
 
 def test_single_workflow_hop() -> None:
     expr = parse_expr(["-w", "feature-pr"])
-    assert expr.stages == ((Hop(workflow="feature-pr"),),)
+    assert expr.stages == ((WorkflowRef(key="feature-pr"),),)
 
 
 def test_template_group_collects_operands_until_next_flag() -> None:
     expr = parse_expr(["-t", "feature", "verify", "create-pr", "-w", "pr-review"])
     assert expr.stages == (
-        (Hop(templates=("feature", "verify", "create-pr")),),
-        (Hop(workflow="pr-review"),),
+        (WorkflowRef(templates=("feature", "verify", "create-pr")),),
+        (WorkflowRef(key="pr-review"),),
     )
 
 
 def test_sequential_adjacency_orders_stages() -> None:
     expr = parse_expr(["-w", "a", "-w", "b", "-t", "x", "y"])
-    assert [h.label for h in expr.hops] == ["a", "b", "x+y"]
+    assert [h.label for h in expr.workflows] == ["a", "b", "x+y"]
     assert len(expr.stages) == 3
 
 
 def test_parallel_joins_adjacent_hops_into_one_stage() -> None:
     expr = parse_expr(["-w", "lint", "--parallel", "-w", "typecheck", "-w", "report"])
     assert expr.stages == (
-        (Hop(workflow="lint"), Hop(workflow="typecheck")),
-        (Hop(workflow="report"),),
+        (WorkflowRef(key="lint"), WorkflowRef(key="typecheck")),
+        (WorkflowRef(key="report"),),
     )
 
 
@@ -67,41 +67,43 @@ def test_suffix_flags_bind_to_the_hop_they_follow() -> None:
             "-w", "revise", "--fresh",
         ]
     )  # fmt: skip
-    implement, review, revise = expr.hops
-    assert implement.config == HopConfig(agent="claude", model="opus")
-    assert review.config == HopConfig(agent="openhands", model="deepseek", budget="15m")
-    assert revise.config == HopConfig(fresh=True)
+    implement, review, revise = expr.workflows
+    assert implement.config == WorkflowConfig(agent="claude", model="opus")
+    assert review.config == WorkflowConfig(agent="openhands", model="deepseek", budget="15m")
+    assert revise.config == WorkflowConfig(fresh=True)
 
 
 def test_prefix_flags_set_chain_wide_defaults() -> None:
     expr = parse_expr(["--agent", "openhands", "--budget", "45m", "-w", "a", "-w", "b"])
-    assert expr.defaults == HopConfig(agent="openhands", budget="45m")
-    assert all(h.config == HopConfig() for h in expr.hops)
+    assert expr.defaults == WorkflowConfig(agent="openhands", budget="45m")
+    assert all(h.config == WorkflowConfig() for h in expr.workflows)
 
 
 def test_effective_config_hop_overrides_default_field_by_field() -> None:
-    defaults = HopConfig(agent="openhands", model="deepseek", budget="45m")
-    hop = HopConfig(agent="claude", budget="15m")
-    assert effective_config(defaults, hop) == HopConfig(
+    defaults = WorkflowConfig(agent="openhands", model="deepseek", budget="45m")
+    workflow = WorkflowConfig(agent="claude", budget="15m")
+    assert effective_config(defaults, workflow) == WorkflowConfig(
         agent="claude", model="deepseek", budget="15m"
     )
 
 
 def test_effective_config_kind_never_inherits_from_defaults() -> None:
-    assert effective_config(HopConfig(), HopConfig(kind="feature-pr")).kind == "feature-pr"
-    assert effective_config(HopConfig(), HopConfig()).kind is None
+    assert (
+        effective_config(WorkflowConfig(), WorkflowConfig(kind="feature-pr")).kind == "feature-pr"
+    )
+    assert effective_config(WorkflowConfig(), WorkflowConfig()).kind is None
 
 
 def test_kind_binds_per_hop() -> None:
     expr = parse_expr(["-t", "feature", "create-pr", "--kind", "feature-pr"])
-    assert expr.hops[0].config.kind == "feature-pr"
+    assert expr.workflows[0].config.kind == "feature-pr"
 
 
 def test_flags_scope_across_a_parallel_connector() -> None:
     expr = parse_expr(["-w", "a", "--fresh", "--parallel", "-w", "b", "--agent", "claude"])
     ((a, b),) = expr.stages
-    assert a.config == HopConfig(fresh=True)
-    assert b.config == HopConfig(agent="claude")
+    assert a.config == WorkflowConfig(fresh=True)
+    assert b.config == WorkflowConfig(agent="claude")
 
 
 # --- errors: every grammar violation is a clear ExprError ------------------------------------
@@ -110,8 +112,8 @@ def test_flags_scope_across_a_parallel_connector() -> None:
 @pytest.mark.parametrize(
     ("tokens", "fragment"),
     [
-        ([], "at least one hop"),
-        (["--agent", "x"], "at least one hop"),  # prefix defaults but no hops
+        ([], "at least one workflow"),
+        (["--agent", "x"], "at least one workflow"),  # prefix defaults but no workflows
         (["-w"], "-w needs a saved-workflow key"),
         (["-w", "--fresh"], "-w needs a saved-workflow key"),
         (["-t", "-w", "a"], "-t needs at least one template"),
@@ -123,14 +125,14 @@ def test_flags_scope_across_a_parallel_connector() -> None:
         (["-w", "a", "--agent"], "--agent needs a value"),
         (["-w", "a", "--budget", "-w"], "--budget needs a value"),
         (["-w", "a", "--budget", "soon"], "bad --budget"),
-        (["--kind", "feature-pr", "-w", "a"], "per-hop only"),
+        (["--kind", "feature-pr", "-w", "a"], "per-workflow only"),
         (["-w", "a", "--agent", "x", "--agent", "y"], "duplicate --agent"),
         (["-w", "a", "--fresh", "--fresh"], "duplicate --fresh"),
         (["--agent", "x", "--agent", "y", "-w", "a"], "duplicate --agent"),
         (["-w", "a", "--retry", "3"], "unknown token '--retry'"),
         (["-w", "a", "b"], "unexpected operand 'b'"),
         (["stray", "-w", "a"], "unexpected operand 'stray'"),
-        (["-w", "a", "--parallel", "--agent", "x", "-w", "b"], "must follow a hop"),
+        (["-w", "a", "--parallel", "--agent", "x", "-w", "b"], "must follow a workflow"),
     ],
 )
 def test_grammar_violations(tokens: list[str], fragment: str) -> None:
@@ -141,10 +143,10 @@ def test_grammar_violations(tokens: list[str], fragment: str) -> None:
 def test_budget_accepts_minutes_hours_and_bare_ms() -> None:
     for raw in ("45m", "2h", "60000"):
         expr = parse_expr(["-w", "a", "--budget", raw])
-        assert expr.hops[0].config.budget == raw
+        assert expr.workflows[0].config.budget == raw
 
 
 def test_hops_property_flattens_stages_in_order() -> None:
     expr = parse_expr(["-w", "a", "--parallel", "-w", "b", "-w", "c"])
     assert isinstance(expr, ChainExpr)
-    assert [h.label for h in expr.hops] == ["a", "b", "c"]
+    assert [h.label for h in expr.workflows] == ["a", "b", "c"]
