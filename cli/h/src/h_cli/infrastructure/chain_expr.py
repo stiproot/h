@@ -1,0 +1,195 @@
+"""The chain expression parser — the ordered hop grammar of `h chain run`.
+
+Pure and dependency-free (sibling of overlay.py): tokens in, structure out, no Typer/click/network.
+The grammar (docs/plans/chain-composition-surface.md §1.5):
+
+    EXPR    := HOPFLAG* STAGE STAGE*        # HOPFLAGs before the first hop = chain-wide defaults
+    STAGE   := HOP ( "--parallel" HOP )*    # infix --parallel joins hops into one parallel group
+    HOP     := ( "-w" KEY | "-t" ATOM ATOM* ) HOPFLAG*
+    HOPFLAG := "--agent" A | "--model" M | "--budget" DUR | "--fresh" | "--kind" K
+
+Scope is position (never dash count): a HOPFLAG binds to the hop it follows; before any hop it
+sets a chain-wide default a hop can override. Adjacent stages run sequentially; a parallel group
+has an implied join barrier. Typer must never declare these flag names on `h chain run` — click
+consumes declared options wherever they appear in argv, which would destroy their position.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field, replace
+
+VALUE_FLAGS = ("--agent", "--model", "--budget", "--kind")
+BOOL_FLAGS = ("--fresh",)
+CONNECTOR = "--parallel"
+HOP_INTRODUCERS = ("-w", "-t")
+
+# A watch/chain budget: <n>m, <n>h, or bare milliseconds — validated here so a typo fails at
+# parse time, not minutes later in the engine.
+_BUDGET_RE = re.compile(r"^\d+[mh]?$")
+
+
+class ExprError(ValueError):
+    """A user-presentable chain-expression parse error (str(err) is the message)."""
+
+
+@dataclass(frozen=True)
+class HopConfig:
+    """Per-hop config carried by HOPFLAGs; every field optional (None/False = not given)."""
+
+    agent: str | None = None
+    model: str | None = None
+    budget: str | None = None  # raw duration token, validated against _BUDGET_RE
+    fresh: bool = False
+    kind: str | None = None
+
+
+@dataclass(frozen=True)
+class Hop:
+    """One hop: a saved-workflow key (-w) XOR a template group to compose-on-fire (-t)."""
+
+    workflow: str | None = None
+    templates: tuple[str, ...] = ()
+    config: HopConfig = field(default_factory=HopConfig)
+
+    @property
+    def label(self) -> str:
+        return self.workflow if self.workflow else "+".join(self.templates)
+
+
+@dataclass(frozen=True)
+class ChainExpr:
+    """The parsed expression: chain-wide defaults + ordered stages (each a parallel group)."""
+
+    defaults: HopConfig = field(default_factory=HopConfig)
+    stages: tuple[tuple[Hop, ...], ...] = ()
+
+    @property
+    def hops(self) -> tuple[Hop, ...]:
+        return tuple(hop for stage in self.stages for hop in stage)
+
+
+def effective_config(defaults: HopConfig, hop: HopConfig) -> HopConfig:
+    """The hop's config over the chain-wide defaults, field by field (hop wins where given)."""
+    return HopConfig(
+        agent=hop.agent if hop.agent is not None else defaults.agent,
+        model=hop.model if hop.model is not None else defaults.model,
+        budget=hop.budget if hop.budget is not None else defaults.budget,
+        fresh=hop.fresh or defaults.fresh,
+        kind=hop.kind,  # kind is per-hop only; defaults never carry one (parser enforces)
+    )
+
+
+def _validated(flag: str, value: str) -> str:
+    if flag == "--budget" and not _BUDGET_RE.match(value):
+        raise ExprError(f"bad {flag} '{value}' — expected milliseconds, <n>m, or <n>h (e.g. 45m)")
+    return value
+
+
+def _set_flag(config: HopConfig, flag: str, value: str | bool, where: str) -> HopConfig:
+    name = flag.lstrip("-")
+    current = getattr(config, name)
+    if current not in (None, False):
+        raise ExprError(f"duplicate {flag} {where}")
+    return replace(config, **{name: value})
+
+
+def parse_expr(tokens: list[str]) -> ChainExpr:
+    """Parse the ordered EXPR tokens (everything Typer didn't consume) into a ChainExpr.
+
+    Raises ExprError with a user-presentable message on any grammar violation — unknown tokens,
+    a hop introducer without operands, a value flag without a value, --parallel outside an
+    infix position, duplicate flags on one hop, --kind in the prefix.
+    """
+    defaults = HopConfig()
+    stages: list[list[Hop]] = []
+    current: Hop | None = None  # the hop whose suffix HOPFLAGs are being collected
+    joining = False  # a --parallel is pending: the next hop joins the current stage
+    i = 0
+    n = len(tokens)
+
+    def flag_value(flag: str) -> str:
+        nonlocal i
+        if i + 1 >= n or tokens[i + 1].startswith("-"):
+            raise ExprError(f"{flag} needs a value")
+        i += 1
+        return _validated(flag, tokens[i])
+
+    def finish_hop() -> None:
+        nonlocal current, joining
+        if current is None:
+            return
+        if joining:
+            stages[-1].append(current)
+            joining = False
+        else:
+            stages.append([current])
+        current = None
+
+    while i < n:
+        token = tokens[i]
+        if token in HOP_INTRODUCERS:
+            finish_hop()
+            if token == "-w":
+                if i + 1 >= n or tokens[i + 1].startswith("-"):
+                    raise ExprError("-w needs a saved-workflow key")
+                i += 1
+                current = Hop(workflow=tokens[i])
+            else:
+                atoms: list[str] = []
+                while i + 1 < n and not tokens[i + 1].startswith("-"):
+                    i += 1
+                    atoms.append(tokens[i])
+                if not atoms:
+                    raise ExprError("-t needs at least one template operand")
+                current = Hop(templates=tuple(atoms))
+        elif token == CONNECTOR:
+            if current is None:
+                # Covers a connector at the start, in the prefix, and two connectors in a row.
+                raise ExprError("--parallel is an infix connector — it must sit between two hops")
+            # The hop to the left closes into its stage; the next hop joins that same stage
+            # (A --parallel B --parallel C chains into one three-way group).
+            finish_hop()
+            joining = True
+        elif token in VALUE_FLAGS:
+            flag = token
+            value = flag_value(flag)
+            if current is not None:
+                current = replace(
+                    current,
+                    config=_set_flag(current.config, flag, value, f"on hop '{current.label}'"),
+                )
+            elif not stages:
+                if flag == "--kind":
+                    raise ExprError("--kind is per-hop only — place it after a -w/-t hop")
+                defaults = _set_flag(defaults, flag, value, "in the chain-wide prefix")
+            else:
+                raise ExprError(f"{flag} must follow a hop (or precede the first hop as a default)")
+        elif token in BOOL_FLAGS:
+            if current is not None:
+                current = replace(
+                    current,
+                    config=_set_flag(current.config, token, True, f"on hop '{current.label}'"),
+                )
+            elif not stages:
+                defaults = _set_flag(defaults, token, True, "in the chain-wide prefix")
+            else:
+                raise ExprError(
+                    f"{token} must follow a hop (or precede the first hop as a default)"
+                )
+        elif token.startswith("-"):
+            known = ", ".join((*HOP_INTRODUCERS, CONNECTOR, *VALUE_FLAGS, *BOOL_FLAGS))
+            raise ExprError(f"unknown token '{token}' in the chain expression — known: {known}")
+        else:
+            raise ExprError(
+                f"unexpected operand '{token}' — bare operands only follow -t (templates); "
+                "a -w hop takes exactly one key"
+            )
+        i += 1
+
+    if joining and current is None:
+        raise ExprError("--parallel is an infix connector — it must sit between two hops")
+    finish_hop()
+    if not stages:
+        raise ExprError("the chain expression needs at least one hop (-w KEY or -t TEMPLATE...)")
+    return ChainExpr(defaults=defaults, stages=tuple(tuple(stage) for stage in stages))
