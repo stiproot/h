@@ -248,10 +248,10 @@ later, agent by agent. The CLI does not gate on it.
 executor is hardcoded to claude-coder DELIBERATELY — its MCP surface is github-only because the PR
 diff is untrusted third-party text (no workflows/dapr/obs tools, no Linear/Notion secrets).
 Identity-as-params would let any fire re-point the reviewer at a full-tool agent, so slice C gave
-pr-review the `modelReview` param only and left its executor frozen. Consequence: `--agent` on a
-pr-review hop cannot work until either (a) the invariant is relaxed to an allowlist of
-minimal-surface reviewer agents, or (b) it stays frozen and the CLI errors clearly. "Review with
-openhands" specifically requires an openhands deployment with a comparably minimal tool surface.
+pr-review the `modelReview` param only and left its executor frozen. **RULED (2026-07-09):**
+`--agent` on a frozen-executor hop logs a warning and defaults to the hardcoded executor — never
+an error, never silent compliance. The future allowlist of minimal-surface reviewer agents is
+sketched in [reviewer-identity-security.md](./reviewer-identity-security.md) (stub, to flesh out).
 
 ---
 
@@ -530,3 +530,21 @@ no-migration-windows convention.
   (untrusted diff → minimal MCP surface), not a bakeable default — it got `modelReview` only; the
   `--agent`-on-pr-review question is now an explicit open ruling (see Framing). Next: slice D
   (chain cutover) — blocked on that ruling only for the pr-review hop; everything else is ready.
+- **2026-07-09 (ruling + slice D landed).** Frozen-executor ruling: `--agent` on such a hop WARNS
+  and keeps the published executor (never errors, never silently complies) — captured in the new
+  stub plan [reviewer-identity-security.md](./reviewer-identity-security.md). **Slice D:**
+  `h chain run` is the EXPR surface — Typer keeps only chain-identity flags
+  (`--slug/--spec/--issue/--strategy/--max-iterations`); the expression tokens fall through via
+  `allow_extra_args`+`ignore_unknown_options` to `parse_expr`. `-w` resolves well-known names
+  (feature-pr/pr-review/revise — `HOP_SPECS` became the `WELL_KNOWN`/`KIND_FIRE` hint tables) or
+  any saved key with an explicit `--kind`; `-t` groups compose-on-fire (overlay → publish under
+  the chain-scoped key `<slug>-h<N>`, kind inferred from the terminal atom, `--kind` override); a
+  revise hop's key is rewritten to the implement hop's (possibly derived) key. Identity HOPFLAGs →
+  per-hop fire-time params via `AGENT_IDENTITY` (explicit table in config.py) + per-kind model
+  slots; `-w` hops with identity flags are slot-checked against the stored defaults (fail loud on
+  `--agent`, warn on `--model`). Engine: `ChainHop.params` + fireHop merges hop params OVER
+  buildParams. `--parallel` and per-hop `--budget` error/warn clearly (slice E/F). BREAKING:
+  chain `--budget` moved into the EXPR prefix and is a duration token (`90m`), no longer bare
+  minutes; old `-t <hop-kind>` spelling cut atomically (use `-w`). Suites green: h-cli 138
+  (+9 chain tests), workflow-svc 141. Remaining: slice E (per-hop watch budgets), slice F
+  (parallel strategy + `stages` model).

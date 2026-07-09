@@ -156,6 +156,33 @@ describe("registerChainForFire", () => {
     });
   });
 
+  it("merges the hop's own params OVER the kind contract's threading params", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const hops = [
+      {
+        kind: "feature-pr",
+        key: "feature-pr",
+        instanceId: "feature-x",
+        // Fire-time identity from the CLI (chain-composition-surface §1.9): rides the hop row,
+        // merged over buildParams' threading keys at fire time.
+        params: { runActivity: "run-openhands", agentId: "openhands-agent" },
+      },
+    ];
+    await Effect.runPromise(
+      registerChainForFire(
+        { slug: "x", hops, data: { slug: "x", spec: "do it" } },
+        undefined,
+      ).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    expect(inv.invokes[0].params).toMatchObject({
+      slug: "x",
+      spec: "do it",
+      runActivity: "run-openhands",
+      agentId: "openhands-agent",
+    });
+  });
+
   it("finalizes the chain failed when hop 0 cannot be resolved", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();

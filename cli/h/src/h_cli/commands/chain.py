@@ -1,15 +1,26 @@
 """h chain — temporal composition: sequence workflows through the durable chain engine.
 
-A chain is a registered policy the chain engine (workflow-svc) sequences on the cron tick, mirroring
-the watcher engine (docs/plans/workflow-composition.md Phase 4). `h chain run` REGISTERS the chain
-and returns immediately — the hops run fire-and-forget and survive a closed laptop; `h chain list`
-inspects the durable registry. State threads hop-to-hop IN THE ENGINE (it parses each hop's
-`===MARKER===` output into the chain's blackboard and builds the next hop's params), so the chained
-workflows stay chain-agnostic. This CLI only names the hops and their fire identity; the Phase-1
-in-process poll/thread loop is gone.
+A chain is a registered policy the chain engine (workflow-svc) sequences on the cron tick,
+mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the hops
+run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable registry.
+State threads hop-to-hop IN THE ENGINE (it parses each hop's `===MARKER===` output into the
+chain's blackboard and builds the next hop's params), so the chained workflows stay chain-agnostic.
+
+The hop list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5), hand-parsed
+from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the EXPR flag
+names). Chain-identity flags (--slug/--spec/--issue/--strategy/--max-iterations) are ordinary
+options; everything hop-scoped is positional in the expression:
+
+    EXPR    := HOPFLAG* STAGE STAGE*        # HOPFLAGs before the first hop = chain-wide defaults
+    STAGE   := HOP ( --parallel HOP )*      # infix; parallel groups need the Phase-5 engine
+    HOP     := ( -w KEY | -t ATOM ATOM... ) HOPFLAG*
+    HOPFLAG := --agent A | --model M | --budget DUR | --fresh | --kind K
+
+A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
+chain-scoped key `<slug>-h<N>`. Identity flags become fire-time params (§1.9): --agent maps to
+{runActivity, agentId}, --model to the hop kind's model params.
 """
 
-from dataclasses import dataclass
 from typing import Annotated, Any
 
 import httpx
@@ -18,7 +29,16 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.commands.feature import _resolve_spec
+from h_cli.commands.template import compose_templates
+from h_cli.config import AGENT_IDENTITY
 from h_cli.infrastructure import workflow_svc
+from h_cli.infrastructure.chain_expr import (
+    ExprError,
+    Hop,
+    HopConfig,
+    effective_config,
+    parse_expr,
+)
 
 app = typer.Typer(
     no_args_is_help=True, help="Chain workflows into a pipeline (temporal composition)."
@@ -27,41 +47,165 @@ console = Console()
 err_console = Console(stderr=True)
 
 PER_HOP_BUDGET_MS = 45 * 60_000
+_BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
-
-@dataclass(frozen=True)
-class HopSpec:
-    """A hop kind's fire identity: the saved workflow key, instance naming, re-fire semantics.
-    The engine (workflow-svc chain-hops.ts) owns the state threading; this is only how it fires.
-    """
-
-    key: str  # saved workflow key this hop fires
-    instance_prefix: str  # instanceId = f"{instance_prefix}-{slug}"
-    fresh: bool  # re-fire a terminal instance under that id (revise re-runs feature-pr fresh)
-
-
-# feature-pr and revise share the feature-<slug> instance (same branch/worktree/PR); revise re-runs
-# it fresh. pr-review has its own instance. Publish feature-pr once:
-#   h template compose feature verify create-pr --save feature-pr
-HOP_SPECS: dict[str, HopSpec] = {
-    "feature-pr": HopSpec("feature-pr", "feature", False),
-    "pr-review": HopSpec("pr-review", "pr-review", False),
-    "revise": HopSpec("feature-pr", "feature", True),
+KNOWN_KINDS = ("feature-pr", "pr-review", "revise")
+# Well-known -w names → (kind, key fired). `revise` is a hop NAME, not a saved key: it re-fires
+# the implement hop's definition fresh (its key is rewritten to that hop's key after resolution).
+WELL_KNOWN: dict[str, tuple[str, str]] = {
+    "feature-pr": ("feature-pr", "feature-pr"),
+    "pr-review": ("pr-review", "pr-review"),
+    "revise": ("revise", "feature-pr"),
 }
-DEFAULT_CHAIN = ["feature-pr", "pr-review", "revise"]
+# kind → (instanceId prefix, fresh default). feature-pr and revise share the branch instance
+# (feature-<slug>); revise re-runs it fresh.
+KIND_FIRE: dict[str, tuple[str, bool]] = {
+    "feature-pr": ("feature", False),
+    "pr-review": ("pr-review", False),
+    "revise": ("feature", True),
+}
+# kind → the model param slots its template exposes (--model sets them all).
+KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
+    "feature-pr": ("modelPlan", "modelImplement"),
+    "revise": ("modelPlan", "modelImplement"),
+    "pr-review": ("modelReview",),
+}
+# Untrusted-input executors are FROZEN: --agent warns and keeps the published executor
+# (docs/plans/reviewer-identity-security.md — never an error, never silent compliance).
+FROZEN_EXECUTOR_KINDS = {"pr-review"}
+# -t group kind inference: the terminal atom's closing marker IS the threading contract.
+TERMINAL_ATOM_KIND = {"create-pr": "feature-pr"}
+
+DEFAULT_EXPR = ["-w", "feature-pr", "-w", "pr-review", "-w", "revise"]
 
 
-@app.command()
+def _fail(message: str) -> None:
+    err_console.print(f"[red]{message}[/red]")
+    raise typer.Exit(1)
+
+
+def _warn(message: str) -> None:
+    err_console.print(f"[yellow]warning:[/yellow] {message}")
+
+
+def _guarded(fn: Any) -> Any:
+    try:
+        return fn()
+    except httpx.HTTPError as err:
+        err_console.print(f"[red]http:[/red] {err}")
+        err_console.print("Is workflow-svc running, and are the hops' workflows published?")
+        raise typer.Exit(1) from err
+
+
+def _budget_ms(raw: str) -> int:
+    """A validated budget token (chain_expr enforced the format) → milliseconds."""
+    unit = _BUDGET_UNITS.get(raw[-1:], 1)
+    digits = raw[:-1] if raw[-1:] in _BUDGET_UNITS else raw
+    return int(digits) * unit
+
+
+def _identity_params(kind: str, cfg: HopConfig, label: str) -> dict[str, str]:
+    """HOPFLAG identity → the fire-time params the hop's template consumes (§1.9)."""
+    params: dict[str, str] = {}
+    if cfg.agent:
+        if kind in FROZEN_EXECUTOR_KINDS:
+            _warn(
+                f"--agent '{cfg.agent}' ignored on '{label}': the {kind} executor is frozen "
+                "(untrusted-input security invariant — docs/plans/reviewer-identity-security.md); "
+                "keeping the published executor"
+            )
+        else:
+            identity = AGENT_IDENTITY.get(cfg.agent)
+            if identity is None:
+                _fail(
+                    f"unknown --agent '{cfg.agent}' — known: "
+                    + ", ".join(sorted(set(AGENT_IDENTITY)))
+                )
+                raise AssertionError("unreachable")
+            params["runActivity"], params["agentId"] = identity
+    if cfg.model:
+        for name in KIND_MODEL_PARAMS[kind]:
+            params[name] = cfg.model
+    return params
+
+
+def _check_identity_slots(key: str, cfg: HopConfig, kind: str) -> None:
+    """A saved workflow published before fire-time identity has no param slots — fail loud on
+    --agent (it would silently fire the baked identity), warn on --model (accepted limitation)."""
+    stored = _guarded(lambda: workflow_svc.get(key))
+    defaults = stored.get("params") or {}
+    if cfg.agent and kind not in FROZEN_EXECUTOR_KINDS and "runActivity" not in defaults:
+        _fail(
+            f"saved workflow '{key}' has no identity param slots (published before fire-time "
+            f"identity) — republish it (`h template compose ... --save {key}` or "
+            f"`h workflow publish`) to make --agent work"
+        )
+    if cfg.model:
+        missing = [name for name in KIND_MODEL_PARAMS[kind] if name not in defaults]
+        if missing:
+            _warn(
+                f"'{key}' has no {'/'.join(missing)} slot(s) — --model may be ignored "
+                "(publish with model defaults in values to open the slots)"
+            )
+
+
+def _resolve_hop(hop: Hop, cfg: HopConfig, slug: str, index: int) -> dict[str, Any]:
+    """One parsed hop → the engine's ChainHop entry {kind, key, instanceId, fresh, params?}."""
+    if hop.workflow:
+        if hop.workflow in WELL_KNOWN and not cfg.kind:
+            kind, key = WELL_KNOWN[hop.workflow]
+        else:
+            key = hop.workflow
+            if cfg.kind is None:
+                _fail(
+                    f"-w '{hop.workflow}' is not a well-known hop name "
+                    f"({', '.join(WELL_KNOWN)}) — follow it with --kind "
+                    f"(one of: {', '.join(KNOWN_KINDS)}) so the engine knows its threading "
+                    "contract"
+                )
+            kind = cfg.kind or ""
+    else:
+        inferred = cfg.kind or TERMINAL_ATOM_KIND.get(hop.templates[-1])
+        if inferred is None:
+            _fail(
+                f"cannot infer the hop kind for `-t {' '.join(hop.templates)}` — end the group "
+                "with create-pr (its ===PR=== marker is the feature-pr contract) or pass --kind"
+            )
+        kind = inferred or ""
+        key = f"{slug}-h{index}"
+    if kind not in KNOWN_KINDS:
+        _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
+
+    params = _identity_params(kind, cfg, hop.label)
+    if hop.workflow is None:
+        # Compose-on-fire: overlay the group's templates into one definition and publish it under
+        # the chain-scoped key (idempotent — re-firing the chain republishes the same key).
+        merged = compose_templates(list(hop.templates))
+        _guarded(lambda: workflow_svc.save(key, merged["steps"], params=merged.get("params")))
+        console.print(f"==> composed [{' ⊕ '.join(hop.templates)}] published as '{key}'")
+    elif params:
+        _check_identity_slots(key, cfg, kind)
+    if cfg.budget:
+        _warn(
+            f"per-hop --budget on '{hop.label}' is not yet enforced (per-hop watch lands with "
+            "the engine's next slice); ignored"
+        )
+
+    prefix, fresh_default = KIND_FIRE[kind]
+    entry: dict[str, Any] = {
+        "kind": kind,
+        "key": key,
+        "instanceId": f"{prefix}-{slug}",
+        "fresh": cfg.fresh or fresh_default,
+    }
+    if params:
+        entry["params"] = params
+    return entry
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def run(
-    template: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--template",
-            "-t",
-            help="A chain hop, repeatable (compose-style). "
-            f"Known: {', '.join(HOP_SPECS)}. Default: {' -> '.join(DEFAULT_CHAIN)}.",
-        ),
-    ] = None,
+    ctx: typer.Context,
     slug: Annotated[
         str | None,
         typer.Option(help="Chain slug — the branch token (feature/<slug>) and chain id."),
@@ -87,85 +231,86 @@ def run(
             help="loop-until-clean only: cap on review→revise cycles before the chain finalizes.",
         ),
     ] = 3,
-    fresh: Annotated[
-        bool,
-        typer.Option("--fresh", help="Re-run the first hop's instance if it already finished."),
-    ] = False,
-    budget: Annotated[
-        int | None,
-        typer.Option(
-            "--budget",
-            help="Chain wall-clock budget in MINUTES; on breach the engine terminates the "
-            "current hop and finalizes the chain. Default: 45 min per hop.",
-        ),
-    ] = None,
 ) -> None:
     """Register a chain with the durable engine; it sequences the hops fire-and-forget.
 
-    The default chain takes a feature to a reviewed PR: implement+open a PR (feature-pr), post
-    inline review comments (pr-review), then address them on the same branch (revise). This
-    returns as soon as the chain is registered — the engine fires hop 0 and advances the rest on the
-    cron tick. Watch it with `h chain list`. Prerequisite: publish `feature-pr` and `pr-review`.
+    The hop list is the chain EXPRESSION — everything after the chain-identity flags:
+
+      -w KEY            fire this saved workflow (well-known names: feature-pr, pr-review, revise)
+
+      -t ATOM ATOM...   overlay these templates into ONE hop (composed and published on fire)
+
+      --agent A --model M --budget DUR --fresh --kind K   bind to the hop they FOLLOW;
+                        before the first hop they set chain-wide defaults (a prefix --budget is
+                        the whole-chain wall clock: <n>m, <n>h, or milliseconds)
+
+      --parallel        joins adjacent hops into a parallel group (needs the Phase-5 engine)
+
+    Default expression: -w feature-pr -w pr-review -w revise (a feature to a reviewed PR).
+    Example:  h chain run --slug dark-mode --spec dark-mode.md \\
+                  -t feature verify create-pr --agent claude \\
+                  -w pr-review --model deepseek  -w revise --fresh
     """
-    templates = template or DEFAULT_CHAIN
     if strategy not in ("sequential", "loop-until-clean"):
-        err_console.print(
-            f"[red]strategy '{strategy}' not implemented[/red] — 'sequential' or "
-            "'loop-until-clean' (parallel is deferred until a multi-reviewer chain needs it)."
+        _fail(
+            f"strategy '{strategy}' not implemented — 'sequential' or 'loop-until-clean' "
+            "(parallel is deferred until a multi-reviewer chain needs it)."
         )
-        raise typer.Exit(1)
-    unknown = [t for t in templates if t not in HOP_SPECS]
-    if unknown:
-        err_console.print(
-            f"[red]unknown hop(s):[/red] {', '.join(unknown)} — known: {', '.join(HOP_SPECS)}"
-        )
-        raise typer.Exit(1)
     if not slug or not spec:
-        err_console.print("[red]--slug and --spec are required[/red]")
-        raise typer.Exit(1)
+        _fail("--slug and --spec are required")
+        raise AssertionError("unreachable")
+
+    tokens = list(ctx.args)
+    if not any(token in ("-w", "-t") for token in tokens):
+        tokens += DEFAULT_EXPR  # bare prefix flags (e.g. a chain budget) keep the default chain
+    try:
+        expr = parse_expr(tokens)
+    except ExprError as err:
+        _fail(str(err))
+        raise AssertionError("unreachable")
+    for stage in expr.stages:
+        if len(stage) > 1:
+            _fail(
+                "--parallel groups need the 'parallel' chain strategy, which is not in the "
+                "engine yet (workflow-composition Phase 5) — sequence the hops for now."
+            )
 
     spec_text = _resolve_spec(spec).read_text()
     hops: list[dict[str, Any]] = []
-    for position, name in enumerate(templates):
-        s = HOP_SPECS[name]
-        hops.append(
-            {
-                "kind": name,
-                "key": s.key,
-                "instanceId": f"{s.instance_prefix}-{slug}",
-                # feature+revise re-run the same instance; revise (and a --fresh first hop) opt in.
-                "fresh": s.fresh or (fresh and position == 0),
-            }
-        )
+    for index, hop in enumerate(expr.hops):
+        cfg = effective_config(expr.defaults, hop.config)
+        hops.append(_resolve_hop(hop, cfg, slug, index))
+    # A revise hop re-fires the implement hop's INSTANCE, so it must fire that hop's definition —
+    # including a composed-on-fire derived key, not just the published 'feature-pr'.
+    implement_key = next((entry["key"] for entry in hops if entry["kind"] == "feature-pr"), None)
+    if implement_key:
+        for entry in hops:
+            if entry["kind"] == "revise":
+                entry["key"] = implement_key
+
     data: dict[str, Any] = {"slug": slug, "spec": spec_text}
     if issue is not None:
         data["issueNumber"] = str(issue)
     body: dict[str, Any] = {"slug": slug, "hops": hops, "data": data, "strategy": strategy}
-    body["budgetMs"] = (budget * 60_000) if budget is not None else len(hops) * PER_HOP_BUDGET_MS
+    chain_budget = expr.defaults.budget
+    body["budgetMs"] = _budget_ms(chain_budget) if chain_budget else len(hops) * PER_HOP_BUDGET_MS
 
     if strategy == "loop-until-clean":
-        # The loop body is pr-review→revise: the review hop is the predicate (CLEAN stops the loop),
-        # and the last hop loops back to it. Require both, in order.
-        if "pr-review" not in templates:
-            err_console.print("[red]loop-until-clean needs a 'pr-review' hop[/red] (predicate).")
-            raise typer.Exit(1)
-        start = templates.index("pr-review")
-        if start >= len(templates) - 1:
-            err_console.print(
-                "[red]loop-until-clean needs a hop after 'pr-review'[/red] (e.g. 'revise') to loop."
-            )
-            raise typer.Exit(1)
+        # The loop body is pr-review→revise: the review hop is the predicate (CLEAN stops the
+        # loop), and the last hop loops back to it. Require both, in order.
+        kinds = [entry["kind"] for entry in hops]
+        if "pr-review" not in kinds:
+            _fail("loop-until-clean needs a 'pr-review' hop (the predicate).")
+        start = kinds.index("pr-review")
+        if start >= len(hops) - 1:
+            _fail("loop-until-clean needs a hop after 'pr-review' (e.g. 'revise') to loop.")
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
-    try:
-        result = workflow_svc.chain_run(body)
-    except httpx.HTTPError as err:
-        err_console.print(f"[red]http:[/red] {err}")
-        err_console.print("Is workflow-svc running and are `feature-pr`/`pr-review` published?")
-        raise typer.Exit(1) from err
+    result = _guarded(lambda: workflow_svc.chain_run(body))
 
+    labels = [hop.label for hop in expr.hops]
     console.print(
-        f"==> chain '{result['chainId']}' registered [{' -> '.join(templates)}] "
+        f"==> chain '{result['chainId']}' registered [{' -> '.join(labels)}] "
         f"(branch feature/{slug}, strategy={strategy})"
     )
     console.print("    the chain engine sequences the hops on the cron tick — this does not block.")

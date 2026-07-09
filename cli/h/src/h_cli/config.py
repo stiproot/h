@@ -39,3 +39,16 @@ def resolve_agent_url(agent: str) -> str | None:
     if agent.startswith(("http://", "https://")):
         return agent
     return AGENT_URLS.get(agent)
+
+
+# Fire-time identity mapping (chain-composition-surface §1.9): a user-facing --agent name → the
+# {runActivity, agentId} param pair a published template's identity slots consume. An explicit
+# table, deliberately not a naming convention (run-dapr-agent's agentId is 'dapr-agent', not
+# 'dapr-agent-agent'). Only agents whose run activity takes the shared {cwd,model,task} input
+# belong here — extend as more agents earn a run-* activity.
+AGENT_IDENTITY: dict[str, tuple[str, str]] = {
+    "claude": ("run-claude", "claude-agent"),
+    "claude-agent": ("run-claude", "claude-agent"),
+    "openhands": ("run-openhands", "openhands-agent"),
+    "openhands-agent": ("run-openhands", "openhands-agent"),
+}

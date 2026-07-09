@@ -124,9 +124,10 @@ const fireHop = (
     const hop = row.hops[cursor];
     if (!hop) return;
     // A missing blackboard input (ChainThreadError) or any other build failure surfaces as a
-    // WorkflowError the caller turns into a failed-chain finalize.
+    // WorkflowError the caller turns into a failed-chain finalize. The hop's own params (fire-time
+    // identity from the CLI) merge OVER the threading params — disjoint by convention, hop wins.
     const params = yield* Effect.try({
-      try: () => HOP_KINDS[hop.kind].buildParams(row.data),
+      try: () => ({ ...HOP_KINDS[hop.kind].buildParams(row.data), ...(hop.params ?? {}) }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),
     });
     const stored = yield* wfStore.get(hop.key);

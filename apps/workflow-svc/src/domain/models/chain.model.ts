@@ -65,6 +65,10 @@ export const ChainHop = Schema.Struct({
   // Instance id for this hop's run; when several hops share one (feature + revise share the branch)
   // they name the same instanceId. Absent → the engine derives one from the chain + hop index.
   instanceId: Schema.optional(Schema.String),
+  // Per-hop fire-time params (chain-composition-surface §1.9: identity like runActivity/agentId/
+  // model*, mapped by the CLI from hop flags). Merged OVER the kind contract's buildParams output
+  // at fire time — the CLI never sets threading keys (slug/spec/pr), so the sets stay disjoint.
+  params: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });
 export type ChainHop = Schema.Schema.Type<typeof ChainHop>;
 
