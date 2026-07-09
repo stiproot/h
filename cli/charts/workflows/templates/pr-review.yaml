@@ -30,6 +30,14 @@ Publish:
 {{- if eq (.Values.template | default "") "pr-review" }}
 {{- $p := .Values.prReview }}
 {{- $repo := required "prReview.repo is required (--set prReview.repo=<owner/name>)" $p.repo }}
+{{- /* Fire-time identity (chain-composition-surface §1.9), model HALF only: modelReview is a
+param with the values model as its stored default. The EXECUTOR stays hardcoded deliberately —
+claude-coder's minimal MCP surface is a security invariant (untrusted PR diff), not a default;
+making it a param would let any fire re-point the reviewer at a full-tool agent. */ -}}
+{{- with $p.models.review }}
+params:
+  modelReview: {{ . | quote }}
+{{- end }}
 steps:
   - id: setup
     activity: setup
@@ -41,7 +49,7 @@ steps:
     activity: run-claude-coder
     input:
       {{- with $p.models.review }}
-      model: {{ . | quote }}
+      model: {{ include "h.token" "params.modelReview" | quote }}
       {{- end }}
       task: |-
         You are a code reviewer for the {{ $repo }} GitHub repository. Your task is to review

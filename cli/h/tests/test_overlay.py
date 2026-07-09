@@ -56,3 +56,17 @@ def test_step_without_id_is_rejected() -> None:
 def test_no_definitions_is_rejected() -> None:
     with pytest.raises(ValueError, match="at least one definition"):
         overlay()
+
+
+def test_params_merge_key_wise_not_clobbered() -> None:
+    # Each atom contributes its stored param DEFAULTS (fire-time identity, §1.9 of the
+    # chain-composition-surface plan); a later atom's block must union in, not replace.
+    a = {"params": {"runActivity": "run-claude", "agentId": "claude-agent"}, "steps": [{"id": "s"}]}
+    b = {"params": {"modelReview": "opus", "agentId": "openhands-agent"}, "steps": [{"id": "s"}]}
+    merged = overlay(a, b)
+    assert merged["params"] == {
+        "runActivity": "run-claude",
+        "agentId": "openhands-agent",  # later wins per key
+        "modelReview": "opus",
+    }
+    assert a["params"]["agentId"] == "claude-agent"  # source untouched

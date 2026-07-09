@@ -128,6 +128,10 @@ def publish(
         lambda: workflow_svc.save(
             resolved_key,
             steps,
+            # Stored param DEFAULTS (fire-time identity, §1.9 of chain-composition-surface):
+            # the render emits e.g. {runActivity, agentId} from values; fire-time params
+            # override them key-by-key.
+            params=definition.get("params"),
             schedule=schedule,
             workspace_id=workspace_id,
             disabled=disabled if (disabled or schedule) else None,

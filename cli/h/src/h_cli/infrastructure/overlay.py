@@ -57,7 +57,14 @@ def overlay(*definitions: dict[str, Any]) -> dict[str, Any]:
 
     for definition in definitions:
         for key, value in definition.items():
-            if key != "steps":
+            if key == "steps":
+                continue
+            # `params` is the stored-defaults surface (fire-time identity, model, …): atoms each
+            # contribute their own defaults, so merge key-wise (later wins per key) instead of
+            # letting a later atom's block clobber an earlier one's wholesale.
+            if key == "params" and isinstance(value, dict) and isinstance(result.get(key), dict):
+                result[key].update(copy.deepcopy(value))
+            else:
                 result[key] = copy.deepcopy(value)
         for step in definition.get("steps") or []:
             step_id = step.get("id")

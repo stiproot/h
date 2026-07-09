@@ -35,11 +35,33 @@ prose to its tail. See docs/plans/workflow-composition.md. `h template compose` 
 {{- /* The activity that runs the plan/implement steps — run-claude by default, or run-openhands
 to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
+{{- /* Fire-time identity (docs/plans/chain-composition-surface.md §1.9): in publish mode the
+identity fields are emitted as {{params.*}} engine tokens and the values above become stored
+DEFAULTS (the params block below), overridable per fire (`-p runActivity=run-openhands`) or per
+chain hop (`--agent`). A non-publish render bakes the literals exactly as before. */ -}}
+{{- /* $activityRef is emitted UNQUOTED (a bare literal parses fine; a {{token}} must carry its
+own quotes or YAML reads `{{` as a flow mapping), so the publish branch pre-quotes it and the
+non-publish render stays byte-identical to the pre-params-era output. */ -}}
+{{- $activityRef := $runActivity }}
+{{- $agentIdRef := .Values.agentId }}
+{{- if $publish }}
+{{- $activityRef = include "h.token" "params.runActivity" | quote }}
+{{- $agentIdRef = include "h.token" "params.agentId" }}
+{{- end }}
 {{- $slug := "" }}
 {{- $spec := "" }}
 {{- if $publish }}
 {{- $slug = include "h.token" "params.slug" }}
 {{- $spec = include "h.token" "params.spec" }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  {{- with $f.models.plan }}
+  modelPlan: {{ . | quote }}
+  {{- end }}
+  {{- with $f.models.implement }}
+  modelImplement: {{ . | quote }}
+  {{- end }}
 {{- else }}
 {{- $slug = required "feature.slug is required (--set feature.slug=<slug>)" $f.slug }}
 {{- $spec = required "feature.spec is required (--set-file feature.spec=<path.md>)" $f.spec }}
@@ -49,7 +71,7 @@ steps:
   - id: worktree
     activity: create-worktree
     input:
-      agentId: {{ .Values.agentId | quote }}
+      agentId: {{ $agentIdRef | quote }}
       branch: {{ printf "feature/%s" $slug | quote }}
       {{- with $f.sourceRepo }}
       sourceRepo: {{ . | quote }}
@@ -63,15 +85,15 @@ steps:
   - id: setup
     activity: setup
     input:
-      agentId: {{ .Values.agentId | quote }}
+      agentId: {{ $agentIdRef | quote }}
       setup:
         {{- include "h.setupSteps" . | nindent 8 }}
   - id: plan
-    activity: {{ $runActivity }}
+    activity: {{ $activityRef }}
     input:
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $f.models.plan }}
-      model: {{ . | quote }}
+      model: {{ ternary (include "h.token" "params.modelPlan") . $publish | quote }}
       {{- end }}
       permissionMode: plan
       task: |-
@@ -89,11 +111,11 @@ steps:
         ===FEATURE SPEC===
         {{- $spec | nindent 8 }}
   - id: implement
-    activity: {{ $runActivity }}
+    activity: {{ $activityRef }}
     input:
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $f.models.implement }}
-      model: {{ . | quote }}
+      model: {{ ternary (include "h.token" "params.modelImplement") . $publish | quote }}
       {{- end }}
       task: |-
         You are in a git worktree of the target repository, on branch feature/{{ $slug }}.

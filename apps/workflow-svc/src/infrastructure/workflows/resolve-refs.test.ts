@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveRefs } from "./resolve-refs.ts";
+import { resolveRefs, resolveTokenString } from "./resolve-refs.ts";
 
 const results = {
   worktree: { worktreePath: "/workspace/worktrees/run-1" },
@@ -53,5 +53,30 @@ describe("resolveRefs", () => {
       task: "Branch feature/ci-lint-fix:\n# Fix lint",
       whole: { spec: "# Fix lint", slug: "ci-lint-fix" },
     });
+  });
+});
+
+// Fire-time identity (chain-composition-surface §1.9): the activity NAME resolves like a step
+// input, except an unresolvable token throws instead of collapsing to "" — a silent empty
+// activity name would surface minutes later as a cryptic registry miss.
+describe("resolveTokenString", () => {
+  const withParams = { params: { runActivity: "run-openhands", agentId: "openhands-agent" } };
+
+  it("passes a literal through untouched", () => {
+    expect(resolveTokenString("run-claude", withParams)).toBe("run-claude");
+  });
+
+  it("resolves a whole-string token and an embedded one", () => {
+    expect(resolveTokenString("{{params.runActivity}}", withParams)).toBe("run-openhands");
+    expect(resolveTokenString("run-{{params.agentId}}", withParams)).toBe("run-openhands-agent");
+  });
+
+  it("throws loud on an unresolved or empty token", () => {
+    expect(() => resolveTokenString("{{params.nope}}", withParams)).toThrow(
+      /unresolved token \{\{params\.nope\}\}/,
+    );
+    expect(() => resolveTokenString("{{params.empty}}", { params: { empty: "" } })).toThrow(
+      /unresolved token/,
+    );
   });
 });

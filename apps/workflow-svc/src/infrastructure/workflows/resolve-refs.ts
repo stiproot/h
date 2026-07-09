@@ -34,3 +34,22 @@ export function resolveRefs(
 ): Record<string, unknown> {
   return resolveValue(input, results) as Record<string, unknown>;
 }
+
+/**
+ * Resolves {{token}} placeholders in ONE string — the activity-name case (fire-time identity:
+ * a step's `activity` may be `"{{params.runActivity}}"`, docs/plans/chain-composition-surface.md
+ * §1.9). Unlike step-input resolution, an unresolvable token here must fail LOUD: an activity
+ * name that silently collapses to "" would surface as a cryptic registry miss.
+ */
+export function resolveTokenString(value: string, results: Record<string, unknown>): string {
+  if (!value.includes("{{")) return value;
+  return value.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
+    const resolved = lookup(path.trim(), results);
+    if (resolved === undefined || resolved === null || resolved === "") {
+      throw new Error(
+        `unresolved token {{${path.trim()}}} in '${value}' — is the param set (or a default published)?`,
+      );
+    }
+    return String(resolved);
+  });
+}

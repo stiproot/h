@@ -45,24 +45,29 @@
 # ---
 # name: test_feature_publish_mode_golden
   '''
+  params:
+    runActivity: "run-claude"
+    agentId: "claude-agent"
+    modelPlan: "claude-sonnet-4-6"
+    modelImplement: "claude-haiku-4-5"
   steps:
     - id: worktree
       activity: create-worktree
       input:
-        agentId: "claude-agent"
+        agentId: "{{params.agentId}}"
         branch: "feature/{{params.slug}}"
     - id: setup
       activity: setup
       input:
-        agentId: "claude-agent"
+        agentId: "{{params.agentId}}"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
           - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: plan
-      activity: run-claude
+      activity: "{{params.runActivity}}"
       input:
         cwd: "{{worktree.worktreePath}}"
-        model: "claude-sonnet-4-6"
+        model: "{{params.modelPlan}}"
         permissionMode: plan
         task: |-
           You are in a git worktree of the target repository, on branch feature/{{params.slug}}.
@@ -79,10 +84,10 @@
           ===FEATURE SPEC===
           {{params.spec}}
     - id: implement
-      activity: run-claude
+      activity: "{{params.runActivity}}"
       input:
         cwd: "{{worktree.worktreePath}}"
-        model: "claude-haiku-4-5"
+        model: "{{params.modelImplement}}"
         task: |-
           You are in a git worktree of the target repository, on branch feature/{{params.slug}}.
   

@@ -2,7 +2,7 @@ import type { Task, WorkflowContext } from "@dapr/dapr";
 
 import type { WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { getActivity } from "../activity-registry.ts";
-import { resolveRefs } from "./resolve-refs.ts";
+import { resolveRefs, resolveTokenString } from "./resolve-refs.ts";
 
 export async function* genericWorkflow(
   ctx: WorkflowContext,
@@ -14,7 +14,11 @@ export async function* genericWorkflow(
   const workflowInstanceId = ctx.getWorkflowInstanceId();
 
   for (const step of input.steps) {
-    const activity = getActivity(step.activity);
+    // Fire-time identity (chain-composition-surface §1.9): the activity NAME may carry a
+    // {{params.*}} token (e.g. "{{params.runActivity}}"), resolved against the same results map
+    // as step inputs. An unresolved token or unknown resulting activity throws — never a silent
+    // fallback to a default agent.
+    const activity = getActivity(resolveTokenString(step.activity, results));
     // Pass the originating traceparent alongside the instance id so each activity can re-attach
     // its outbound calls to the trace that requested the run.
     const resolvedInput = resolveRefs(
