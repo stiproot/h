@@ -244,6 +244,15 @@ hop targeting such an agent flows through the params plumbing but is ignored by 
 is acceptable for now — the surface and plumbing land first; per-agent model/SDK support is added
 later, agent by agent. The CLI does not gate on it.
 
+**Security carve-out discovered in implementation (2026-07-09, needs a ruling):** `pr-review`'s
+executor is hardcoded to claude-coder DELIBERATELY — its MCP surface is github-only because the PR
+diff is untrusted third-party text (no workflows/dapr/obs tools, no Linear/Notion secrets).
+Identity-as-params would let any fire re-point the reviewer at a full-tool agent, so slice C gave
+pr-review the `modelReview` param only and left its executor frozen. Consequence: `--agent` on a
+pr-review hop cannot work until either (a) the invariant is relaxed to an allowlist of
+minimal-surface reviewer agents, or (b) it stays frozen and the CLI errors clearly. "Review with
+openhands" specifically requires an openhands deployment with a comparably minimal tool surface.
+
 ---
 
 ## 2. Rationale record (how we got here)
@@ -506,3 +515,18 @@ no-migration-windows convention.
   magic). Identity HOPFLAGs now legal on both hop forms; slotless legacy saves fail loud.
   Structural fire-time patching explicitly rejected (params in, structure fixed — the
   `feature --pr` lesson). Slices re-cut A–F with identity params as its own slice (C).
+- **2026-07-09 (slices A–C landed).** Three commits, each shippable, suites green (h-cli 130,
+  workflow-svc 140):
+  **A** — `h template compose|list|get` (variadic positionals, `--save`); `h workflow compose`
+  deleted in the same cut; every chart/runbook/script reference moved to the new spelling
+  (issue-sweep golden re-blessed, one line); `compose_templates()` exported for chain
+  compose-on-fire. **B** — `chain_expr.py`: pure `parse_expr(tokens) → ChainExpr{defaults,
+  stages}` with the full HOPFLAG grammar, 33 tests as the grammar's spec; not yet wired into
+  `h chain run` (slice D). **C** — the activity unfreeze (`resolveTokenString`, fail-loud;
+  generic.workflow resolves the activity name before `getActivity`); feature.yaml publish mode
+  emits identity tokens + a `params:` defaults block (non-publish renders proven byte-identical);
+  `h workflow publish` and `h template compose --save` pass defaults through; `overlay()` merges
+  atoms' `params` key-wise. **Discovered:** pr-review's hardcoded executor is a security invariant
+  (untrusted diff → minimal MCP surface), not a bakeable default — it got `modelReview` only; the
+  `--agent`-on-pr-review question is now an explicit open ruling (see Framing). Next: slice D
+  (chain cutover) — blocked on that ruling only for the pr-review hop; everything else is ready.
