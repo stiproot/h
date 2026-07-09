@@ -27,13 +27,18 @@ template ─(overlay ⊕)→ workflow definition ─(execute)→ workflow ─(ch
 - **Template** — a parameterized workflow.
 - **Overlay (⊕)** — merge templates into one definition. *Spatial*: for units that share an agent's
   context (one worktree, one run), e.g. `feature ⊕ verify ⊕ create-pr`.
-- **Workflow definition** — hydrated template(s), bound to params.
+- **Workflow definition** — hydrated template(s), bound to params at fire time — including
+  identity (agent/model): published slots with values-baked defaults, overridable per fire.
 - **Workflow** — an executed definition (the durable run).
 - **Chain** — sequence workflows. *Temporal*: for units that hand off to a fresh agent, e.g.
   `feature-pr → pr-review → revise`.
 
 Overlay vs chain is *where the agent's context breaks* — and a performance call: shared-context units
 must overlay, or you re-read context per chained workflow.
+
+The CLI projects the stack 1:1 — each noun's verb is the arrow: `h template compose` (overlay),
+`h workflow run` (execute), `h chain run` (chain — an ordered expression of `-w KEY` / `-t ATOM…`
+members with position-scoped per-workflow flags; a `-t` group overlays inline, composed-on-fire).
 
 ## Principles
 

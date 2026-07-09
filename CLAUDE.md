@@ -15,6 +15,10 @@ The standard vocabulary for composing components.
 **[ARCHITECTURE.md](./ARCHITECTURE.md) is the conceptual home** — the primitives, the composition
 stack, and the design principles; this section is the terse runtime-facing index.
 
+- **Template** — the authored, parameterized, composable unit (a chart template is one way to
+  author one). Templates overlay (⊕, merge by step id) into ONE workflow definition; publish-mode
+  renders keep `{{params.*}}` slots open — including fire-time identity (runActivity/agentId/
+  model…) with values-baked defaults. Surface: `h template compose|list|get`.
 - **Workflow** — a durable step sequence that does work and leaves durable traces (Dapr instance
   status, run ledger + `run:<id>` mirrors, Zipkin spans, joined on `workflowInstanceId`). It never
   supervises anything, including itself.
@@ -30,10 +34,13 @@ stack, and the design principles; this section is the terse runtime-facing index
   state and acts through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher
   RE-fires one instance, a chain FIRES THE NEXT workflow. State threads workflow-to-workflow
   through the row's `data`, filled by the engine parsing each one's `===MARKER===` output (no
-  actor), so chained workflows stay
-  chain-agnostic. IMPLEMENTED: engine in workflow-svc (`domain/chain-*.ts`, scan on the
-  workflow-cron-tick beside the watch scan), rows `chain:sub:<chainId>`; `h chain run` registers
-  (fire-and-forget) and `h chain list` inspects. Strategies: `sequential`, `loop-until-clean`.
+  actor), so chained workflows stay chain-agnostic. IMPLEMENTED: engine in workflow-svc
+  (`domain/chain-*.ts`, scan on the workflow-cron-tick beside the watch scan), rows
+  `chain:sub:<chainId>`; `h chain run` registers (fire-and-forget) via the chain EXPRESSION —
+  ordered `-w KEY` / `-t ATOM…` members with position-scoped `--agent/--model/--fresh/--kind`
+  flags (suffix = that workflow, prefix = chain-wide default); a `-t` group overlays inline and
+  publishes under `<slug>-w<N>` (compose-on-fire). `h chain list` inspects. Strategies:
+  `sequential`, `loop-until-clean` (`--parallel` grammar exists; engine strategy deferred).
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
 - **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
@@ -121,7 +128,7 @@ apps/workflow-svc/src/
 │       ├── run-{claude,openhands,dapr-agent,dapr-claude-loop,claude-managed,langgraph}.activity.ts  # call /run on each agent
 │       └── copy-session.activity.ts                  # copies agent workspace output to ./output/
 └── infrastructure/workflows/
-    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; injects workflowInstanceId + workspaceId; seeds named params under the reserved results id `params` ({{params.x}})
+    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; injects workflowInstanceId + workspaceId; seeds named params under the reserved results id `params` ({{params.x}}); resolves the activity NAME too (fire-time identity — an unresolved token fails loud)
 
 apps/obs-mcp/src/                         # obs-mcp – read-only observability MCP (no Dapr sidecar; port 8013)
 ├── index.ts                              # composition root – Fastify/MCP; reads ZIPKIN_URL, LOKI_URL, AGENT_RUNS_DIR
@@ -224,7 +231,7 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,workflow}.py  # h feature render|run [--agent]; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent]|terminate
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```
@@ -395,6 +402,7 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **Chart-rendered workflows (`cli/charts`)** — `helm template` is used purely client-side (no cluster) to render a workflow template into a `run_workflow` request body. YAML is the canonical artifact; JSON conversion is a final processing step at the wire boundary only (`_render.sh: yaml_to_json` / `h_cli.infrastructure.helm: to_wire_json`). Delimiter coexistence is deliberate: engine tokens (`{{step.field}}`) are emitted via the `h.token` helper (`printf`), agent-side `$VARS` are inert text, and `{"$ref": ...}` needs nothing. The syrupy goldens in `cli/h/tests` are the chart's contract tests — rendered hermetically (`include_local=False`, so a dev's gitignored `values.local.yaml` can't skew them) from the hostile fixture; re-bless with `--snapshot-update` only deliberately, reviewing the `.ambr` diff. Org-specific chart defaults live in `cli/charts/workflows/values.local.yaml` (gitignored, auto-merged by both render paths).
 - **Chart template gate (`--set template=<name>`)** — helm evaluates *every* template even under `-s`, so one template's `required` values would break every other template's render. Both render paths (`_render.sh`, `h_cli.infrastructure.helm`) pass `--set template=<name>` and each template body is wrapped in `{{- if eq .Values.template "<name>" }}`. A new template MUST add this gate or it breaks all existing renders. (The `template` value was named `family` before the 2026-07-08 vocabulary migration.)
 - **Publish mode / templates** — `--set publish=true` renders a template with per-run inputs as `{{params.*}}` engine tokens and no instanceId: a parameterized saved workflow. `h workflow publish <template>` saves it; fire with `h workflow run <key> -p k=v [-p spec=@file] [--instance-id readable-id]`, `run_saved_workflow` (MCP), or a `workflow-trigger` event. Params resolve like step results (`{{params.x}}` / `$ref`), seeded under the reserved results id `params` — a step must not use that id. Fire-time params merge over stored defaults key-by-key.
+- **Fire-time identity (identity-as-params)** — publish-mode renders emit the identity fields as tokens (`activity: "{{params.runActivity}}"`, `agentId`, per-step `model*`) plus a rendered `params:` defaults block: values.yaml/values.local.yaml supply DEFAULTS, not finals. `toRequest` merges fire-time params over stored defaults; `generic.workflow.ts` resolves the activity name (unresolved token or unknown activity fails the step loud, never a silent default agent). Override per fire (`-p runActivity=run-openhands -p agentId=openhands-agent`) or per chained workflow (`--agent claude|openhands` → the `AGENT_IDENTITY` table in `cli/h/src/h_cli/config.py`). Saved workflows published BEFORE identity params have no slots — the chain CLI fails loud on `--agent` against them (republish). Exception: pr-review's executor is deliberately not parameterized (untrusted-diff security invariant, docs/plans/reviewer-identity-security.md) — `--agent` on it warns and keeps claude-coder. Non-publish renders bake identity literals exactly as before.
 - **`workflow-trigger` topic (triggers as data)** — workflow-svc subscribes to this single well-known topic; an event `{key, params}` fires the named saved workflow (the pub/sub sibling of `POST /workflow/run/:key`). One topic, not per-template topics, because Dapr subscriptions are declared at sidecar startup. Payload problems (unknown key, disabled, malformed) are *acked* as `{skipped}`; infra failures 500 so Dapr redelivers. The plugin-feedback → plugin-improvement flow is this pattern: a `plugin-improvement` chart template + a trigger event — no domain routes in any agent service.
 - **Re-firing an existing instanceId ATTACHES by default (`fresh` opt-in)** — the invoker reuses a RUNNING/PENDING instance, and since the `fresh` flag landed it also returns a TERMINAL instance as-is instead of purging and re-running it (Dapr durability is the standard; purge-and-rerun was a test-flow convenience). Opt in per fire with `fresh: true` — `h workflow run <key> --fresh`, `h feature run --fresh`, the `fresh` param on `run_workflow`/`run_saved_workflow`, or the field on any `/workflow/run*` body / babysitter submit. A retry that must actually re-execute a FAILED instance under the same id needs `fresh: true`.
 - **Standard `POST /workflow` (submit-and-forward) + the watcher engine** — every agent service registers the endpoint from the shared agent-server packages: `{key|steps, params?, instanceId?, workspaceId?, policy?|watch?, watchMeta?}` → `202 {instanceId, watching}` immediately. Supervision is DURABLE and engine-owned: every workflow-svc fire path (HTTP run routes, trigger events, cron) writes a `watch:sub:<instanceId>` row in the same handler that schedules; the workflow-cron-tick scan (60s) enforces the wall-clock budget (terminate, default 45 min), runs engine-owned retries (`retry: {maxAttempts, fresh}` — re-fires the same id with purge), finalizes outcomes with a cost tally off the `run:` mirrors (zero matches → `costGap`, never a silent $0), writes `watch:ledger:<date>`, and publishes terminal `workflow-events`. Rows are epoch-fenced: any re-fire of an id (including `fresh` without a watch) bumps `epoch` so a stale scan decision no-ops. Kill switch: `state_save watch:config {enabled:false}` (the heartbeat `watch:__tick__` records disarmed vs dead). Escalations (`escalate: {onOutcome, key}`) are fail-closed on `watch:config.maxEngineFiresPerDay`. Machines run the scan; agents are only for judgment — never build orchestration on an agent looping `await_workflow`. `workflow-agent` is NOT the exclusive workflow entry point. Inspect with `h watch list` / `GET /watch/list`.
