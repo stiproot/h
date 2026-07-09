@@ -44,4 +44,5 @@ __pycache__/
 .DS_Store
 *.log
 
-plans/
+# Domain-specific plans (h-change context with domain details) stay local; core-architecture plans are source-controlled.
+docs/plans/domain/
