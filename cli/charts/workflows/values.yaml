@@ -19,7 +19,7 @@ publish: false
 
 # Composable (overlay) mode: render a template as an overlay-able atom — omit the standalone
 # closers a create-pr/verify overlay will supply (feature ends its implement step neutrally at
-# the plan). Set by `h workflow compose`; see docs/plans/workflow-composition.md.
+# the plan). Set by `h template compose`; see docs/plans/workflow-composition.md.
 composable: false
 
 # feature workflow (templates/feature.yaml): worktree → setup → plan → implement. A pure atom —
@@ -45,7 +45,7 @@ feature:
 
 # verify overlay template (templates/verify.yaml): an acceptance check that gates the run,
 # extending a composable feature's implement step. Replaces feature.verifyCmd — verification is
-# only ever composed in (`h workflow compose -t feature -t verify -t create-pr`).
+# only ever composed in (`h template compose feature verify create-pr`).
 verify:
   # Acceptance command (e.g. "bun install && bun run lint"), run in the worktree by the implement
   # agent after the change; a failure stops the run before any commit/PR. Required when composed.

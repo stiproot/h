@@ -350,7 +350,7 @@
   
           F. FIRE. POST (curl via Bash) to http://localhost:8002/workflow with JSON body — key `feature-pr`, the
              composed feature ⊕ verify ⊕ create-pr template (published once with
-             `h workflow compose -t feature -t verify -t create-pr --save feature-pr`), so the run
+             `h template compose feature verify create-pr --save feature-pr`), so the run
              implements the issue, gates on the acceptance check, and opens/updates its PR;
              issueNumber gives the PR a `Closes #N`:
                {"key": "feature-pr",

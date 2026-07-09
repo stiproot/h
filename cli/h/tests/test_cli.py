@@ -97,24 +97,44 @@ def test_feature_render_bad_slug_surfaces_helm_error(hostile_spec: Path) -> None
 
 
 @needs_helm
-def test_workflow_compose_prints_merged_definition() -> None:
-    result = runner.invoke(app, ["workflow", "compose", "-t", "feature", "-t", "create-pr"])
+def test_template_compose_prints_merged_definition() -> None:
+    result = runner.invoke(app, ["template", "compose", "feature", "create-pr"])
     assert result.exit_code == 0, _all_output(result)
     # The merged YAML carries feature's four steps with create-pr's epilogue folded into implement.
     assert "worktree" in result.output and "===PR===" in result.output
     assert "feature ⊕ create-pr" in result.output
 
 
-def test_workflow_compose_requires_a_template() -> None:
-    result = runner.invoke(app, ["workflow", "compose"])
+def test_template_compose_requires_an_operand() -> None:
+    result = runner.invoke(app, ["template", "compose"])
     assert result.exit_code == 1
     assert "at least one" in _all_output(result)
 
 
 @needs_helm
-def test_workflow_compose_unknown_template_exits_1() -> None:
-    result = runner.invoke(app, ["workflow", "compose", "-t", "no-such-template"])
+def test_template_compose_unknown_template_exits_1() -> None:
+    result = runner.invoke(app, ["template", "compose", "no-such-template"])
     assert result.exit_code == 1
+
+
+def test_template_list_names_the_chart_atoms() -> None:
+    result = runner.invoke(app, ["template", "list"])
+    assert result.exit_code == 0, _all_output(result)
+    for name in ("feature", "create-pr", "verify"):
+        assert name in result.output
+
+
+@needs_helm
+def test_template_get_renders_one_atom() -> None:
+    result = runner.invoke(app, ["template", "get", "create-pr"])
+    assert result.exit_code == 0, _all_output(result)
+    assert "steps" in result.output
+
+
+def test_workflow_compose_is_gone() -> None:
+    # Atomic relocation: the old spelling must fail loudly, not half-work.
+    result = runner.invoke(app, ["workflow", "compose", "-t", "feature"])
+    assert result.exit_code != 0
 
 
 def test_workflow_list_unreachable_service_exits_1(monkeypatch: pytest.MonkeyPatch) -> None:

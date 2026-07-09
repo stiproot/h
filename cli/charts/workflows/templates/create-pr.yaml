@@ -15,7 +15,7 @@ optional — provide it (`-p issueNumber=N`) for a `Closes #N` PR body; omit it 
 issue.
 
 Compose (the intended path):
-  h workflow compose -t feature -t create-pr --save feature-pr
+  h template compose feature create-pr --save feature-pr
 Render alone (for inspection):
   helm template create-pr cli/charts/workflows -s templates/create-pr.yaml --set template=create-pr
 */ -}}

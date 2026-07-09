@@ -21,7 +21,7 @@ set -euo pipefail
 #   --render-only   print the rendered workflow definition (YAML) and exit — no seeding, no run.
 #
 # feature never opens a PR: the run leaves uncommitted working-tree changes. To take a feature to a
-# PR, compose it explicitly — `h workflow compose -t feature -t create-pr` (there is no --pr flag).
+# PR, compose it explicitly — `h template compose feature create-pr` (there is no --pr flag).
 #
 # Org-specific defaults (e.g. feature.sourceRepo, model ids) go in the gitignored
 # cli/charts/workflows/values.local.yaml, merged automatically by render_workflow.

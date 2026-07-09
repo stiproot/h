@@ -117,7 +117,7 @@ def render(
     """Render the workflow definition and print it — no seeding, no run.
 
     feature never opens a PR: to compose a feature-to-a-PR run, use
-    `h workflow compose -t feature -t create-pr`.
+    `h template compose feature create-pr`.
     """
     rendered, _ = _render(spec, slug)
     if as_json:

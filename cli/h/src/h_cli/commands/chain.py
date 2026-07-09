@@ -42,7 +42,7 @@ class HopSpec:
 
 # feature-pr and revise share the feature-<slug> instance (same branch/worktree/PR); revise re-runs
 # it fresh. pr-review has its own instance. Publish feature-pr once:
-#   h workflow compose -t feature -t verify -t create-pr --save feature-pr
+#   h template compose feature verify create-pr --save feature-pr
 HOP_SPECS: dict[str, HopSpec] = {
     "feature-pr": HopSpec("feature-pr", "feature", False),
     "pr-review": HopSpec("pr-review", "pr-review", False),

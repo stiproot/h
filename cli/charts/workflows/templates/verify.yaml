@@ -8,14 +8,14 @@ verify step, no second agent (independent review is the downstream pr-review cha
 agent). It replaces the retired `feature.verifyCmd`: verification is now only ever composed in.
 
 The check is a GATE: on failure the agent stops before any commit/PR steps that follow. So the
-canonical order puts verify before create-pr — `h workflow compose -t feature -t verify -t create-pr`
+canonical order puts verify before create-pr — `h template compose feature verify create-pr`
 — and create-pr's "open a PR" prose is only reached when the check passed.
 
 Config: verify.cmd (the acceptance command, e.g. "bun install && bun run lint") bakes from values at
 publish/compose time — it is a property of the target repo, not a per-run input.
 
 Compose (the intended path):
-  h workflow compose -t feature -t verify -t create-pr --save feature-pr
+  h template compose feature verify create-pr --save feature-pr
 Render alone (for inspection):
   helm template verify cli/charts/workflows -s templates/verify.yaml --set template=verify \
     --set verify.cmd="bun run lint"
