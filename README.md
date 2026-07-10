@@ -13,6 +13,7 @@ composition stack, and the design principles.
 | --- | --- | --- |
 | `claude-agent` | Claude Code CLI | Full agentic coding loop; uses Tessl MCP for skill search |
 | `openhands-agent` | OpenHands CLI | General-purpose coding agent |
+| `pi-agent` | pi CLI (`@earendil-works/pi-coding-agent`) | Lean four-tool coding agent (Read/Write/Edit/Bash); BYOK across 20+ providers |
 | `dapr-agent` | Dapr Agents SDK | ReAct tool loop via `OpenAIChatClient` → LiteLLM proxy |
 | `dapr-claude-loop-agent` | Anthropic SDK | Self-contained tool-calling loop in Python; no Dapr Agents SDK |
 | `claude-managed-agent` | Claude Managed Agents | Anthropic-native agent orchestration + Dapr Workflow |
@@ -26,6 +27,7 @@ h/
 ├── apps/
 │   ├── claude-agent/           # claude-agent — Claude Code CLI (Fastify + Dapr sidecar)
 │   ├── openhands-agent/        # openhands-agent — OpenHands CLI (Fastify + Dapr sidecar)
+│   ├── pi-agent/               # pi-agent — pi CLI (Fastify + Dapr sidecar)
 │   ├── dapr-agent/             # dapr-agent — Dapr Agents SDK (FastAPI + Dapr sidecar)
 │   ├── dapr-claude-loop-agent/ # dapr-claude-loop-agent — Anthropic SDK agentic loop + Dapr
 │   ├── claude-managed-agent/   # claude-managed-agent — Claude Managed Agents + Dapr Workflow
@@ -166,6 +168,7 @@ Copy `.env.example` to `.env` and fill in the required values. Scripts source `.
 ./cli/scripts/run-obs-mcp.sh
 ./cli/scripts/run-claude-agent.sh
 ./cli/scripts/run-openhands-agent.sh
+./cli/scripts/run-pi-agent.sh
 ./cli/scripts/run-dapr-agent.sh
 ./cli/scripts/run-dapr-claude-loop-agent.sh
 ./cli/scripts/run-claude-managed-agent.sh
@@ -210,6 +213,7 @@ Not all services need to run simultaneously — start only what a given test req
 | `docker compose --profile infra up -d` | Dapr infra + logging stack only |
 | `docker compose --profile claude-agent up --build` | claude-agent only |
 | `docker compose --profile openhands-agent up --build` | openhands-agent only |
+| `docker compose --profile pi-agent up --build` | pi-agent only |
 | `docker compose --profile dapr-agent up --build` | dapr-agent only |
 | `docker compose --profile dapr-claude-loop-agent up --build` | dapr-claude-loop-agent only |
 | `docker compose --profile claude-managed-agent up --build` | claude-managed-agent only |
@@ -241,6 +245,7 @@ docker compose --profile all down -v
 | `obs-mcp` | local build | `8013` (app, no sidecar) | Observability MCP – traces, logs, run ledger |
 | `claude-agent` | local build | `8002` (app), `3502` (sidecar) | Claude Code CLI agent |
 | `openhands-agent` | local build | `8004` (app), `3504` (sidecar) | OpenHands CLI agent |
+| `pi-agent` | local build | `8015` (app), `3515` (sidecar) | pi CLI coding agent |
 | `dapr-agent` | local build | `8006` (app), `3506` (sidecar) | Dapr Agents SDK ReAct loop |
 | `dapr-claude-loop-agent` | local build | `8007` (app), `3507` (sidecar) | Anthropic SDK agentic loop |
 | `claude-managed-agent` | local build | `8008` (app), `3508` (sidecar) | Claude Managed Agents |
@@ -263,6 +268,7 @@ docker compose --profile all down -v
 | `langgraph-agent` | 8009 | 3509 | 36009 | 61011 |
 | `workflow-agent` | 8010 | 3510 | 36010 | 61012 |
 | `claude-coder` | 8014 | 3514 | 36014 | 61015 |
+| `pi-agent` | 8015 | 3515 | 36015 | 61016 |
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 

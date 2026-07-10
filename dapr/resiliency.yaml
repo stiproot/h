@@ -29,3 +29,6 @@ spec:
       workflow-agent:
         outbound:
           timeout: agentTimeout
+      pi-agent:
+        outbound:
+          timeout: agentTimeout

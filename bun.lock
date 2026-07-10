@@ -87,6 +87,26 @@
         "tsx": "^4.19.0",
       },
     },
+    "apps/pi-agent": {
+      "name": "pi-agent",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/platform": "^0.96.2",
+        "@effect/platform-node": "^0.107.0",
+        "agent-cli": "workspace:*",
+        "agent-server": "workspace:*",
+        "core": "workspace:*",
+        "effect": "^3.21.4",
+        "fastify": "^5.0.0",
+        "logger": "workspace:*",
+        "telemetry": "workspace:*",
+      },
+      "devDependencies": {
+        "@effect/vitest": "^0.29.0",
+        "@types/node": "^24",
+        "tsx": "^4.19.0",
+      },
+    },
     "apps/workflow-mcp": {
       "name": "workflow-mcp",
       "version": "0.1.0",
@@ -1026,6 +1046,8 @@
     "path-to-regexp": ["path-to-regexp@0.1.13", "", {}, "sha512-A/AGNMFN3c8bOlvV9RreMdrv7jsmF9XIfDeCd87+I8RNg6s78BhJxMu69NEMHBSJFxKidViTEdruRwEk/WIKqA=="],
 
     "pathe": ["pathe@2.0.3", "", {}, "sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w=="],
+
+    "pi-agent": ["pi-agent@workspace:apps/pi-agent"],
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 

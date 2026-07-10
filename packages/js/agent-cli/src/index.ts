@@ -3,6 +3,7 @@ export {
   ClaudeInvokerLive,
   layerAgentInvoker,
   OpenhandsInvokerLive,
+  PiInvokerLive,
 } from "./invoker.ts";
 export type { AgentInvokeParams, AgentInvokerService } from "./invoker.ts";
 export {

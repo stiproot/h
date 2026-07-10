@@ -10,6 +10,7 @@ import { runLanggraphActivity } from "./activities/run-langgraph.activity.ts";
 import { runOpenhandsActivity } from "./activities/run-openhands.activity.ts";
 import { registerCronActivity } from "./activities/register-cron.activity.ts";
 import { registerDiscoverActivity } from "./activities/register-discover.activity.ts";
+import { runPiActivity } from "./activities/run-pi.activity.ts";
 import { setupActivity } from "./activities/setup.activity.ts";
 import { writeWfRowActivity } from "./activities/write-wf-row.activity.ts";
 
@@ -23,6 +24,7 @@ export const activities = [
   runDaprClaudeLoopActivity,
   runLanggraphActivity,
   runOpenhandsActivity,
+  runPiActivity,
   runDaprAgentActivity,
   copySessionActivity,
   writeWfRowActivity,
@@ -50,6 +52,8 @@ export function getActivity(name: string) {
       return runLanggraphActivity;
     case "run-openhands":
       return runOpenhandsActivity;
+    case "run-pi":
+      return runPiActivity;
     case "run-dapr-agent":
       return runDaprAgentActivity;
     case "copy-session":

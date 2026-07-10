@@ -77,7 +77,7 @@ export type AgentInvoker = (params: {
   sessionId?: string;
 }>;
 
-export type AgentType = "claude" | "cursor" | "gemini" | "codex" | "openhands";
+export type AgentType = "claude" | "cursor" | "gemini" | "codex" | "openhands" | "pi";
 
 /** The agent CLI subprocess could not be spawned or its stdio streams failed. */
 export class AgentSpawnError extends Data.TaggedError("AgentSpawnError")<{
