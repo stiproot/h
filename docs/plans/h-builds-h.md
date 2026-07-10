@@ -145,7 +145,7 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 - Publish `issue-sweep` with `schedule: "*/30 * * * *"`, `workspaceId: h-issue-sweep`, **`disabled: true`**; enable by re-save for one supervised evening, then leave on with budget knobs at minimums.
 - Runbook section in `docs/` : kill-switch order (1. re-save `issue-sweep` `disabled:true` — honored by cron and trigger paths; 2. `state_save h-auto:config {enabled:false}`; 3. remove labels on GitHub), retry semantics, the named residual risks (§4).
 
-**Acceptance:** `h feature run <toy spec> --agent claude-coder` — inspect the worktree's merged `.mcp.json`: `github` present, `workflows`/`dapr` absent. Kill claude-coder mid-run and restart → next sweep tick's reconcile still resolves the run (poll-truth proof). Let the cron run overnight on one labeled issue: exactly one feature run fired, PR opened, registry `done`, ledger shows the cost, no second fire.
+**Acceptance:** `h workflow run feature-pr --spec <toy spec> --agent claude-coder` (--agent = who runs the steps) — inspect the worktree's merged `.mcp.json`: `github` present, `workflows`/`dapr` absent. Kill claude-coder mid-run and restart → next sweep tick's reconcile still resolves the run (poll-truth proof). Let the cron run overnight on one labeled issue: exactly one feature run fired, PR opened, registry `done`, ledger shows the cost, no second fire.
 
 ### Phase 4 — Feedback and hardening backlog (priority order)
 

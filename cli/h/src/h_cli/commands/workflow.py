@@ -14,7 +14,15 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
-from h_cli.config import AGENT_URLS, resolve_agent_url
+from h_cli.commands.feature import _resolve_spec
+from h_cli.config import (
+    AGENT_IDENTITY,
+    AGENT_URLS,
+    FROZEN_EXECUTOR_KEYS,
+    MODEL_PARAM_SLOTS,
+    agent_identity_params,
+    resolve_agent_url,
+)
 from h_cli.infrastructure import agent_service, helm, workflow_svc
 
 app = typer.Typer(no_args_is_help=True, help="Saved workflows and instance status (workflow-svc).")
@@ -141,7 +149,9 @@ def publish(
     if schedule:
         state = "DISABLED — re-publish without --disabled to arm" if disabled else "armed"
         console.print(f"    schedule: '{schedule}' ({state})")
-    console.print(f"    fire it: h workflow run {result['key']} -p slug=... -p spec=@file.md")
+    console.print(
+        f"    fire it: h workflow run {result['key']} --spec <name> --agent claude --model <model>"
+    )
 
 
 DEFAULT_BUDGET_MS = 45 * 60_000
@@ -161,23 +171,46 @@ def _parse_budget(value: str) -> int:
     return int(digits) * unit
 
 
-AgentOpt = Annotated[
+ViaOpt = Annotated[
     str | None,
     typer.Option(
-        "--agent",
-        help="Submit via an agent service's POST /workflow (submit-and-babysit) instead of "
-        "workflow-svc directly. An agent name from the registry, or a full URL.",
+        "--via",
+        help="Submit THROUGH an agent service's POST /workflow (submit-and-babysit) instead of "
+        "workflow-svc directly — a routing/transport choice, not identity. An agent name from "
+        "the registry, or a full URL. (Contrast --agent, which selects who RUNS the steps.)",
     ),
 ]
 
 
-def _resolve_agent(agent: str) -> str:
-    url = resolve_agent_url(agent)
+def _resolve_via(via: str) -> str:
+    url = resolve_agent_url(via)
     if url is None:
-        err_console.print(f"[red]Unknown agent[/red] '{agent}'")
+        err_console.print(f"[red]Unknown --via agent[/red] '{via}'")
         err_console.print("Known agents: " + ", ".join(sorted(AGENT_URLS)) + " (or a full URL)")
         raise typer.Exit(1)
     return url
+
+
+def _identity_params(key: str, agent: str) -> dict[str, str]:
+    """`--agent NAME` → the {runActivity, agentId} fire-time params (shared with `h chain run`).
+
+    The pr-review executor is frozen (untrusted-input security invariant) — warn and apply
+    nothing; the template has no identity slots, so the params would be inert anyway.
+    """
+    if key in FROZEN_EXECUTOR_KEYS:
+        err_console.print(
+            f"[yellow]warning:[/yellow] --agent '{agent}' ignored on '{key}': its executor is "
+            "frozen (untrusted-input security invariant, docs/plans/reviewer-identity-security.md)"
+        )
+        return {}
+    params = agent_identity_params(agent)
+    if params is None:
+        err_console.print(
+            f"[red]unknown --agent[/red] '{agent}' — known: "
+            + ", ".join(sorted(set(AGENT_IDENTITY)))
+        )
+        raise typer.Exit(1)
+    return params
 
 
 @app.command()
@@ -188,6 +221,34 @@ def run(
         typer.Option(
             "--param", "-p", help="Fire-time param key=value; value '@path' splices a file."
         ),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option(
+            "--agent",
+            help="Which agent RUNS the steps — expands to the {runActivity, agentId} fire-time "
+            "params (same meaning as `h chain run --agent`). Contrast --via (routing).",
+        ),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(
+            "--model",
+            help="Model for the run — sets the template's model slots "
+            f"({', '.join(MODEL_PARAM_SLOTS)}). Same meaning as `h chain run --model`.",
+        ),
+    ] = None,
+    spec: Annotated[
+        str | None,
+        typer.Option(
+            "--spec",
+            help="Feature spec: a .md path or a bare name under the spec home — splices into the "
+            "'spec' param (sugar for -p spec=@file). Same as `h chain run --spec`.",
+        ),
+    ] = None,
+    issue: Annotated[
+        int | None,
+        typer.Option("--issue", help="GitHub issue number → the 'issueNumber' param (Closes #N)."),
     ] = None,
     instance_id: Annotated[
         str | None,
@@ -229,28 +290,39 @@ def run(
             "Implies --watch.",
         ),
     ] = None,
-    agent: AgentOpt = None,
+    via: ViaOpt = None,
 ) -> None:
     """Fire a saved workflow with fire-time params; prints the instance id.
 
-    With --agent, the run is submitted through that agent service's babysitter (non-blocking
-    supervision: terminal event or budget-terminate); without it, straight to workflow-svc.
-    With --watch/--budget/--retry, workflow-svc's durable watcher engine supervises the run.
+    Identity/input flags mirror `h chain run`: --agent selects who RUNS the steps, --model sets
+    the model slots, --spec/--issue splice the common params, --fresh re-runs. --via ROUTES the
+    submit through an agent service's babysitter (non-blocking supervision); without it the run
+    goes straight to workflow-svc. With --watch/--budget/--retry, workflow-svc's durable watcher
+    engine supervises the run.
     """
     params = _parse_params(param or [])
+    if agent:
+        params.update(_identity_params(key, agent))
+    if model:
+        for slot in MODEL_PARAM_SLOTS:
+            params[slot] = model
+    if spec is not None:
+        params["spec"] = _resolve_spec(spec).read_text()
+    if issue is not None:
+        params["issueNumber"] = str(issue)
     watch_policy: dict[str, Any] | None = None
     if watch or budget or retry is not None:
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
         if retry is not None:
             watch_policy["retry"] = {"maxAttempts": retry, "fresh": True}
-    if agent:
+    if via:
         if watch_policy:
             err_console.print(
                 "[red]--watch/--budget/--retry need workflow-svc's watcher engine[/red] — "
-                "drop --agent (the agent babysitter carries its own policy)."
+                "drop --via (the agent babysitter carries its own policy)."
             )
             raise typer.Exit(1)
-        agent_url = _resolve_agent(agent)
+        via_url = _resolve_via(via)
         body: dict[str, Any] = {"key": key}
         if params:
             body["params"] = params
@@ -258,7 +330,7 @@ def run(
             body["instanceId"] = instance_id
         if fresh:
             body["fresh"] = True
-        result = _guarded(lambda: agent_service.submit_workflow(agent_url, body))
+        result = _guarded(lambda: agent_service.submit_workflow(via_url, body))
     else:
         result = _guarded(
             lambda: workflow_svc.run_saved(key, params, instance_id, fresh, watch_policy)

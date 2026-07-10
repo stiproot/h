@@ -154,12 +154,10 @@ def test_workflow_run_without_watch_sends_no_watch_field() -> None:
     assert "watch" not in json.loads(route.calls[0].request.content)
 
 
-def test_workflow_run_watch_with_agent_exits_1() -> None:
-    result = runner.invoke(
-        app, ["workflow", "run", "feature", "--watch", "--agent", "claude-agent"]
-    )
+def test_workflow_run_watch_with_via_exits_1() -> None:
+    result = runner.invoke(app, ["workflow", "run", "feature", "--watch", "--via", "claude-agent"])
     assert result.exit_code == 1
-    assert "drop --agent" in _all_output(result)
+    assert "drop --via" in _all_output(result)
 
 
 def test_workflow_run_bad_budget_exits_1() -> None:

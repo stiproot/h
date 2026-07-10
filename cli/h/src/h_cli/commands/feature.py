@@ -140,13 +140,13 @@ def run(
             "re-firing the same slug attaches to the existing instance instead of re-running.",
         ),
     ] = False,
-    agent: Annotated[
+    via: Annotated[
         str | None,
         typer.Option(
-            "--agent",
-            help="Submit via this agent service's POST /workflow (submit-and-babysit, "
-            "non-blocking). An agent name from the registry, or a full URL. Without it, "
-            "the legacy workflow-agent long-poll path runs.",
+            "--via",
+            help="Submit THROUGH this agent service's POST /workflow (submit-and-babysit, "
+            "non-blocking) — a routing choice. An agent name from the registry, or a full URL. "
+            "Without it, the legacy workflow-agent long-poll path runs.",
         ),
     ] = None,
     timeout: Annotated[
@@ -155,10 +155,11 @@ def run(
 ) -> None:
     """Render and run the feature workflow.
 
-    With --agent: the rendered definition is submitted to that agent's standard /workflow
+    With --via: the rendered definition is submitted to that agent's standard /workflow
     endpoint — 202 with the instanceId immediately, the agent's babysitter supervises the run
     (watch with `h workflow status <id>`). Without: the legacy blocking path (seed a task,
-    long-poll workflow-agent).
+    long-poll workflow-agent). (Identity is baked at render time from values; to choose the agent
+    that runs the steps, publish + `h workflow run --agent`, or use `h chain run`.)
     """
     rendered, resolved_slug = _render(spec, slug)
     console.print(
@@ -166,10 +167,10 @@ def run(
         f"(branch feature/{resolved_slug}, chart-rendered)"
     )
 
-    if agent:
-        agent_url = resolve_agent_url(agent)
+    if via:
+        agent_url = resolve_agent_url(via)
         if agent_url is None:
-            err_console.print(f"[red]Unknown agent[/red] '{agent}'")
+            err_console.print(f"[red]Unknown --via agent[/red] '{via}'")
             err_console.print("Known agents: " + ", ".join(sorted(AGENT_URLS)) + " (or a full URL)")
             raise typer.Exit(1)
         definition = yaml.safe_load(rendered)
@@ -180,7 +181,7 @@ def run(
             result = agent_service.submit_workflow(agent_url, body)
         except httpx.HTTPError as err:
             err_console.print(f"[red]http:[/red] {err}")
-            err_console.print(f"Is {agent} running and serving POST /workflow?")
+            err_console.print(f"Is {via} running and serving POST /workflow?")
             raise typer.Exit(1) from err
         console.print_json(data=result)
         console.print(f"    watch it: h workflow status {result['instanceId']}")

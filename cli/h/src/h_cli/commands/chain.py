@@ -31,7 +31,7 @@ from rich.table import Table
 
 from h_cli.commands.feature import _resolve_spec
 from h_cli.commands.template import compose_templates
-from h_cli.config import AGENT_IDENTITY
+from h_cli.config import AGENT_IDENTITY, agent_identity_params
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
@@ -116,14 +116,14 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
                 "keeping the published executor"
             )
         else:
-            identity = AGENT_IDENTITY.get(cfg.agent)
+            identity = agent_identity_params(cfg.agent)
             if identity is None:
                 _fail(
                     f"unknown --agent '{cfg.agent}' — known: "
                     + ", ".join(sorted(set(AGENT_IDENTITY)))
                 )
                 raise AssertionError("unreachable")
-            params["runActivity"], params["agentId"] = identity
+            params.update(identity)
     if cfg.model:
         for name in KIND_MODEL_PARAMS[kind]:
             params[name] = cfg.model

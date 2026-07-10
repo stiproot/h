@@ -49,6 +49,26 @@ def resolve_agent_url(agent: str) -> str | None:
 AGENT_IDENTITY: dict[str, tuple[str, str]] = {
     "claude": ("run-claude", "claude-agent"),
     "claude-agent": ("run-claude", "claude-agent"),
+    "claude-coder": ("run-claude-coder", "claude-coder"),
     "openhands": ("run-openhands", "openhands-agent"),
     "openhands-agent": ("run-openhands", "openhands-agent"),
 }
+
+# The model param slots publish-mode templates expose (chain's KIND_MODEL_PARAMS, unioned). A
+# uniform `--agent`/`--model` on `h workflow run` and `h chain run` both expand into fire-time
+# params via these tables — the shared vocabulary that keeps the two command families in sync.
+MODEL_PARAM_SLOTS: tuple[str, ...] = ("modelPlan", "modelImplement", "modelReview")
+
+# Saved keys whose executor is frozen by the untrusted-input security invariant
+# (docs/plans/reviewer-identity-security.md): --agent is warned-and-ignored, never applied.
+FROZEN_EXECUTOR_KEYS: frozenset[str] = frozenset({"pr-review"})
+
+
+def agent_identity_params(agent: str) -> dict[str, str] | None:
+    """A user-facing `--agent` name → the {runActivity, agentId} fire-time params a published
+    template's identity slots consume, or None if the name is unknown. The single expansion both
+    `h workflow run` and `h chain run` use, so `--agent` means the SAME thing in both."""
+    identity = AGENT_IDENTITY.get(agent)
+    if identity is None:
+        return None
+    return {"runActivity": identity[0], "agentId": identity[1]}

@@ -74,7 +74,7 @@ def compose(
 
     `feature verify create-pr` composes ONE workflow (one instanceId, one worktree, one agent
     context) ordered implement → verify-gate → PR. Publish-native: {{params.*}} slots stay open,
-    so a --save'd result fires with `h workflow run <key> -p slug=... -p spec=@file`.
+    so a --save'd result fires with `h workflow run <key> -p slug=... --spec <name> --agent <a>`.
     """
     if not templates:
         err_console.print("[red]at least one template operand is required[/red]")

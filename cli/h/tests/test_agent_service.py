@@ -1,4 +1,5 @@
-"""The --agent path: submit to an agent service's standard POST /workflow (respx-mocked)."""
+"""The --via routing path (submit to an agent's POST /workflow) and the --agent/--model identity
+flags that mirror `h chain run` — respx-mocked."""
 
 import json
 
@@ -7,7 +8,7 @@ import respx
 from httpx import Response
 from typer.testing import CliRunner
 
-from h_cli.config import resolve_agent_url
+from h_cli.config import WORKFLOW_URL, resolve_agent_url
 from h_cli.infrastructure.agent_service import submit_workflow
 from h_cli.main import app
 
@@ -34,12 +35,12 @@ def test_submit_workflow_posts_the_body() -> None:
 
 
 @respx.mock
-def test_workflow_run_agent_flag_targets_the_babysitter() -> None:
+def test_workflow_run_via_flag_targets_the_babysitter() -> None:
     route = respx.post("http://localhost:8002/workflow").mock(
         return_value=Response(202, json={"instanceId": "wf-2", "watching": True})
     )
     result = runner.invoke(
-        app, ["workflow", "run", "feature", "-p", "slug=dark-mode", "--agent", "claude-agent"]
+        app, ["workflow", "run", "feature", "-p", "slug=dark-mode", "--via", "claude-agent"]
     )
     assert result.exit_code == 0, result.output
     assert json.loads(route.calls[0].request.content) == {
@@ -49,14 +50,53 @@ def test_workflow_run_agent_flag_targets_the_babysitter() -> None:
     assert "wf-2" in result.output
 
 
-def test_workflow_run_unknown_agent_lists_the_registry() -> None:
-    result = runner.invoke(app, ["workflow", "run", "feature", "--agent", "nope"])
+def test_workflow_run_unknown_via_lists_the_registry() -> None:
+    result = runner.invoke(app, ["workflow", "run", "feature", "--via", "nope"])
     assert result.exit_code == 1
     combined = result.output + getattr(result, "stderr", "")
-    assert "Unknown agent" in combined
+    assert "Unknown --via agent" in combined
 
 
-@pytest.mark.parametrize("flag", [[], ["--agent", "claude-agent"]])
+@respx.mock
+def test_workflow_run_agent_expands_identity_like_chain() -> None:
+    """--agent selects who RUNS the steps: it expands to the same {runActivity, agentId} params
+    `h chain run --agent` produces, and goes straight to workflow-svc (not a --via babysitter)."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
+        return_value=Response(200, json={"instanceId": "feature-x", "watching": False})
+    )
+    result = runner.invoke(
+        app,
+        ["workflow", "run", "feature-pr", "-p", "slug=x", "--agent", "openhands", "--model", "m1"],
+    )
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls[0].request.content)
+    assert body["params"]["runActivity"] == "run-openhands"
+    assert body["params"]["agentId"] == "openhands-agent"
+    assert body["params"]["modelImplement"] == "m1"
+    assert body["params"]["slug"] == "x"
+
+
+def test_workflow_run_unknown_agent_identity_exits_1() -> None:
+    result = runner.invoke(app, ["workflow", "run", "feature-pr", "--agent", "nope"])
+    assert result.exit_code == 1
+    assert "unknown --agent" in (result.output + getattr(result, "stderr", ""))
+
+
+@respx.mock
+def test_workflow_run_agent_on_frozen_executor_is_ignored() -> None:
+    """The pr-review executor is frozen — --agent warns and applies no identity params."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run/pr-review").mock(
+        return_value=Response(200, json={"instanceId": "pr-review-x", "watching": False})
+    )
+    result = runner.invoke(app, ["workflow", "run", "pr-review", "--agent", "openhands"])
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls[0].request.content)
+    # frozen: no identity params leaked in
+    assert "runActivity" not in body.get("params", {})
+    assert "frozen" in (result.output + getattr(result, "stderr", ""))
+
+
+@pytest.mark.parametrize("flag", [[], ["--via", "claude-agent"]])
 def test_workflow_run_requires_valid_params(flag: list[str]) -> None:
     result = runner.invoke(app, ["workflow", "run", "feature", "-p", "not-a-pair", *flag])
     assert result.exit_code == 1
