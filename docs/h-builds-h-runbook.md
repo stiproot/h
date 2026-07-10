@@ -62,10 +62,10 @@ preflight step turns that into an explicit `TOOLS UNAVAILABLE` stop.
 uv run h template compose feature verify create-pr --save feature-pr
 
 # 2. Phase-1 acceptance: hand-fire one issue-linked run before any automation.
-#    --agent = who RUNS the steps (identity), uniform with `h chain run`; -p slug for the branch
-#    token. (--via would only ROUTE the submit through an agent's babysitter — different axis.)
-uv run h workflow run feature-pr -p slug=issue-X --spec toy.md \
-  --issue X --instance-id feature-issue-X --agent claude-coder
+#    Template VALUES ride -p key=value (slug/spec/issueNumber); --agent selects the executor
+#    (machinery). (--via would only ROUTE the submit through an agent's babysitter — different axis.)
+uv run h workflow run feature-pr -p slug=issue-X -p spec=@toy.md \
+  -p issueNumber=X --instance-id feature-issue-X --agent claude-coder
 
 # 3. Seed the runtime config (dapr MCP state_save, or curl the state API):
 #    key sweep:config

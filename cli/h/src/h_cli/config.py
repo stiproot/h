@@ -54,9 +54,8 @@ AGENT_IDENTITY: dict[str, tuple[str, str]] = {
     "openhands-agent": ("run-openhands", "openhands-agent"),
 }
 
-# The model param slots publish-mode templates expose (chain's KIND_MODEL_PARAMS, unioned). A
-# uniform `--agent`/`--model` on `h workflow run` and `h chain run` both expand into fire-time
-# params via these tables — the shared vocabulary that keeps the two command families in sync.
+# The model param slots publish-mode templates expose (chain's KIND_MODEL_PARAMS, unioned).
+# `--model` is execution machinery (like `--agent`): it sets these slots on `h workflow run`.
 MODEL_PARAM_SLOTS: tuple[str, ...] = ("modelPlan", "modelImplement", "modelReview")
 
 # Saved keys whose executor is frozen by the untrusted-input security invariant

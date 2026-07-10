@@ -336,7 +336,7 @@ uv run h --help                       # render/run chart-templated workflows, in
 uv run h feature render <spec>        # canonical YAML; --json for the wire form
 uv run h feature run <spec> --via claude-agent     # ROUTE the submit through an agent's POST /workflow (babysat)
 uv run h workflow publish feature     # save the chart template with open {{params.*}} slots
-uv run h workflow run feature -p slug=x --spec f.md --agent claude --model <m>   # fire it (--agent/--model/--spec/--fresh mirror `h chain run`; --via routes, --instance-id names)
+uv run h workflow run feature -p slug=x -p spec=@f.md --agent claude --model <m>   # fire it — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing, --fresh, --instance-id)
 uv run --package h-cli pytest         # unit + golden-snapshot tests (requires helm for goldens)
 ```
 

@@ -58,9 +58,9 @@ def test_workflow_run_unknown_via_lists_the_registry() -> None:
 
 
 @respx.mock
-def test_workflow_run_agent_expands_identity_like_chain() -> None:
-    """--agent selects who RUNS the steps: it expands to the same {runActivity, agentId} params
-    `h chain run --agent` produces, and goes straight to workflow-svc (not a --via babysitter)."""
+def test_workflow_run_agent_and_model_are_machinery_p_carries_content() -> None:
+    """--agent + --model are execution machinery (expand to identity/model params); template
+    CONTENT values ride -p key=value. Goes straight to workflow-svc (not a --via babysitter)."""
     route = respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
         return_value=Response(200, json={"instanceId": "feature-x", "watching": False})
     )
@@ -70,10 +70,11 @@ def test_workflow_run_agent_expands_identity_like_chain() -> None:
     )
     assert result.exit_code == 0, result.output
     body = json.loads(route.calls[0].request.content)
-    assert body["params"]["runActivity"] == "run-openhands"
+    assert body["params"]["runActivity"] == "run-openhands"  # --agent machinery
     assert body["params"]["agentId"] == "openhands-agent"
-    assert body["params"]["modelImplement"] == "m1"
-    assert body["params"]["slug"] == "x"
+    assert body["params"]["modelImplement"] == "m1"  # --model machinery → all model slots
+    assert body["params"]["modelPlan"] == "m1"
+    assert body["params"]["slug"] == "x"  # content value via -p
 
 
 def test_workflow_run_unknown_agent_identity_exits_1() -> None:

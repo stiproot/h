@@ -92,7 +92,7 @@ uv run h template compose t1 t2 ... [--save key]   # overlay templates → ONE d
 uv run h template list|get <t>            # the chart templates (overlay atoms)
 uv run h workflow list|get|status         # read-side views over workflow-svc
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
-uv run h workflow run <key> [-p k=v] [--spec f] [--agent A] [--model M] [--fresh] [--instance-id id] [--via name]  # fire a template — --agent/--model/--spec/--fresh mirror `h chain run`; --via routes
+uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing)
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
 uv run h chain run --slug s --spec f EXPR # register a chain (temporal); EXPR: -w KEY | -t ATOMS...
                                           #   with per-workflow --agent/--model/--fresh/--kind flags

@@ -14,7 +14,6 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
-from h_cli.commands.feature import _resolve_spec
 from h_cli.config import (
     AGENT_IDENTITY,
     AGENT_URLS,
@@ -150,7 +149,8 @@ def publish(
         state = "DISABLED — re-publish without --disabled to arm" if disabled else "armed"
         console.print(f"    schedule: '{schedule}' ({state})")
     console.print(
-        f"    fire it: h workflow run {result['key']} --spec <name> --agent claude --model <model>"
+        f"    fire it: h workflow run {result['key']} -p slug=... -p spec=@file.md "
+        "--agent claude --model <model>"
     )
 
 
@@ -226,29 +226,17 @@ def run(
         str | None,
         typer.Option(
             "--agent",
-            help="Which agent RUNS the steps — expands to the {runActivity, agentId} fire-time "
-            "params (same meaning as `h chain run --agent`). Contrast --via (routing).",
+            help="Executor machinery: which agent RUNS the steps — expands to the "
+            "{runActivity, agentId} fire-time params. Contrast --via (routing).",
         ),
     ] = None,
     model: Annotated[
         str | None,
         typer.Option(
             "--model",
-            help="Model for the run — sets the template's model slots "
-            f"({', '.join(MODEL_PARAM_SLOTS)}). Same meaning as `h chain run --model`.",
+            help="Execution machinery: the model the run uses — sets the template's model slots "
+            f"({', '.join(MODEL_PARAM_SLOTS)}). (Template content values ride -p key=value.)",
         ),
-    ] = None,
-    spec: Annotated[
-        str | None,
-        typer.Option(
-            "--spec",
-            help="Feature spec: a .md path or a bare name under the spec home — splices into the "
-            "'spec' param (sugar for -p spec=@file). Same as `h chain run --spec`.",
-        ),
-    ] = None,
-    issue: Annotated[
-        int | None,
-        typer.Option("--issue", help="GitHub issue number → the 'issueNumber' param (Closes #N)."),
     ] = None,
     instance_id: Annotated[
         str | None,
@@ -294,11 +282,11 @@ def run(
 ) -> None:
     """Fire a saved workflow with fire-time params; prints the instance id.
 
-    Identity/input flags mirror `h chain run`: --agent selects who RUNS the steps, --model sets
-    the model slots, --spec/--issue splice the common params, --fresh re-runs. --via ROUTES the
-    submit through an agent service's babysitter (non-blocking supervision); without it the run
-    goes straight to workflow-svc. With --watch/--budget/--retry, workflow-svc's durable watcher
-    engine supervises the run.
+    Template CONTENT values are populated with `-p key=value` (a template's param space is
+    unbounded, so it gets one uniform syntax; `@path` splices a file). FLAGS are the closed
+    machinery vocabulary: --agent (executor) and --model (which model) are execution machinery;
+    --fresh re-runs, --instance-id names the run, --via ROUTES the submit through an agent's
+    babysitter, and --watch/--budget/--retry hand the run to workflow-svc's durable watcher engine.
     """
     params = _parse_params(param or [])
     if agent:
@@ -306,10 +294,6 @@ def run(
     if model:
         for slot in MODEL_PARAM_SLOTS:
             params[slot] = model
-    if spec is not None:
-        params["spec"] = _resolve_spec(spec).read_text()
-    if issue is not None:
-        params["issueNumber"] = str(issue)
     watch_policy: dict[str, Any] | None = None
     if watch or budget or retry is not None:
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
