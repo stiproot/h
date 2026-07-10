@@ -41,9 +41,7 @@ describe("claudeStrategy.buildInvocationEffect permission mode", () => {
   });
 
   it("passes a model override through as --model", async () => {
-    const { args } = await buildInvocation(
-      baseRequest({ model: "claude-sonnet-4-6" }),
-    );
+    const { args } = await buildInvocation(baseRequest({ model: "claude-sonnet-4-6" }));
 
     expect(args[args.indexOf("--model") + 1]).toBe("claude-sonnet-4-6");
   });

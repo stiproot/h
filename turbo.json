@@ -6,7 +6,8 @@
       "outputs": ["dist/**"]
     },
     "lint": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.dependency-cruiser.cjs"]
     },
     "test": {
       "dependsOn": ["^build"]

@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from claude_agent_sdk import tool
 
@@ -15,7 +15,12 @@ _SAFE_MATH = {
 }
 
 
-@tool("calculator", "Evaluate a safe mathematical expression. Supports +, -, *, /, **, sqrt, abs, floor, ceil, round, pi, e.", {"expression": str})
+@tool(
+    "calculator",
+    "Evaluate a safe mathematical expression. "
+    "Supports +, -, *, /, **, sqrt, abs, floor, ceil, round, pi, e.",
+    {"expression": str},
+)
 async def calculator(args):
     try:
         result = eval(args["expression"], {"__builtins__": {}}, _SAFE_MATH)  # noqa: S307
@@ -34,10 +39,15 @@ async def word_count(args):
 
 @tool("get_datetime", "Return the current UTC date and time.", {})
 async def get_datetime(args):
-    return {"content": [{"type": "text", "text": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}]}
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return {"content": [{"type": "text", "text": now}]}
 
 
-@tool("format_text", "Transform text casing. format must be one of: upper, lower, title, snake, reverse.", {"text": str, "format": str})
+@tool(
+    "format_text",
+    "Transform text casing. format must be one of: upper, lower, title, snake, reverse.",
+    {"text": str, "format": str},
+)
 async def format_text(args):
     text, fmt = args["text"], args["format"]
     match fmt:

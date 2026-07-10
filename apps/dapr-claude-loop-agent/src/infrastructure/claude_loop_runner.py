@@ -68,18 +68,27 @@ class ClaudeLoopRunner:
 
             if response.stop_reason == "end_turn":
                 text = next((b.text for b in response.content if hasattr(b, "text")), "")
-                logger.info("dapr-claude-loop-agent | turn %d – final answer (%d chars)", iteration, len(text))
+                logger.info(
+                    "dapr-claude-loop-agent | turn %d – final answer (%d chars)",
+                    iteration,
+                    len(text),
+                )
                 return text, iteration
 
             if response.stop_reason == "tool_use":
                 messages.append(
-                    {"role": "assistant", "content": [_serialize_block(b) for b in response.content]}
+                    {
+                        "role": "assistant",
+                        "content": [_serialize_block(b) for b in response.content],
+                    }
                 )
                 tool_results = []
                 for block in response.content:
                     if block.type == "tool_use":
                         args_preview = str(block.input)[:120]
-                        logger.info("dapr-claude-loop-agent |   -> %s(%s)", block.name, args_preview)
+                        logger.info(
+                            "dapr-claude-loop-agent |   -> %s(%s)", block.name, args_preview
+                        )
                         result = execute_tool(block.name, block.input, workspace)
                         result_preview = str(result)[:200].replace("\n", " ")
                         logger.info("dapr-claude-loop-agent |   <- %s", result_preview)

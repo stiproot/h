@@ -10,7 +10,15 @@ These rules apply equally to both the **strict** (`adapters/inbound/`, `adapters
 - Ports (interfaces) are defined here and owned by the domain — adapters implement them from the outside
 - All logic is pure and unit-testable with no infrastructure running
 
-**Enforce with ESLint** (`eslint-plugin-boundaries` or import rules) to catch violations at lint time.
+**These rules are machine-enforced in this repo, not just conventional.** TypeScript services are
+checked by [`dependency-cruiser`](../../../../.dependency-cruiser.cjs) (wired into each hex service's
+`lint` script); Python services by `import-linter` contracts (the `[tool.importlinter]` block in the
+service's `pyproject.toml`). Both run under `make lint`. See
+[ARCHITECTURE.md § Boundaries](../../../../ARCHITECTURE.md#boundaries-enforced). The current rules
+target the **pragmatic** layout (`domain/`, `infrastructure/`, `presentation/`); a new **strict**-layout
+service (`adapters/inbound/`, `adapters/outbound/`) MUST extend the rule paths to cover it — an
+unenforced boundary is an invitation to drift. When you add a boundary worth stating, add the rule
+that guards it.
 
 ## Inbound adapters (`adapters/inbound/` or `presentation/`)
 

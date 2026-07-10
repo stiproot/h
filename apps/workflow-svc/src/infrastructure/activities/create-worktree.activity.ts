@@ -1,7 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect } from "effect";
 
-import { invokeAgentMethod, runActivity } from "../activity-registry.ts";
+import { invokeAgentMethod, runActivity } from "../activity-runtime.ts";
 
 type Input = {
   workflowInstanceId: string;

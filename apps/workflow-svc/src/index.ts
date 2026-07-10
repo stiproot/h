@@ -5,7 +5,8 @@ import { Layer, ManagedRuntime } from "effect";
 import Fastify from "fastify";
 import { makeTracingLive } from "telemetry";
 
-import { activities, setActivityRuntime } from "./infrastructure/activity-registry.ts";
+import { activities } from "./infrastructure/activity-registry.ts";
+import { setActivityRuntime } from "./infrastructure/activity-runtime.ts";
 import { ChainStoreLive } from "./infrastructure/dapr-chain-store.ts";
 import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";

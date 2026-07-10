@@ -22,7 +22,10 @@ TOOL_SCHEMAS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "package": {"type": "string", "description": "Package name, e.g. 'your-org/hex-node-service'"},
+                "package": {
+                    "type": "string",
+                    "description": "Package name, e.g. 'your-org/hex-node-service'",
+                },
                 "skill_name": {"type": "string", "description": "Skill name within the package"},
             },
             "required": ["package", "skill_name"],

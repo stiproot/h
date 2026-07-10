@@ -19,7 +19,38 @@ dependencies = [
 agent-core = { workspace = true }
 
 [dependency-groups]
-dev = ["ruff>=0.9"]
+dev = ["ruff>=0.9", "import-linter>=2.1"]
+
+# Hexagonal-architecture boundary contracts (enforced by `import-linter` — see `make lint-py`).
+# The layout is the contract: `domain` is the pure core, `infrastructure` holds outbound
+# adapters, `presentation` holds inbound adapters, and `main.py` is the sole composition root.
+# Run with `src` on the path so the flat namespace packages resolve as top-level roots.
+[tool.importlinter]
+root_packages = ["domain", "infrastructure", "presentation"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain is pure"
+type = "forbidden"
+source_modules = ["domain"]
+# domain must not import the adapters, nor any runtime/I-O lib — model the boundary as a
+# port (a Protocol in domain) and let the composition root inject the concrete driver.
+forbidden_modules = [
+  "infrastructure",
+  "presentation",
+  "fastapi",
+  "uvicorn",
+  "httpx",
+  "dapr",
+  "dapr_agents",
+]
+
+[[tool.importlinter.contracts]]
+name = "adapters are independent"
+type = "independence"
+# inbound (presentation) and outbound (infrastructure) adapters never import each other;
+# they meet only at the composition root, behind domain ports.
+modules = ["presentation", "infrastructure"]
 
 [tool.ruff]
 target-version = "py312"

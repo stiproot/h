@@ -9,7 +9,26 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.9"]
+dev = ["ruff>=0.9", "import-linter>=2.1"]
+
+# Hexagonal-architecture boundary contracts (enforced by `import-linter` — see `make lint-py`).
+# This is the workspace-excluded standalone member, but it is a full hex service, so it carries
+# the same contracts as the workspace hex agents. Run with `src` on the path so the flat
+# namespace packages resolve as top-level roots.
+[tool.importlinter]
+root_packages = ["domain", "infrastructure", "presentation"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "domain is pure"
+type = "forbidden"
+source_modules = ["domain"]
+forbidden_modules = ["infrastructure", "presentation", "fastapi", "uvicorn", "diagrid"]
+
+[[tool.importlinter.contracts]]
+name = "adapters are independent"
+type = "independence"
+modules = ["presentation", "infrastructure"]
 
 [tool.ruff]
 target-version = "py312"

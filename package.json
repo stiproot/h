@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "@typescript/native-preview": "^7.0.0-dev.20260318.1",
+    "dependency-cruiser": "^18.0.0",
     "oxfmt": "^0.42.0",
     "oxlint": "^1.56.0",
     "oxlint-tsgolint": "^0.17.0",

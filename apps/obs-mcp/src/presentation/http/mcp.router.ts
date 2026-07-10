@@ -201,7 +201,10 @@ function createServer(runtime: ObsMcpRuntime): Server {
             limit: { type: "number", description: "Max runs (default 20)" },
             agentId: { type: "string", description: "Filter by agent id" },
             status: { type: "string", description: "Filter by status (completed/failed)" },
-            instanceId: { type: "string", description: "Filter by workflow instance id (group key)" },
+            instanceId: {
+              type: "string",
+              description: "Filter by workflow instance id (group key)",
+            },
           },
         },
       },

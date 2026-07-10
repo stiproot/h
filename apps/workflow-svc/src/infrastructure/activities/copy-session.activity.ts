@@ -4,7 +4,7 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 import { FileSystem } from "@effect/platform";
 import { Effect } from "effect";
 
-import { runActivity } from "../activity-registry.ts";
+import { runActivity } from "../activity-runtime.ts";
 
 type Input = { output: string; sessionId: string | null; targetDir: string; traceparent?: string };
 

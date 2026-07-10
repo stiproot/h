@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from domain.models import AgentRequest, GraphConfig
-from infrastructure.preset_store import PresetStore
+from domain.ports import IPresetStore
 
 WorkspaceResolver = Callable[[str], Path]
 
@@ -44,7 +44,7 @@ def register_langgraph_routes(
     router: APIRouter,
     runner: IAgentRunner,
     resolve_workspace_dir: WorkspaceResolver,
-    presets: PresetStore,
+    presets: IPresetStore,
 ) -> None:
     """Registers langgraph-agent's app-specific routes: a /run that resolves a graph
     config or named preset, and /save to persist named graph configs. The shared

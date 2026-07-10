@@ -86,6 +86,31 @@ test-js: ## Run the JS/TS unit tests (turbo → vitest)
 test-py: ## Run the Python unit tests (pytest)
 	uv run --package agent-core pytest packages/py/agent-core
 
+# -----------------------------------------------------------------------------
+# Lint — hygiene AND architecture. `lint-js` runs tsc + oxfmt/oxlint and, on the
+# hex services, the dependency-cruiser boundary rules (.dependency-cruiser.cjs).
+# `lint-py` runs ruff repo-wide and, on the hex agents, the import-linter boundary
+# contracts (the [tool.importlinter] blocks). Both enforce the same hexagonal invariants:
+# a pure domain, adapters that never import each other. The flat namespace packages
+# need `src` on the path so `domain`/`infrastructure`/`presentation` resolve as roots.
+# -----------------------------------------------------------------------------
+
+.PHONY: lint lint-js lint-py
+lint: lint-js lint-py ## Run all linters + architecture checks (JS + Python)
+
+lint-js: ## Lint JS/TS (turbo → tsc + oxfmt/oxlint + dependency-cruiser hex rules)
+	bun run lint
+
+lint-py: ## Lint all Python (repo-wide ruff hygiene + import-linter hex contracts)
+	# ruff resolves each file's nearest [tool.ruff] config, so one pass covers the whole
+	# tree — including the workspace-excluded claude-managed-agent.
+	uv run ruff check apps packages/py cli/h
+	cd apps/workflow-agent && PYTHONPATH=src uv run lint-imports
+	cd apps/langgraph-agent && PYTHONPATH=src uv run lint-imports
+	# claude-managed-agent is the workspace-excluded standalone member (own uv.lock),
+	# so its contracts run in its own env — architecture is enforced everywhere it applies.
+	cd apps/claude-managed-agent && PYTHONPATH=src uv run lint-imports
+
 .PHONY: worktrees-purge
 worktrees-purge: ## Remove all git worktrees from the shared workspace (git worktree remove + prune)
 	@if [ ! -d "$(WORKSPACE_DIR)/worktrees" ]; then \

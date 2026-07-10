@@ -5,8 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from domain.models import Task, TaskStatus
-from infrastructure.statestore import StateStore
-from infrastructure.workflow_agent_runner import WorkflowAgentRunner
+from domain.ports import ITaskRunner, ITaskStore
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ class RunRequest(BaseModel):
     taskId: str
 
 
-def create_router(runner: WorkflowAgentRunner, store: StateStore) -> APIRouter:
+def create_router(runner: ITaskRunner, store: ITaskStore) -> APIRouter:
     router = APIRouter()
     # Tasks can take minutes; the cron binding fires far more often. This lock makes an
     # overlapping tick a no-op rather than re-scanning while a task is mid-flight. (The

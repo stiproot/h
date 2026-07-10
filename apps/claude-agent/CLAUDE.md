@@ -31,18 +31,18 @@ apps/dapr-claude-loop-agent/
 ├── Dockerfile
 ├── pyproject.toml
 └── src/
-    ├── main.py                          # composition root
-    ├── domain/
-    │   ├── models.py                    # AgentRequest, AgentResponse
-    │   └── ports/
-    │       └── agent_runner.py          # IAgentRunner Protocol
-    ├── infrastructure/
-    │   ├── claude_loop_runner.py        # outbound adapter – Anthropic SDK agentic loop
-    │   └── tools.py                     # TOOLS dicts + execute_tool()
-    └── presentation/
-        └── http/
-            └── run_router.py            # inbound adapter – FastAPI router factory
+    ├── main.py                          # composition root – registers shared agent-server routes
+    └── infrastructure/
+        ├── claude_loop_runner.py        # outbound adapter – Anthropic SDK agentic loop (tool-calling)
+        └── tools.py                     # search_skills, install_skill, read_skill, write_file
 ```
+
+This is a **thin** service: its domain contract (`AgentRequest`/`AgentResponse`, the `IAgentRunner`
+port) and its `/run` · `/setup` · `/dapr/subscribe` routes come from the shared `agent_server`
+package (`packages/py`), so it needs no local `domain/` or `presentation/` layer — only the runner
+adapter. Because it has no `domain/`/`presentation/` of its own, it carries no `import-linter`
+contract (there is no in-service boundary to guard); the boundaries it does honour live in the
+shared package's own layering.
 
 ### Local run
 

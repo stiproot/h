@@ -3,7 +3,7 @@ import { DaprInvokerTag } from "core-dapr";
 import { Effect } from "effect";
 
 import type { AgentResult } from "../../domain/models/workflow.model.ts";
-import { runActivity } from "../activity-registry.ts";
+import { runActivity } from "../activity-runtime.ts";
 
 type Input = {
   task: string;

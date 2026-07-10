@@ -48,8 +48,32 @@ members with position-scoped per-workflow flags; a `-t` group overlays inline, c
 - **Machines loop, agents judge** — supervision and sequencing are engines on a clock; agents only judge.
 - **Fail loud** — surface missing inputs / cost gaps / unavailable tools; never a silent no-op.
 - **Atomic cutovers** — delete the old in the same change that lands the new.
+- **Harden by encoding** — an invariant worth stating is worth a lint rule, not a review habit. When
+  you add a boundary — or spot an unenforced one — add or extend the rule that guards it, in the same
+  change. Prefer a check a machine runs every time over a convention a human must remember. Actively
+  look for these opportunities; an unguarded boundary drifts.
 - **Thin services, reusable packages** — logic in `packages/*`; JS/Python parity.
 - **One join key** — `workflowInstanceId` joins traces, logs, the run ledger, and every registry row.
 - **Build what's needed** — no speculative machinery, no legacy kept "just in case".
+
+## Boundaries (enforced)
+
+Every service is hexagonal, and the layout **is** the contract: `domain/` is the pure core plus
+its ports (interfaces the core defines), `infrastructure/` holds outbound adapters, `presentation/`
+holds inbound adapters, and the composition root (`index.ts` / `main.py`) is the sole place that
+wires concrete adapters behind ports. These arrows are machine-checked, not just conventional:
+
+- **`domain/` is pure** — it imports neither adapter layer, nor any runtime/I-O library. A boundary
+  the core touches is a **port** (an `effect` `Context.Tag` / a Python `Protocol` in `domain`); the
+  driver lives in `infrastructure/` and is injected at the root.
+- **Adapters are independent** — `presentation/` and `infrastructure/` never import each other; they
+  meet only at the composition root, behind ports.
+- **No cycles** — a dependency cycle crosses a boundary that should be one-directional.
+
+The dependency arrow always points *into* the domain. Enforcement is part of `make lint`:
+[`dependency-cruiser`](./.dependency-cruiser.cjs) for the TS services (`bun run lint` per package)
+and `import-linter` contracts (the `[tool.importlinter]` blocks in each hex agent's `pyproject.toml`)
+for the Python agents — the same invariants expressed in each stack's dialect. A new hex service
+inherits the TS rules for free; a new Python hex agent adds its own contract block.
 
 Runtime detail, gotchas, and app layouts: [CLAUDE.md](./CLAUDE.md). The CLI: [cli/README.md](./cli/README.md).
