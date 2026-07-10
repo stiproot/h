@@ -9,8 +9,9 @@ chained workflows stay chain-agnostic.
 
 The workflow list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5),
 hand-parsed from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the
-EXPR flag names). Chain-identity flags (--slug/--spec/--issue/--strategy/--max-iterations) are
-ordinary options; everything workflow-scoped is positional in the expression:
+EXPR flag names). Chain-level flags (--slug/--strategy/--max-iterations) and value hydration
+(`-p key=value`, seeding the shared data) are ordinary Typer options — Typer consumes them
+wherever they sit; everything workflow-scoped is positional in the expression:
 
     EXPR    := FLAG* STAGE STAGE*         # FLAGs before the first workflow = chain-wide defaults
     STAGE   := WF ( --parallel WF )*      # infix; parallel groups need the Phase-5 engine
@@ -29,7 +30,6 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from h_cli.commands.feature import _resolve_spec
 from h_cli.commands.template import compose_templates
 from h_cli.config import AGENT_IDENTITY, agent_identity_params
 from h_cli.infrastructure import workflow_svc
@@ -40,6 +40,7 @@ from h_cli.infrastructure.chain_expr import (
     effective_config,
     parse_expr,
 )
+from h_cli.params import parse_params
 
 app = typer.Typer(
     no_args_is_help=True, help="Chain workflows into a pipeline (temporal composition)."
@@ -214,12 +215,15 @@ def run(
         str | None,
         typer.Option(help="Chain slug — the branch token (feature/<slug>) and chain id."),
     ] = None,
-    spec: Annotated[
-        str | None,
-        typer.Option(help="Feature spec: a .md path, or a bare name under the spec home."),
-    ] = None,
-    issue: Annotated[
-        int | None, typer.Option("--issue", help="GitHub issue this chain implements (Closes #N).")
+    param: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--param",
+            "-p",
+            help="Template value key=value that hydrates the chain (seeds the shared data "
+            "threaded to every workflow); '@path' splices a file, e.g. -p spec=@s.md -p "
+            "issueNumber=24. Content values ride -p; flags are machinery.",
+        ),
     ] = None,
     strategy: Annotated[
         str,
@@ -250,8 +254,11 @@ def run(
 
       --parallel        joins adjacent workflows into a parallel group (needs the Phase-5 engine)
 
+    Template VALUES ride `-p key=value` (hydrating inline, uniform with `h workflow run`);
+    `-t` hydrates STRUCTURE, `-p` hydrates values, the rest is machinery.
+
     Default expression: -w feature-pr -w pr-review -w revise (a feature to a reviewed PR).
-    Example:  h chain run --slug dark-mode --spec dark-mode.md \\
+    Example:  h chain run --slug dark-mode -p spec=@dark-mode.md \\
                   -t feature verify create-pr --agent claude \\
                   -w pr-review --model deepseek  -w revise --fresh
     """
@@ -260,8 +267,8 @@ def run(
             f"strategy '{strategy}' not implemented — 'sequential' or 'loop-until-clean' "
             "(parallel is deferred until a multi-reviewer chain needs it)."
         )
-    if not slug or not spec:
-        _fail("--slug and --spec are required")
+    if not slug:
+        _fail("--slug is required")
         raise AssertionError("unreachable")
 
     tokens = list(ctx.args)
@@ -279,7 +286,6 @@ def run(
                 "engine yet (workflow-composition Phase 5) — sequence the workflows for now."
             )
 
-    spec_text = _resolve_spec(spec).read_text()
     workflows: list[dict[str, Any]] = []
     for index, workflow in enumerate(expr.workflows):
         cfg = effective_config(expr.defaults, workflow.config)
@@ -294,9 +300,9 @@ def run(
             if entry["kind"] == "revise":
                 entry["key"] = implement_key
 
-    data: dict[str, Any] = {"slug": slug, "spec": spec_text}
-    if issue is not None:
-        data["issueNumber"] = str(issue)
+    # Chain-level -p values seed the shared data blackboard, threaded to every workflow (so
+    # feature-pr AND the revise re-fire both see spec/issueNumber). slug is the chain's identity.
+    data: dict[str, Any] = {"slug": slug, **parse_params(param or [])}
     body: dict[str, Any] = {
         "slug": slug,
         "workflows": workflows,

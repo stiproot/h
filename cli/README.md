@@ -87,14 +87,14 @@ uv run h --help
 uv run h feature render <spec>            # canonical YAML artifact
 uv run h feature render <spec> --json     # wire-format edge applied
 uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow-agent (legacy, blocking)
-uv run h feature run <spec> --via claude-agent     # render → ROUTE through an agent's POST /workflow (babysat, non-blocking)
+uv run h feature run <spec> --agent claude-agent   # render to RUN on that agent + submit (babysat, non-blocking)
 uv run h template compose t1 t2 ... [--save key]   # overlay templates → ONE definition (spatial)
 uv run h template list|get <t>            # the chart templates (overlay atoms)
 uv run h workflow list|get|status         # read-side views over workflow-svc
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
 uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing)
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
-uv run h chain run --slug s --spec f EXPR # register a chain (temporal); EXPR: -w KEY | -t ATOMS...
+uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); values ride -p; EXPR: -w KEY | -t ATOMS...
                                           #   with per-workflow --agent/--model/--fresh/--kind flags
 uv run h chain list                       # the durable chain registry + scan heartbeat
 uv run h watch list|get|delete            # the watcher registry

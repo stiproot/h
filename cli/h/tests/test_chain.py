@@ -39,6 +39,11 @@ def _spec(tmp_path: Path) -> Path:
     return p
 
 
+def _pspec(tmp_path: Path) -> str:
+    """The `-p spec=@<file>` value that hydrates the chain's spec (replaces the old --spec)."""
+    return "spec=@" + str(_spec(tmp_path))
+
+
 def _mock_run(chain_id: str = "x"):
     return respx.post(f"{WORKFLOW_URL}/chain/run").mock(
         return_value=Response(202, json={"chainId": chain_id, "firing": True})
@@ -49,7 +54,7 @@ def _mock_run(chain_id: str = "x"):
 def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
     route = _mock_run("demo")
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "demo", "--spec", str(_spec(tmp_path)), "--issue", "7"]
+        app, ["chain", "run", "--slug", "demo", "-p", _pspec(tmp_path), "-p", "issueNumber=7"]
     )
     assert result.exit_code == 0, _all_output(result)
 
@@ -76,7 +81,7 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
 def test_chain_run_single_workflow_hop(tmp_path: Path) -> None:
     route = _mock_run()
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "-w", "feature-pr"]
+        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w", "feature-pr"]
     )
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
@@ -86,7 +91,7 @@ def test_chain_run_single_workflow_hop(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_fresh_binds_to_its_hop(tmp_path: Path) -> None:
     route = _mock_run()
-    args = ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))]
+    args = ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path)]
     runner.invoke(app, [*args, "-w", "feature-pr", "--fresh", "-w", "pr-review"])
     body = json.loads(route.calls[0].request.content)
     assert body["workflows"][0]["fresh"] is True
@@ -97,7 +102,7 @@ def test_chain_run_fresh_binds_to_its_hop(tmp_path: Path) -> None:
 def test_chain_run_prefix_budget_is_the_chain_wall_clock(tmp_path: Path) -> None:
     route = _mock_run()
     runner.invoke(
-        app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "--budget", "90m"]
+        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "90m"]
     )
     assert json.loads(route.calls[0].request.content)["budgetMs"] == 90 * 60_000
 
@@ -105,7 +110,7 @@ def test_chain_run_prefix_budget_is_the_chain_wall_clock(tmp_path: Path) -> None
 @respx.mock
 def test_chain_run_default_budget_scales_with_workflows(tmp_path: Path) -> None:
     route = _mock_run()
-    runner.invoke(app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))])
+    runner.invoke(app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path)])
     assert json.loads(route.calls[0].request.content)["budgetMs"] == 3 * 45 * 60_000
 
 
@@ -125,7 +130,7 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "feature-pr", "--agent", "openhands", "-w", "pr-review",
         ],
     )  # fmt: skip
@@ -148,7 +153,7 @@ def test_chain_run_agent_on_slotless_workflow_fails_loud(tmp_path: Path) -> None
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "feature-pr", "--agent", "openhands",
         ],
     )  # fmt: skip
@@ -162,7 +167,7 @@ def test_chain_run_agent_on_frozen_executor_warns_and_defaults(tmp_path: Path) -
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "pr-review", "--agent", "openhands", "-w", "revise",
         ],
     )  # fmt: skip
@@ -176,7 +181,7 @@ def test_chain_run_unknown_agent(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "feature-pr", "--agent", "hal9000",
         ],
     )  # fmt: skip
@@ -194,7 +199,7 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-t", "feature", "verify", "create-pr", "-w", "pr-review", "-w", "revise",
         ],
     )  # fmt: skip
@@ -219,7 +224,7 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
 def test_chain_run_template_group_without_contract_needs_kind(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "-t", "feature", "verify"],
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-t", "feature", "verify"],
     )
     assert result.exit_code == 1
     assert "cannot infer the workflow kind" in _all_output(result)
@@ -229,7 +234,7 @@ def test_chain_run_parallel_needs_the_phase5_engine(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "feature-pr", "--parallel", "-w", "pr-review",
         ],
     )  # fmt: skip
@@ -239,7 +244,7 @@ def test_chain_run_parallel_needs_the_phase5_engine(tmp_path: Path) -> None:
 
 def test_chain_run_bad_expression_surfaces_parse_error(tmp_path: Path) -> None:
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "-w"]
+        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w"]
     )
     assert result.exit_code == 1
     assert "-w needs a saved-workflow key" in _all_output(result)
@@ -248,7 +253,7 @@ def test_chain_run_bad_expression_surfaces_parse_error(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_loop_until_clean(tmp_path: Path) -> None:
     route = _mock_run()
-    args = ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))]
+    args = ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path)]
     result = runner.invoke(app, [*args, "--strategy", "loop-until-clean", "--max-iterations", "5"])
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
@@ -261,7 +266,7 @@ def test_chain_run_loop_needs_a_review_hop(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "feature-pr", "--strategy", "loop-until-clean",
         ],
     )  # fmt: skip
@@ -271,7 +276,7 @@ def test_chain_run_loop_needs_a_review_hop(tmp_path: Path) -> None:
 
 def test_chain_run_unknown_workflow_needs_kind(tmp_path: Path) -> None:
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "-w", "nope"]
+        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w", "nope"]
     )
     assert result.exit_code == 1
     assert "not a well-known workflow name" in _all_output(result)
@@ -280,21 +285,22 @@ def test_chain_run_unknown_workflow_needs_kind(tmp_path: Path) -> None:
 def test_chain_run_non_sequential_strategy(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)), "--strategy", "parallel"],
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--strategy", "parallel"],
     )
     assert result.exit_code == 1
     assert "not implemented" in _all_output(result)
 
 
-def test_chain_run_requires_slug_and_spec() -> None:
-    result = runner.invoke(app, ["chain", "run", "--slug", "x"])
+def test_chain_run_requires_slug() -> None:
+    result = runner.invoke(app, ["chain", "run"])
     assert result.exit_code == 1
+    assert "--slug is required" in (result.output + getattr(result, "stderr", ""))
 
 
 @respx.mock
 def test_chain_run_http_error_exits_1(tmp_path: Path) -> None:
     respx.post(f"{WORKFLOW_URL}/chain/run").mock(return_value=Response(500))
-    result = runner.invoke(app, ["chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path))])
+    result = runner.invoke(app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path)])
     assert result.exit_code == 1
 
 

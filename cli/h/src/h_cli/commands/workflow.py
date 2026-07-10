@@ -4,7 +4,6 @@ Spatial composition lives under the template noun (`h template compose`); this c
 definition/run level: publish, run, list, get, status, terminate.
 """
 
-from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -23,6 +22,7 @@ from h_cli.config import (
     resolve_agent_url,
 )
 from h_cli.infrastructure import agent_service, helm, workflow_svc
+from h_cli.params import parse_params
 
 app = typer.Typer(no_args_is_help=True, help="Saved workflows and instance status (workflow-svc).")
 console = Console()
@@ -36,24 +36,6 @@ def _guarded(fn: Any) -> Any:
         err_console.print(f"[red]http:[/red] {err}")
         err_console.print("Is workflow-svc running? (make dev-tab)")
         raise typer.Exit(1) from err
-
-
-def _parse_params(pairs: list[str]) -> dict[str, Any]:
-    """`key=value` pairs → params dict; a value of `@path` splices in that file's content."""
-    params: dict[str, Any] = {}
-    for pair in pairs:
-        key, sep, value = pair.partition("=")
-        if not sep or not key:
-            err_console.print(f"[red]Bad --param[/red] '{pair}' — expected key=value")
-            raise typer.Exit(1)
-        if value.startswith("@"):
-            path = Path(value[1:])
-            if not path.is_file():
-                err_console.print(f"[red]--param {key}[/red]: no such file: {path}")
-                raise typer.Exit(1)
-            value = path.read_text()
-        params[key] = value
-    return params
 
 
 @app.command("list")
@@ -288,7 +270,7 @@ def run(
     --fresh re-runs, --instance-id names the run, --via ROUTES the submit through an agent's
     babysitter, and --watch/--budget/--retry hand the run to workflow-svc's durable watcher engine.
     """
-    params = _parse_params(param or [])
+    params = parse_params(param or [])
     if agent:
         params.update(_identity_params(key, agent))
     if model:

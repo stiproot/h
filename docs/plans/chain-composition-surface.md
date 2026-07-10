@@ -22,7 +22,7 @@ Current state, concretely:
 
 - `h workflow compose -t a -t b [--save key]` — renders templates publish+composable, `overlay()`s
   by step id, prints or saves. (`cli/h/src/h_cli/commands/workflow.py`)
-- `h chain run -t <name> -t <name> --slug … --spec …` — the `-t` values were members of a
+- `h chain run -t <name> -t <name> --slug … -p spec=@…` — the `-t` values were members of a
   hardcoded table (`HOP_SPECS`: `feature-pr`, `pr-review`, `revise`), a misnomer this plan fixes.
   (`cli/h/src/h_cli/commands/chain.py`)
 - Engine: `ChainWorkflow` is `{kind, key, fresh?, instanceId?}` — no per-workflow params field; no `parallel`
@@ -103,7 +103,7 @@ h workflow run KEY [-p k=v]… [--instance-id ID] [--fresh]
                    [--watch] [--budget DUR] [--retry N] [--agent A] [--model M]
 h workflow list | get KEY | status ID | terminate ID
 
-h chain run EXPR --slug S --spec SPEC [--issue N] [--strategy STRAT] [--max-iterations N]
+h chain run EXPR --slug S [-p k=v]… [--strategy STRAT] [--max-iterations N]   # values ride -p (e.g. -p spec=@f.md -p issueNumber=N)
 h chain list | get ID | delete ID | terminate ID
 
 h watch list | get ID | delete ID
@@ -136,17 +136,17 @@ FLAG := "--agent" A | "--model" M | "--budget" DUR | "--fresh" | "--kind" K
 
 ```sh
 # implement with claude/opus, review with openhands/deepseek, revise fresh
-h chain run --slug dark-mode --spec dark-mode.md \
+h chain run --slug dark-mode -p spec=@dark-mode.md \
     -t feature verify create-pr --agent claude --model opus \
     -w pr-review --agent openhands --model deepseek --budget 15m \
     -w revise --fresh
 
 # homogeneous chain: an identity default before the first workflow, no repetition
-h chain run --slug ci-sweep --spec ci.md --agent openhands \
+h chain run --slug ci-sweep -p spec=@ci.md --agent openhands \
     -w lint --parallel -w typecheck  -w report
 
 # chain of one — uniform engine supervision as the degenerate case
-h chain run --slug dark-mode --spec dark-mode.md -w feature-pr
+h chain run --slug dark-mode -p spec=@dark-mode.md -w feature-pr
 ```
 
 (Globals first per §1.6. Identity flags are legal on BOTH workflow forms — identity is fire-time
