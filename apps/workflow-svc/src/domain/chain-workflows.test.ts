@@ -117,18 +117,16 @@ describe("WORKFLOW_KINDS.pr-review", () => {
 });
 
 describe("WORKFLOW_KINDS.revise", () => {
-  it("folds the review findings into the spec preamble", () => {
+  it("threads only the durable references — the PR number + slug (revise reads the review itself)", () => {
     const params = WORKFLOW_KINDS.revise.buildParams({
       slug: "x",
-      reviewFindings: "file.ts:12 — bug",
+      prNumber: "22",
+      reviewFindings: "file.ts:12 — bug", // present on the blackboard, but revise does NOT use it
     });
-    expect(params.slug).toBe("x");
-    expect(String(params.spec)).toContain("===REVIEW SUMMARY===");
-    expect(String(params.spec)).toContain("file.ts:12 — bug");
+    expect(params).toEqual({ pr: "22", slug: "x" });
   });
 
-  it("uses a placeholder when there were no findings (a CLEAN review)", () => {
-    const params = WORKFLOW_KINDS.revise.buildParams({ slug: "x", reviewFindings: "" });
-    expect(String(params.spec)).toContain("(no findings reported)");
+  it("throws when there is no PR number on the blackboard", () => {
+    expect(() => WORKFLOW_KINDS.revise.buildParams({ slug: "x" })).toThrow(/needs a PR number/);
   });
 });

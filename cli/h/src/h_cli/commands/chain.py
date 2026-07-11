@@ -52,15 +52,16 @@ PER_WORKFLOW_BUDGET_MS = 45 * 60_000
 _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
 KNOWN_KINDS = ("feature-pr", "pr-review", "revise")
-# Well-known -w names → (kind, key fired). `revise` is a workflow NAME, not a saved key: it
-# re-fires the implement workflow's definition fresh (its key is rewritten after resolution).
+# Well-known -w names → (kind, saved key fired). Each is a first-class standalone workflow with its
+# own saved definition — `revise` fires the `revise` template (which reads the PR's review threads
+# itself), no longer a re-fire of feature-pr's definition.
 WELL_KNOWN: dict[str, tuple[str, str]] = {
     "feature-pr": ("feature-pr", "feature-pr"),
     "pr-review": ("pr-review", "pr-review"),
-    "revise": ("revise", "feature-pr"),
+    "revise": ("revise", "revise"),
 }
 # kind → (instanceId prefix, fresh default). feature-pr and revise share the branch instance
-# (feature-<slug>); revise re-runs it fresh.
+# (feature-<slug>) — they operate on the same branch; revise re-runs it fresh.
 KIND_FIRE: dict[str, tuple[str, bool]] = {
     "feature-pr": ("feature", False),
     "pr-review": ("pr-review", False),
@@ -69,7 +70,7 @@ KIND_FIRE: dict[str, tuple[str, bool]] = {
 # kind → the model param slots its template exposes (--model sets them all).
 KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
     "feature-pr": ("modelPlan", "modelImplement"),
-    "revise": ("modelPlan", "modelImplement"),
+    "revise": ("modelRevise",),
     "pr-review": ("modelReview",),
 }
 # Untrusted-input executors are FROZEN: --agent warns and keeps the published executor
@@ -290,18 +291,9 @@ def run(
     for index, workflow in enumerate(expr.workflows):
         cfg = effective_config(expr.defaults, workflow.config)
         workflows.append(_resolve_workflow(workflow, cfg, slug, index))
-    # A revise workflow re-fires the implement workflow's INSTANCE, so it must fire that same
-    # definition — including a composed-on-fire derived key, not just the published 'feature-pr'.
-    implement_key = next(
-        (entry["key"] for entry in workflows if entry["kind"] == "feature-pr"), None
-    )
-    if implement_key:
-        for entry in workflows:
-            if entry["kind"] == "revise":
-                entry["key"] = implement_key
-
-    # Chain-level -p values seed the shared data blackboard, threaded to every workflow (so
-    # feature-pr AND the revise re-fire both see spec/issueNumber). slug is the chain's identity.
+    # Chain-level -p values seed the shared data blackboard, threaded to every workflow. slug is the
+    # chain's identity; the engine threads durable refs (e.g. the PR number) to revise, which reads
+    # the review itself. Each workflow fires its own saved definition — no key rewriting.
     data: dict[str, Any] = {"slug": slug, **parse_params(param or [])}
     body: dict[str, Any] = {
         "slug": slug,

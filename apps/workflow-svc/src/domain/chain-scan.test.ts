@@ -117,7 +117,7 @@ function env(
 const DEFAULT_WORKFLOWS = [
   { kind: "feature-pr", key: "feature-pr", instanceId: "feature-x" },
   { kind: "pr-review", key: "pr-review", instanceId: "pr-review-x" },
-  { kind: "revise", key: "feature-pr", instanceId: "feature-x", fresh: true },
+  { kind: "revise", key: "revise", instanceId: "feature-x", fresh: true },
 ] as const;
 
 function pr(url: string): string {
@@ -209,7 +209,12 @@ async function seedAt(cursor: number, statuses: Record<string, WorkflowStatus>) 
   // Register (fires workflow 0), then fast-forward the row's cursor for the test.
   await Effect.runPromise(
     registerChainForFire(
-      { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
+      {
+        slug: "x",
+        // prNumber pre-seeded so a fast-forward to the revise cursor has the PR ref revise threads.
+        workflows: [...DEFAULT_WORKFLOWS],
+        data: { slug: "x", spec: "do it", prNumber: "42" },
+      },
       undefined,
     ).pipe(Effect.provide(env(mem.service, inv.service))),
   );
@@ -247,7 +252,7 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
     expect(inv.invokes[0].params).toMatchObject({ pr: "42" });
   });
 
-  it("captures ===REVIEW=== and folds the findings into the revise spec", async () => {
+  it("advances to revise, threading only the PR ref + slug (revise reads the review itself)", async () => {
     const { mem, inv } = await seedAt(1, {
       "pr-review-x": {
         instanceId: "pr-review-x",
@@ -260,11 +265,11 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
     );
     const row = mem.rows.get("x");
     expect(row?.cursor).toBe(2);
-    expect(row?.data.reviewFindings).toContain("missing guard");
-    // revise fires feature-pr fresh, spec carrying the findings.
+    // revise fires on the shared branch instance, fresh, with only the durable references —
+    // NOT the review text (revise reads the PR's unresolved threads from GitHub itself).
     expect(inv.invokes[0].instanceId).toBe("feature-x");
     expect(inv.invokes[0].fresh).toBe(true);
-    expect(String(inv.invokes[0].params?.spec)).toContain("missing guard");
+    expect(inv.invokes[0].params).toEqual({ pr: "42", slug: "x" });
   });
 });
 

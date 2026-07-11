@@ -25,15 +25,6 @@ export interface WorkflowContract {
   readonly capture: (output: string | undefined, data: Blackboard) => void;
 }
 
-// The revise workflow re-fires feature-pr on the same branch; its spec tells the agent to address the
-// review feedback. With the #20 epilogue, the agent fetches the unresolved threads itself, then
-// replies inline and resolves them — so the spec just hands over the review summary as context.
-const REVISE_SPEC_PREAMBLE =
-  "Address the review feedback on the open pull request for this branch. Fetch the unresolved " +
-  "review threads on the PR, implement each requested change, then (per the PR epilogue) reply " +
-  "inline to each thread you addressed and resolve it. The review summary follows.\n\n" +
-  "===REVIEW SUMMARY===\n";
-
 /**
  * Pull each step's `output` text from a workflow's result. The generic workflow returns
  * JSON.stringify(results); Dapr serializes that again into the status `output`, so the value can
@@ -134,18 +125,19 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
     },
     capture: captureReview,
   },
-  // Re-fires feature-pr on the same branch to address the review; captures the updated PR.
+  // Fires the standalone `revise` workflow, which reads the PR's UNRESOLVED review threads itself
+  // (github MCP) and addresses them on the same branch; captures the updated PR. The chain threads
+  // only durable REFERENCES — the PR number + slug — not the review text: revise reads the review
+  // from GitHub, so the workflow stays self-sufficient and runnable standalone.
   revise: {
-    buildParams: (data) => {
-      const findings = typeof data.reviewFindings === "string" ? data.reviewFindings : "";
-      const params: Record<string, unknown> = {
-        slug: requireStr(data, "slug", "revise needs a slug on the blackboard"),
-        spec: REVISE_SPEC_PREAMBLE + (findings || "(no findings reported)"),
-      };
-      if (typeof data.issueNumber === "string" && data.issueNumber)
-        params.issueNumber = data.issueNumber;
-      return params;
-    },
+    buildParams: (data) => ({
+      pr: requireStr(
+        data,
+        "prNumber",
+        "revise needs a PR number on the blackboard (create-pr's ===PR===)",
+      ),
+      slug: requireStr(data, "slug", "revise needs a slug on the blackboard"),
+    }),
     capture: capturePr,
   },
 };

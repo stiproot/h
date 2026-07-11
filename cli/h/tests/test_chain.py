@@ -215,9 +215,10 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
         "instanceId": "feature-x",
         "fresh": False,
     }
-    # revise re-fires the implement DEFINITION — the derived key, not the published feature-pr.
+    # revise is its own first-class workflow — it fires the published `revise` key (NOT the composed
+    # feature-pr definition), sharing the branch instance so it operates on the same feature/<slug>.
     assert body["workflows"][2]["kind"] == "revise"
-    assert body["workflows"][2]["key"] == "x-w0"
+    assert body["workflows"][2]["key"] == "revise"
     assert body["workflows"][2]["instanceId"] == "feature-x"
 
 
