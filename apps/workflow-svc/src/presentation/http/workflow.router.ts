@@ -21,7 +21,9 @@ import {
   WorkflowRequest,
   toRequest,
 } from "../../domain/models/workflow.model.ts";
+import { CronPolicy } from "../../domain/models/cron.model.ts";
 import { wfIdentityFrom } from "../../domain/models/wf.model.ts";
+import { registerCronForFire } from "../../domain/cron-scan.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
@@ -65,12 +67,19 @@ const RunSavedBody = Schema.Struct({
   // Fire-time watch policy; overrides the saved workflow's stored watch policy wholesale.
   watch: Schema.optional(WatchPolicy),
   watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Fire-time cron policy: recur this workflow on a cadence until its goal resolves or the budget is
+  // spent. Registers a cron:sub row in this same handler (sibling of `watch`); needs the run to carry
+  // a wf-identity (repo+slug) — the cron key mirrors the wf: coords.
+  cron: Schema.optional(CronPolicy),
 });
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
 class InvalidCronError extends Data.TaggedError("InvalidCronError")<{
   readonly schedule: string;
 }> {}
+
+/** A `cron` field on a run that carries no wf-identity (repo+slug) — mapped to 400. */
+class CronNeedsIdentityError extends Data.TaggedError("CronNeedsIdentityError") {}
 
 /**
  * The local Fastify-to-Effect bridge (the agent-server `runHandler` pattern, with this
@@ -121,6 +130,12 @@ function replyFor(cause: Cause.Cause<unknown>): { status: number; body: unknown 
     if (Predicate.isTagged(error, "InvalidCronError")) {
       const { schedule } = error as unknown as InvalidCronError;
       return { status: 400, body: { error: `Invalid cron expression: ${schedule}` } };
+    }
+    if (Predicate.isTagged(error, "CronNeedsIdentityError")) {
+      return {
+        status: 400,
+        body: { error: "cron requires a wf-identity — pass repo and slug params" },
+      };
     }
     if (ParseResult.isParseError(error)) {
       return {
@@ -219,8 +234,15 @@ export function registerWorkflowRoutes(
           // Optional body: fire-time params override the stored defaults key-by-key; a
           // fire-time instanceId/workspaceId overrides the projection (readable run keys).
           // An absent/empty body keeps the pre-params behaviour.
-          const { params, instanceId, workspaceId, fresh, watch, watchMeta } =
+          const { params, instanceId, workspaceId, fresh, watch, watchMeta, cron } =
             yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
+          // Fail fast on a bad cadence before firing anything.
+          if (cron) {
+            yield* Effect.try({
+              try: () => assertValidCron(cron.cadence),
+              catch: () => new InvalidCronError({ schedule: cron.cadence }),
+            });
+          }
           const store = yield* WorkflowStore;
           const workflow = yield* store.get(request.params.key);
           if (Option.isNone(workflow)) return yield* new WorkflowNotFoundError();
@@ -228,10 +250,12 @@ export function registerWorkflowRoutes(
           // wf-registry identity: the saved KEY is the workflow name; repo+slug come from the
           // merged params (fire-time over stored). Opt-in — absent repo/slug ⇒ no row (§3c).
           const wf = wfIdentityFrom(req.params, request.params.key);
+          // A cron recurs the workflow — its key mirrors the wf: coords, so it needs the identity.
+          if (cron && !wf) return yield* new CronNeedsIdentityError();
           // Fire-time watch overrides the stored policy wholesale; either way the row is
           // written here, in the same handler that schedules (ruling W6) — this is how
           // trigger- and cron-fired saved workflows carry supervision too (agreement 9).
-          return yield* invokeWithWatch({
+          const result = yield* invokeWithWatch({
             ...req,
             ...(wf ? { wf } : {}),
             ...(instanceId ? { instanceId } : {}),
@@ -240,6 +264,19 @@ export function registerWorkflowRoutes(
             ...((watch ?? workflow.value.watch) ? { watch: watch ?? workflow.value.watch } : {}),
             ...(watchMeta ? { watchMeta } : { watchMeta: { owner: request.params.key } }),
           });
+          // Register the recurrence in the SAME handler (sibling of the watch row). The run just fired
+          // under result.instanceId, so it counts as the cron's initial fire and the guard starts there.
+          if (cron && wf) {
+            yield* registerCronForFire({
+              identity: wf,
+              cadence: cron.cadence,
+              ...(cron.budget ? { budget: cron.budget } : {}),
+              source: { mode: "saved", key: request.params.key, ...(params ? { params } : {}) },
+              instanceId: result.instanceId,
+              initial: { firedAt: new Date().toISOString() },
+            });
+          }
+          return result;
         }),
         { successStatus: 202 },
       );

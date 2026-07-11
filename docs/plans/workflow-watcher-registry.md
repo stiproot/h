@@ -288,10 +288,13 @@ the referenced records' state → `done` → deactivate.
      (its failure never fails the tick). Fire builds the request from the source (saved key | embedded
      steps), stamps the wf-identity + fixed instance + fresh, mark-before-fire so a broken source
      self-limits against the budget. *(landed)*
-   - **4d — entry points**: the `cron` field on the run request (HTTP registration →
-     `registerCronForFire`, sibling of the `watch` field), and the `===GOAL===` →
-     `write-wf-row.resolved` producer path in `generic.workflow` (+ the `revise` prose emitting it) so
-     the resolved handshake goes live. *(next)*
+   - ✅ **4d — entry points**: the `cron` field on `/workflow/run/:key` (a `CronPolicy` {cadence,
+     budget}) registers via `registerCronForFire` in the same handler (sibling of `watch`; 400s
+     without a wf-identity, mode 1 saved source, the initial run counted); and the `===GOAL===` →
+     `write-wf-row.resolved` producer in `generic.workflow` (+ `revise` emitting `===GOAL===RESOLVED`
+     on PR-merged) so the resolved handshake is live. *(landed)*
+   - *(Follow-up: the `cron` field on the inline `/workflow/run` path pairs with item 5's embedded
+     source; `h cron add` + `--cron`/`--dynamic-cron` CLI is item 6.)*
 5. **Inline template run (CLI)** — `h workflow run <template> -p …` renders + fires with no publish
    (writes only the `wf:` status row); compose-on-fire, sibling to chain `-t`.
 6. **Cron CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags (workflow-svc persists the

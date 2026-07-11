@@ -11,6 +11,8 @@ type Input = {
   instanceId: string;
   subject?: Record<string, unknown>;
   output?: string;
+  // The goal handshake (§6): the subject is resolved (e.g. the PR merged) — the cron engine reads it.
+  resolved?: boolean;
   traceparent?: string;
 };
 
@@ -29,7 +31,7 @@ export async function writeWfRowActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<void> {
-  const { wf, status, instanceId, subject, output, traceparent } = input as Input;
+  const { wf, status, instanceId, subject, output, resolved, traceparent } = input as Input;
   await runActivity(
     Effect.gen(function* () {
       const store = yield* WfStore;
@@ -39,6 +41,7 @@ export async function writeWfRowActivity(
         instanceId,
         subject,
         output,
+        ...(resolved !== undefined ? { resolved } : {}),
         updatedAt: new Date().toISOString(),
       });
     }).pipe(Effect.ignore),

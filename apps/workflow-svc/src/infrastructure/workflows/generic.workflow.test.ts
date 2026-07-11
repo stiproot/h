@@ -7,7 +7,10 @@ import { genericWorkflow } from "./generic.workflow.ts";
 // A recording WorkflowContext: callActivity logs { activity, input } and returns a placeholder Task.
 type Call = { activity: unknown; input: Record<string, unknown> };
 
-async function run(input: WorkflowRequest, opts: { failAtCall?: number } = {}) {
+async function run(
+  input: WorkflowRequest,
+  opts: { failAtCall?: number; stepResult?: unknown } = {},
+) {
   const calls: Call[] = [];
   const ctx = {
     getWorkflowInstanceId: () => "inst-1",
@@ -32,7 +35,7 @@ async function run(input: WorkflowRequest, opts: { failAtCall?: number } = {}) {
         });
         return { calls, output: undefined, error };
       }
-      sent = "ok";
+      sent = opts.stepResult ?? "ok";
     }
   } catch (e) {
     error = e;
@@ -61,6 +64,30 @@ describe("genericWorkflow — wf: bracketing", () => {
     expect(calls[2].activity).toBe(writeWfRow);
     expect(calls[2].input).toMatchObject({ status: "done" });
     expect(typeof calls[2].input.output).toBe("string");
+  });
+
+  it("sets resolved on the done row when a step emits ===GOAL===RESOLVED (the goal handshake)", async () => {
+    const input: WorkflowRequest = {
+      steps: [step("run-claude", "revise")],
+      wf: { repo: "stiproot/h", slug: "pi-agent", workflow: "revise" },
+    } as WorkflowRequest;
+    const { calls } = await run(input, {
+      stepResult: { output: "addressed comments\n===PR===\nurl\n===GOAL===\nRESOLVED" },
+    });
+    const done = calls.find((c) => c.activity === writeWfRow && c.input.status === "done");
+    expect(done?.input.resolved).toBe(true);
+  });
+
+  it("leaves resolved false when no ===GOAL===RESOLVED marker is present", async () => {
+    const input: WorkflowRequest = {
+      steps: [step("run-claude", "revise")],
+      wf: { repo: "r", slug: "s", workflow: "revise" },
+    } as WorkflowRequest;
+    const { calls } = await run(input, {
+      stepResult: { output: "addressed\n===PR===\nurl\n===GOAL===\nPENDING" },
+    });
+    const done = calls.find((c) => c.activity === writeWfRow && c.input.status === "done");
+    expect(done?.input.resolved).toBe(false);
   });
 
   it("does NOT bracket a run with no wf identity (opt-in)", async () => {

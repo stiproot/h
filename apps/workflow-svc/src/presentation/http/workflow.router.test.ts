@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { emptyChainLedger } from "../../domain/models/chain.model.ts";
-import { emptyCronLedger } from "../../domain/models/cron.model.ts";
+import { type CronRow, emptyCronLedger } from "../../domain/models/cron.model.ts";
 import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
@@ -88,6 +88,20 @@ const stubWfStore: WfStoreService = {
   saveRow: () => Effect.void,
 };
 
+// A cron store that records saved rows, for the cron-field registration test.
+function recordingCronStore(): { service: CronStoreService; rows: Map<string, CronRow> } {
+  const rows = new Map<string, CronRow>();
+  return {
+    rows,
+    service: {
+      ...stubCronStore,
+      getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
+      saveRow: (row) =>
+        Effect.sync(() => void rows.set(`${row.repo}:${row.slug}:${row.workflow}`, row)),
+    },
+  };
+}
+
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
 
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -99,6 +113,7 @@ async function makeApp(
   invoker: WorkflowInvokerService,
   store: WorkflowStoreService,
   watch: WatchStoreService = memoryWatchStore().service,
+  cron: CronStoreService = stubCronStore,
 ): Promise<FastifyInstance> {
   const runtime: WorkflowRoutesRuntime = ManagedRuntime.make(
     Layer.mergeAll(
@@ -106,7 +121,7 @@ async function makeApp(
       Layer.succeed(WorkflowStore, store),
       Layer.succeed(WatchStore, watch),
       Layer.succeed(ChainStore, stubChainStore),
-      Layer.succeed(CronStore, stubCronStore),
+      Layer.succeed(CronStore, cron),
       Layer.succeed(WfStore, stubWfStore),
       Layer.succeed(DaprPublisherTag, stubPublisher),
     ),
@@ -380,6 +395,52 @@ describe("POST /workflow/run/:key", () => {
     // The resubmit is stored for engine retries, and the watch field never reaches the invoker.
     expect(row.resubmit).toBeDefined();
     expect(seen[0]).not.toHaveProperty("watch");
+  });
+
+  it("a cron field registers a cron:sub row in the same handler (sibling of watch)", async () => {
+    const cron = recordingCronStore();
+    const stored: StoredWorkflow = {
+      steps: [{ activity: "run-claude" }],
+      params: { repo: "stiproot/h", slug: "pi-agent" },
+    };
+    const app = await makeApp(
+      stubInvoker({ invoke: () => Effect.succeed({ instanceId: "revise-pi-agent" }) }),
+      stubStore({ get: () => Effect.succeed(Option.some(stored)) }),
+      memoryWatchStore().service,
+      cron.service,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/revise",
+      payload: { cron: { cadence: "*/30 * * * *", budget: { maxFires: 50 } } },
+    });
+    expect(res.statusCode).toBe(202);
+    const row = cron.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row).toMatchObject({
+      status: "active",
+      cadence: "*/30 * * * *",
+      budget: { maxFires: 50 },
+      instanceId: "revise-pi-agent",
+      source: { mode: "saved", key: "revise" },
+    });
+    // The initial run counts (fires 1) and the guard starts on its instance.
+    expect(row.fires).toBe(1);
+    expect(row.currentInstanceId).toBe("revise-pi-agent");
+  });
+
+  it("400s a cron field on a run with no wf-identity (no repo/slug)", async () => {
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({
+        get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })),
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/revise",
+      payload: { cron: { cadence: "*/30 * * * *" } },
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it("a stored watch policy on the saved workflow registers without any body field", async () => {

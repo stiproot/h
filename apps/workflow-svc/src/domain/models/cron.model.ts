@@ -57,6 +57,15 @@ export const CronBudget = Schema.Struct({
 });
 export type CronBudget = Schema.Schema.Type<typeof CronBudget>;
 
+// The run-request shape that REGISTERS a cron (the `cron` field, sibling of `watch`): the cadence to
+// recur on and an optional budget. workflow-svc turns it into a CronRow in the same handler that fires
+// — the source (saved key or embedded steps) and identity come from the run itself, not from here.
+export const CronPolicy = Schema.Struct({
+  cadence: Schema.String,
+  budget: Schema.optional(CronBudget),
+});
+export type CronPolicy = Schema.Schema.Type<typeof CronPolicy>;
+
 /**
  * The persisted cron row (`cron:sub:<repo>:<slug>:<workflow>`), written ONLY by workflow-svc — its
  * registration fire path and the scan engine. `epoch` is the fence (bumped on every re-registration);

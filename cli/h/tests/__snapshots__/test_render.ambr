@@ -523,8 +523,11 @@
              method resolve_thread passing the thread node id. For a thread you did NOT change, reply
              with your reasoning but do NOT resolve it. Never APPROVE or REQUEST_CHANGES — human trust
              gates stay human.
-          End your response with the exact marker ===PR=== on its own line, then the PR URL — or
-          SKIPPED and the reason — on the next line.
+          6. Report the GOAL state for the recurrence engine: this workflow's goal is PR #{{params.pr}}
+             being MERGED. Read the PR (github MCP pull_request_read) and check its `merged` field.
+          Then end your response with TWO markers, each on its own line:
+          - ===PR=== followed by the PR URL (or SKIPPED and the reason) on the next line.
+          - ===GOAL=== followed by RESOLVED if the PR is merged, else PENDING, on the next line.
   
   '''
 # ---
