@@ -184,9 +184,11 @@ the referenced records' state → `done` → deactivate.
   only the **accumulated state** is persisted — as plain single-writer state, not an actor.
 
 ## What this replaces / simplifies
-- The bespoke `issue-sweep` agent workflow → a `watcher` record with a `github-issues` source.
-- The chain's `loop-until-clean` strategy → a per-PR watcher firing `revise` until clean (looping
-  outlives any single chain run).
+- The bespoke `issue-sweep` agent workflow → a **discovery/fan-out `cron`** with a `github-issues`
+  source (a SECOND cron mode beside the fixed-identity recur — see Build order item 7; needs design).
+- The chain's `loop-until-clean` strategy → a per-PR **cron** firing `revise` until the PR merges
+  (the recur cron built in items 4–6 — looping outlives any single chain run). *(Landed mechanism;
+  wiring the sweep/chain over to it is items 7 + the loop-home question Q5.)*
 - The duplicate-dispatch bug → fixed by durable-state truth + rich keys (a workflow checks `wf:*`
   before acting).
 
@@ -308,4 +310,14 @@ the referenced records' state → `done` → deactivate.
    - ✅ **6b — `h cron list`**: the inspection surface (GET /cron/list on the tick router + a new `h
      cron` command group), sibling of `h watch list` — heartbeat + rows. *(landed)*
    - *(Deferred: `h cron add` standalone register (needs POST /cron), `--dynamic-cron` agent-decides.)*
-7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).
+7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover). **NEEDS A DESIGN
+   PASS FIRST — not a straight swap.** The cron built in items 4–6 is a **recur** cron: it re-fires
+   ONE workflow (fixed `wf:` identity) until its goal resolves. The sweep is a **different shape** —
+   **discovery / fan-out**: on each tick it QUERIES a source (open issues with a label) and fires ONE
+   `feature-pr` PER discovered issue, deduping against the `wf:*` keys (so it never re-implements an
+   issue that already has a row — the fix for the 2026-07-11 duplicate-dispatch bug). So this is a
+   SECOND cron mode (a `source` that enumerates → fan-out), not the fixed-identity recur. It needs:
+   (a) the **source-reader boundary** + a **GitHub read budget** (Open Q3 — a busy tick must not hammer
+   the API); (b) how a discovery cron threads each issue → a `feature-pr` identity (issue→slug,
+   Decision §3); (c) then the atomic delete of the sweep machinery. Design it like the cron-termination
+   model was — chat first, don't assume the shape.
