@@ -58,6 +58,24 @@ wf:stiproot/h:pi-agent:pr-review  → { status: done,      instanceId: pr-review
 wf:stiproot/h:pi-agent:revise     → { status: in-flight, instanceId: revise-pi-agent,  pr: 30, iteration: 1 }
 ```
 
+**Who writes the row, and how (locked).** The workflow writes its OWN row — via a bookending
+**state-write activity**, not the agent. A Dapr workflow can't do I/O directly (it `callActivity`s),
+so `generic.workflow` brackets its steps:
+```
+callActivity(write-wf-row, { status: running, subject })   # at start
+  … the workflow's real steps …
+callActivity(write-wf-row, { status: done, output })       # at end
+```
+The `write-wf-row` activity runs on **workflow-svc** (which holds the Dapr state API), so an
+executor's MCP surface is irrelevant — **claude-coder's github-only MCP never touches state**. It is
+genuinely the workflow writing its own row (its own steps do it), single-writer, and a crash leaves a
+stale `running` row that the reader marks `orphaned` (§Deferred). Bracketing is **opt-in**: only when
+the workflow input carries the wf-identity, so non-registry workflows are unchanged.
+- **Key parts:** `slug` (existing param), `workflow` (the saved key, passed in), `repo` (a NEW param,
+  default = the target repo from values).
+- **Value:** `{ status, instanceId, subject: params, output, updatedAt }`.
+- **Readers** (chain/cron engines) read these rows by exact key.
+
 ### 4. Registry backing — facts *(reference)*
 - The registry is **plain Dapr state** (`state_get`/`state_save`) in the `statestore` Redis
   component (`keyPrefix: none` → flat keys). It is **not** actor state.
@@ -175,12 +193,15 @@ the referenced records' state → `done` → deactivate.
   non-terminal row whose Dapr instance is gone and marking it `orphaned`, and the watcher backstop —
   is a **follow-up PR**, not part of the first cut.
 
-## Proposed build order
-1. **`revise.yaml`** standalone template — unblocks PR #30 *and* proves the standalone-workflow +
-   durable-state model.
-2. **Rich `wf:<repo>:<slug>:<workflow>` keys** — the per-workflow status rows + the read/write
-   helpers; retrofit `feature-pr`/`pr-review`/`revise` to read/write them.
-3. **Cron engine** — the dumb workflow-invoker scanning `cron:*` → invoking the target `wf:*`
+## Build order
+1. ✅ **`revise.yaml`** standalone template — `revise` reads its subject from GitHub; unblocks PR #30.
+   *(landed `1c71633`)*
+2. ✅ **Chain integration** — `-w revise` fires the standalone `revise` (threading only durable refs:
+   PR number + slug), not a feature-pr re-fire. *(landed `9e6d27f`)*
+3. **Rich `wf:<repo>:<slug>:<workflow>` keys** — the `write-wf-row` activity + `generic.workflow`
+   bracketing (opt-in on wf-identity), the `repo` param, and the read helpers; retrofit
+   `feature-pr`/`pr-review`/`revise` to write their rows. *(next — §3 above locks the mechanism)*
+4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` → invoking the target `wf:*`
    record's workflow (a third sibling beside the existing watcher + chain engines).
-4. **CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags.
-5. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).
+5. **CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags.
+6. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).
