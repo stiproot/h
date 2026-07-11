@@ -201,11 +201,12 @@ the referenced records' state → `done` → deactivate.
 3. **Rich `wf:<repo>:<slug>:<workflow>` keys** — the per-workflow status registry. Split:
    - ✅ **3a — foundation**: `wf.model.ts` (WfRow / WfIdentity / wfKey), `IWfStore` + `dapr-wf-store`
      (exact-key get/save, no index). *(landed `9430f6c`)*
-   - **3b — the write path**: the `write-wf-row` activity + `generic.workflow` bracketing (opt-in on
-     the `wf` field on `WorkflowRequest`, running→done around the steps), `WfStore` wired into the
-     activity runtime. *(next)*
+   - ✅ **3b — the write path**: the `write-wf-row` activity + `generic.workflow` bracketing (opt-in
+     on the `wf` field on `WorkflowRequest`, running→done/failed around the steps), `WfStore` wired
+     into the activity runtime. *(landed `3b497df`)*
    - **3c — wiring + retrofit**: the fire paths (run route / chain scan) set the wf-identity
      (`repo` param + slug + workflow key); `feature-pr`/`pr-review`/`revise` start writing rows.
+     *(next)*
 4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` → invoking the target `wf:*`
    record's workflow (a third sibling beside the existing watcher + chain engines).
 5. **CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags.
