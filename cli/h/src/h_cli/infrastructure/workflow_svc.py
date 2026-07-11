@@ -113,6 +113,13 @@ def watch_list() -> Any:
     return resp.json()
 
 
+def cron_list() -> Any:
+    """The cron registry plus the scan heartbeat (the staleness signal, one call)."""
+    resp = httpx.get(f"{WORKFLOW_URL}/cron/list", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def watch_get(instance_id: str) -> Any:
     resp = httpx.get(f"{WORKFLOW_URL}/watch/{instance_id}", timeout=10)
     resp.raise_for_status()

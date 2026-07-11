@@ -1,5 +1,5 @@
 import type { WorkflowError } from "core";
-import { Effect, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
@@ -7,6 +7,7 @@ import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.
 import { type CronScanReport, scanCronsEffect } from "../../domain/cron-scan.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
+import { CronStore } from "../../domain/ports/ICronStore.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
 import {
   type WatchScanReport,
@@ -107,6 +108,21 @@ const scanAndFire = (
  * with a body-ignoring catch-all, leaving the JSON-parsing workflow routes untouched.
  */
 export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRoutesRuntime): void {
+  // The cron REGISTRY's read surface (sibling of /watch/list, /chain/list): the scan heartbeat +
+  // every cron:sub row, so `h cron list` can tell a live scan from a dead/disarmed one in one call.
+  fastify.get("/cron/list", (_request, reply) =>
+    runRoute(
+      runtime,
+      reply,
+      Effect.gen(function* () {
+        const cs = yield* CronStore;
+        const heartbeat = yield* cs.getHeartbeat();
+        const crons = yield* cs.listRows();
+        return { heartbeat: Option.getOrNull(heartbeat), crons };
+      }),
+    ),
+  );
+
   // Ticks fire far more often than a scheduled workflow runs; an overlapping tick is a no-op rather
   // than re-scanning while the previous scan is still firing workflows (see tickEffect).
   const ticking = Ref.unsafeMake(false);

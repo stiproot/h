@@ -305,6 +305,7 @@ the referenced records' state → `done` → deactivate.
 6. **Cron CLI** — split:
    - ✅ **6a — `--cron` / `--max-fires` on `h workflow run`**: rides the saved run as a cron policy on
      `/workflow/run/:key` (the 4d field); rejected under `--inline`/`--via`. *(landed)*
-   - **6b — `h cron list`**: the inspection surface (GET /cron/list), sibling of `h watch list`. *(next)*
+   - ✅ **6b — `h cron list`**: the inspection surface (GET /cron/list on the tick router + a new `h
+     cron` command group), sibling of `h watch list` — heartbeat + rows. *(landed)*
    - *(Deferred: `h cron add` standalone register (needs POST /cron), `--dynamic-cron` agent-decides.)*
 7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).
