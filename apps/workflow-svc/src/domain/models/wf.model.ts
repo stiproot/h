@@ -1,0 +1,47 @@
+import { Schema } from "effect";
+
+/**
+ * The `wf:` registry — one per-workflow status row per (repo, slug, workflow).
+ * Key: `wf:<repo>:<slug>:<workflow>` (docs/plans/workflow-watcher-registry.md §3). The workflow
+ * NAME is the leaf, and the workflow that names the row is its SOLE writer — single-writer is a
+ * property of the key structure (no shared key ⇒ no lost-update race), which is what lets many
+ * workflows track the same (repo, slug) target without an actor.
+ *
+ * Written by the workflow ITSELF via the `write-wf-row` bookending activity (running before its
+ * steps, done/failed after) — the activity runs on workflow-svc, so an executor's MCP surface is
+ * irrelevant. Read by the chain/cron engines by exact key. Enumeration is GitHub, not a shared
+ * index, so there is no `wf:index`.
+ */
+
+export const WfStatus = Schema.Literal("running", "done", "failed", "orphaned");
+export type WfStatus = Schema.Schema.Type<typeof WfStatus>;
+
+export const WfRow = Schema.Struct({
+  // owner/name — the target repo (multi-repo portability; part of the key).
+  repo: Schema.String,
+  // the artifact through-line: the feature/<slug> branch tying issue → branch → PR (part of the key).
+  slug: Schema.String,
+  // the workflow name (its saved key) — the leaf of the key and the row's SOLE writer.
+  workflow: Schema.String,
+  status: WfStatus,
+  // the Dapr workflow instance backing this run.
+  instanceId: Schema.String,
+  // the fire-time params the workflow ran with — its subject (pr / issue / …).
+  subject: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // the workflow's output (its `===MARKER===` text), stamped on the terminal write.
+  output: Schema.optional(Schema.String),
+  // ISO timestamp of this write.
+  updatedAt: Schema.String,
+});
+export type WfRow = Schema.Schema.Type<typeof WfRow>;
+
+/** The wf-identity a run carries so it can write its own row: the three key segments. */
+export const WfIdentity = Schema.Struct({
+  repo: Schema.String,
+  slug: Schema.String,
+  workflow: Schema.String,
+});
+export type WfIdentity = Schema.Schema.Type<typeof WfIdentity>;
+
+/** The state-store key for a row: `wf:<repo>:<slug>:<workflow>`. */
+export const wfKey = (id: WfIdentity): string => `wf:${id.repo}:${id.slug}:${id.workflow}`;
