@@ -93,18 +93,33 @@ primitive: **cron**. Flag `--cron`; key prefix `cron:`.
   a pure `decide` on the cron-tick clock, acting through a closed vocabulary — differing only in the
   action: **watcher supervises** one instance, **chain sequences** (fires the next), **cron recurs**
   (re-invokes a workflow until done).
-- A cron's only job: **invoke a workflow on a clock.** It holds a pointer + a cadence, nothing else.
+- A cron's only job: **invoke a workflow on a clock.** workflow-svc is the **sole cron engine and the
+  sole writer of `cron:*`** (locked). The CLI passes `--cron <cadence>` as a field on the run request;
+  workflow-svc persists the `cron:*` row in the same handler that invokes — symmetric with how
+  `--watch` registers `watch:*`. The CLI never writes `cron:*` directly.
+- **What a cron re-fires — three source modes (all resolved workflow-svc-side, on the tick):**
+  1. **Saved key + fixed params** — the `cron:*` row holds `{ workflow: <saved-key>, params }`; each
+     tick re-fires the *published* definition with those fixed params. Many crons can share ONE saved
+     definition, each with different params — no duplication. (This is the `wf.workflow`/`wf.subject`
+     shape below.)
+  2. **Embedded hydrated definition** — the `cron:*` row holds the fully-hydrated definition (steps +
+     params); each tick invokes it **as-is — no re-hydration, no publish required**. This is what lets
+     an inline `h workflow run <template> -p … --cron "…"` recur with nothing saved separately:
+     creating the cron is itself what persists the built definition (inside workflow-svc).
+  3. **Dynamic params** *(deferred — see Deferred)* — the `cron:*` row references a definition plus a
+     **rule** for deriving params fresh each tick (params change tick-to-tick). Powerful, but needs a
+     param-source contract; addressed when the use-case arises.
 - **Two records per cron'd thing:**
   - **Workflow record (the brain):** `wf:<repo>:<slug>:<workflow>` →
     `{ status, workflow: <saved-key>, subject: {source, pr|issue, filter}, iteration }`.
     Self-sufficient — `h workflow run` it once, done.
-  - **Cron record (the clock):** `cron:<repo>:<slug>:<name>` →
-    `{ status: active, target: wf:<repo>:<slug>:<name>, cadence }`. Holds only enough to invoke.
+  - **Cron record (the clock):** `cron:<repo>:<slug>:<name>` → `{ status, cadence }` + one of the
+    three source modes above. Holds only enough to re-invoke.
 - The cron is an OPTIONAL recurrence wrapper on a standalone workflow — cron-or-not is orthogonal to
   the work.
-- **Cron scan:** for each `cron:*` with `status == active` → read its `target` `wf:` record → if not
-  in-flight → run `wf.workflow` with `wf.subject`. The fired workflow's agent does the judging
-  ("machines loop, agents judge").
+- **Cron scan:** for each `cron:*` with `status == active` → if its subject is not in-flight →
+  re-invoke per its source mode (saved-key+params / embedded definition / dynamic rule). The fired
+  workflow's agent does the judging ("machines loop, agents judge").
 - **The sweep collapses into a cron** (a `github-issues` source): discovery is a GitHub query, dedup
   is the `wf:*` keys, spec-composition dissolves (feature-pr reads the issue itself).
 
@@ -120,6 +135,9 @@ primitive: **cron**. Flag `--cron`; key prefix `cron:`.
 - **Standalone:** `h cron add …` — create a cron independent of running a workflow (first-class CLI
   feature). (`h watch …` stays for the supervise primitive.)
 - **`--cron`:** on a workflow → statically register a cron (re-invokes it on the clock until `done`).
+  workflow-svc persists the `cron:*` row in the same fire handler (single writer); the source mode
+  (§5) is chosen by how the run was issued — a saved-key run → mode 1 (key + the fire-time params);
+  an inline template run → mode 2 (the built definition is embedded in the cron, no publish needed).
 - **`--dynamic-cron`:** the executing agent decides (mid-run) whether to register a cron — e.g.
   `pr-review`, on finding comments, registers the resolve-comments workflow + its cron itself
   (a self-propagating loop, no sweep needed).
@@ -138,7 +156,7 @@ workflow.**
 plus the new recur-cron, that's three loops. Collapse to **one** `cron:*` registry, dispatched by
 the middle segment:
 ```
-cron:cron:<repo>:<slug>:<name>   → { status, cadence, ref: wf:<repo>:<slug>:<name> }        # recur a workflow
+cron:cron:<repo>:<slug>:<name>   → { status, cadence, <source> }                             # recur a workflow — <source> is one of the three §5 modes (saved-key+params | embedded definition | dynamic rule)
 cron:chain:<repo>:<slug>         → { status, cadence, workflows: [wf-key, …], cursor, data } # sequence
 cron:watch:<repo>:<slug>:<wf>    → { status, cadence, ref: <instanceId>, policy }            # supervise
 ```
@@ -192,6 +210,14 @@ the referenced records' state → `done` → deactivate.
   writes its own `done`). Handling a run that **dies before writing `done`** — the reader detecting a
   non-terminal row whose Dapr instance is gone and marking it `orphaned`, and the watcher backstop —
   is a **follow-up PR**, not part of the first cut.
+- **Cron source mode 3 — dynamic params.** A cron that derives its params fresh each tick (params
+  change tick-to-tick) rather than re-firing fixed params (mode 1) or a frozen definition (mode 2).
+  Needs a **param-source contract** (how/where the fresh values come from — a reader plugin, prior
+  `wf:` output, a GitHub query). Powerful; build when a concrete use-case lands. Modes 1 & 2 ship first.
+- **Compose-to-disk — authoring a new template file.** Today `h template compose … --save` persists
+  the composed *definition to workflow-svc state*, not a new `.yaml` on disk. Authoring a genuinely
+  new reusable **template file** alongside the others (re-composable, `git`-trackable) is a wanted
+  feature — **plan stub**, to spec and build later.
 
 ## Build order
 1. ✅ **`revise.yaml`** standalone template — `revise` reads its subject from GitHub; unblocks PR #30.
@@ -204,10 +230,25 @@ the referenced records' state → `done` → deactivate.
    - ✅ **3b — the write path**: the `write-wf-row` activity + `generic.workflow` bracketing (opt-in
      on the `wf` field on `WorkflowRequest`, running→done/failed around the steps), `WfStore` wired
      into the activity runtime. *(landed `3b497df`)*
-   - **3c — wiring + retrofit**: the fire paths (run route / chain scan) set the wf-identity
-     (`repo` param + slug + workflow key); `feature-pr`/`pr-review`/`revise` start writing rows.
-     *(next)*
-4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` → invoking the target `wf:*`
-   record's workflow (a third sibling beside the existing watcher + chain engines).
-5. **CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags.
-6. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).
+   - **3c — wiring + retrofit** *(next)*. Two sub-steps:
+     - **3c-i — repo as a fire-time param.** `repo` becomes a `-p repo=<owner/name>` content value in
+       `feature`/`revise`/`pr-review` (`{{params.repo}}`, publish-default from each template's existing
+       `sourceRepo`/`prReview.repo` values), driving **both** the clone `sourceRepo` **and** the
+       wf-identity — one repo, no drift. `pr-review` also gains an identity-only `slug` param (the
+       truer name `branch` is a deferred rename). Re-bless the syrupy chart goldens.
+     - **3c-ii — wf-identity assembly (workflow-svc owns key construction).** A domain helper
+       `wfIdentityFrom(params, workflowName)` builds `{repo, slug, workflow}`; the two fire paths
+       (run-route by saved key, chain-scan by `kind`) call it and set `request.wf`; chain `buildParams`
+       threads `repo`. Row-writing stays **opt-in** — no `repo`+`slug` ⇒ no row (standalone must pass
+       `-p repo= -p slug=`). `feature-pr`/`pr-review`/`revise` start writing rows. `generic.workflow`
+       is unchanged (consumes `input.wf` from 3b).
+     - Inline template run (`h workflow run <template> -p …`, render+fire, no publish) is a **separate
+       CLI item** (compose-on-fire, sibling to chain `-t`), not part of 3c.
+4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` (a third sibling beside the watcher +
+   chain engines), re-firing per the source mode (§5): mode 1 saved-key+params and mode 2 embedded
+   definition ship first; mode 3 dynamic params is deferred. workflow-svc is the sole writer of `cron:*`.
+5. **Inline template run (CLI)** — `h workflow run <template> -p …` renders + fires with no publish
+   (writes only the `wf:` status row); compose-on-fire, sibling to chain `-t`.
+6. **Cron CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags (workflow-svc persists the
+   `cron:*` row on the fire path; the source mode follows how the run was issued — saved key vs inline).
+7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).
