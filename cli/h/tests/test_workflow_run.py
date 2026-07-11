@@ -45,6 +45,29 @@ def test_inline_renders_a_template_and_fires_its_steps() -> None:
     assert body["instanceId"] == "revise-pi-agent"
 
 
+@respx.mock
+def test_cron_flag_registers_a_recurrence_on_the_saved_run() -> None:
+    """--cron/--max-fires ride the run as a cron policy on /workflow/run/:key (the 4d field)."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run/revise").mock(
+        return_value=Response(202, json={"instanceId": "revise-x", "watching": False})
+    )
+    result = runner.invoke(
+        app,
+        ["workflow", "run", "revise", "-p", "repo=o/r", "-p", "slug=x",
+         "--cron", "*/30 * * * *", "--max-fires", "50"],
+    )
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls[0].request.content)
+    assert body["cron"] == {"cadence": "*/30 * * * *", "budget": {"maxFires": 50}}
+    assert body["params"] == {"repo": "o/r", "slug": "x"}
+
+
+def test_max_fires_without_cron_errors() -> None:
+    result = runner.invoke(app, ["workflow", "run", "revise", "--max-fires", "10"])
+    assert result.exit_code == 1
+    assert "--cron" in result.output
+
+
 def test_inline_rejects_via() -> None:
     """--inline fires directly on workflow-svc; combining it with --via is a clear error."""
     result = runner.invoke(

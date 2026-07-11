@@ -269,6 +269,22 @@ def run(
             "Implies --watch.",
         ),
     ] = None,
+    cron: Annotated[
+        str | None,
+        typer.Option(
+            "--cron",
+            help="Recur this workflow on this cadence (5-field cron, UTC) until its goal resolves "
+            "or the budget is spent. Registers a cron:sub row (needs repo+slug params for the "
+            "identity); inspect with `h cron list`.",
+        ),
+    ] = None,
+    max_fires: Annotated[
+        int | None,
+        typer.Option(
+            "--max-fires",
+            help="Cron budget: deactivate after N fires (default 100). Implies --cron.",
+        ),
+    ] = None,
     via: ViaOpt = None,
 ) -> None:
     """Fire a saved workflow (or, with --inline, a template rendered on the fly) with fire-time
@@ -296,11 +312,25 @@ def run(
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
         if retry is not None:
             watch_policy["retry"] = {"maxAttempts": retry, "fresh": True}
+    cron_policy: dict[str, Any] | None = None
+    if cron or max_fires is not None:
+        if not cron:
+            err_console.print("[red]--max-fires needs --cron[/red]")
+            raise typer.Exit(1)
+        cron_policy = {"cadence": cron}
+        if max_fires is not None:
+            cron_policy["budget"] = {"maxFires": max_fires}
     if inline:
         if via:
             err_console.print(
                 "[red]--inline fires directly on workflow-svc[/red] — drop --via (routing "
                 "an inline definition through an agent babysitter is a separate path)."
+            )
+            raise typer.Exit(1)
+        if cron_policy:
+            err_console.print(
+                "[red]--cron on an inline run is not wired yet[/red] — publish the template and "
+                "`--cron` the saved key (the embedded-source cron pairs with a later item)."
             )
             raise typer.Exit(1)
         try:
@@ -321,9 +351,9 @@ def run(
             lambda: workflow_svc.run_steps(steps, merged, instance_id, fresh, watch_policy)
         )
     elif via:
-        if watch_policy:
+        if watch_policy or cron_policy:
             err_console.print(
-                "[red]--watch/--budget/--retry need workflow-svc's watcher engine[/red] — "
+                "[red]--watch/--budget/--retry/--cron need workflow-svc's engines[/red] — "
                 "drop --via (the agent babysitter carries its own policy)."
             )
             raise typer.Exit(1)
@@ -338,10 +368,14 @@ def run(
         result = _guarded(lambda: agent_service.submit_workflow(via_url, body))
     else:
         result = _guarded(
-            lambda: workflow_svc.run_saved(key, params, instance_id, fresh, watch_policy)
+            lambda: workflow_svc.run_saved(
+                key, params, instance_id, fresh, watch_policy, cron_policy
+            )
         )
     console.print_json(data=result)
     console.print(f"    watch it: h workflow status {result['instanceId']}")
+    if cron_policy:
+        console.print(f"    recurring: {cron.strip()} — inspect with h cron list")
     if watch_policy:
         console.print(f"    watching: {result.get('watching')}")
         console.print(f"    watch row: h watch get {result['instanceId']}")

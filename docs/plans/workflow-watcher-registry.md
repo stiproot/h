@@ -302,6 +302,9 @@ the referenced records' state → `done` → deactivate.
    no saved key, no publish, leaving only the `wf:` status row. `-p`/`--agent`/`--model` override the
    rendered value-defaults; `--via` is rejected (direct-to-svc). Compose-on-fire, sibling to chain
    `-t`. *(landed)*
-6. **Cron CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags (workflow-svc persists the
-   `cron:*` row on the fire path; the source mode follows how the run was issued — saved key vs inline).
+6. **Cron CLI** — split:
+   - ✅ **6a — `--cron` / `--max-fires` on `h workflow run`**: rides the saved run as a cron policy on
+     `/workflow/run/:key` (the 4d field); rejected under `--inline`/`--via`. *(landed)*
+   - **6b — `h cron list`**: the inspection surface (GET /cron/list), sibling of `h watch list`. *(next)*
+   - *(Deferred: `h cron add` standalone register (needs POST /cron), `--dynamic-cron` agent-decides.)*
 7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).

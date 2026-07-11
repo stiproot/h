@@ -56,11 +56,14 @@ def run_saved(
     instance_id: str | None = None,
     fresh: bool = False,
     watch: dict[str, Any] | None = None,
+    cron: dict[str, Any] | None = None,
 ) -> Any:
     """Fire a saved workflow; fire-time params override the stored defaults key-by-key.
     An instance_id gives the run a readable, stable worktree/workspace key. fresh opts in
     to purging a finished instance under that id and re-running (default: attach). A watch
-    policy ({maxDurationMs, retry?}) registers the run with the durable watcher engine."""
+    policy ({maxDurationMs, retry?}) registers the run with the durable watcher engine; a cron
+    policy ({cadence, budget?}) registers a cron:sub row so the run RECURS until its goal
+    resolves or the budget is spent (needs repo+slug params for the identity)."""
     body: dict[str, Any] = {}
     if params:
         body["params"] = params
@@ -70,6 +73,8 @@ def run_saved(
         body["fresh"] = True
     if watch:
         body["watch"] = watch
+    if cron:
+        body["cron"] = cron
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()
