@@ -75,6 +75,20 @@ pluginImprovement:
     improve: ""
     verify: ""
 
+# revise workflow (templates/revise.yaml): worktree → setup → revise. Publish-native — always
+# rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
+# workflow that reads a PR's unresolved review threads itself and addresses them.
+revise:
+  # Pre-cloned target repo in the shared agent workspace; empty = the agent's default clone.
+  sourceRepo: ""
+  # Branch refreshed from origin before checking out feature/<slug>; empty = agent default (main).
+  remoteBase: ""
+  # Git auth for the worktree + push (mirrors feature.gitAuth: "" = agent default, "pat", "ssh").
+  gitAuth: ""
+  # Per-step model override; empty = the agent's AGENT_MODEL.
+  models:
+    revise: ""
+
 # pr-review workflow (templates/pr-review.yaml): setup → review. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.focus}} slots.
 prReview:

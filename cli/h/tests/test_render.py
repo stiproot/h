@@ -58,6 +58,22 @@ def test_verify_requires_a_cmd() -> None:
         helm.render_workflow("verify", values={"publish": "true"}, include_local=False)
 
 
+def test_revise_golden(snapshot) -> None:
+    """revise — a standalone, publish-native workflow that reads a PR's unresolved review threads
+    itself (github MCP) and addresses them. worktree → setup → revise, {{params.pr}}/{{params.slug}}."""
+    rendered = helm.render_workflow("revise", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_revise_is_worktree_setup_revise() -> None:
+    """revise is self-sufficient: cut the PR's branch, read its threads, push — three steps."""
+    import yaml
+
+    rendered = helm.render_workflow("revise", values={"publish": "true"}, include_local=False)
+    steps = [s["id"] for s in yaml.safe_load(rendered)["steps"]]
+    assert steps == ["worktree", "setup", "revise"]
+
+
 def test_compose_feature_verify_create_pr_orders_and_gates() -> None:
     """feature ⊕ verify ⊕ create-pr: one implement step, ordered implement → check → PR-if-green."""
     from h_cli.infrastructure.overlay import overlay
