@@ -11,13 +11,13 @@ Fire-time params:
   slug      branch token — the run works on branch improve/<slug> (e.g. linear-AE-42)
   feedback  the improvement to apply, plain text/Markdown
 
-Template config (values, baked at publish time): pluginImprovement.sourceRepo (pre-cloned plugin
-repo), pluginImprovement.tile (plugin source dir within the repo — the plugin name is its last
-path segment), models, optional verifyCmd.
+Template config (values, baked at publish time): pluginImprovement.clonePath (local path of the
+pre-cloned plugin repo), pluginImprovement.tile (plugin source dir within the repo — the plugin
+name is its last path segment), models, optional verifyCmd.
 
 Publish:
   helm template plugin-improvement cli/charts/workflows -s templates/plugin-improvement.yaml \
-    --set pluginImprovement.tile=plugins/linear --set pluginImprovement.sourceRepo=/path/repo
+    --set pluginImprovement.tile=plugins/linear --set pluginImprovement.clonePath=/path/repo
 */ -}}
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "plugin-improvement" }}
@@ -30,8 +30,8 @@ steps:
     input:
       agentId: {{ .Values.agentId | quote }}
       branch: {{ printf "improve/%s" (include "h.token" "params.slug") | quote }}
-      {{- with $p.sourceRepo }}
-      sourceRepo: {{ . | quote }}
+      {{- with $p.clonePath }}
+      clonePath: {{ . | quote }}
       {{- end }}
       {{- with $p.remoteBase }}
       remoteBase: {{ . | quote }}

@@ -30,7 +30,7 @@
         "spec": {
           "type": "string"
         },
-        "sourceRepo": {
+        "clonePath": {
           "type": "string"
         },
         "remoteBase": {
@@ -86,7 +86,7 @@
     "pluginImprovement": {
       "type": "object",
       "properties": {
-        "sourceRepo": {
+        "clonePath": {
           "type": "string"
         },
         "tile": {

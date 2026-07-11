@@ -12,7 +12,7 @@ set -euo pipefail
 #   TARGET_REPO_CANONICAL_URL=...  canonical remote that origin is normalised to afterwards,
 #                                  regardless of how it was cloned (defaults to TARGET_REPO_URL).
 #   TARGET_REPO_DIR=...            directory name under the workspace root (default "repo" —
-#                                  the default sourceRepo of the /worktree route).
+#                                  the default clonePath of the /worktree route).
 #   WORKSPACE_ROOT=...             shared workspace root on the host (default ../h-workspace)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

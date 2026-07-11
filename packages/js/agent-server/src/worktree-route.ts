@@ -16,8 +16,9 @@ import type { ActivityLedgerConfig, ActivityRecord } from "./run-ledger.ts";
 const WorktreeBody = Schema.Struct({
   workflowInstanceId: Schema.String,
   workspaceId: Schema.optional(Schema.String),
-  // Source repo to cut the worktree from; defaults to <sharedRoot>/repo (the pre-cloned target repo).
-  sourceRepo: Schema.optional(Schema.String),
+  // Local path of the pre-cloned repo to cut the worktree from; defaults to <sharedRoot>/repo.
+  // NB: a filesystem path, NOT a GitHub owner/name (that is `repo`, the wf-identity segment).
+  clonePath: Schema.optional(Schema.String),
   branch: Schema.optional(Schema.String),
   baseRef: Schema.optional(Schema.String),
   // Branch to refresh from origin before cutting a new branch, so the worktree is up to date with the
@@ -67,7 +68,7 @@ const worktreeEffect = (
   { sharedRoot, ledger }: Pick<WorktreeRouteEffectConfig, "sharedRoot" | "ledger">,
 ) =>
   Effect.gen(function* () {
-    const { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase, auth } =
+    const { workflowInstanceId, workspaceId, clonePath, branch, baseRef, remoteBase, auth } =
       yield* Schema.decodeUnknown(WorktreeBody)(rawBody);
     // Refresh from origin/main by default so a new worktree is cut from the latest remote tip, not
     // the pre-clone's stale local checkout. A pinned baseRef wins; an explicit empty remoteBase
@@ -76,7 +77,7 @@ const worktreeEffect = (
     const startedAtMs = Date.now();
     const key = workspaceId ?? workflowInstanceId;
     const worktreePath = join(sharedRoot, "worktrees", key);
-    const repoPath = sourceRepo ?? join(sharedRoot, "repo");
+    const repoPath = clonePath ?? join(sharedRoot, "repo");
     const rec = (
       status: ActivityRecord["status"],
       extra?: Partial<ActivityRecord>,

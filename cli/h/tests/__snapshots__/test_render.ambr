@@ -387,7 +387,7 @@
       input:
         agentId: "claude-agent"
         branch: "improve/{{params.slug}}"
-        sourceRepo: "/workspace/plugins-repo"
+        clonePath: "/workspace/plugins-repo"
     - id: setup
       activity: setup
       input:

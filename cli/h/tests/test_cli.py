@@ -42,7 +42,7 @@ def test_warn_missing_source_repo(capsys) -> None:
         "  - id: worktree\n"
         "    activity: create-worktree\n"
         "    input:\n"
-        "      sourceRepo: /definitely/not/a/real/path\n"
+        "      clonePath: /definitely/not/a/real/path\n"
     )
     feature._warn_missing_source_repo(rendered)
     assert "does not exist locally" in capsys.readouterr().err
@@ -50,7 +50,7 @@ def test_warn_missing_source_repo(capsys) -> None:
 
 def test_no_warning_for_existing_or_default_source_repo(capsys, tmp_path) -> None:
     feature._warn_missing_source_repo(
-        f"steps:\n  - activity: create-worktree\n    input:\n      sourceRepo: {tmp_path}\n"
+        f"steps:\n  - activity: create-worktree\n    input:\n      clonePath: {tmp_path}\n"
     )
     feature._warn_missing_source_repo("steps:\n  - activity: create-worktree\n    input: {}\n")
     assert capsys.readouterr().err == ""

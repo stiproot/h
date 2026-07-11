@@ -6,7 +6,8 @@ import { invokeAgentMethod, runActivity } from "../activity-runtime.ts";
 type Input = {
   workflowInstanceId: string;
   workspaceId?: string;
-  sourceRepo?: string;
+  // Local path of the pre-cloned repo to cut the worktree from (NOT a GitHub owner/name).
+  clonePath?: string;
   branch?: string;
   baseRef?: string;
   // Branch to refresh from origin before cutting a new branch (defaults to "main" in the agent's
@@ -28,7 +29,7 @@ export async function createWorktreeActivity(
   const {
     workflowInstanceId,
     workspaceId,
-    sourceRepo,
+    clonePath,
     branch,
     baseRef,
     remoteBase,
@@ -42,7 +43,7 @@ export async function createWorktreeActivity(
       label: "create-worktree",
       appId: targetAgent,
       method: "worktree",
-      body: { workflowInstanceId, workspaceId, sourceRepo, branch, baseRef, remoteBase, auth },
+      body: { workflowInstanceId, workspaceId, clonePath, branch, baseRef, remoteBase, auth },
       span: "client",
       parse: "json",
     }).pipe(Effect.map((json) => json as { worktreePath: string })),

@@ -20,7 +20,7 @@ Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts
 Publish mode (--set publish=true): instead of literal slug/spec values, the per-run inputs are
 emitted as {{params.slug}} / {{params.spec}} engine tokens and the top-level instanceId is
 omitted — the render becomes a *template*: a parameterized definition for save_workflow, fired
-later with run_saved_workflow + fire-time params. Template config (sourceRepo, models,
+later with run_saved_workflow + fire-time params. Template config (clonePath, models,
 verifyCmd) still bakes in from values at publish time.
 */ -}}
 {{- /* Template gate: helm evaluates every template even under -s, so each template's body (and
@@ -73,8 +73,8 @@ steps:
     input:
       agentId: {{ $agentIdRef | quote }}
       branch: {{ printf "feature/%s" $slug | quote }}
-      {{- with $f.sourceRepo }}
-      sourceRepo: {{ . | quote }}
+      {{- with $f.clonePath }}
+      clonePath: {{ . | quote }}
       {{- end }}
       {{- with $f.remoteBase }}
       remoteBase: {{ . | quote }}

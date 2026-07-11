@@ -38,8 +38,8 @@ steps:
     input:
       agentId: {{ $agentIdRef | quote }}
       branch: {{ printf "feature/%s" $slug | quote }}
-      {{- with $r.sourceRepo }}
-      sourceRepo: {{ . | quote }}
+      {{- with $r.clonePath }}
+      clonePath: {{ . | quote }}
       {{- end }}
       {{- with $r.remoteBase }}
       remoteBase: {{ . | quote }}

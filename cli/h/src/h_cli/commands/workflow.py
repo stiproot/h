@@ -98,7 +98,7 @@ def publish(
 ) -> None:
     """Render a template in publish mode ({{params.*}} slots open) and save it to workflow-svc.
 
-    Template config (sourceRepo, models, verifyCmd, …) bakes in from values.yaml +
+    Template config (clonePath, models, verifyCmd, …) bakes in from values.yaml +
     values.local.yaml at publish time; per-run inputs stay open as params, supplied later via
     `h workflow run <key> -p k=v` (or run_saved_workflow from any agent).
     """

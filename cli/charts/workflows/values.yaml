@@ -29,8 +29,8 @@ feature:
   slug: ""
   # The Markdown feature spec. Required — pass with --set-file feature.spec=<path.md>.
   spec: ""
-  # Path of the pre-cloned target repo; empty = the agent's default shared clone.
-  sourceRepo: ""
+  # Local path of the pre-cloned target repo (NOT a GitHub owner/name); empty = the agent's default shared clone.
+  clonePath: ""
   # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
   remoteBase: ""
   # Git auth strategy NAME for the worktree/clone steps and the epilogue's push instruction:
@@ -62,8 +62,8 @@ createPr:
 # improve (→ verify). Publish-native — always rendered as a template with {{params.slug}} /
 # {{params.feedback}} slots; see the template header.
 pluginImprovement:
-  # Pre-cloned plugin source repo; empty = the agent's default shared clone.
-  sourceRepo: ""
+  # Local path of the pre-cloned plugin source repo; empty = the agent's default shared clone.
+  clonePath: ""
   # Plugin source dir within the repo (the plugin name is its last path segment). Required.
   tile: ""
   # Branch refreshed from origin before cutting improve/<slug>; empty = the agent default (main).
@@ -79,8 +79,8 @@ pluginImprovement:
 # rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
 # workflow that reads a PR's unresolved review threads itself and addresses them.
 revise:
-  # Pre-cloned target repo in the shared agent workspace; empty = the agent's default clone.
-  sourceRepo: ""
+  # Local path of the pre-cloned target repo in the shared agent workspace; empty = the agent's default clone.
+  clonePath: ""
   # Branch refreshed from origin before checking out feature/<slug>; empty = agent default (main).
   remoteBase: ""
   # Git auth for the worktree + push (mirrors feature.gitAuth: "" = agent default, "pat", "ssh").

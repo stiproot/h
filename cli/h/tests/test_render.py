@@ -156,7 +156,7 @@ def test_plugin_improvement_golden(snapshot) -> None:
         "plugin-improvement",
         values={
             "pluginImprovement.tile": "plugins/linear",
-            "pluginImprovement.sourceRepo": "/workspace/plugins-repo",
+            "pluginImprovement.clonePath": "/workspace/plugins-repo",
         },
         include_local=False,
     )

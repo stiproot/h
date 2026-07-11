@@ -61,7 +61,7 @@ def _derive_slug(spec_file: Path) -> str:
 def _warn_missing_source_repo(rendered: str) -> None:
     """Warn when the rendered worktree step points at a repo path that doesn't exist locally.
 
-    The chart's sourceRepo (usually from the gitignored values.local.yaml) is only consumed by
+    The chart's clonePath (usually from the gitignored values.local.yaml) is only consumed by
     the agent at the worktree step, so a typo'd or unprovisioned path otherwise surfaces
     minutes into the run. A warning, not an error: the agent may resolve the path on another
     host (docker/k8s).
@@ -70,10 +70,10 @@ def _warn_missing_source_repo(rendered: str) -> None:
     for step in definition.get("steps", []) if isinstance(definition, dict) else []:
         if step.get("activity") != "create-worktree":
             continue
-        source_repo = (step.get("input") or {}).get("sourceRepo")
-        if source_repo and not Path(source_repo).is_dir():
+        clone_path = (step.get("input") or {}).get("clonePath")
+        if clone_path and not Path(clone_path).is_dir():
             err_console.print(
-                f"[yellow]warning:[/yellow] sourceRepo '{source_repo}' does not exist locally — "
+                f"[yellow]warning:[/yellow] clonePath '{clone_path}' does not exist locally — "
                 "the worktree step will fail unless the agent resolves it elsewhere "
                 "(pre-clone with cli/scripts/clone.sh, or fix values.local.yaml)"
             )

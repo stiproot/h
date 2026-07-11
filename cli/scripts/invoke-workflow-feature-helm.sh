@@ -23,7 +23,7 @@ set -euo pipefail
 # feature never opens a PR: the run leaves uncommitted working-tree changes. To take a feature to a
 # PR, compose it explicitly — `h template compose feature create-pr` (there is no --pr flag).
 #
-# Org-specific defaults (e.g. feature.sourceRepo, model ids) go in the gitignored
+# Org-specific defaults (e.g. feature.clonePath, model ids) go in the gitignored
 # cli/charts/workflows/values.local.yaml, merged automatically by render_workflow.
 #
 # Prerequisites: helm on PATH; the target repo pre-cloned into the shared workspace root

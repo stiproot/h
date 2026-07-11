@@ -28,7 +28,7 @@ Local:
 
    ```yaml
    feature:
-     sourceRepo: /workspace/repo            # the pre-clone (agent-visible path)
+     clonePath: /workspace/repo            # the pre-clone (agent-visible path)
      gitAuth: ssh                           # or omit for the GH_TOKEN pat path
    verify:
      cmd: "bun install --frozen-lockfile && bun run build && bun run test"  # pure build+unit ONLY

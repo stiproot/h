@@ -218,6 +218,18 @@ the referenced records' state → `done` → deactivate.
   the composed *definition to workflow-svc state*, not a new `.yaml` on disk. Authoring a genuinely
   new reusable **template file** alongside the others (re-composable, `git`-trackable) is a wanted
   feature — **plan stub**, to spec and build later.
+- **Optional worktree for a workflow (use-if-provided / create-if-absent) + the `pr-review` case.**
+  A step should accept an optional `worktreePath`: reuse it when a prior chain member cut one, else
+  create one. Clean for h-authored branches. The sharp part is **`pr-review` gaining a worktree**:
+  reading the tree for fuller context is one risk tier; *running commands* on a PR's code executes
+  untrusted third-party code in a secret-bearing agent — the exact blast radius the reviewer's
+  minimal-surface invariant denies (reviewer-identity-security.md). Three lines to choose between:
+  (1) read-only context, no execution; (2) full worktree + execution behind a no-secrets/egress-
+  restricted runtime posture; (3) keep the reviewer read-only via MCP and hand off "needs to run"
+  to a separate trusted validation workflow. Also: creation should be a conditional *workflow step*
+  (a `withWorktree` param), never an agent tool — arming the reviewer with worktree/workflow tools
+  would itself expand the minimal surface. **Plan stub** — decide the line, then build; `pr-review`
+  capabilities stay AS-IS until then.
 
 ## Build order
 1. ✅ **`revise.yaml`** standalone template — `revise` reads its subject from GitHub; unblocks PR #30.
@@ -231,11 +243,20 @@ the referenced records' state → `done` → deactivate.
      on the `wf` field on `WorkflowRequest`, running→done/failed around the steps), `WfStore` wired
      into the activity runtime. *(landed `3b497df`)*
    - **3c — wiring + retrofit** *(next)*. Two sub-steps:
-     - **3c-i — repo as a fire-time param.** `repo` becomes a `-p repo=<owner/name>` content value in
-       `feature`/`revise`/`pr-review` (`{{params.repo}}`, publish-default from each template's existing
-       `sourceRepo`/`prReview.repo` values), driving **both** the clone `sourceRepo` **and** the
-       wf-identity — one repo, no drift. `pr-review` also gains an identity-only `slug` param (the
-       truer name `branch` is a deferred rename). Re-bless the syrupy chart goldens.
+     - **Variable rename (prereq, landing with 3c-i).** `sourceRepo` was ambiguous — it is a **local
+       filesystem path** (the pre-clone the worktree is cut from), NOT a GitHub owner/name. Renamed to
+       **`clonePath`** end-to-end (the `/worktree` wire field, `create-worktree` activity, the three
+       worktree templates + their values, the CLI warning, tests). Three unambiguous names now:
+       `repo` = `owner/name` (identity), `clonePath` = the source dir, `worktreePath` = the run tree.
+     - **3c-i — repo as a fire-time identity param.** `repo` (owner/name) becomes a `-p repo=` content
+       value. It is **identity-only for `feature`/`revise`** (a label for the wf-key; it does NOT touch
+       `clonePath` or the worktree — the two are orthogonal). For **`pr-review`** it also feeds the
+       review prose + MCP target, replacing the `required "prReview.repo"` with a `{{params.repo}}`
+       param (publish-default from `prReview.repo`) — which makes pr-review genuinely repo-portable
+       (no worktree to provision). `pr-review` also gains an identity-only `slug` param (the truer
+       name `branch` is a deferred rename). Re-bless the syrupy chart goldens. *(NB: true clone-
+       portability for `feature`/`revise` — worktree any repo — is a separate provisioning concern:
+       the pre-clone / `clonePath`, out of 3c scope.)*
      - **3c-ii — wf-identity assembly (workflow-svc owns key construction).** A domain helper
        `wfIdentityFrom(params, workflowName)` builds `{repo, slug, workflow}`; the two fire paths
        (run-route by saved key, chain-scan by `kind`) call it and set `request.wf`; chain `buildParams`

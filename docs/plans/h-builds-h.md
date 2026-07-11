@@ -109,7 +109,7 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 - GitHub: labels `agent-approved`, `agent-in-flight`, `agent-done`, `agent-needs-human`, `agent-retry`; branch protection on `main` (require PR + review); two fine-grained PATs per ruling D8.
 - `.env` / compose env split for the two tokens; `cli/scripts/gen-k8s-secrets.sh` untouched (loop is not for k8s).
 - Pre-clone h into the shared workspace root (`cli/scripts/clone.sh`).
-- `cli/charts/workflows/values.local.yaml` (gitignored): `feature.sourceRepo` (the h clone path), `feature.verifyCmd` = pure build+unit (`bun install --frozen-lockfile && bun run build && bun run test` — never compose/Tilt-touching scripts), `feature.models.*`.
+- `cli/charts/workflows/values.local.yaml` (gitignored): `feature.clonePath` (the h clone path), `feature.verifyCmd` = pure build+unit (`bun install --frozen-lockfile && bun run build && bun run test` — never compose/Tilt-touching scripts), `feature.models.*`.
 
 **Acceptance:** attempt a direct push to `main` with the coder PAT → rejected. `gh api` (or curl) with the coder PAT cannot create an issue; the sweep PAT can comment.
 
@@ -118,7 +118,7 @@ Every hop is observable on existing rails: one Zipkin trace roots at the cron ti
 **Deliverables**
 - `cli/charts/workflows/templates/feature.yaml`: `issueNumber` param, exactly the `createPr` pattern (publish mode emits `h.token "params.issueNumber"`, absent → `''`); `===ISSUE===` section + *"if the value is a number N, include `Closes #N` on its own line in the PR body"* in **both** epilogue branches (implement-final and verify-final).
 - `cli/h/tests`: re-bless feature goldens (review the `.ambr` diff).
-- Republish: `h workflow publish feature` (verifyCmd/sourceRepo baked from values.local).
+- Republish: `h workflow publish feature` (verifyCmd/clonePath baked from values.local).
 
 **Acceptance:** file a toy issue #X on the h repo; fire by hand — `h workflow run feature -p slug=issue-X -p spec=@toy.md -p createPr=true -p issueNumber=X --instance-id feature-issue-X`. Observe: worktree on `feature/issue-X` off `origin/main`, `===VERIFY=== PASS`, a PR whose body contains `Closes #X`, and GitHub showing the linked PR on the issue timeline. Merge it; the issue closes.
 
