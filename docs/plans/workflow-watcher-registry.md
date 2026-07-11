@@ -257,12 +257,13 @@ the referenced records' state → `done` → deactivate.
        name `branch` is a deferred rename). Re-bless the syrupy chart goldens. *(NB: true clone-
        portability for `feature`/`revise` — worktree any repo — is a separate provisioning concern:
        the pre-clone / `clonePath`, out of 3c scope.)*
-     - **3c-ii — wf-identity assembly (workflow-svc owns key construction).** A domain helper
+     - ✅ **3c-ii — wf-identity assembly (workflow-svc owns key construction).** A domain helper
        `wfIdentityFrom(params, workflowName)` builds `{repo, slug, workflow}`; the two fire paths
-       (run-route by saved key, chain-scan by `kind`) call it and set `request.wf`; chain `buildParams`
-       threads `repo`. Row-writing stays **opt-in** — no `repo`+`slug` ⇒ no row (standalone must pass
-       `-p repo= -p slug=`). `feature-pr`/`pr-review`/`revise` start writing rows. `generic.workflow`
-       is unchanged (consumes `input.wf` from 3b).
+       (run-route by saved key, chain-scan by `kind` with slug = the chain slug) call it and set
+       `request.wf`; chain `buildParams` threads `repo` into every member. Row-writing stays
+       **opt-in** — no `repo`+`slug` ⇒ no row (standalone must pass `-p repo= -p slug=`; a chain seeds
+       chain-level `-p repo=`). `feature-pr`/`pr-review`/`revise` now write rows. `generic.workflow`
+       unchanged (consumes `input.wf` from 3b). No CLI change — `repo` rides the existing `-p`.
      - Inline template run (`h workflow run <template> -p …`, render+fire, no publish) is a **separate
        CLI item** (compose-on-fire, sibling to chain `-t`), not part of 3c.
 4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` (a third sibling beside the watcher +

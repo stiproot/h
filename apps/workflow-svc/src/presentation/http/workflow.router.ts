@@ -21,6 +21,7 @@ import {
   WorkflowRequest,
   toRequest,
 } from "../../domain/models/workflow.model.ts";
+import { wfIdentityFrom } from "../../domain/models/wf.model.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { WatchStore } from "../../domain/ports/IWatchStore.ts";
@@ -220,11 +221,15 @@ export function registerWorkflowRoutes(
           const workflow = yield* store.get(request.params.key);
           if (Option.isNone(workflow)) return yield* new WorkflowNotFoundError();
           const req = toRequest(workflow.value, traceparent, params);
+          // wf-registry identity: the saved KEY is the workflow name; repo+slug come from the
+          // merged params (fire-time over stored). Opt-in — absent repo/slug ⇒ no row (§3c).
+          const wf = wfIdentityFrom(req.params, request.params.key);
           // Fire-time watch overrides the stored policy wholesale; either way the row is
           // written here, in the same handler that schedules (ruling W6) — this is how
           // trigger- and cron-fired saved workflows carry supervision too (agreement 9).
           return yield* invokeWithWatch({
             ...req,
+            ...(wf ? { wf } : {}),
             ...(instanceId ? { instanceId } : {}),
             ...(workspaceId ? { workspaceId } : {}),
             ...(fresh !== undefined ? { fresh } : {}),

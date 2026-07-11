@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { WfRow, wfKey } from "./wf.model.ts";
+import { WfRow, wfIdentityFrom, wfKey } from "./wf.model.ts";
 
 describe("wfKey", () => {
   it("composes wf:<repo>:<slug>:<workflow> — the workflow is the leaf (its sole writer)", () => {
@@ -14,6 +14,32 @@ describe("wfKey", () => {
     expect(wfKey({ repo: "acme/api", slug: "dark-mode", workflow: "feature-pr" })).toBe(
       "wf:acme/api:dark-mode:feature-pr",
     );
+  });
+});
+
+describe("wfIdentityFrom", () => {
+  it("builds an identity when repo + slug are present (workflow name = the leaf)", () => {
+    expect(wfIdentityFrom({ repo: "stiproot/h", slug: "pi-agent", pr: "30" }, "revise")).toEqual({
+      repo: "stiproot/h",
+      slug: "pi-agent",
+      workflow: "revise",
+    });
+  });
+
+  it("is opt-in — undefined when repo or slug is missing or blank", () => {
+    expect(wfIdentityFrom({ slug: "x" }, "feature-pr")).toBeUndefined(); // no repo
+    expect(wfIdentityFrom({ repo: "o/r" }, "feature-pr")).toBeUndefined(); // no slug
+    expect(wfIdentityFrom({ repo: "  ", slug: "x" }, "feature-pr")).toBeUndefined(); // blank repo
+    expect(wfIdentityFrom(undefined, "feature-pr")).toBeUndefined();
+    expect(wfIdentityFrom({ repo: "o/r", slug: "x" }, "")).toBeUndefined(); // no workflow name
+  });
+
+  it("trims whitespace off the segments", () => {
+    expect(wfIdentityFrom({ repo: " o/r ", slug: " x " }, "pr-review")).toEqual({
+      repo: "o/r",
+      slug: "x",
+      workflow: "pr-review",
+    });
   });
 });
 
@@ -36,7 +62,14 @@ describe("WfRow", () => {
 
   it("rejects an unknown status (closed literal)", () => {
     expect(() =>
-      decode({ repo: "r", slug: "s", workflow: "w", status: "bogus", instanceId: "i", updatedAt: "t" }),
+      decode({
+        repo: "r",
+        slug: "s",
+        workflow: "w",
+        status: "bogus",
+        instanceId: "i",
+        updatedAt: "t",
+      }),
     ).toThrow();
   });
 });

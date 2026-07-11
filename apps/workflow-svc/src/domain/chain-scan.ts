@@ -16,6 +16,7 @@ import {
   type ChainStrategy,
   chainLedgerDate,
 } from "./models/chain.model.ts";
+import { wfIdentityFrom } from "./models/wf.model.ts";
 import { toRequest } from "./models/workflow.model.ts";
 import { ChainStore } from "./ports/IChainStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
@@ -154,11 +155,15 @@ const fireWorkflow = (
       );
     }
     const instanceId = instanceIdAt(row.chainId, row.workflows, cursor);
+    // wf-registry identity: workflow name = the member's kind; slug = the chain's slug (authoritative);
+    // repo = the chain-level target (blackboard `repo`). Opt-in — absent repo ⇒ no row (§3c).
+    const wf = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, workflow.kind);
     yield* invoker.invoke({
       ...toRequest(stored.value, traceparent, params),
       instanceId,
       // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
       fresh: forceFresh || (workflow.fresh ?? false),
+      ...(wf ? { wf } : {}),
     });
     yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { workflowsFired: 1 });
   });

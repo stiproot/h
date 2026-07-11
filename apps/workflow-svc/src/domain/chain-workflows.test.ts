@@ -130,3 +130,28 @@ describe("WORKFLOW_KINDS.revise", () => {
     expect(() => WORKFLOW_KINDS.revise.buildParams({ slug: "x" })).toThrow(/needs a PR number/);
   });
 });
+
+describe("WORKFLOW_KINDS: repo threading (the wf-identity segment + pr-review's review target)", () => {
+  it("threads a chain-level repo into every member's params when the blackboard carries it", () => {
+    expect(WORKFLOW_KINDS["feature-pr"].buildParams({ slug: "x", spec: "s", repo: "o/r" })).toEqual(
+      {
+        slug: "x",
+        spec: "s",
+        repo: "o/r",
+      },
+    );
+    expect(WORKFLOW_KINDS["pr-review"].buildParams({ prNumber: "22", repo: "o/r" })).toEqual({
+      pr: "22",
+      repo: "o/r",
+    });
+    expect(WORKFLOW_KINDS.revise.buildParams({ prNumber: "22", slug: "x", repo: "o/r" })).toEqual({
+      pr: "22",
+      slug: "x",
+      repo: "o/r",
+    });
+  });
+
+  it("omits repo when the blackboard has none (opt-in)", () => {
+    expect(WORKFLOW_KINDS["pr-review"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
+  });
+});

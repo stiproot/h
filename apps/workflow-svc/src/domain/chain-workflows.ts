@@ -97,6 +97,15 @@ function requireStr(data: Blackboard, key: string, hint: string): string {
   return v;
 }
 
+/**
+ * Thread the chain-level target repo (owner/name) into a member's params when present — it is the
+ * wf-identity segment for every member AND pr-review's review target. Opt-in: an absent repo leaves
+ * the params unchanged (seeded chain-level via `-p repo=owner/name`, which lands in the blackboard).
+ */
+function withRepo(params: Record<string, unknown>, data: Blackboard): Record<string, unknown> {
+  return typeof data.repo === "string" && data.repo ? { ...params, repo: data.repo } : params;
+}
+
 export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
   // Implements the issue and opens/updates its PR. Reads the feature spec; captures the PR it opened.
   "feature-pr": {
@@ -107,7 +116,7 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
       };
       if (typeof data.issueNumber === "string" && data.issueNumber)
         params.issueNumber = data.issueNumber;
-      return params;
+      return withRepo(params, data);
     },
     capture: capturePr,
   },
@@ -121,7 +130,7 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
             "(no ===PR=== marker in its output). Did the feature workflow open a PR?",
         );
       }
-      return { pr };
+      return withRepo({ pr }, data);
     },
     capture: captureReview,
   },
@@ -130,14 +139,18 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
   // only durable REFERENCES — the PR number + slug — not the review text: revise reads the review
   // from GitHub, so the workflow stays self-sufficient and runnable standalone.
   revise: {
-    buildParams: (data) => ({
-      pr: requireStr(
+    buildParams: (data) =>
+      withRepo(
+        {
+          pr: requireStr(
+            data,
+            "prNumber",
+            "revise needs a PR number on the blackboard (create-pr's ===PR===)",
+          ),
+          slug: requireStr(data, "slug", "revise needs a slug on the blackboard"),
+        },
         data,
-        "prNumber",
-        "revise needs a PR number on the blackboard (create-pr's ===PR===)",
       ),
-      slug: requireStr(data, "slug", "revise needs a slug on the blackboard"),
-    }),
     capture: capturePr,
   },
 };

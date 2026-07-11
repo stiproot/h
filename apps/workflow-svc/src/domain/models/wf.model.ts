@@ -45,3 +45,20 @@ export type WfIdentity = Schema.Schema.Type<typeof WfIdentity>;
 
 /** The state-store key for a row: `wf:<repo>:<slug>:<workflow>`. */
 export const wfKey = (id: WfIdentity): string => `wf:${id.repo}:${id.slug}:${id.workflow}`;
+
+/**
+ * Build a run's wf-identity from its params + workflow name — workflow-svc owns key construction
+ * (docs/plans/workflow-watcher-registry.md §3c), so the two fire paths (run-route by saved key,
+ * chain-scan by kind) share this one function. OPT-IN: returns undefined unless BOTH `repo`
+ * (owner/name) and `slug` are present and non-empty, so a run with no identity writes no row.
+ */
+export const wfIdentityFrom = (
+  params: Record<string, unknown> | undefined,
+  workflow: string,
+): WfIdentity | undefined => {
+  const seg = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  const repo = seg(params?.repo);
+  const slug = seg(params?.slug);
+  if (!repo || !slug || !workflow) return undefined;
+  return { repo, slug, workflow };
+};

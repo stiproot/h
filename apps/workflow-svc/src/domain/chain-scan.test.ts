@@ -156,6 +156,37 @@ describe("registerChainForFire", () => {
     });
   });
 
+  it("stamps the wf-registry identity on the fired workflow when the blackboard carries a repo", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          workflows: [...DEFAULT_WORKFLOWS],
+          data: { slug: "x", spec: "do it", repo: "o/r" },
+        },
+        undefined,
+      ).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    // wf leaf = the fired member's kind; slug = the chain slug; repo = the blackboard target.
+    expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "feature-pr" });
+    // the threaded repo also rides the member's params (feature reads none, pr-review's target).
+    expect(inv.invokes[0].params).toMatchObject({ repo: "o/r" });
+  });
+
+  it("omits the wf identity when the blackboard carries no repo (opt-in)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    await Effect.runPromise(
+      registerChainForFire(
+        { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
+        undefined,
+      ).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    expect(inv.invokes[0].wf).toBeUndefined();
+  });
+
   it("merges the workflow's own params OVER the kind contract's threading params", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
