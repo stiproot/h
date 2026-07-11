@@ -198,9 +198,14 @@ the referenced records' state → `done` → deactivate.
    *(landed `1c71633`)*
 2. ✅ **Chain integration** — `-w revise` fires the standalone `revise` (threading only durable refs:
    PR number + slug), not a feature-pr re-fire. *(landed `9e6d27f`)*
-3. **Rich `wf:<repo>:<slug>:<workflow>` keys** — the `write-wf-row` activity + `generic.workflow`
-   bracketing (opt-in on wf-identity), the `repo` param, and the read helpers; retrofit
-   `feature-pr`/`pr-review`/`revise` to write their rows. *(next — §3 above locks the mechanism)*
+3. **Rich `wf:<repo>:<slug>:<workflow>` keys** — the per-workflow status registry. Split:
+   - ✅ **3a — foundation**: `wf.model.ts` (WfRow / WfIdentity / wfKey), `IWfStore` + `dapr-wf-store`
+     (exact-key get/save, no index). *(landed `9430f6c`)*
+   - **3b — the write path**: the `write-wf-row` activity + `generic.workflow` bracketing (opt-in on
+     the `wf` field on `WorkflowRequest`, running→done around the steps), `WfStore` wired into the
+     activity runtime. *(next)*
+   - **3c — wiring + retrofit**: the fire paths (run route / chain scan) set the wf-identity
+     (`repo` param + slug + workflow key); `feature-pr`/`pr-review`/`revise` start writing rows.
 4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` → invoking the target `wf:*`
    record's workflow (a third sibling beside the existing watcher + chain engines).
 5. **CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags.
