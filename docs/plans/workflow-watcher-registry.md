@@ -1,7 +1,9 @@
 # Plan: standalone workflows, rich registry keys, watchers as cron-invokers
 
-**Status:** design in progress — living doc, iterating. Captures the decisions from the
-2026-07-11 design session. Not yet implemented.
+**Status:** living doc — design + build in progress. Items 1–4 LANDED on main (the standalone
+`revise`, chain integration, the rich `wf:<repo>:<slug>:<workflow>` registry, and the cron
+primitive — see the Build order). Items 5–7 (inline template run, cron CLI, retire issue-sweep)
+remain. Captures the decisions from the 2026-07-11 design session and their implementation.
 
 ## North star
 
