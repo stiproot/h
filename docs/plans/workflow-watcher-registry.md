@@ -297,8 +297,11 @@ the referenced records' state → `done` → deactivate.
      on PR-merged) so the resolved handshake is live. *(landed)*
    - *(Follow-up: the `cron` field on the inline `/workflow/run` path pairs with item 5's embedded
      source; `h cron add` + `--cron`/`--dynamic-cron` CLI is item 6.)*
-5. **Inline template run (CLI)** — `h workflow run <template> -p …` renders + fires with no publish
-   (writes only the `wf:` status row); compose-on-fire, sibling to chain `-t`.
+5. ✅ **Inline template run (CLI)** — `h workflow run <template> --inline -p …` renders the template
+   (publish-mode) and posts its steps + merged params to `/workflow/run` (new `run_steps` client) —
+   no saved key, no publish, leaving only the `wf:` status row. `-p`/`--agent`/`--model` override the
+   rendered value-defaults; `--via` is rejected (direct-to-svc). Compose-on-fire, sibling to chain
+   `-t`. *(landed)*
 6. **Cron CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags (workflow-svc persists the
    `cron:*` row on the fire path; the source mode follows how the run was issued — saved key vs inline).
 7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover).

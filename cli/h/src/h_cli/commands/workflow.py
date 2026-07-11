@@ -204,6 +204,15 @@ def run(
             "--param", "-p", help="Fire-time param key=value; value '@path' splices a file."
         ),
     ] = None,
+    inline: Annotated[
+        bool,
+        typer.Option(
+            "--inline",
+            help="Treat the argument as a TEMPLATE name, not a saved key: render it (compose-on-fire, "
+            "sibling to chain -t) and fire its steps directly — no publish, leaving only the wf: "
+            "status row. -p/--agent/--model override the template's value-defaults.",
+        ),
+    ] = False,
     agent: Annotated[
         str | None,
         typer.Option(
@@ -262,13 +271,19 @@ def run(
     ] = None,
     via: ViaOpt = None,
 ) -> None:
-    """Fire a saved workflow with fire-time params; prints the instance id.
+    """Fire a saved workflow (or, with --inline, a template rendered on the fly) with fire-time
+    params; prints the instance id.
 
     Template CONTENT values are populated with `-p key=value` (a template's param space is
     unbounded, so it gets one uniform syntax; `@path` splices a file). FLAGS are the closed
     machinery vocabulary: --agent (executor) and --model (which model) are execution machinery;
     --fresh re-runs, --instance-id names the run, --via ROUTES the submit through an agent's
     babysitter, and --watch/--budget/--retry hand the run to workflow-svc's durable watcher engine.
+
+    --inline reinterprets the argument as a chart TEMPLATE name: it renders the template
+    (compose-on-fire, the sibling of chain -t) and fires its steps directly — no publish, no saved
+    definition, leaving only the wf: status row. Use it for a one-off; publish when a definition
+    must be reusable or fired by a trigger/cron.
     """
     params = parse_params(param or [])
     if agent:
@@ -281,7 +296,31 @@ def run(
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
         if retry is not None:
             watch_policy["retry"] = {"maxAttempts": retry, "fresh": True}
-    if via:
+    if inline:
+        if via:
+            err_console.print(
+                "[red]--inline fires directly on workflow-svc[/red] — drop --via (routing "
+                "an inline definition through an agent babysitter is a separate path)."
+            )
+            raise typer.Exit(1)
+        try:
+            rendered = helm.render_workflow(key, values={"publish": "true"})
+        except helm.HelmError as err:
+            err_console.print(f"[red]helm:[/red] {err}")
+            err_console.print(f"Is '{key}' a chart template (cli/charts/workflows/templates)?")
+            raise typer.Exit(1) from err
+        definition = yaml.safe_load(rendered) or {}
+        steps = definition.get("steps")
+        if not steps:
+            err_console.print(f"[red]Template '{key}' rendered no steps[/red] — check its values.")
+            raise typer.Exit(1)
+        # Merge -p/--agent/--model OVER the template's rendered value-defaults (there is no stored
+        # definition to merge against server-side, so the CLI does it — same result as a saved fire).
+        merged = {**(definition.get("params") or {}), **params}
+        result = _guarded(
+            lambda: workflow_svc.run_steps(steps, merged, instance_id, fresh, watch_policy)
+        )
+    elif via:
         if watch_policy:
             err_console.print(
                 "[red]--watch/--budget/--retry need workflow-svc's watcher engine[/red] — "

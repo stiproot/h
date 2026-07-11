@@ -75,6 +75,32 @@ def run_saved(
     return resp.json()
 
 
+def run_steps(
+    steps: list[Any],
+    params: dict[str, Any] | None = None,
+    instance_id: str | None = None,
+    fresh: bool = False,
+    watch: dict[str, Any] | None = None,
+) -> Any:
+    """Fire a hydrated definition (raw steps) directly — no saved key, no publish. The inline
+    compose-on-fire path: the CLI renders a template and posts its steps + params here, so a
+    run leaves only its wf: status row (POST /workflow/run). params resolve {{params.*}} tokens
+    in the steps exactly as a saved run does; the merge with the template's value-defaults happens
+    caller-side (there is no stored definition to merge against server-side)."""
+    body: dict[str, Any] = {"steps": steps}
+    if params:
+        body["params"] = params
+    if instance_id:
+        body["instanceId"] = instance_id
+    if fresh:
+        body["fresh"] = True
+    if watch:
+        body["watch"] = watch
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/run", json=body, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def watch_list() -> Any:
     """The watch registry plus the scan heartbeat (the staleness signal, one call)."""
     resp = httpx.get(f"{WORKFLOW_URL}/watch/list", timeout=10)

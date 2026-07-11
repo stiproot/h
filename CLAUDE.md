@@ -231,7 +231,7 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,template,workflow,chain,watch}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```
