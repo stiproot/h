@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
+import { type CronScanReport, scanCronsEffect } from "../../domain/cron-scan.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
@@ -36,6 +37,7 @@ export const tickEffect = (
       fired: string[];
       watch: WatchScanReport | { error: string };
       chain: ChainScanReport | { error: string };
+      cron: CronScanReport | { error: string };
     }
   | { skipped: string },
   WorkflowError,
@@ -55,7 +57,12 @@ export const tickEffect = (
       const chain = yield* scanChainsEffect(traceparent).pipe(
         Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
       );
-      return { fired, watch, chain };
+      // The recur-cron scan rides the same tick (§5), the third sibling; its failure never fails the
+      // tick either (a broken scan reply would make Dapr treat the binding as unsubscribed).
+      const cron = yield* scanCronsEffect(traceparent).pipe(
+        Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
+      );
+      return { fired, watch, chain, cron };
     }).pipe(Effect.ensuring(Ref.set(ticking, false)));
   });
 

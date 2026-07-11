@@ -1,0 +1,264 @@
+import { Effect, Layer, Option } from "effect";
+import { describe, expect, it } from "vitest";
+
+import { registerCronForFire, scanCronsEffect } from "./cron-scan.ts";
+import { type CronLedger, type CronRow, emptyCronLedger } from "./models/cron.model.ts";
+import type { WfRow } from "./models/wf.model.ts";
+import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
+import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
+import { WfStore, type WfStoreService } from "./ports/IWfStore.ts";
+import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
+import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
+
+function memoryCronStore(): {
+  service: CronStoreService;
+  rows: Map<string, CronRow>;
+  ledgers: Map<string, CronLedger>;
+} {
+  const rows = new Map<string, CronRow>();
+  const ledgers = new Map<string, CronLedger>();
+  const idOf = (r: CronRow) => `${r.repo}:${r.slug}:${r.workflow}`;
+  return {
+    rows,
+    ledgers,
+    service: {
+      getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
+      listRows: () => Effect.succeed([...rows.values()]),
+      saveRow: (row) => Effect.sync(() => void rows.set(idOf(row), row)),
+      deleteRow: (id) => Effect.sync(() => void rows.delete(id)),
+      getConfig: () => Effect.succeed(Option.none()),
+      getHeartbeat: () => Effect.succeed(Option.none()),
+      heartbeat: () => Effect.void,
+      getLedger: (date) => Effect.succeed(ledgers.get(date) ?? emptyCronLedger),
+      bumpLedger: (date, delta) =>
+        Effect.sync(() => {
+          const cur = ledgers.get(date) ?? emptyCronLedger;
+          ledgers.set(date, {
+            cronsRegistered: cur.cronsRegistered + (delta.cronsRegistered ?? 0),
+            firesTriggered: cur.firesTriggered + (delta.firesTriggered ?? 0),
+            cronsDeactivated: cur.cronsDeactivated + (delta.cronsDeactivated ?? 0),
+          });
+        }),
+    },
+  };
+}
+
+function recordingInvoker(statuses: Record<string, WorkflowStatus> = {}): {
+  service: WorkflowInvokerService;
+  invokes: WorkflowRequest[];
+} {
+  const invokes: WorkflowRequest[] = [];
+  return {
+    invokes,
+    service: {
+      invoke: (req) =>
+        Effect.sync(() => {
+          invokes.push(req);
+          return { instanceId: req.instanceId ?? "generated-id" };
+        }),
+      getStatus: (instanceId) =>
+        Effect.succeed(statuses[instanceId] ?? { instanceId, runtimeStatus: "COMPLETED" }),
+      terminate: () => Effect.void,
+    },
+  };
+}
+
+// A wf store whose target row reports `resolved` (the goal handshake) — or none.
+const wfStore = (resolved?: boolean): WfStoreService => ({
+  getRow: (id) =>
+    resolved === undefined
+      ? Effect.succeed(Option.none())
+      : Effect.succeed(
+          Option.some({
+            repo: id.repo,
+            slug: id.slug,
+            workflow: id.workflow,
+            status: "done",
+            resolved,
+            instanceId: "x",
+            updatedAt: "t",
+          } as WfRow),
+        ),
+  saveRow: () => Effect.void,
+});
+
+// A saved-workflow store: the saved-source fire resolves the key to steps via toRequest.
+const savedStore = (overrides: Partial<WorkflowStoreService> = {}): WorkflowStoreService => ({
+  save: () => Effect.void,
+  get: (key) =>
+    Effect.succeed(
+      Option.some({ steps: [{ activity: `run-${key}` }] } as unknown as StoredWorkflow),
+    ),
+  list: () => Effect.succeed([]),
+  listScheduled: () => Effect.succeed([]),
+  markRun: () => Effect.void,
+  ...overrides,
+});
+
+function env(
+  cs: CronStoreService,
+  invoker: WorkflowInvokerService,
+  wf: WfStoreService = wfStore(),
+  store: WorkflowStoreService = savedStore(),
+) {
+  return Layer.mergeAll(
+    Layer.succeed(CronStore, cs),
+    Layer.succeed(WorkflowInvoker, invoker),
+    Layer.succeed(WfStore, wf),
+    Layer.succeed(WorkflowStore, store),
+  );
+}
+
+const identity = { repo: "stiproot/h", slug: "pi-agent", workflow: "revise" };
+// Every-minute cadence saved long ago → always due.
+const DUE_CADENCE = "* * * * *";
+
+// A pre-seeded active cron row (already fired once, its instance terminal → the next tick may fire).
+const activeRow = (over: Partial<CronRow> = {}): CronRow => ({
+  ...identity,
+  status: "active",
+  cadence: DUE_CADENCE,
+  source: { mode: "saved", key: "revise" },
+  budget: { maxFires: 100 },
+  instanceId: "revise-pi-agent",
+  epoch: 1,
+  fires: 1,
+  currentInstanceId: "revise-pi-agent",
+  lastRunAt: "2020-01-01T00:00:00Z",
+  createdAt: "2020-01-01T00:00:00Z",
+  updatedAt: "2020-01-01T00:00:00Z",
+  ...over,
+});
+
+describe("registerCronForFire", () => {
+  it("writes an active cron row; standalone (no initial run) starts fires 0, no current instance", async () => {
+    const cs = memoryCronStore();
+    const res = await Effect.runPromise(
+      registerCronForFire({
+        identity,
+        cadence: DUE_CADENCE,
+        source: { mode: "saved", key: "revise" },
+        instanceId: "revise-pi-agent",
+      }).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
+    );
+    expect(res).toEqual({ cronId: "stiproot/h:pi-agent:revise", active: true });
+    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row.status).toBe("active");
+    expect(row.epoch).toBe(1);
+    expect(row.fires).toBe(0);
+    expect(row.currentInstanceId).toBeUndefined();
+    expect(cs.ledgers.get(new Date().toISOString().slice(0, 10))?.cronsRegistered).toBe(1);
+  });
+
+  it("counts the initial run (when --cron rides a fired run): fires 1, guards on that instance", async () => {
+    const cs = memoryCronStore();
+    await Effect.runPromise(
+      registerCronForFire({
+        identity,
+        cadence: DUE_CADENCE,
+        source: { mode: "saved", key: "revise" },
+        instanceId: "revise-pi-agent",
+        initial: { firedAt: "2026-07-11T00:00:00Z" },
+      }).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
+    );
+    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row.fires).toBe(1);
+    expect(row.currentInstanceId).toBe("revise-pi-agent");
+    expect(row.lastRunAt).toBe("2026-07-11T00:00:00Z");
+  });
+
+  it("re-registering bumps the epoch (fences an in-flight scan)", async () => {
+    const cs = memoryCronStore();
+    const reg = {
+      identity,
+      cadence: DUE_CADENCE,
+      source: { mode: "saved", key: "revise" } as const,
+      instanceId: "revise-pi-agent",
+    };
+    await Effect.runPromise(
+      registerCronForFire(reg).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
+    );
+    await Effect.runPromise(
+      registerCronForFire(reg).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
+    );
+    expect(cs.rows.get("stiproot/h:pi-agent:revise")!.epoch).toBe(2);
+  });
+});
+
+describe("scanCronsEffect", () => {
+  const scan = (cs: CronStoreService, inv: WorkflowInvokerService, wf?: WfStoreService) =>
+    Effect.runPromise(scanCronsEffect(undefined).pipe(Effect.provide(env(cs, inv, wf))));
+
+  it("fires a due, terminal, unresolved cron under its fixed instance, fresh, with the wf identity", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    const inv = recordingInvoker({
+      "revise-pi-agent": { instanceId: "revise-pi-agent", runtimeStatus: "COMPLETED" },
+    });
+    const report = await scan(cs.service, inv.service);
+
+    expect(report.fired).toEqual(["stiproot/h:pi-agent:revise"]);
+    expect(inv.invokes).toHaveLength(1);
+    expect(inv.invokes[0].instanceId).toBe("revise-pi-agent");
+    expect(inv.invokes[0].fresh).toBe(true);
+    expect(inv.invokes[0].wf).toEqual(identity);
+    expect(inv.invokes[0].steps).toEqual([{ activity: "run-revise" }]);
+    // mark-before-fire bumped fires + epoch.
+    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row.fires).toBe(2);
+    expect(row.epoch).toBe(2);
+  });
+
+  it("deactivates 'resolved' when the target wf: row reports the goal met — no fire", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    const inv = recordingInvoker();
+    const report = await scan(cs.service, inv.service, wfStore(true));
+    expect(inv.invokes).toHaveLength(0);
+    expect(report.deactivated).toEqual(["stiproot/h:pi-agent:revise:resolved"]);
+    expect(cs.rows.get("stiproot/h:pi-agent:revise")!.status).toBe("inactive");
+  });
+
+  it("deactivates 'budget-exhausted' when fires reached maxFires — no fire", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ fires: 100 }));
+    const inv = recordingInvoker();
+    const report = await scan(cs.service, inv.service);
+    expect(inv.invokes).toHaveLength(0);
+    expect(report.deactivated).toEqual(["stiproot/h:pi-agent:revise:budget-exhausted"]);
+  });
+
+  it("waits (no fire) while the last instance is still running", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    const inv = recordingInvoker({
+      "revise-pi-agent": { instanceId: "revise-pi-agent", runtimeStatus: "RUNNING" },
+    });
+    const report = await scan(cs.service, inv.service);
+    expect(inv.invokes).toHaveLength(0);
+    expect(report.fired).toEqual([]);
+  });
+
+  it("skips inactive rows entirely", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ status: "inactive" }));
+    const inv = recordingInvoker();
+    const report = await scan(cs.service, inv.service);
+    expect(report.scanned).toBe(0);
+    expect(inv.invokes).toHaveLength(0);
+  });
+
+  it("fires an embedded-source cron with its own steps", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set(
+      "stiproot/h:pi-agent:revise",
+      activeRow({
+        source: { mode: "embedded", steps: [{ activity: "run-claude", input: { task: "t" } }] },
+      }),
+    );
+    const inv = recordingInvoker();
+    await scan(cs.service, inv.service);
+    expect(inv.invokes[0].steps).toEqual([{ activity: "run-claude", input: { task: "t" } }]);
+    expect(inv.invokes[0].wf).toEqual(identity);
+  });
+});

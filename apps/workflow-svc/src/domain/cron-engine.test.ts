@@ -12,6 +12,7 @@ const base: CronRow = {
   cadence: "*/30 * * * *",
   source: { mode: "saved", key: "revise" },
   budget: { maxFires: 100 },
+  instanceId: "revise-pi-agent",
   epoch: 1,
   fires: 1,
   currentInstanceId: "revise-pi-agent",

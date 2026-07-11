@@ -76,11 +76,15 @@ export const CronRow = Schema.Struct({
   source: CronSource,
   // The runaway backstop / no-resolution stop.
   budget: CronBudget,
+  // The FIXED Dapr instance id every fire recurs under (fresh re-run each tick) — set at registration.
+  // Distinct from currentInstanceId: this is the target, that is the last one actually fired.
+  instanceId: Schema.String,
   // Epoch fence — a re-registration bumps it so a stale scan decision no-ops.
   epoch: Schema.Number,
   // Fire counter (against budget.maxFires).
   fires: Schema.Number,
-  // The instance the last fire ran under; the in-flight guard reads its live status.
+  // The instance the LAST fire ran under; the in-flight guard reads its live status. Absent before the
+  // first fire (a never-fired cron is not in flight, so the first due tick fires).
   currentInstanceId: Schema.optional(Schema.String),
   lastRunAt: Schema.optional(Schema.String),
   lastStatus: Schema.optional(Schema.String),

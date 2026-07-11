@@ -24,7 +24,9 @@ import {
 import { wfIdentityFrom } from "../../domain/models/wf.model.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
+import { CronStore } from "../../domain/ports/ICronStore.ts";
 import { WatchStore } from "../../domain/ports/IWatchStore.ts";
+import { WfStore } from "../../domain/ports/IWfStore.ts";
 import { WorkflowInvoker } from "../../domain/ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
 import { invokeWithWatch } from "../../domain/watch-scan.ts";
@@ -35,6 +37,8 @@ export type WorkflowRoutesEnv =
   | WorkflowStore
   | WatchStore
   | ChainStore
+  | CronStore
+  | WfStore
   | DaprPublisherTag;
 
 export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutesEnv, never>;

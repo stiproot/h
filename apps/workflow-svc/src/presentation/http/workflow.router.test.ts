@@ -7,8 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { emptyChainLedger } from "../../domain/models/chain.model.ts";
+import { emptyCronLedger } from "../../domain/models/cron.model.ts";
 import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
+import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
+import { WfStore, type WfStoreService } from "../../domain/ports/IWfStore.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -68,6 +71,23 @@ const stubChainStore: ChainStoreService = {
   getRunCost: () => Effect.succeed(null),
 };
 
+// Same for crons + the wf store — the run routes don't touch them, but the shared runtime type does.
+const stubCronStore: CronStoreService = {
+  getRow: () => Effect.succeed(Option.none()),
+  listRows: () => Effect.succeed([]),
+  saveRow: () => Effect.void,
+  deleteRow: () => Effect.void,
+  getConfig: () => Effect.succeed(Option.none()),
+  getHeartbeat: () => Effect.succeed(Option.none()),
+  heartbeat: () => Effect.void,
+  getLedger: () => Effect.succeed(emptyCronLedger),
+  bumpLedger: () => Effect.void,
+};
+const stubWfStore: WfStoreService = {
+  getRow: () => Effect.succeed(Option.none()),
+  saveRow: () => Effect.void,
+};
+
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
 
 const cleanups: Array<() => Promise<unknown>> = [];
@@ -86,6 +106,8 @@ async function makeApp(
       Layer.succeed(WorkflowStore, store),
       Layer.succeed(WatchStore, watch),
       Layer.succeed(ChainStore, stubChainStore),
+      Layer.succeed(CronStore, stubCronStore),
+      Layer.succeed(WfStore, stubWfStore),
       Layer.succeed(DaprPublisherTag, stubPublisher),
     ),
   );

@@ -20,6 +20,7 @@ describe("CronRow", () => {
     status: "active",
     cadence: "*/30 * * * *",
     budget: { maxFires: 100 },
+    instanceId: "revise-pi-agent",
     epoch: 1,
     fires: 0,
     createdAt: "2026-07-11T00:00:00Z",

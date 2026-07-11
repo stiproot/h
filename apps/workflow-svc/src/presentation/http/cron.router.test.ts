@@ -7,8 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { emptyChainLedger } from "../../domain/models/chain.model.ts";
+import { emptyCronLedger } from "../../domain/models/cron.model.ts";
 import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
+import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
+import { WfStore, type WfStoreService } from "../../domain/ports/IWfStore.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -70,6 +73,24 @@ const emptyChainStore: ChainStoreService = {
   getRunCost: () => Effect.succeed(null),
 };
 
+// Empty cron + wf stores: like the chain, the cron scan rides the same tick but finds no rows here, a
+// clean no-op; the wf store backs the cron scan's goal-resolved read.
+const emptyCronStore: CronStoreService = {
+  getRow: () => Effect.succeed(Option.none()),
+  listRows: () => Effect.succeed([]),
+  saveRow: () => Effect.void,
+  deleteRow: () => Effect.void,
+  getConfig: () => Effect.succeed(Option.none()),
+  getHeartbeat: () => Effect.succeed(Option.none()),
+  heartbeat: () => Effect.void,
+  getLedger: () => Effect.succeed(emptyCronLedger),
+  bumpLedger: () => Effect.void,
+};
+const emptyWfStore: WfStoreService = {
+  getRow: () => Effect.succeed(Option.none()),
+  saveRow: () => Effect.void,
+};
+
 const envLayer = (
   invoker: WorkflowInvokerService,
   store: WorkflowStoreService,
@@ -80,6 +101,8 @@ const envLayer = (
     Layer.succeed(WorkflowStore, store),
     Layer.succeed(WatchStore, watch),
     Layer.succeed(ChainStore, emptyChainStore),
+    Layer.succeed(CronStore, emptyCronStore),
+    Layer.succeed(WfStore, emptyWfStore),
     Layer.succeed(DaprPublisherTag, stubPublisher),
   );
 
