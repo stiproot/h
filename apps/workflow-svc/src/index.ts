@@ -8,6 +8,7 @@ import { makeTracingLive } from "telemetry";
 import { activities } from "./infrastructure/activity-registry.ts";
 import { setActivityRuntime } from "./infrastructure/activity-runtime.ts";
 import { ChainStoreLive } from "./infrastructure/dapr-chain-store.ts";
+import { CronStoreLive } from "./infrastructure/dapr-cron-store.ts";
 import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WfStoreLive } from "./infrastructure/dapr-wf-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
@@ -35,6 +36,7 @@ const appLayer = Layer.mergeAll(
   WorkflowStoreLive,
   WatchStoreLive,
   ChainStoreLive,
+  CronStoreLive,
   WfStoreLive,
   DaprInvokerLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   DaprPublisherLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),

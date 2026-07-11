@@ -123,13 +123,20 @@ primitive: **cron**. Flag `--cron`; key prefix `cron:`.
 - **The sweep collapses into a cron** (a `github-issues` source): discovery is a GitHub query, dedup
   is the `wf:*` keys, spec-composition dissolves (feature-pr reads the issue itself).
 
-### 6. Lifecycle  *(agreed)*
-- **Termination handshake (no cross-writing):** the *workflow* flips its OWN `wf:` row to `done`
-  when the subject is resolved (e.g. PR clean); the *watcher engine* READS that row, sees `done`,
-  flips `watcher:` to inactive. The workflow never writes `watcher:*`; the watcher only reads
-  `wf:*`. Single-writer intact.
-- **In-flight guard:** don't re-invoke while a run is live — epoch-fence / check the live Dapr
-  instance status (the trick the existing watcher already uses).
+### 6. Lifecycle  *(agreed; termination = decision (b), locked 2026-07-11)*
+- **Goal handshake (no cross-writing) — decision (b):** run-status and goal-status are DISTINCT. The
+  `wf:` row's `status` (running/done/failed, 3b) means "the run's steps finished"; a separate
+  **`resolved: bool`** means "the SUBJECT is resolved" (e.g. the PR **merged** — a real state check
+  the workflow performs, not merely "a run succeeded"). The workflow reports `resolved` via a
+  `===GOAL===RESOLVED` output marker that `write-wf-row` records; the cron/watcher engine READS
+  `wf:*` and deactivates on `resolved`. The workflow never writes `cron:*`/`watcher:*`; the engine
+  only reads `wf:*`. Single-writer intact. *(This replaces the earlier "flip wf: to done" sketch,
+  which conflated run-status with goal-status — `done` means the run finished, not the goal met.)*
+- **Cadence + budget:** a cron fires on its `cadence` when due, and carries a `budget.maxFires` cap.
+  It deactivates on `resolved` **OR** when the budget is exhausted — so a goal that never resolves
+  (a PR never merged) still stops, bounded.
+- **In-flight guard:** don't re-invoke while a run is live — check the live Dapr instance status
+  (epoch-fenced), the trick the existing watcher already uses.
 
 ### 7. Cron creation — CLI  *(to build)*
 - **Standalone:** `h cron add …` — create a cron independent of running a workflow (first-class CLI
@@ -266,9 +273,19 @@ the referenced records' state → `done` → deactivate.
        unchanged (consumes `input.wf` from 3b). No CLI change — `repo` rides the existing `-p`.
      - Inline template run (`h workflow run <template> -p …`, render+fire, no publish) is a **separate
        CLI item** (compose-on-fire, sibling to chain `-t`), not part of 3c.
-4. **Cron engine** — the dumb workflow-invoker scanning `cron:*` (a third sibling beside the watcher +
-   chain engines), re-firing per the source mode (§5): mode 1 saved-key+params and mode 2 embedded
-   definition ship first; mode 3 dynamic params is deferred. workflow-svc is the sole writer of `cron:*`.
+4. **Cron engine** — the dumb workflow-invoker (third sibling beside watcher + chain), `cron:sub:<repo>
+   :<slug>:<workflow>` keys, sole writer workflow-svc. Termination = decision (b): reads the target
+   `wf:` row's `resolved` flag + a `budget.maxFires` cap + the live in-flight guard. Modes 1 (saved
+   key+params) & 2 (embedded definition) ship; mode 3 (dynamic) deferred. Split:
+   - ✅ **4a — foundation**: `cron.model.ts` (CronRow/CronSource/CronBudget/cronId + config/heartbeat/
+     ledger), `ICronStore` + `dapr-cron-store` (sibling of the chain store), `CronStoreLive` in the app
+     layer, and the `resolved` field added to `WfRow`. *(landed)*
+   - **4b — the engine**: pure `cron-engine.ts` `decide(row, targetWf, instanceStatus, now)` →
+     `wait | fire | deactivate(resolved|budget-exhausted)` + tests.
+   - **4c — scan + registration + tick + goal producer**: `cron-scan.ts` (registerCronForFire +
+     scanCronsEffect), wire into the `workflow-cron-tick` beside the watch/chain scans, a `cron` field
+     on the run request that registers, and the `===GOAL===` → `write-wf-row.resolved` producer path
+     in `generic.workflow`.
 5. **Inline template run (CLI)** — `h workflow run <template> -p …` renders + fires with no publish
    (writes only the `wf:` status row); compose-on-fire, sibling to chain `-t`.
 6. **Cron CLI** — `h cron add`, plus the `--cron` / `--dynamic-cron` flags (workflow-svc persists the

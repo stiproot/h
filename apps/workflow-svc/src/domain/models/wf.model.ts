@@ -24,6 +24,11 @@ export const WfRow = Schema.Struct({
   // the workflow name (its saved key) — the leaf of the key and the row's SOLE writer.
   workflow: Schema.String,
   status: WfStatus,
+  // Goal handshake (docs/plans/workflow-watcher-registry.md §6, decision (b)): the SUBJECT is resolved
+  // (e.g. the PR merged) — distinct from run-status `done` (the steps finished). The workflow reports
+  // it via a `===GOAL===RESOLVED` marker that write-wf-row records here; the cron engine READS it to
+  // deactivate. Absent/false = not yet resolved (keep recurring). Never written by any engine.
+  resolved: Schema.optional(Schema.Boolean),
   // the Dapr workflow instance backing this run.
   instanceId: Schema.String,
   // the fire-time params the workflow ran with — its subject (pr / issue / …).
