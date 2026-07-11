@@ -41,20 +41,34 @@ stack, and the design principles; this section is the terse runtime-facing index
   flags (suffix = that workflow, prefix = chain-wide default); a `-t` group overlays inline and
   publishes under `<slug>-w<N>` (compose-on-fire). `h chain list` inspects. Strategies:
   `sequential`, `loop-until-clean` (`--parallel` grammar exists; engine strategy deferred).
+- **Cron** — the recurrence sibling: a durable registration `{cadence, source, budget}` plus the same
+  shared engine that, on the same cron tick, reads the target `wf:` row + the live instance and acts
+  through a closed vocabulary (fire-again, deactivate) — where a watcher RE-fires one instance on a
+  failure policy and a chain FIRES THE NEXT workflow, a cron RE-FIRES the SAME workflow on a clock
+  until its GOAL resolves or a budget trips. The goal is the `wf:` row's `resolved` flag — a real
+  state check (e.g. PR merged), DISTINCT from run-status `done` (the steps finished) — which the
+  workflow reports via a `===GOAL===RESOLVED` output marker. IMPLEMENTED: engine in workflow-svc
+  (`domain/cron-*.ts`, scan on the workflow-cron-tick beside watch+chain), rows
+  `cron:sub:<repo>:<slug>:<workflow>` (mirroring the wf: coords), written ONLY by workflow-svc in the
+  same handler that fires; register with `h workflow run <key> --cron <cadence> [--max-fires N]`,
+  inspect with `h cron list`. Source modes: saved key + params, or an embedded definition (mode 3
+  dynamic-params deferred).
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
 - **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
-  (the `__workflow_index__` pattern): saved workflows, `sweep:*`, `run:*` mirrors, `watch:*`.
-  The convention: a registry prefix names the single component that owns writing it.
+  (the `__workflow_index__` pattern): saved workflows, `sweep:*`, `run:*` mirrors, `watch:*`,
+  `chain:*`, `cron:*`, and `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
+  written by the workflow that names it). The convention: a registry prefix names the single
+  component that owns writing it.
 
-The watcher and the chain are two instances of one build-pattern — a policy row in a registry,
-evaluated by a pure `decide` on the cron-tick clock, acting on workflows through a closed vocabulary,
-epoch-fenced, single-writer. Neither is a new runtime concept; each is a composition of
-Workflow + Trigger + Registry that earns its own name because its job (supervise; sequence) recurs.
-The load-bearing invariant: **a workflow never supervises or sequences itself — those live in
-engines outside it** (which is why sequencing is the Chain primitive, not an overload of the
-watcher's `escalate`). Watched/chained workflows never depend on their engines; only judgment
-consumers read the rows. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full treatment.
+The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a
+registry, evaluated by a pure `decide` on the cron-tick clock, acting on workflows through a closed
+vocabulary, epoch-fenced, single-writer. None is a new runtime concept; each is a composition of
+Workflow + Trigger + Registry that earns its own name because its job (supervise; sequence; recur)
+recurs. The load-bearing invariant: **a workflow never supervises, sequences, or recurs itself —
+those live in engines outside it** (which is why sequencing is the Chain primitive, not an overload of
+the watcher's `escalate`). Watched/chained/cron'd workflows never depend on their engines; only
+judgment consumers read the rows. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full treatment.
 
 ## App layouts
 
