@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { WatchPolicy } from "./watch.model.ts";
+import { WfIdentity } from "./wf.model.ts";
 
 /**
  * Wire contracts as Schema.Structs with same-name derived types (the `core` pattern).
@@ -49,6 +50,10 @@ export const WorkflowRequest = Schema.Struct({
   watch: Schema.optional(WatchPolicy),
   // Opaque passthrough stamped onto the watch row for row consumers (e.g. {owner: "issue-sweep"}).
   watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Registry identity (docs/plans/workflow-watcher-registry.md §3): when set, generic.workflow
+  // brackets its steps with the write-wf-row activity so the run writes its OWN status row at
+  // `wf:<repo>:<slug>:<workflow>` (running before, done/failed after). Opt-in — absent means no row.
+  wf: Schema.optional(WfIdentity),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 

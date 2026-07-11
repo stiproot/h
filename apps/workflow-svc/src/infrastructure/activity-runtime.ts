@@ -4,6 +4,8 @@ import type { DaprInvokerTag } from "core-dapr";
 import { Effect, type ManagedRuntime } from "effect";
 import { injectTraceContext, withTraceparentParent } from "telemetry";
 
+import type { WfStore } from "../domain/ports/IWfStore.ts";
+
 // ---------------------------------------------------------------------------
 // The activity-to-Effect bridge. The Dapr WorkflowRuntime invokes activities as bare
 // `async (ctx, input)` callbacks on its own schedule, outside Effect (refactor map §3);
@@ -17,7 +19,7 @@ import { injectTraceContext, withTraceparentParent } from "telemetry";
 // ---------------------------------------------------------------------------
 
 /** Everything an activity effect may yield from the shared runtime. */
-export type ActivityEnv = DaprInvokerTag | HttpClient.HttpClient | FileSystem.FileSystem;
+export type ActivityEnv = DaprInvokerTag | HttpClient.HttpClient | FileSystem.FileSystem | WfStore;
 
 export type ActivityRuntime = ManagedRuntime.ManagedRuntime<ActivityEnv, never>;
 

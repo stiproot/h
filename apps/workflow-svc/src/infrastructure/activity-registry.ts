@@ -9,6 +9,7 @@ import { runDaprClaudeLoopActivity } from "./activities/run-dapr-claude-loop.act
 import { runLanggraphActivity } from "./activities/run-langgraph.activity.ts";
 import { runOpenhandsActivity } from "./activities/run-openhands.activity.ts";
 import { setupActivity } from "./activities/setup.activity.ts";
+import { writeWfRowActivity } from "./activities/write-wf-row.activity.ts";
 
 export const activities = [
   setupActivity,
@@ -22,6 +23,7 @@ export const activities = [
   runOpenhandsActivity,
   runDaprAgentActivity,
   copySessionActivity,
+  writeWfRowActivity,
 ];
 
 export function getActivity(name: string) {
@@ -48,6 +50,8 @@ export function getActivity(name: string) {
       return runDaprAgentActivity;
     case "copy-session":
       return copySessionActivity;
+    case "write-wf-row":
+      return writeWfRowActivity;
     default:
       throw new Error(`Unknown activity: ${name}`);
   }
