@@ -280,8 +280,9 @@ the referenced records' state → `done` → deactivate.
    - ✅ **4a — foundation**: `cron.model.ts` (CronRow/CronSource/CronBudget/cronId + config/heartbeat/
      ledger), `ICronStore` + `dapr-cron-store` (sibling of the chain store), `CronStoreLive` in the app
      layer, and the `resolved` field added to `WfRow`. *(landed)*
-   - **4b — the engine**: pure `cron-engine.ts` `decide(row, targetWf, instanceStatus, now)` →
-     `wait | fire | deactivate(resolved|budget-exhausted)` + tests.
+   - ✅ **4b — the engine**: pure `cron-engine.ts` `decide(row, resolved, runtimeStatus, now)` →
+     `wait | fire | deactivate(resolved|budget-exhausted)`; precedence resolved → budget → in-flight →
+     cadence (isDue). *(landed)*
    - **4c — scan + registration + tick + goal producer**: `cron-scan.ts` (registerCronForFire +
      scanCronsEffect), wire into the `workflow-cron-tick` beside the watch/chain scans, a `cron` field
      on the run request that registers, and the `===GOAL===` → `write-wf-row.resolved` producer path
