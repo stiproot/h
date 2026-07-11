@@ -30,6 +30,10 @@
         "spec": {
           "type": "string"
         },
+        "repo": {
+          "type": "string",
+          "$comment": "GitHub owner/name — the wf-registry identity segment. Identity only; NOT the clone path."
+        },
         "clonePath": {
           "type": "string"
         },

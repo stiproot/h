@@ -415,6 +415,9 @@
 # ---
 # name: test_pr_review_golden
   '''
+  params:
+    repo: "owner/h"
+    slug: ""
   steps:
     - id: setup
       activity: setup
@@ -427,7 +430,7 @@
       activity: run-claude-coder
       input:
         task: |-
-          You are a code reviewer for the owner/h GitHub repository. Your task is to review
+          You are a code reviewer for the {{params.repo}} GitHub repository. Your task is to review
           pull request #{{params.pr}} and post your findings as a GitHub
           PR review with line-anchored comments.
   
@@ -455,7 +458,7 @@
   
           3. POST. Use the GitHub MCP review workflow:
              a. pull_request_review_write with method "create" to open a pending review on PR
-                #{{params.pr}} in owner/h.
+                #{{params.pr}} in {{params.repo}}.
              b. For each finding, add_comment_to_pending_review with:
                 - path: the file the finding is in
                 - line: the line number in the diff (use the diff position)

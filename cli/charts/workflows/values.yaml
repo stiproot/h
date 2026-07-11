@@ -29,6 +29,10 @@ feature:
   slug: ""
   # The Markdown feature spec. Required — pass with --set-file feature.spec=<path.md>.
   spec: ""
+  # GitHub repo (owner/name) this run targets — the wf-registry identity segment (wf:<repo>:…).
+  # Identity only; does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in);
+  # supply per fire with -p repo=owner/name, or set an org default in values.local.yaml.
+  repo: ""
   # Local path of the pre-cloned target repo (NOT a GitHub owner/name); empty = the agent's default shared clone.
   clonePath: ""
   # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
@@ -79,6 +83,9 @@ pluginImprovement:
 # rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
 # workflow that reads a PR's unresolved review threads itself and addresses them.
 revise:
+  # GitHub repo (owner/name) this run targets — the wf-registry identity segment. Identity only;
+  # does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in); -p repo=… per fire.
+  repo: ""
   # Local path of the pre-cloned target repo in the shared agent workspace; empty = the agent's default clone.
   clonePath: ""
   # Branch refreshed from origin before checking out feature/<slug>; empty = agent default (main).

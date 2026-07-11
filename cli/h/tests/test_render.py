@@ -298,6 +298,7 @@ def test_pr_review_publish_mode_opens_param_slots() -> None:
     review_task = definition["steps"][1]["input"]["task"]
     assert "{{params.pr}}" in review_task
     assert "{{params.focus}}" in review_task
+    assert "{{params.repo}}" in review_task  # the target repo is a fire-time identity token
     assert "===REVIEW===" in review_task
     # Executor must be claude-coder — the security property.
     assert definition["steps"][0]["input"]["agentId"] == "claude-coder"
@@ -305,10 +306,14 @@ def test_pr_review_publish_mode_opens_param_slots() -> None:
     assert definition["steps"][1]["activity"] == "run-claude-coder"
 
 
-def test_missing_pr_review_repo_is_a_render_error() -> None:
-    """prReview.repo is required; omitting it fails the render with an informative error."""
-    with pytest.raises(helm.HelmError, match="prReview.repo is required"):
-        helm.render_workflow("pr-review", values={}, include_local=False)
+def test_pr_review_repo_is_a_fire_param_not_required() -> None:
+    """repo is a fire-time identity param (owner/name), no longer required at publish — pr-review
+    renders with no prReview.repo set, emitting {{params.repo}} as an engine token in the prose."""
+    definition = json.loads(
+        helm.to_wire_json(helm.render_workflow("pr-review", values={}, include_local=False))
+    )
+    review_task = definition["steps"][1]["input"]["task"]
+    assert "{{params.repo}}" in review_task
 
 
 def test_issue_sweep_dry_run_stops_before_mark() -> None:

@@ -56,6 +56,12 @@ non-publish render stays byte-identical to the pre-params-era output. */ -}}
 params:
   runActivity: {{ $runActivity | quote }}
   agentId: {{ .Values.agentId | quote }}
+  {{- /* wf-registry identity (owner/name) — a stored default; -p repo=… overrides per fire.
+  Identity only: no step reads it (the worktree cuts from clonePath, the push derives owner/repo
+  from the git remote). Omitted when empty (opt-in). */ -}}
+  {{- with $f.repo }}
+  repo: {{ . | quote }}
+  {{- end }}
   {{- with $f.models.plan }}
   modelPlan: {{ . | quote }}
   {{- end }}

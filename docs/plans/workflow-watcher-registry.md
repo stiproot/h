@@ -248,7 +248,7 @@ the referenced records' state → `done` → deactivate.
        **`clonePath`** end-to-end (the `/worktree` wire field, `create-worktree` activity, the three
        worktree templates + their values, the CLI warning, tests). Three unambiguous names now:
        `repo` = `owner/name` (identity), `clonePath` = the source dir, `worktreePath` = the run tree.
-     - **3c-i — repo as a fire-time identity param.** `repo` (owner/name) becomes a `-p repo=` content
+     - ✅ **3c-i — repo as a fire-time identity param.** `repo` (owner/name) becomes a `-p repo=` content
        value. It is **identity-only for `feature`/`revise`** (a label for the wf-key; it does NOT touch
        `clonePath` or the worktree — the two are orthogonal). For **`pr-review`** it also feeds the
        review prose + MCP target, replacing the `required "prReview.repo"` with a `{{params.repo}}`

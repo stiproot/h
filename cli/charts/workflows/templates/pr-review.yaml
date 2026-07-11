@@ -12,10 +12,13 @@ third-party text). The task prose frames the diff as data to review, never as in
 
 Fire-time params:
   pr      PR number to review (required)
+  repo    GitHub owner/name — the review target AND the wf-registry identity segment. Fire-time
+          (values prReview.repo is only the stored default); required at fire, not at publish.
+  slug    Branch slug — the wf-key segment only (identity; the review reads by PR number). Per-PR.
   focus   Optional free-text steer, e.g. "docs accuracy" (empty = full review)
 
-Template config (values, baked at publish time): prReview.repo (owner/name — required),
-models.review.
+Template config (values, baked at publish time): prReview.repo (owner/name — the stored default
+for the repo param), models.review.
 
 Review comment shape consumed by the revise flow: concrete defect, fix direction, acceptance
 check. The review is always submitted as a COMMENT (never APPROVE or REQUEST_CHANGES — human
@@ -29,15 +32,17 @@ Publish:
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "pr-review" }}
 {{- $p := .Values.prReview }}
-{{- $repo := required "prReview.repo is required (--set prReview.repo=<owner/name>)" $p.repo }}
-{{- /* Fire-time identity (chain-composition-surface §1.9), model HALF only: modelReview is a
-param with the values model as its stored default. The EXECUTOR stays hardcoded deliberately —
-claude-coder's minimal MCP surface is a security invariant (untrusted PR diff), not a default;
-making it a param would let any fire re-point the reviewer at a full-tool agent. */ -}}
-{{- with $p.models.review }}
+{{- /* Fire-time identity params: repo (owner/name — BOTH the review target and the wf-key segment)
+and slug (the wf-key branch segment; per-PR). repo carries the values default; both override per fire
+(-p repo=… -p slug=…). Model HALF is modelReview (values default). The EXECUTOR stays hardcoded
+(claude-coder) — its minimal MCP surface is a security invariant (untrusted PR diff), never a param:
+making it fire-settable would let any fire re-point the reviewer at a full-tool agent. */ -}}
 params:
+  repo: {{ $p.repo | quote }}
+  slug: ""
+  {{- with $p.models.review }}
   modelReview: {{ . | quote }}
-{{- end }}
+  {{- end }}
 steps:
   - id: setup
     activity: setup
@@ -52,7 +57,7 @@ steps:
       model: {{ include "h.token" "params.modelReview" | quote }}
       {{- end }}
       task: |-
-        You are a code reviewer for the {{ $repo }} GitHub repository. Your task is to review
+        You are a code reviewer for the {{ include "h.token" "params.repo" }} GitHub repository. Your task is to review
         pull request #{{ include "h.token" "params.pr" }} and post your findings as a GitHub
         PR review with line-anchored comments.
 
@@ -81,7 +86,7 @@ steps:
 
         3. POST. Use the GitHub MCP review workflow:
            a. pull_request_review_write with method "create" to open a pending review on PR
-              #{{ include "h.token" "params.pr" }} in {{ $repo }}.
+              #{{ include "h.token" "params.pr" }} in {{ include "h.token" "params.repo" }}.
            b. For each finding, add_comment_to_pending_review with:
               - path: the file the finding is in
               - line: the line number in the diff (use the diff position)

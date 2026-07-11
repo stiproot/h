@@ -29,6 +29,11 @@ with fire-time params). $activityRef is pre-quoted so the bare `{{` isn't read a
 params:
   runActivity: {{ $runActivity | quote }}
   agentId: {{ .Values.agentId | quote }}
+  {{- /* wf-registry identity (owner/name) — a stored default; -p repo=… overrides per fire.
+  Identity only (does not drive the worktree clonePath). Omitted when empty (opt-in). */ -}}
+  {{- with $r.repo }}
+  repo: {{ . | quote }}
+  {{- end }}
   {{- with $r.models.revise }}
   modelRevise: {{ . | quote }}
   {{- end }}
