@@ -23,7 +23,6 @@ import {
 } from "../../domain/models/workflow.model.ts";
 import { CronPolicy } from "../../domain/models/cron.model.ts";
 import { wfIdentityFrom } from "../../domain/models/wf.model.ts";
-import { registerCronForFire } from "../../domain/cron-scan.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
@@ -254,9 +253,10 @@ export function registerWorkflowRoutes(
           const wf = wfIdentityFrom(req.params, request.params.key);
           // A cron recurs the workflow — its key mirrors the wf: coords, so it needs the identity.
           if (cron && !wf) return yield* new CronNeedsIdentityError();
-          // Fire-time watch overrides the stored policy wholesale; either way the row is
-          // written here, in the same handler that schedules (ruling W6) — this is how
-          // trigger- and cron-fired saved workflows carry supervision too (agreement 9).
+          // Watch stays handler-side (§10: before-work, mark-before-fire): persist-then-invoke via
+          // invokeWithWatch. The --cron recurrence, by contrast, is armed by the RUN's own closing
+          // bracket (register-cron activity) — the route passes it through as `armCron`; it does NOT
+          // register the cron itself (§10: crons via activities, idempotent so re-fires don't reset it).
           const result = yield* invokeWithWatch({
             ...req,
             ...(wf ? { wf } : {}),
@@ -265,19 +265,16 @@ export function registerWorkflowRoutes(
             ...(fresh !== undefined ? { fresh } : {}),
             ...((watch ?? workflow.value.watch) ? { watch: watch ?? workflow.value.watch } : {}),
             ...(watchMeta ? { watchMeta } : { watchMeta: { owner: request.params.key } }),
+            ...(cron && wf
+              ? {
+                  armCron: {
+                    cadence: cron.cadence,
+                    workflow: request.params.key,
+                    ...(cron.budget ? { budget: cron.budget } : {}),
+                  },
+                }
+              : {}),
           });
-          // Register the recurrence in the SAME handler (sibling of the watch row). The run just fired
-          // under result.instanceId, so it counts as the cron's initial fire and the guard starts there.
-          if (cron && wf) {
-            yield* registerCronForFire({
-              identity: wf,
-              cadence: cron.cadence,
-              ...(cron.budget ? { budget: cron.budget } : {}),
-              source: { mode: "saved", key: request.params.key, ...(params ? { params } : {}) },
-              instanceId: result.instanceId,
-              initial: { firedAt: new Date().toISOString() },
-            });
-          }
           return result;
         }),
         { successStatus: 202 },

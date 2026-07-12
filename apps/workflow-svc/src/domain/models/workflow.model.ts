@@ -54,6 +54,18 @@ export const WorkflowRequest = Schema.Struct({
   // brackets its steps with the write-wf-row activity so the run writes its OWN status row at
   // `wf:<repo>:<slug>:<workflow>` (running before, done/failed after). Opt-in — absent means no row.
   wf: Schema.optional(WfIdentity),
+  // --cron recur registration (§10): when set, generic.workflow arms a recur cron in its CLOSING
+  // bracket (after the work) via the register-cron activity — the run registers its OWN recurrence,
+  // idempotently, instead of the fire handler doing it. `workflow` is the saved key to re-fire; repo/
+  // slug/params/instanceId come from the run's own input at arm time. (ArmCron's `budget` is inlined
+  // rather than reusing cron.model's CronBudget to avoid a cron.model↔workflow.model import cycle.)
+  armCron: Schema.optional(
+    Schema.Struct({
+      cadence: Schema.String,
+      workflow: Schema.String,
+      budget: Schema.optional(Schema.Struct({ maxFires: Schema.Number })),
+    }),
+  ),
 });
 export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 

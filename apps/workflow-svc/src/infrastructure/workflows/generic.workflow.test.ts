@@ -108,3 +108,52 @@ describe("genericWorkflow — wf: bracketing", () => {
     expect(statuses).toEqual(["running", "failed"]);
   });
 });
+
+describe("genericWorkflow — --cron closing bracket (§10)", () => {
+  const registerCron = getActivity("register-cron");
+
+  it("arms a recur cron via register-cron AFTER the work, before the done bracket", async () => {
+    const input: WorkflowRequest = {
+      steps: [step("copy-session", "s1")],
+      params: { repo: "stiproot/h", slug: "issue-5" },
+      wf: { repo: "stiproot/h", slug: "issue-5", workflow: "feature-pr" },
+      armCron: { cadence: "0 */6 * * *", workflow: "feature-pr", budget: { maxFires: 20 } },
+    } as WorkflowRequest;
+    const { calls } = await run(input);
+
+    const armIdx = calls.findIndex((c) => c.activity === registerCron);
+    expect(armIdx).toBeGreaterThan(-1);
+    expect(calls[armIdx].input).toMatchObject({
+      workflow: "feature-pr",
+      repo: "stiproot/h",
+      slug: "issue-5",
+      cadence: "0 */6 * * *",
+      maxFires: 20,
+      instanceId: "inst-1", // recurs under THIS run's instance
+    });
+    const stepIdx = calls.findIndex((c) => c.activity === getActivity("copy-session"));
+    const doneIdx = calls.findIndex((c) => c.activity === writeWfRow && c.input.status === "done");
+    expect(stepIdx).toBeLessThan(armIdx);
+    expect(armIdx).toBeLessThan(doneIdx);
+  });
+
+  it("does not arm when armCron is absent", async () => {
+    const input = { steps: [step("copy-session", "s1")], params: {} } as WorkflowRequest;
+    const { calls } = await run(input);
+    expect(calls.some((c) => c.activity === registerCron)).toBe(false);
+  });
+
+  it("a failed arm records wf:failed (LOUD)", async () => {
+    const input: WorkflowRequest = {
+      steps: [step("copy-session", "s1")],
+      params: { repo: "stiproot/h", slug: "issue-5" },
+      wf: { repo: "stiproot/h", slug: "issue-5", workflow: "feature-pr" },
+      armCron: { cadence: "0 */6 * * *", workflow: "feature-pr" },
+    } as WorkflowRequest;
+    // calls: 0 running, 1 step, 2 register-cron — fail the arm.
+    const { calls, error } = await run(input, { failAtCall: 2 });
+    expect(error).toBeInstanceOf(Error);
+    const statuses = calls.filter((c) => c.activity === writeWfRow).map((c) => c.input.status);
+    expect(statuses).toEqual(["running", "failed"]);
+  });
+});

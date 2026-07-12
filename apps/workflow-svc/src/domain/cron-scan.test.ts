@@ -202,7 +202,10 @@ describe("registerCronForFire", () => {
 
   it("re-arms a DEACTIVATED row (create again, epoch continuing from the prior)", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ status: "inactive", epoch: 3, fires: 9 }));
+    cs.rows.set(
+      "stiproot/h:pi-agent:revise",
+      activeRow({ status: "inactive", epoch: 3, fires: 9 }),
+    );
     await Effect.runPromise(
       registerCronForFire({
         identity,

@@ -93,20 +93,6 @@ const stubWfStore: WfStoreService = {
   saveRow: () => Effect.void,
 };
 
-// A cron store that records saved rows, for the cron-field registration test.
-function recordingCronStore(): { service: CronStoreService; rows: Map<string, CronRow> } {
-  const rows = new Map<string, CronRow>();
-  return {
-    rows,
-    service: {
-      ...stubCronStore,
-      getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
-      saveRow: (row) =>
-        Effect.sync(() => void rows.set(`${row.repo}:${row.slug}:${row.workflow}`, row)),
-    },
-  };
-}
-
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
 const stubSourceReader: SourceReaderService = { listOpenIssues: () => Effect.succeed([]) };
 
@@ -404,17 +390,21 @@ describe("POST /workflow/run/:key", () => {
     expect(seen[0]).not.toHaveProperty("watch");
   });
 
-  it("a cron field registers a cron:sub row in the same handler (sibling of watch)", async () => {
-    const cron = recordingCronStore();
+  it("a cron field passes armCron to the run (armed by the run's closing bracket, not the route)", async () => {
+    const invokes: WorkflowRequest[] = [];
     const stored: StoredWorkflow = {
       steps: [{ activity: "run-claude" }],
       params: { repo: "stiproot/h", slug: "pi-agent" },
     };
     const app = await makeApp(
-      stubInvoker({ invoke: () => Effect.succeed({ instanceId: "revise-pi-agent" }) }),
+      stubInvoker({
+        invoke: (req) =>
+          Effect.sync(() => {
+            invokes.push(req);
+            return { instanceId: "revise-pi-agent" };
+          }),
+      }),
       stubStore({ get: () => Effect.succeed(Option.some(stored)) }),
-      memoryWatchStore().service,
-      cron.service,
     );
     const res = await app.inject({
       method: "POST",
@@ -422,17 +412,13 @@ describe("POST /workflow/run/:key", () => {
       payload: { cron: { cadence: "*/30 * * * *", budget: { maxFires: 50 } } },
     });
     expect(res.statusCode).toBe(202);
-    const row = cron.rows.get("stiproot/h:pi-agent:revise")!;
-    expect(row).toMatchObject({
-      status: "active",
+    // §10: the route does NOT register the cron — it threads armCron into the run, whose closing
+    // bracket (register-cron activity) arms the recur cron idempotently.
+    expect(invokes[0]!.armCron).toEqual({
       cadence: "*/30 * * * *",
+      workflow: "revise",
       budget: { maxFires: 50 },
-      instanceId: "revise-pi-agent",
-      source: { mode: "saved", key: "revise" },
     });
-    // The initial run counts (fires 1) and the guard starts on its instance.
-    expect(row.fires).toBe(1);
-    expect(row.currentInstanceId).toBe("revise-pi-agent");
   });
 
   it("400s a cron field on a run with no wf-identity (no repo/slug)", async () => {

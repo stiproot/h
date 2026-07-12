@@ -54,6 +54,24 @@ export async function* genericWorkflow(
       const result = yield ctx.callActivity(activity, resolvedInput);
       results[step.id ?? step.activity] = result;
     }
+    // --cron closing bracket (docs/plans/workflow-watcher-registry.md §10): a run that carries an
+    // armCron registers its OWN recurrence AFTER the work, via the register-cron activity (idempotent
+    // ensure-exists, so a re-fired run's re-arm is a no-op). LOUD — a failed arm throws into the catch
+    // below and records wf:failed. repo/slug come from the run's params; it recurs under THIS run's
+    // instance so the cron reuses the workspace and the in-flight guard tracks it.
+    if (input.armCron) {
+      const params = (input.params ?? {}) as Record<string, unknown>;
+      yield ctx.callActivity(getActivity("register-cron"), {
+        workflow: input.armCron.workflow,
+        repo: params.repo,
+        slug: params.slug,
+        cadence: input.armCron.cadence,
+        ...(input.armCron.budget ? { maxFires: input.armCron.budget.maxFires } : {}),
+        params: input.params,
+        instanceId: workflowInstanceId,
+        traceparent: input.traceparent,
+      });
+    }
   } catch (err) {
     if (wf) yield writeRow("failed");
     throw err;
