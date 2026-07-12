@@ -1,10 +1,11 @@
 # Plan: standalone workflows, rich registry keys, watchers as cron-invokers
 
-**Status:** living doc — design + build in progress. Items 1–6 LANDED on main (the standalone
-`revise`, chain integration, the rich `wf:<repo>:<slug>:<workflow>` registry, the recur cron
-primitive, inline template run, and the cron CLI — see the Build order). Item 7 (retire issue-sweep
-→ a discovery/fan-out cron) is designed (§9, 2026-07-12) and building. Captures the decisions from
-the 2026-07-11/12 design sessions and their implementation.
+**Status:** living doc — design + build in progress. Items 1–6 LANDED on main. Item 7's discovery/
+fan-out cron (Job 1) is BUILT (§9; 7a–7d landed 2026-07-12). A 2026-07-12 design session then locked
+a foundational principle — **§10: registry state is created by workflow ACTIVITIES (the `arm-*`
+pattern), the edge only fires** — which reshapes Job 2 (arm a revise-loop at PR birth) and the retire
+(7e). §10's build order (arm-cron activity → migrate watch/`--cron`/discover off the edge → retire
+issue-sweep) is the current front. Captures the 2026-07-11/12 sessions and their implementation.
 
 ## North star
 
@@ -321,28 +322,41 @@ the referenced records' state → `done` → deactivate.
    `wf:` lookup; revise → a per-PR recur cron), so discovery is a **pure engine loop, no agent** —
    the judgment lives entirely in each fired `feature-pr` run; the `agent-approved` label is a human
    gate the query filters on. Split:
-   - **7a — foundation**: `discover.model.ts` (`DiscoverRow`/`DiscoverGates`/`DiscoverSource`/
-     `discoverId`; `discoveryFires` on `CronLedger`); the `ISourceReader` domain port (+ `Issue`
-     shape, oldest-first); git-core gains a `GitHubClient` port + `listOpenIssues` adapter (HTTP to
-     api.github.com with `GH_TOKEN` — the GitHub I/O stays in the core package, workflow-svc CONSUMES
-     it; a future non-agent-ops service is a later conversation); `IDiscoverStore` methods on the cron
-     store (`cron:discover:<repo>:<label>` rows + `cron:discover-index`, reusing `cron:config`/
-     `__tick__`/`ledger`).
-   - **7b — engine**: pure `discover-engine.ts` `decide(row, runtimeStatus, todayFires, nowMs) →
+   - ✅ **7a — foundation**: `discover.model.ts` (`DiscoverRow`/`DiscoverGates`/`DiscoverSource`/
+     `discoverId`; `discoveryFires` on `CronLedger`); the `ISourceReader` domain port (`SourceItem`,
+     oldest-first); git-core gains a `GitHubClient` port + `HttpGitHubClient` (`listOpenIssues` over
+     fetch, PRs filtered, one page of 100, `GH_TOKEN`, token-scrubbed errors — the GitHub I/O stays in
+     the core package, workflow-svc CONSUMES it via `github-source-reader.ts`; a future non-agent-ops
+     service is a later conversation); `getDiscoverRow`/`listDiscoverRows`/`saveDiscoverRow`/
+     `deleteDiscoverRow` on the cron store (`cron:discover:<repo>:<label>` rows + `cron:discover-index`,
+     reusing `cron:config`/`__tick__`/`ledger`). *(landed)*
+   - ✅ **7b — engine**: pure `discover-engine.ts` `decide(row, runtimeStatus, todayFires, nowMs) →
      wait | discover`; precedence in-flight → cadence → daily-cap. Serialize (maxConcurrent = 1): the
      in-flight guard IS the concurrency bound (never start while the last-fired instance is live), so
-     no `wf:` enumeration is needed. maxConcurrent > 1 is deferred (needs a `wf:` live-count).
-   - **7c — scan + tick**: `discover-scan.ts` (`registerDiscover` + `scanDiscoverEffect`): read the
-     source ONLY after passing in-flight + cadence + daily-cap gates (this is the GitHub read budget —
-     ~once/cadence, Open Q3 resolved by the gate order); dedup each candidate by exact-key `wf:` read;
-     fire the OLDEST eligible under instance `feature-<slug>`, stamping the wf-identity + `discoveryFires`
-     ledger. Wired into the `workflow-cron-tick` beside the recur/chain/watch scans (its failure never
-     fails the tick).
-   - **7d — entry point + CLI**: `POST /cron/discover` registers a discovery cron; `h cron discover
-     add <repo> --label --cadence [--workflow feature-pr] [--max-per-day]`; `h cron list` + GET
-     /cron/list include discover rows.
-   - **7e — atomic retire**: delete `issue-sweep.yaml`, the `issueSweep` values block, the `sweep:*`
-     registry docs (CLAUDE.md/runbook). No migration window (atomic-cutover invariant).
+     no `wf:` enumeration is needed. maxConcurrent > 1 is deferred (needs a `wf:` live-count). *(landed)*
+   - ✅ **7c — scan + tick**: `discover-scan.ts` (`registerDiscover` + `scanDiscoverEffect`):
+     mark-scanned-before-read stamps `lastRunAt` BEFORE reading the source, so even a failing read is
+     throttled to once/cadence (the GitHub read budget — Open Q3 resolved by the gate order); dedup each
+     candidate by exact-key `wf:` read; fire the OLDEST eligible under instance `feature-issue-<N>`
+     (fresh, supervised via `invokeWithWatch` if a watch is set), stamping the wf-identity +
+     `discoveryFires` ledger. Wired into the `workflow-cron-tick` beside the recur/chain/watch scans
+     (its failure never fails the tick). *(landed)*
+   - ✅ **7d — entry point + CLI**: `POST /cron/discover` registers a discovery cron; `h cron discover
+     add <repo> -l LABEL -c CADENCE [-w WORKFLOW] [--max-per-day N] [-p k=v]`; `h cron list` + GET
+     /cron/list include discover rows. *(landed)*
+   - **7e — retire `issue-sweep`** *(BLOCKED on a decision — the revise gap).* The discovery cron
+     replaces the sweep's DISCOVER→fan-out half cleanly (reconcile/budget/concurrency → engine; compose
+     → feature-pr reads the issue; dedup → `wf:` keys). But the sweep ALSO does **REVISE** (step V:
+     maintain open PRs — merge main, address review comments), and that half has **no other home yet**:
+     `loop-until-clean` exists only as a chain strategy for a manually-composed chain, and no
+     auto-registered revise cron exists (that is the deferred `--dynamic-cron` / Open Q5 "loop home").
+     So a blind atomic delete would REGRESS automatic PR-maintenance. issue-sweep is also load-bearing
+     in `test_render.py` (golden), `cli/charts/.../values*.yaml` + `values.schema.json`, and the
+     h-builds-h runbook + `self-improvement-cycle.md` (which cite it as the apply loop). Options:
+     (a) DEFER 7e until the revise-loop home (Q5) is built, shipping the discovery cron additively;
+     (b) full atomic retire now, accepting revise becomes manual (`h workflow run revise -p pr=N`)
+     until Q5 lands, updating docs + goldens. Decide before deleting — atomic-cutover applies only when
+     the replacement is COMPLETE, and the revise half isn't replaced.
 
 ## §9. Discovery cron — resolved shape *(2026-07-12 design pass)*
 
@@ -372,3 +386,92 @@ run ledger lines up).
 **GitHub read budget (Open Q3, resolved):** the source is read ONLY after the in-flight + cadence +
 daily-cap gates pass, so a 60s tick with a daily-cadence discovery cron hits the API ~once/day — the
 gate order IS the budget, no separate cache key needed.
+
+## §10. Activity-registered registry state — the `arm-*` pattern *(foundational, 2026-07-12)*
+
+**The principle (locked).** A workflow registers ALL of its own registry state through its ACTIVITIES;
+the HTTP edge only FIRES workflows, it never writes a registry row. Registry rows are written by
+activities (inside a run) and engines (on the tick) — never by an HTTP handler directly.
+
+> The edge FIRES. Activities WRITE registry rows. Engines READ them on the tick and act.
+
+This is not a new mechanism — it is the `write-wf-row` pattern (an activity on workflow-svc writing a
+`wf:` row from inside a run) generalized to every registry a workflow owns or produces. `arm-watch`
+and `arm-cron` are siblings of `write-wf-row`.
+
+**Why it holds (the invariant is intact).** A workflow arming a watch/cron is a CLIENT of that
+primitive, not the primitive. The recurrence/supervision still lives in the engine, external, on the
+tick — the workflow only writes the registration row and returns. It never recurs, supervises, or
+sequences *itself*; it registers *for* those services. Single-writer is intact: the activity runs ON
+workflow-svc and calls the SAME epoch-fenced registration functions (`registerWatchForFire`,
+`registerCronForFire`, `registerDiscover`) the edge used to call — one writer, one registration
+entrypoint, now with an in-run caller instead of an HTTP handler.
+
+**The bracket ordering (forced, not arbitrary).** `generic.workflow` brackets a wf-identified run:
+```
+wf:running          ← FIRST activity: the run's own existence/status (write-wf-row, already exists)
+arm-watch           ← SECOND (if watched): register for supervision — the policy arrives as its input
+  …the real steps…
+arm-cron / arm-*    ← follow-on state as it is PRODUCED (e.g. the revise loop, after the PR opens)
+wf:done | wf:failed ← closing bracket: records whether everything inside succeeded
+```
+`wf:running` is first *because* it is the audit surface for the user's failure-capture rule: a failed
+`arm-watch`/`arm-cron` throws → the closing bracket writes `wf:failed`, so "did this registration
+succeed?" is durably answerable from the run's own row. This forces the ordering.
+
+**Loud vs best-effort (the split the failure-capture rule demands).** `write-wf-row` is BEST-EFFORT
+(a status hiccup never fails the run — incidental audit state). An `arm-*` registration is LOUD (the
+cron/watch it creates is the POINT of the step; a registration failure IS the run's failure, recorded
+in `wf:`). This is a deliberate difference: incidental audit → swallow; state-that-is-the-point → throw.
+
+**Deterministic keys → confirmation is a read, not a return value.** Moving registration into
+activities means the 202 can no longer report `watching`/`cron-registered` synchronously. It doesn't
+need to: EVERY registry key is deterministic and client-derivable —
+`watch:sub:<instanceId>`, `cron:sub:<repo>:<slug>:<workflow>`, `cron:discover:<repo>:<label>`,
+`wf:<repo>:<slug>:<workflow>` — so a client confirms a registration by READING the key it can construct
+(`h watch get`, `h cron list`), never by a value the route hands back. Async in-run registration costs
+nothing observability-wise.
+
+**A watch is per-INSTANCE, not per-step.** The row is `watch:sub:<instanceId>` — one per run. The
+policy is run-level (wall-clock `maxDurationMs`, whole-instance `retry`, outcome `escalate`); the
+engine reads `getStatus(instanceId)`, never a step. So `arm-watch` is ONE activity registering ONE
+watch for the one instance it runs in. (No `watch:` carve-out after all — it unifies as the second
+bracket. The only residual vs edge-creation is a run PURGED before its first activity ever executes,
+which is not a supervision case; Dapr durability re-runs a merely-delayed instance's bracket.)
+
+**What stays at the edge.** The workflow-FIRING edge (`POST /workflow/run*`, the trigger topic, the
+cron tick) — something must kick a run; the regress bottoms out at "a human/cron fires a workflow."
+And `POST /workflow/save` — that is definition AUTHORING, not run-state. CLI ergonomics survive as
+TRIGGERS, not registry-writers: `h cron discover add` fires a one-step provision workflow whose
+`arm-cron` activity registers the patrol (and whose `wf:` row audits it); `--cron` on `h workflow run`
+composes an `arm-cron` step into the fired workflow (armed iff a `cadence` param is present, so the
+caller still chooses recurrence).
+
+### Build order (§10)
+1. **`arm-cron` activity + `revise` arm-at-birth** *(prove the shape — Job 2)*. A `register-cron`
+   activity (sibling of `write-wf-row`; runs on workflow-svc; reuses `registerCronForFire`; LOUD on
+   failure; `ActivityEnv` widened with `CronStore` [+ the registration fn's env]). It takes a resolved
+   recur registration and, for the arm-at-birth guard, an optional `requirePrFrom` output blob: parse
+   `===PR===` (reuse the chain's `/\/pull\/(\d+)/`); a URL → arm a recur cron on `revise` with
+   `{repo, slug, pr}` under instance `revise-<slug>`; SKIPPED/no-URL → no-op (report "no PR, not
+   armed"). A `arm-revise.yaml` overlay adds the step (references `{{implement.output}}` — the PR
+   marker lands there, since verify+create-pr both overlay `implement`); `feature-pr` recomposes as
+   `feature verify create-pr arm-revise`. This is Job 2: discover issue → feature-pr → opens PR → arms
+   a revise-until-merged recur cron (the recur cron + `revise` + the `===GOAL===RESOLVED` handshake
+   already exist).
+2. **Migrate `watch:` to `arm-watch`** *(second bracket)*. `generic.workflow` yields `arm-watch` right
+   after `wf:running` when the run carries a `watch` policy (moved from the fire route's
+   `invokeWithWatch`). The route stops registering the watch; it only fires. `registerWatchForFire` is
+   reused verbatim (it already handles existing-row/fresh/epoch — the engine still writes the row on
+   retry, so the activity must not clobber it).
+3. **Migrate `--cron` + `/cron/discover` to `arm-cron`**. The `--cron` field composes an `arm-cron`
+   step at fire time; `POST /cron/discover` + `h cron discover add` become a provision workflow the CLI
+   fires. Delete the registry-writing edge handlers once the activity path covers them (atomic per
+   caller). The generic `arm-cron` core factors the marker-parse out of step 1 into an optional guard.
+4. **Retire `issue-sweep` (was 7e)** — now that Job 1 (discovery) AND Job 2 (arm-at-birth revise) both
+   have homes, the sweep's discover AND revise halves are replaced; atomic-retire is finally a COMPLETE
+   cutover (delete template + values + schema + golden + runbook refs).
+
+**Scope note:** step 1 is the first cut (proves the activity-registration shape on the one case with a
+real need and no edge to preserve). Steps 2–3 migrate the existing edge callers onto it. Step 4 is the
+retire, unblocked once 1 lands.
