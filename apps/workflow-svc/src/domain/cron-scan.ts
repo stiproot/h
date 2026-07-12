@@ -60,9 +60,16 @@ export type CronRegistration = {
 };
 
 /**
- * Registers (or epoch-refreshes) a cron row. Does NOT invoke — a cron only recurs on the tick; the
- * initial run, when `--cron` rides one, has already fired via the run route (its instanceId + firedAt
- * come in as `initial`). Re-registering a coord tuple bumps the epoch (fences any in-flight scan).
+ * Registers a cron row — IDEMPOTENT ensure-exists (docs/plans/workflow-watcher-registry.md §10). Does
+ * NOT invoke — a cron only recurs on the tick; the initial run, when `--cron` rides one, has already
+ * fired (its instanceId + firedAt come in as `initial`).
+ *
+ * Ensure-exists: when an ACTIVE row already covers this identity, it is a NO-OP — the existing row's
+ * `fires`/epoch are left intact. This is the re-run-safety the `arm-*` pattern needs: runs get re-fired
+ * (watch retries, `--cron` self-recur, a `feature-pr` re-run), and each re-run re-executes the arm-cron
+ * step; if that reset `fires` the budget backstop would never trip. A row that is ABSENT (first arm) or
+ * DEACTIVATED (resolved / budget-exhausted — a deliberate re-arm) is (re)created, epoch continuing from
+ * the prior. The scan owns epoch bumps on fire; registration no longer bumps a live row's epoch.
  */
 export const registerCronForFire = (
   reg: CronRegistration,
@@ -74,6 +81,8 @@ export const registerCronForFire = (
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
     const prior = Option.getOrUndefined(existing);
+    // Idempotent: an active row already recurs this identity — leave it untouched (re-run safety).
+    if (prior && prior.status === "active") return { cronId: id, active: true };
     const row: CronRow = {
       repo: reg.identity.repo,
       slug: reg.identity.slug,

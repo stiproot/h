@@ -177,7 +177,7 @@ describe("registerCronForFire", () => {
     expect(row.lastRunAt).toBe("2026-07-11T00:00:00Z");
   });
 
-  it("re-registering bumps the epoch (fences an in-flight scan)", async () => {
+  it("is idempotent: re-registering an ACTIVE row is a no-op (fires/epoch preserved)", async () => {
     const cs = memoryCronStore();
     const reg = {
       identity,
@@ -188,10 +188,33 @@ describe("registerCronForFire", () => {
     await Effect.runPromise(
       registerCronForFire(reg).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
+    // Simulate the scan having advanced the row (fired twice, epoch bumped) before a re-run re-arms.
+    const advanced = { ...cs.rows.get("stiproot/h:pi-agent:revise")!, epoch: 5, fires: 2 };
+    cs.rows.set("stiproot/h:pi-agent:revise", advanced);
     await Effect.runPromise(
       registerCronForFire(reg).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
-    expect(cs.rows.get("stiproot/h:pi-agent:revise")!.epoch).toBe(2);
+    // Re-run safety: the active row is untouched — the budget isn't reset.
+    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row.epoch).toBe(5);
+    expect(row.fires).toBe(2);
+  });
+
+  it("re-arms a DEACTIVATED row (create again, epoch continuing from the prior)", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ status: "inactive", epoch: 3, fires: 9 }));
+    await Effect.runPromise(
+      registerCronForFire({
+        identity,
+        cadence: DUE_CADENCE,
+        source: { mode: "saved", key: "revise" },
+        instanceId: "revise-pi-agent",
+      }).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
+    );
+    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row.status).toBe("active");
+    expect(row.epoch).toBe(4); // continues from the deactivated prior
+    expect(row.fires).toBe(0); // fresh budget
   });
 });
 
