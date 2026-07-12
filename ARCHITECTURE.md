@@ -13,10 +13,16 @@ Small primitives; everything larger is a composition of them.
 - **Chain** — a registered policy + engine that *sequences* workflows on the cron tick (fire the
   next workflow when the last lands, threading state by parsing each one's output). Registry
   `chain:*`; `h chain list`.
+- **Cron** — a registered policy + engine that *recurs* one workflow on the cron tick (re-fire until
+  its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. A **discovery** variant
+  fans out instead of re-firing: it reads a source (open issues on a label) and fires one workflow per
+  newly-seen item, deduped against `wf:*` — the h-builds-h issue loop.
 
-Watcher and Chain are the same shape — a policy row + a pure `decide` + a cron-tick scan,
-single-writer, epoch-fenced — with different vocabularies. The invariant: **a workflow never
-supervises or sequences itself; those live in engines outside it.**
+Watcher, Chain, and Cron are the same shape — a policy row + a pure `decide` + a cron-tick scan,
+single-writer, epoch-fenced — differing only in the action (supervise / sequence / recur). The
+invariant: **a workflow never supervises, sequences, or recurs itself; those live in engines outside
+it.** A workflow may *register* an engine for another workflow (arm a cron), acting as a client of the
+primitive — that is not the same as being the engine.
 
 ## Composition
 
@@ -45,6 +51,11 @@ members with position-scoped per-workflow flags; a `-t` group overlays inline, c
 - **Compose, don't fuse** — small atoms + an operator, not one big flag-selected thing.
 - **Closed vocabularies, not config DSLs** — engine behavior is code over a fixed-struct policy.
 - **Single-writer registries** — one writer per `prefix:`; everyone else reads.
+- **Registry rows are created by activities** — a workflow registers its own follow-on state (arm a
+  cron) through a workflow *activity*, idempotently (ensure-exists, so a re-fire doesn't reset it) and
+  audited by its `wf:` row. WHERE a row is written is an ordering question, not an edge-vs-activity
+  one: the **watcher** alone registers *in the fire handler before the run* (persist-then-invoke),
+  because supervision must precede what it supervises; everything else is armed by the run itself.
 - **Machines loop, agents judge** — supervision and sequencing are engines on a clock; agents only judge.
 - **Fail loud** — surface missing inputs / cost gaps / unavailable tools; never a silent no-op.
 - **Atomic cutovers** — delete the old in the same change that lands the new.

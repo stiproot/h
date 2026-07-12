@@ -27,7 +27,7 @@ activity records its real error there. Always verify the self-report against the
 | **Run ledger** | **Per-step truth**: which setup/clone/worktree activity and which agent run succeeded or failed, with the real error | `<AGENT_RUNS_DIR>/<id>/*/summary.json` (+ `output.txt`, `events.jsonl`) |
 | Zipkin | Error spans for activities/agent runs — catches failures that never reach the ledger | `localhost:9411` |
 | Worktree | What the run actually produced on disk (the change, or nothing) | `git -C <target repo> worktree list`; `git status` in the worktree |
-| Pub/sub | Follow-up tasks the run seeded (e.g. a plugin-improvement task) | statestore `tasks:index` |
+| Follow-up | What the run set up next: a per-PR revise cron (feature-pr's `arm-revise`) or another seeded task | cron registry `cron:sub:*` / `cron:discover:*` (via `h cron list` or `state_get`); statestore `tasks:index` for pub/sub-seeded tasks |
 
 ## How to use it
 
@@ -50,7 +50,9 @@ It prints all seven sections. Endpoints/paths default to the local layout and ar
    activity that never recorded, an agent that died before writing its summary).
 4. **Confirm what was produced** (§5): did the worktree get the intended change, or is it empty /
    polluted with scaffolding? An empty worktree on a "done" task is a red flag.
-5. **Check the loop** (§7): did the run seed the expected follow-up task (e.g. plugin improvement)?
+5. **Check the loop** (§7): did the run set up its expected continuation — e.g. a `feature-pr` that
+   opened a PR should have armed a per-PR revise cron (`cron:sub:<repo>:<slug>:revise`, via `h cron
+   list`); a plugin flow seeds a `tasks:index` follow-up. A missing continuation on a "done" run is a flag.
 6. **Watch for masked success**: a `done` task whose ledger shows a failed precondition, or whose
    agent output rode on a globally-available skill, is a *false green* — call it out.
 

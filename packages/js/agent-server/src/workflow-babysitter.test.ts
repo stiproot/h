@@ -82,13 +82,13 @@ describe("WorkflowBabysitter (forward-with-watch-field)", () => {
       fresh: true,
       policy: { maxDurationMs: 1 }, // ignored: explicit watch wins
       watch,
-      watchMeta: { owner: "issue-sweep", issue: "9" },
+      watchMeta: { owner: "discover", issue: "9" },
     });
     expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
       instanceId: "feature-issue-9",
       fresh: true,
       watch,
-      watchMeta: { owner: "issue-sweep", issue: "9" },
+      watchMeta: { owner: "discover", issue: "9" },
     });
   });
 

@@ -24,7 +24,7 @@ cli/
     └── src/h_cli/
         ├── main.py                 # composition root — Typer app, command groups
         ├── config.py               # env-derived settings, mirroring the scripts' defaults
-        ├── commands/               # h feature (render/run [--agent]), h workflow (list/get/status/publish/run/terminate)
+        ├── commands/               # h feature, h workflow, h template, h chain, h watch, h cron (list + discover add)
         └── infrastructure/         # helm subprocess adapter, statestore/agent/svc HTTP clients
 ```
 
@@ -92,12 +92,14 @@ uv run h template compose t1 t2 ... [--save key]   # overlay templates → ONE d
 uv run h template list|get <t>            # the chart templates (overlay atoms)
 uv run h workflow list|get|status         # read-side views over workflow-svc
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
-uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing)
+uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name] [--cron CADENCE] [--max-fires N]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing); --cron arms a recur cron on the RUN (§10 arm-* activity, not the handler)
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
 uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); values ride -p; EXPR: -w KEY | -t ATOMS...
                                           #   with per-workflow --agent/--model/--fresh/--kind flags
 uv run h chain list                       # the durable chain registry + scan heartbeat
 uv run h watch list|get|delete            # the watcher registry
+uv run h cron list                        # the cron registry — recur crons + discovery/fan-out crons, with the scan heartbeat
+uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
 ```
 
 Helm is invoked as a subprocess (arg-list, no shell) — the established wrapper pattern

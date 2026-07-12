@@ -43,7 +43,7 @@ export interface WorkflowSubmit {
   policy?: BabysitPolicy;
   /** Full watcher policy, forwarded verbatim to workflow-svc; wins over `policy`. */
   watch?: WatchPolicy;
-  /** Opaque passthrough stamped onto the watch row (e.g. { owner: "issue-sweep" }). */
+  /** Opaque passthrough stamped onto the watch row (e.g. { owner: "discover" }). */
   watchMeta?: Record<string, unknown>;
 }
 

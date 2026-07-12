@@ -47,19 +47,28 @@ stack, and the design principles; this section is the terse runtime-facing index
   failure policy and a chain FIRES THE NEXT workflow, a cron RE-FIRES the SAME workflow on a clock
   until its GOAL resolves or a budget trips. The goal is the `wf:` row's `resolved` flag — a real
   state check (e.g. PR merged), DISTINCT from run-status `done` (the steps finished) — which the
-  workflow reports via a `===GOAL===RESOLVED` output marker. IMPLEMENTED: engine in workflow-svc
-  (`domain/cron-*.ts`, scan on the workflow-cron-tick beside watch+chain), rows
-  `cron:sub:<repo>:<slug>:<workflow>` (mirroring the wf: coords), written ONLY by workflow-svc in the
-  same handler that fires; register with `h workflow run <key> --cron <cadence> [--max-fires N]`,
-  inspect with `h cron list`. Source modes: saved key + params, or an embedded definition (mode 3
-  dynamic-params deferred).
+  workflow reports via a `===GOAL===RESOLVED` output marker. A **discovery / fan-out** variant (rows
+  `cron:discover:<repo>:<label>`, index `cron:discover-index`) does NOT re-fire one workflow: each tick
+  it reads a SOURCE (open issues on a label, via git-core's `GitHubClient` behind an `ISourceReader`
+  port) and fires ONE workflow per newly-seen item — serialized (one in flight), daily-capped, deduped
+  against the `wf:*` keys (the h-builds-h issue loop; the retired `issue-sweep`'s discover half).
+  IMPLEMENTED: engine in workflow-svc (`domain/cron-*.ts` recur, `domain/discover-*.ts` fan-out; scan
+  on the workflow-cron-tick beside watch+chain), rows written ONLY by workflow-svc. **Registration is
+  by ACTIVITY, not the fire handler** (the §10 `arm-*` pattern — see below): `--cron` on `h workflow
+  run <key>` is armed by `generic.workflow`'s CLOSING bracket via the `register-cron` activity
+  (idempotent ensure-exists, so a re-fire doesn't reset the budget); a discovery cron is armed by
+  `h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins]`
+  firing a one-step provision workflow whose `register-discover` activity writes the row (its own `wf:`
+  row audits the registration). Inspect with `h cron list`. Recur source modes: saved key + params, or
+  an embedded definition (mode 3 dynamic-params deferred).
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
 - **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
   (the `__workflow_index__` pattern): saved workflows, `run:*` mirrors, `watch:*`,
-  `chain:*`, `cron:*`, and `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
-  written by the workflow that names it). The convention: a registry prefix names the single
-  component that owns writing it.
+  `chain:*`, `cron:*` (recur rows `cron:sub:*` + the discovery/fan-out cron's `cron:discover:*` /
+  `cron:discover-index`), and `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
+  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10).
+  The convention: a registry prefix names the single component that owns writing it.
 
 The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a
 registry, evaluated by a pure `decide` on the cron-tick clock, acting on workflows through a closed
@@ -68,7 +77,17 @@ Workflow + Trigger + Registry that earns its own name because its job (supervise
 recurs. The load-bearing invariant: **a workflow never supervises, sequences, or recurs itself —
 those live in engines outside it** (which is why sequencing is the Chain primitive, not an overload of
 the watcher's `escalate`). Watched/chained/cron'd workflows never depend on their engines; only
-judgment consumers read the rows. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full treatment.
+judgment consumers read the rows.
+
+**Registration follows the §10 `arm-*` pattern (registry state is created by ACTIVITIES).** A
+workflow arms its OWN follow-on cron via a `register-cron`/`register-discover` activity (siblings of
+`write-wf-row`): it is a CLIENT of the cron primitive, not the engine — recurrence still lives in the
+engine on the tick. WHERE a registration happens is an ORDERING question, not edge-vs-activity: crons
+are armed by the run (after its work; idempotent ensure-exists; LOUD, so a failed arm records
+`wf:failed`), while the **watcher alone** is registered in the fire handler BEFORE the run
+(`invokeWithWatch`, persist-then-invoke) — because supervision must precede what it supervises. The
+edge FIRES workflows; it no longer writes cron rows (`POST /cron/discover` was deleted). See
+[ARCHITECTURE.md](./ARCHITECTURE.md) for the full treatment.
 
 ## App layouts
 
@@ -115,34 +134,43 @@ apps/workflow-agent/src/                  # workflow-agent (thin wrapper over ag
 └── presentation/http/cron_router.py      # POST /cron-tick (cron binding target), POST /run, GET /dapr/subscribe (empty — the plugin-feedback flow moved to workflow-svc's workflow-trigger topic + the plugin-improvement chart template)
 
 apps/workflow-svc/src/
-├── index.ts                                          # registers workflow + activities + cron route, starts Fastify
+├── index.ts                                          # registers workflow + activities + cron/watch/chain routes, wires the store/source-reader layers, starts Fastify
 ├── domain/
-│   ├── models/workflow.model.ts                      # WorkflowRequest (+ watch/watchMeta), StoredWorkflow (+ schedule/disabled/params/watch), WorkflowParams, WorkflowSchedule, toRequest (merges fire-time params over stored defaults)
+│   ├── models/workflow.model.ts                      # WorkflowRequest (+ watch/watchMeta, wf identity, armCron closing-bracket cron), StoredWorkflow, WorkflowParams, WorkflowSchedule, toRequest
 │   ├── models/watch.model.ts                         # the watcher primitive's shapes: WatchPolicy (maxDurationMs, retry, escalate), WatchRow (epoch-fenced), WatchConfig, WatchLedger
+│   ├── models/chain.model.ts                         # the chain primitive: ChainRow {workflows, cursor, data, strategy}, ChainStrategy (sequential | loop-until-clean [stub])
+│   ├── models/cron.model.ts                          # the recur cron: CronRow, CronSource (saved | embedded), CronBudget, cronId; config/heartbeat/ledger (shared with discovery)
+│   ├── models/discover.model.ts                      # the discovery/fan-out cron: DiscoverRow {repo,label,workflow,gates,source:github-issues,watch?}, discoverId, issueSlug/issueInstanceId
+│   ├── models/wf.model.ts                            # per-workflow status registry: WfRow (status + resolved goal flag), WfIdentity, wfKey, wfIdentityFrom
 │   ├── ports/{IWorkflowInvoker,IWorkflowStore}.ts    # outbound ports (invoker: invoke/getStatus/terminate)
-│   ├── ports/IWatchStore.ts                          # watch registry port (rows/index/config/heartbeat/ledger + run-mirror reads for the cost tally)
-│   ├── watch-engine.ts                               # pure decide(row, status, now) → wait|budget-terminate|finalize|retry — unit-tested policy surface
-│   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the one fire choke point) + scanWatchesEffect (per-tick scan: terminate/retry/escalate/cost-tally/publish)
+│   ├── ports/{IWatchStore,IChainStore,ICronStore,IWfStore}.ts  # the registry ports (cron store also serves discover rows: cron:discover:* + index)
+│   ├── ports/ISourceReader.ts                        # the discovery cron's enumeration seam (listOpenIssues, oldest-first) — keeps domain free of any GitHub type
+│   ├── {watch,chain,cron}-engine.ts                  # pure decide() per primitive — supervise | sequence | recur; unit-tested policy surfaces
+│   ├── discover-engine.ts                            # pure decide(row, runtimeStatus, todayFires, now) → wait | discover (in-flight serialize → cadence → daily-cap)
+│   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the WATCH fire choke point) + scanWatchesEffect (terminate/retry/escalate/cost-tally/publish)
+│   ├── chain-scan.ts / chain-workflows.ts            # chain registration + per-tick advance/finalize; capturePr/afterMarker output parsing (threads state by markers, no actor)
+│   ├── cron-scan.ts                                  # registerCronForFire (IDEMPOTENT ensure-exists — §10) + scanCronsEffect (recur fire/deactivate, epoch-fenced)
+│   ├── discover-scan.ts                              # registerDiscover + scanDiscoverEffect (read source after gates=budget → dedup by exact-key wf: read → fire OLDEST eligible, supervised if watch set)
 │   └── scheduling.ts                                 # isDue / assertValidCron (cron-parser) – pure, unit-tested
 ├── presentation/http/
-│   ├── workflow.router.ts                            # POST /workflow/run, /save (accepts schedule+workspaceId+params+watch), /run/:key (body: fire-time params + instanceId/workspaceId/fresh/watch overrides), /terminate/:instanceId
-│   │                                                 # GET /workflow/list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger; run routes reply {instanceId, watching}
-│   ├── watch.router.ts                               # GET /watch/list (heartbeat + rows), GET/DELETE /watch/:instanceId — the watch registry's read/delete surface
+│   ├── workflow.router.ts                            # POST /workflow/run, /save, /run/:key (fire-time params + instanceId/workspaceId/fresh/watch/cron overrides → threads wf identity + armCron; --cron armed by the RUN, not here), /terminate/:instanceId; GET /list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger
+│   ├── {watch,chain}.router.ts                       # GET /watch/list, /chain/list (+ GET/DELETE /watch/:instanceId) — registry read surfaces
 │   ├── trigger.router.ts                             # POST /workflow-trigger (pub/sub target) – {key, params} events fire the named saved workflow; payload problems ack, infra failures 500 (redeliver)
-│   └── cron.router.ts                                # POST /workflow-cron-tick (cron binding target) – fires due saved workflows, then runs the watch scan (its failure never fails the tick)
+│   └── cron.router.ts                                # POST /workflow-cron-tick – fires due saved workflows then runs the watch+chain+cron+discover scans (each's failure never fails the tick); GET /cron/list (recur + discover rows). NO POST /cron/discover (§10 — registration is an activity)
 ├── infrastructure/
 │   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper (+ raw-HTTP terminate/purge/status)
 │   ├── dapr-workflow-store.ts                        # saved-workflow store (Redis): save/get/list/listScheduled/markRun
-│   ├── dapr-watch-store.ts                           # watch registry store (Redis): watch:sub:* rows, watch:index, watch:config, watch:__tick__, watch:ledger:<date> — only workflow-svc writes watch:*
+│   ├── dapr-{watch,chain,cron,wf}-store.ts           # the registry stores (Redis) — watch:*, chain:*, cron:* (recur + cron:discover:*), wf:* (exact-key, no index); only workflow-svc writes these
+│   ├── github-source-reader.ts                       # ISourceReader adapter over git-core's GitHubClient (reads GH_TOKEN, maps to WorkflowError) — the discovery cron's GitHub read
+│   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
-│       ├── setup.activity.ts                         # calls /setup on a target agent via Dapr invoke
-│       ├── clone-repo.activity.ts                     # calls /clone on claude-agent via Dapr invoke (git-core)
-│       ├── create-worktree.activity.ts                # calls /worktree on claude-agent; returns the run-specific worktree path for downstream steps' cwd
-│       ├── run-{claude,openhands,dapr-agent,dapr-claude-loop,claude-managed,langgraph}.activity.ts  # call /run on each agent
-│       └── copy-session.activity.ts                  # copies agent workspace output to ./output/
+│       ├── setup / clone-repo / create-worktree / run-{claude,openhands,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy
+│       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + ===GOAL===RESOLVED); BEST-EFFORT (§3/§10)
+│       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: parse ===PR=== for arm-revise); LOUD, idempotent
+│       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD
 └── infrastructure/workflows/
-    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; injects workflowInstanceId + workspaceId; seeds named params under the reserved results id `params` ({{params.x}}); resolves the activity NAME too (fire-time identity — an unresolved token fails loud)
+    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; brackets a wf-identified run write-wf-row(running)→steps→arm-cron(if armCron)→write-wf-row(done|failed); resolves the activity NAME too (fire-time identity — unresolved token fails loud)
 
 apps/obs-mcp/src/                         # obs-mcp – read-only observability MCP (no Dapr sidecar; port 8013)
 ├── index.ts                              # composition root – Fastify/MCP; reads ZIPKIN_URL, LOKI_URL, AGENT_RUNS_DIR
@@ -219,7 +247,8 @@ packages/js/core-vercel/src/
 
 packages/js/git-core/src/
 ├── index.ts               # re-exports
-└── git-client.ts          # clone() – shallow, branch-aware git clone (injects GH token into github URLs in-process); addWorktree() – git worktree add off an existing clone
+├── git-client.ts          # clone() – shallow, branch-aware git clone (injects GH token into github URLs in-process); addWorktree() – git worktree add off an existing clone
+└── github-client.ts       # GitHubClient – read-only GitHub REST over fetch: listOpenIssues (PRs filtered, one page, GH_TOKEN, token-scrubbed errors). The discovery cron's issue read; consumed by workflow-svc's ISourceReader
 
 packages/js/logger/src/
 ├── index.ts    # Logger interface, re-exports
@@ -245,7 +274,7 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,template,workflow,chain,watch}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete; h cron list
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline] [--cron/--max-fires]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover)
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```
