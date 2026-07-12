@@ -121,11 +121,36 @@ def cron_list() -> Any:
     return resp.json()
 
 
-def cron_discover(body: dict[str, Any]) -> Any:
-    """Register a discovery/fan-out cron (POST /cron/discover) — it enumerates a source (open issues
-    with a label) each due tick and fires one workflow per newly-discovered issue, deduped against the
-    wf: keys. workflow-svc is the sole writer of cron:discover:*."""
-    resp = httpx.post(f"{WORKFLOW_URL}/cron/discover", json=body, timeout=30)
+def provision_discover(
+    repo: str,
+    label: str,
+    workflow: str,
+    cadence: str,
+    max_per_day: int | None = None,
+    fire_params: dict[str, Any] | None = None,
+) -> Any:
+    """Register a discovery/fan-out cron by firing a one-step PROVISION workflow whose register-discover
+    activity writes the cron:discover row (docs/plans/workflow-watcher-registry.md §10 — crons via
+    activities, not an HTTP handler). The provision run's wf: row audits whether the patrol armed. The
+    discovery cron then, each due tick, enumerates open '<label>' issues on <repo> and fires <workflow>
+    per newly-discovered issue, deduped against the wf: keys."""
+    step_input: dict[str, Any] = {
+        "repo": repo,
+        "label": label,
+        "workflow": workflow,
+        "cadence": cadence,
+    }
+    if max_per_day is not None:
+        step_input["maxFiresPerDay"] = max_per_day
+    if fire_params:
+        step_input["fireParams"] = fire_params
+    slug = f"discover-{label}"
+    body = {
+        "steps": [{"activity": "register-discover", "input": step_input}],
+        "instanceId": f"provision-{slug}",
+        "wf": {"repo": repo, "slug": slug, "workflow": "provision-discover"},
+    }
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/run", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()
 

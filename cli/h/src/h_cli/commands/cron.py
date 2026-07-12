@@ -127,15 +127,14 @@ def discover_add(
     param: list[str] = typer.Option([], "--param", "-p", help="key=value merged into every fire (e.g. identity); @path splices a file."),
 ) -> None:
     """Register a discovery/fan-out cron: each due tick lists open '<label>' issues on <repo> and fires
-    ONE <workflow> per newly-discovered issue (serialized, deduped against the wf: keys)."""
-    body: dict[str, Any] = {"repo": repo, "label": label, "cadence": cadence, "workflow": workflow}
-    if max_per_day is not None:
-        body["gates"] = {"maxFiresPerDay": max_per_day}
-    fire_params = parse_params(param)
-    if fire_params:
-        body["fireParams"] = fire_params
-    data = _guarded(lambda: workflow_svc.cron_discover(body))
+    ONE <workflow> per newly-discovered issue (serialized, deduped against the wf: keys). Fires a
+    one-step provision workflow whose register-discover activity writes the cron:discover row (§10 —
+    crons via activities); the provision run's wf: row audits the registration."""
+    fire_params = parse_params(param) or None
+    data = _guarded(
+        lambda: workflow_svc.provision_discover(repo, label, workflow, cadence, max_per_day, fire_params)
+    )
     console.print(
-        f"[green]registered[/green] discovery cron [bold]{data.get('discoverId')}[/bold] "
-        f"→ fires [cyan]{workflow}[/cyan] per open '{label}' issue on {repo}"
+        f"[green]provisioned[/green] discovery cron for open '{label}' issues on {repo} "
+        f"→ fires [cyan]{workflow}[/cyan] (provision run [bold]{data.get('instanceId')}[/bold])"
     )

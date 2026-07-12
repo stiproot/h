@@ -351,15 +351,33 @@ describe("the cron route's Fastify plugin scope", () => {
   });
 });
 
-describe("POST /cron/discover", () => {
+describe("GET /cron/list — discovery rows", () => {
+  // §10: discovery crons are registered by the register-discover ACTIVITY (a provision workflow), not
+  // a route — there is no POST /cron/discover. The cron router only READS them here.
   const cleanups: Array<() => Promise<unknown>> = [];
   afterEach(async () => {
     while (cleanups.length > 0) await cleanups.pop()!();
   });
 
-  async function makeApp(cron: CronStoreService) {
+  it("surfaces cron:discover rows under `discover`, alongside recur crons", async () => {
+    const cron = recordingDiscoverStore();
+    await Effect.runPromise(
+      cron.service.saveDiscoverRow({
+        repo: "stiproot/h",
+        label: "agent-approved",
+        workflow: "feature-pr",
+        status: "active",
+        cadence: "0 * * * *",
+        source: { mode: "github-issues" },
+        gates: { maxFiresPerDay: 5 },
+        epoch: 1,
+        fires: 0,
+        createdAt: "t",
+        updatedAt: "t",
+      }),
+    );
     const runtime = ManagedRuntime.make(
-      envLayer(stubInvoker(), stubStore(), memoryWatchStore().service, cron),
+      envLayer(stubInvoker(), stubStore(), memoryWatchStore().service, cron.service),
     );
     const app = Fastify();
     registerCronRoutes(app, runtime);
@@ -368,56 +386,10 @@ describe("POST /cron/discover", () => {
       () => app.close(),
       () => runtime.dispose(),
     );
-    return app;
-  }
 
-  it("registers a discovery cron (202) and writes the row with a defaulted workflow", async () => {
-    const cron = recordingDiscoverStore();
-    const app = await makeApp(cron.service);
-    const res = await app.inject({
-      method: "POST",
-      url: "/cron/discover",
-      payload: { repo: "stiproot/h", label: "agent-approved", cadence: "0 * * * *" },
-    });
-    expect(res.statusCode).toBe(202);
-    expect(res.json()).toMatchObject({ discoverId: "stiproot/h:agent-approved", active: true });
-    const row = cron.discover.get("stiproot/h:agent-approved")!;
-    expect(row.workflow).toBe("feature-pr"); // defaulted
-    expect(row.status).toBe("active");
-    expect(row.source.mode).toBe("github-issues");
-  });
-
-  it("rejects an invalid cadence with 400 and writes nothing", async () => {
-    const cron = recordingDiscoverStore();
-    const app = await makeApp(cron.service);
-    const res = await app.inject({
-      method: "POST",
-      url: "/cron/discover",
-      payload: { repo: "stiproot/h", label: "agent-approved", cadence: "not-a-cron" },
-    });
-    expect(res.statusCode).toBe(400);
-    expect(cron.discover.size).toBe(0);
-  });
-
-  it("/cron/list surfaces discovery rows under `discover`", async () => {
-    const cron = recordingDiscoverStore();
-    const app = await makeApp(cron.service);
-    await app.inject({
-      method: "POST",
-      url: "/cron/discover",
-      payload: {
-        repo: "stiproot/h",
-        label: "agent-approved",
-        cadence: "0 * * * *",
-        workflow: "feature-pr",
-      },
-    });
     const res = await app.inject({ method: "GET", url: "/cron/list" });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as {
-      crons: unknown[];
-      discover: Array<{ repo: string; label: string }>;
-    };
+    const body = res.json() as { discover: Array<{ repo: string; label: string }> };
     expect(body.discover).toHaveLength(1);
     expect(body.discover[0]).toMatchObject({ repo: "stiproot/h", label: "agent-approved" });
   });
