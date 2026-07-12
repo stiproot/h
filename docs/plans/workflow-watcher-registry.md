@@ -1,11 +1,14 @@
 # Plan: standalone workflows, rich registry keys, watchers as cron-invokers
 
-**Status:** living doc. Items 1–6 LANDED. Item 7 (retire issue-sweep) LANDED via §9 (the discovery/
-fan-out cron, Job 1) + §10. **§10 (foundational, 2026-07-12) is fully LANDED:** registry-state creation
-follows an ORDERING cut — crons are registered by workflow ACTIVITIES (the `arm-*` pattern, idempotent,
-`wf:`-audited); the WATCHER alone stays persist-then-invoke in the fire handler (mark-before-fire). The
-h-builds-h loop is now two pure-engine crons (discovery fan-out → `feature-pr`; per-PR revise at PR
-birth), `issue-sweep` deleted. Captures the 2026-07-11/12 sessions and their implementation.
+**Status: ✅ DONE (2026-07-12).** All items (1–7) and the foundational §10 shipped on `main`. The
+h-builds-h loop is now two pure-engine crons — a discovery cron (Job 1) fanning out supervised
+`feature-pr` per labeled issue, and a per-PR revise-until-merged cron (Job 2) armed at PR birth — with
+agent judgment ONLY inside each fired run. `issue-sweep` is retired (atomic, complete cutover). §10
+locked the registry-creation cut: crons are registered by workflow ACTIVITIES (the `arm-*` pattern,
+idempotent, `wf:`-audited); the WATCHER alone stays persist-then-invoke in the fire handler
+(mark-before-fire). Deferred follow-ups carried to
+[workflow-registry-followups.md](./workflow-registry-followups.md). This doc is the durable design
+record; the sections below are as-built. Captures the 2026-07-11/12 design + build sessions.
 
 ## North star
 
@@ -220,30 +223,13 @@ the referenced records' state → `done` → deactivate.
    the **watcher** primitive supervises the live instance. Never a second writer.
 
 ## Deferred (follow-up PRs)
-- **Liveness-on-death for `wf:` rows.** The initial build assumes clean self-reporting (a workflow
-  writes its own `done`). Handling a run that **dies before writing `done`** — the reader detecting a
-  non-terminal row whose Dapr instance is gone and marking it `orphaned`, and the watcher backstop —
-  is a **follow-up PR**, not part of the first cut.
-- **Cron source mode 3 — dynamic params.** A cron that derives its params fresh each tick (params
-  change tick-to-tick) rather than re-firing fixed params (mode 1) or a frozen definition (mode 2).
-  Needs a **param-source contract** (how/where the fresh values come from — a reader plugin, prior
-  `wf:` output, a GitHub query). Powerful; build when a concrete use-case lands. Modes 1 & 2 ship first.
-- **Compose-to-disk — authoring a new template file.** Today `h template compose … --save` persists
-  the composed *definition to workflow-svc state*, not a new `.yaml` on disk. Authoring a genuinely
-  new reusable **template file** alongside the others (re-composable, `git`-trackable) is a wanted
-  feature — **plan stub**, to spec and build later.
-- **Optional worktree for a workflow (use-if-provided / create-if-absent) + the `pr-review` case.**
-  A step should accept an optional `worktreePath`: reuse it when a prior chain member cut one, else
-  create one. Clean for h-authored branches. The sharp part is **`pr-review` gaining a worktree**:
-  reading the tree for fuller context is one risk tier; *running commands* on a PR's code executes
-  untrusted third-party code in a secret-bearing agent — the exact blast radius the reviewer's
-  minimal-surface invariant denies (reviewer-identity-security.md). Three lines to choose between:
-  (1) read-only context, no execution; (2) full worktree + execution behind a no-secrets/egress-
-  restricted runtime posture; (3) keep the reviewer read-only via MCP and hand off "needs to run"
-  to a separate trusted validation workflow. Also: creation should be a conditional *workflow step*
-  (a `withWorktree` param), never an agent tool — arming the reviewer with worktree/workflow tools
-  would itself expand the minimal surface. **Plan stub** — decide the line, then build; `pr-review`
-  capabilities stay AS-IS until then.
+
+Extracted to **[workflow-registry-followups.md](./workflow-registry-followups.md)** when this plan
+closed (nothing here blocks the shipped loop): `h cron rm` per-cron deactivate; `--cron` vs
+`--schedule` unification (Open Q2); `--dynamic-cron` (Open Q4); the `loop-until-clean` chain strategy
+stub (Open Q5 — the *revise loop itself* is resolved as the per-PR arm-at-birth cron); liveness-on-
+death for `wf:` rows (Open Q7); cron source mode 3 (dynamic params); compose-to-disk; and the optional-
+worktree / `pr-review`-execution security question.
 
 ## Build order
 1. ✅ **`revise.yaml`** standalone template — `revise` reads its subject from GitHub; unblocks PR #30.
