@@ -1,9 +1,10 @@
 # Plan: standalone workflows, rich registry keys, watchers as cron-invokers
 
-**Status:** living doc — design + build in progress. Items 1–4 LANDED on main (the standalone
-`revise`, chain integration, the rich `wf:<repo>:<slug>:<workflow>` registry, and the cron
-primitive — see the Build order). Items 5–7 (inline template run, cron CLI, retire issue-sweep)
-remain. Captures the decisions from the 2026-07-11 design session and their implementation.
+**Status:** living doc — design + build in progress. Items 1–6 LANDED on main (the standalone
+`revise`, chain integration, the rich `wf:<repo>:<slug>:<workflow>` registry, the recur cron
+primitive, inline template run, and the cron CLI — see the Build order). Item 7 (retire issue-sweep
+→ a discovery/fan-out cron) is designed (§9, 2026-07-12) and building. Captures the decisions from
+the 2026-07-11/12 design sessions and their implementation.
 
 ## North star
 
@@ -200,8 +201,9 @@ the referenced records' state → `done` → deactivate.
    *saved workflow by key* (fired by the workflow-cron-tick). The new `--cron` is *target-scoped*
    (points at a `wf:<repo>:<slug>` record and its subject). Do these generalize into one mechanism
    (a `cron:` row that targets either a saved key or a `wf:` record), or coexist?
-3. **Source-reader plugin boundary + a GitHub read budget** — a busy tick must not hammer the API
-   (the `workflow-instance` reader is a cheap local read; `github-*` readers are rate-limited).
+3. ~~**Source-reader plugin boundary + a GitHub read budget**~~ **RESOLVED (§9).** An `ISourceReader`
+   port in workflow-svc (adapter over git-core's new `GitHubClient`); the read happens only after the
+   in-flight + cadence + daily-cap gates, so the gate order bounds API hits to ~once/cadence.
 4. **`--dynamic-cron` exact semantics** — agent registers a cron for this workflow's recurrence, for
    follow-up work it discovers, or both?
 5. **Loop home** — keep `loop-until-clean` in the chain engine, or move looping to a standing cron
@@ -310,14 +312,63 @@ the referenced records' state → `done` → deactivate.
    - ✅ **6b — `h cron list`**: the inspection surface (GET /cron/list on the tick router + a new `h
      cron` command group), sibling of `h watch list` — heartbeat + rows. *(landed)*
    - *(Deferred: `h cron add` standalone register (needs POST /cron), `--dynamic-cron` agent-decides.)*
-7. **Retire `issue-sweep`** — replace with a `github-issues` cron (atomic cutover). **NEEDS A DESIGN
-   PASS FIRST — not a straight swap.** The cron built in items 4–6 is a **recur** cron: it re-fires
-   ONE workflow (fixed `wf:` identity) until its goal resolves. The sweep is a **different shape** —
-   **discovery / fan-out**: on each tick it QUERIES a source (open issues with a label) and fires ONE
-   `feature-pr` PER discovered issue, deduping against the `wf:*` keys (so it never re-implements an
-   issue that already has a row — the fix for the 2026-07-11 duplicate-dispatch bug). So this is a
-   SECOND cron mode (a `source` that enumerates → fan-out), not the fixed-identity recur. It needs:
-   (a) the **source-reader boundary** + a **GitHub read budget** (Open Q3 — a busy tick must not hammer
-   the API); (b) how a discovery cron threads each issue → a `feature-pr` identity (issue→slug,
-   Decision §3); (c) then the atomic delete of the sweep machinery. Design it like the cron-termination
-   model was — chat first, don't assume the shape.
+7. **Retire `issue-sweep`** — replace with a **discovery / fan-out cron** (atomic cutover). *(design
+   resolved 2026-07-12 — see §9; build in progress.)* The cron built in items 4–6 is a **recur** cron:
+   it re-fires ONE workflow (fixed `wf:` identity) until its goal resolves. The sweep is the **other
+   shape** — on each tick it QUERIES a source (open issues with a label) and fires ONE `feature-pr`
+   PER discovered issue, deduping against the `wf:*` keys. The sweep's judgment has DISSOLVED across
+   items 3–6 (reconcile → watcher engine; compose → feature-pr reads the issue; dedup → exact-key
+   `wf:` lookup; revise → a per-PR recur cron), so discovery is a **pure engine loop, no agent** —
+   the judgment lives entirely in each fired `feature-pr` run; the `agent-approved` label is a human
+   gate the query filters on. Split:
+   - **7a — foundation**: `discover.model.ts` (`DiscoverRow`/`DiscoverGates`/`DiscoverSource`/
+     `discoverId`; `discoveryFires` on `CronLedger`); the `ISourceReader` domain port (+ `Issue`
+     shape, oldest-first); git-core gains a `GitHubClient` port + `listOpenIssues` adapter (HTTP to
+     api.github.com with `GH_TOKEN` — the GitHub I/O stays in the core package, workflow-svc CONSUMES
+     it; a future non-agent-ops service is a later conversation); `IDiscoverStore` methods on the cron
+     store (`cron:discover:<repo>:<label>` rows + `cron:discover-index`, reusing `cron:config`/
+     `__tick__`/`ledger`).
+   - **7b — engine**: pure `discover-engine.ts` `decide(row, runtimeStatus, todayFires, nowMs) →
+     wait | discover`; precedence in-flight → cadence → daily-cap. Serialize (maxConcurrent = 1): the
+     in-flight guard IS the concurrency bound (never start while the last-fired instance is live), so
+     no `wf:` enumeration is needed. maxConcurrent > 1 is deferred (needs a `wf:` live-count).
+   - **7c — scan + tick**: `discover-scan.ts` (`registerDiscover` + `scanDiscoverEffect`): read the
+     source ONLY after passing in-flight + cadence + daily-cap gates (this is the GitHub read budget —
+     ~once/cadence, Open Q3 resolved by the gate order); dedup each candidate by exact-key `wf:` read;
+     fire the OLDEST eligible under instance `feature-<slug>`, stamping the wf-identity + `discoveryFires`
+     ledger. Wired into the `workflow-cron-tick` beside the recur/chain/watch scans (its failure never
+     fails the tick).
+   - **7d — entry point + CLI**: `POST /cron/discover` registers a discovery cron; `h cron discover
+     add <repo> --label --cadence [--workflow feature-pr] [--max-per-day]`; `h cron list` + GET
+     /cron/list include discover rows.
+   - **7e — atomic retire**: delete `issue-sweep.yaml`, the `issueSweep` values block, the `sweep:*`
+     registry docs (CLAUDE.md/runbook). No migration window (atomic-cutover invariant).
+
+## §9. Discovery cron — resolved shape *(2026-07-12 design pass)*
+
+**Locus (decided):** pure-engine source-reader — no agent in the discovery loop. The whole thrust of
+items 3–6 dissolved the sweep's judgment; what remains (query → dedup → fan-out) is mechanical, so it
+belongs in engine code, consistent with "machines scan, agents judge" (the judgment is each fired
+`feature-pr`). The one genuinely-new capability is a GitHub read **on the tick** — workflow-svc had
+none. It lives in the **git-core package** (a `GitHubClient` port); workflow-svc consumes it via the
+`ISourceReader` port. (If more non-agent ops accrue, a dedicated service keeps workflow-svc clean —
+later.)
+
+**Fan-out (decided):** ONE fire per tick, serialize. `maxConcurrent` defaults to 1 and the
+row's in-flight guard (last-fired instance still live → wait) enforces it without enumerating `wf:*`
+(the registry is exact-key only, by design). A `maxFiresPerDay` backstop bounds a runaway label class.
+
+**Registry:** a distinct row shape in the cron family — `cron:discover:<repo>:<label>` (index
+`cron:discover-index`), sharing `cron:config`/`cron:__tick__`/`cron:ledger:<date>` with the recur
+cron. NOT the single-identity `CronRow` (a discovery cron has no fixed `wf:` identity, no `resolved`
+handshake — it never resolves; it drains a label class and is bounded by the daily cap).
+
+**Dedup = the duplicate-dispatch fix:** the fired `feature-pr` writes `wf:<repo>:issue-<N>:feature-pr`
+at its START (item 3b bracketing), so the next tick's exact-key read sees it and skips — an issue that
+already has a row (running OR done) is never re-dispatched. Slug derivation is deterministic:
+`issue-<N>` (Decision §3), instance `feature-issue-<N>` (matches the retired sweep's naming, so the
+run ledger lines up).
+
+**GitHub read budget (Open Q3, resolved):** the source is read ONLY after the in-flight + cadence +
+daily-cap gates pass, so a 60s tick with a daily-cadence discovery cron hits the API ~once/day — the
+gate order IS the budget, no separate cache key needed.
