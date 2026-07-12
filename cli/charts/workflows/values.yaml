@@ -62,6 +62,16 @@ verify:
 createPr:
   gitAuth: ""
 
+# arm-revise overlay template (templates/arm-revise.yaml): the "arm at birth" step
+# (docs/plans/workflow-watcher-registry.md §10, Job 2). Appended after implement, it registers a
+# revise-until-merged recur cron for the PR the run just opened — via the register-cron activity
+# (the arm-* pattern), not the fire edge. cadence/maxFires are execution machinery, baked here.
+armRevise:
+  # How often the revise cron re-fires until the PR merges (5-field cron, UTC).
+  cadence: "0 */6 * * *"
+  # Budget backstop — stop re-firing revise after this many attempts even if the PR never merges.
+  maxFires: 20
+
 # plugin-improvement workflow (templates/plugin-improvement.yaml): worktree → setup →
 # improve (→ verify). Publish-native — always rendered as a template with {{params.slug}} /
 # {{params.feedback}} slots; see the template header.

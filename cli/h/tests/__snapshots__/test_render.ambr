@@ -1,4 +1,22 @@
 # serializer version: 1
+# name: test_arm_revise_golden
+  '''
+  steps:
+    - id: arm-revise
+      activity: register-cron
+      input:
+        # The saved workflow the cron re-fires each due tick until the PR merges (revise reports
+        # ===GOAL===RESOLVED on merge; the cron engine reads wf:*.resolved and deactivates).
+        workflow: revise
+        repo: "{{params.repo}}"
+        slug: "{{params.slug}}"
+        cadence: "0 */6 * * *"
+        maxFires: 20
+        # Only arm if the PR actually opened: register-cron parses this for a ===PR=== /pull/<n> URL.
+        requirePrFrom: "{{implement.output}}"
+  
+  '''
+# ---
 # name: test_create_pr_golden
   '''
   steps:

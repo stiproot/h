@@ -17,7 +17,7 @@
     },
     "composable": {
       "type": "boolean",
-      "$comment": "Overlay mode: render a template as an overlay-able atom — feature omits its standalone commit-decision closer so a create-pr overlay supplies it. Set by `h workflow compose`."
+      "$comment": "Overlay mode: render a template as an overlay-able atom \u2014 feature omits its standalone commit-decision closer so a create-pr overlay supplies it. Set by `h workflow compose`."
     },
     "feature": {
       "type": "object",
@@ -32,7 +32,7 @@
         },
         "repo": {
           "type": "string",
-          "$comment": "GitHub owner/name — the wf-registry identity segment. Identity only; NOT the clone path."
+          "$comment": "GitHub owner/name \u2014 the wf-registry identity segment. Identity only; NOT the clone path."
         },
         "clonePath": {
           "type": "string"
@@ -83,6 +83,19 @@
             "pat",
             "ssh"
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "armRevise": {
+      "type": "object",
+      "$comment": "arm-revise overlay (templates/arm-revise.yaml, docs/plans/workflow-watcher-registry.md \u00a710): appends a register-cron step that arms a revise-until-merged recur cron at PR birth. cadence/maxFires are execution machinery, baked here.",
+      "properties": {
+        "cadence": {
+          "type": "string"
+        },
+        "maxFires": {
+          "type": "number"
         }
       },
       "additionalProperties": false

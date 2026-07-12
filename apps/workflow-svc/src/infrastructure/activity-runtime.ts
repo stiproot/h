@@ -4,7 +4,10 @@ import type { DaprInvokerTag } from "core-dapr";
 import { Effect, type ManagedRuntime } from "effect";
 import { injectTraceContext, withTraceparentParent } from "telemetry";
 
+import type { CronStore } from "../domain/ports/ICronStore.ts";
 import type { WfStore } from "../domain/ports/IWfStore.ts";
+import type { WorkflowInvoker } from "../domain/ports/IWorkflowInvoker.ts";
+import type { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
 
 // ---------------------------------------------------------------------------
 // The activity-to-Effect bridge. The Dapr WorkflowRuntime invokes activities as bare
@@ -18,8 +21,21 @@ import type { WfStore } from "../domain/ports/IWfStore.ts";
 // activities, never the reverse (enforced by the no-circular dependency-cruiser rule).
 // ---------------------------------------------------------------------------
 
-/** Everything an activity effect may yield from the shared runtime. */
-export type ActivityEnv = DaprInvokerTag | HttpClient.HttpClient | FileSystem.FileSystem | WfStore;
+/**
+ * Everything an activity effect may yield from the shared runtime. Includes the registry stores
+ * (`WfStore`, `CronStore`) and the invoker/store the cron registration touches, because registry
+ * state is written by ACTIVITIES (docs/plans/workflow-watcher-registry.md §10 — the `arm-*` pattern):
+ * `write-wf-row` writes `wf:`, `register-cron` writes `cron:` via `registerCronForFire`. The shared
+ * runtime is built from the app layer, which provides all of these.
+ */
+export type ActivityEnv =
+  | DaprInvokerTag
+  | HttpClient.HttpClient
+  | FileSystem.FileSystem
+  | WfStore
+  | CronStore
+  | WorkflowInvoker
+  | WorkflowStore;
 
 export type ActivityRuntime = ManagedRuntime.ManagedRuntime<ActivityEnv, never>;
 

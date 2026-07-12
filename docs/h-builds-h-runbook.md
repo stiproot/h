@@ -56,10 +56,12 @@ preflight step turns that into an explicit `TOOLS UNAVAILABLE` stop.
 ## Publish, seed, arm
 
 ```sh
-# 1. The feature-pr template (feature ⊕ verify ⊕ create-pr; params: slug, spec, issueNumber;
-#    verify.cmd + config baked from values.local). The sweep fires this so each run implements the
-#    issue, gates on the acceptance check, and opens its PR — all in the one implement agent.
-uv run h template compose feature verify create-pr --save feature-pr
+# 1. The feature-pr template (feature ⊕ verify ⊕ create-pr ⊕ arm-revise; params: slug, spec,
+#    issueNumber; verify.cmd + config baked from values.local). Each run implements the issue, gates
+#    on the acceptance check, and opens its PR — all in the one implement agent — then arm-revise
+#    appends a register-cron step that arms a revise-until-merged recur cron for the PR it just opened
+#    (docs/plans/workflow-watcher-registry.md §10, Job 2; a SKIPPED push arms nothing).
+uv run h template compose feature verify create-pr arm-revise --save feature-pr
 
 # 2. Phase-1 acceptance: hand-fire one issue-linked run before any automation.
 #    Template VALUES ride -p key=value (slug/spec/issueNumber); --agent selects the executor

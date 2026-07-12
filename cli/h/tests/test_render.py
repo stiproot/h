@@ -260,6 +260,50 @@ def test_compose_feature_create_pr_extends_implement() -> None:
     assert "feature/{{params.slug}}" in implement
 
 
+def test_arm_revise_golden(snapshot) -> None:
+    """arm-revise overlay (§10, Job 2): a lone register-cron step arming a revise-until-merged cron."""
+    rendered = helm.render_workflow("arm-revise", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_compose_feature_verify_create_pr_arm_revise_appends_the_arm_step() -> None:
+    """feature ⊕ verify ⊕ create-pr ⊕ arm-revise: the arm-revise step is APPENDED (new id) after
+    implement, carrying register-cron + the PR guard — the h-builds-h feature-pr composition."""
+    from h_cli.infrastructure.overlay import overlay
+
+    def _atom(name: str, **vals: str) -> dict:
+        return json.loads(
+            helm.to_wire_json(
+                helm.render_workflow(
+                    name,
+                    values={"publish": "true", "composable": "true", **vals},
+                    include_local=False,
+                )
+            )
+        )
+
+    merged = overlay(
+        _atom("feature"),
+        _atom("verify", **{"verify.cmd": "bun run lint"}),
+        _atom("create-pr"),
+        _atom("arm-revise"),
+    )
+    assert [s["id"] for s in merged["steps"]] == [
+        "worktree",
+        "setup",
+        "plan",
+        "implement",
+        "arm-revise",
+    ]
+    arm = next(s for s in merged["steps"] if s["id"] == "arm-revise")
+    assert arm["activity"] == "register-cron"
+    assert arm["input"]["workflow"] == "revise"
+    # The guard reads the implement step's output for the ===PR=== marker; identity threads as params.
+    assert arm["input"]["requirePrFrom"] == "{{implement.output}}"
+    assert arm["input"]["repo"] == "{{params.repo}}"
+    assert arm["input"]["slug"] == "{{params.slug}}"
+
+
 def test_issue_sweep_golden(snapshot) -> None:
     """The issue-sweep template (h-builds-h): one judgment tick, template config baked."""
     rendered = helm.render_workflow(
