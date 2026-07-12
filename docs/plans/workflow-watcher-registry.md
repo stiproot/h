@@ -1,11 +1,11 @@
 # Plan: standalone workflows, rich registry keys, watchers as cron-invokers
 
-**Status:** living doc — design + build in progress. Items 1–6 LANDED on main. Item 7's discovery/
-fan-out cron (Job 1) is BUILT (§9; 7a–7d landed 2026-07-12). A 2026-07-12 design session then locked
-a foundational principle — **§10: registry state is created by workflow ACTIVITIES (the `arm-*`
-pattern), the edge only fires** — which reshapes Job 2 (arm a revise-loop at PR birth) and the retire
-(7e). §10's build order (arm-cron activity → migrate watch/`--cron`/discover off the edge → retire
-issue-sweep) is the current front. Captures the 2026-07-11/12 sessions and their implementation.
+**Status:** living doc. Items 1–6 LANDED. Item 7 (retire issue-sweep) LANDED via §9 (the discovery/
+fan-out cron, Job 1) + §10. **§10 (foundational, 2026-07-12) is fully LANDED:** registry-state creation
+follows an ORDERING cut — crons are registered by workflow ACTIVITIES (the `arm-*` pattern, idempotent,
+`wf:`-audited); the WATCHER alone stays persist-then-invoke in the fire handler (mark-before-fire). The
+h-builds-h loop is now two pure-engine crons (discovery fan-out → `feature-pr`; per-PR revise at PR
+birth), `issue-sweep` deleted. Captures the 2026-07-11/12 sessions and their implementation.
 
 ## North star
 
@@ -449,8 +449,8 @@ workflow-FIRING edge (`POST /workflow/run*`, the trigger topic, the cron tick) f
 `POST /workflow/save` authors definitions — neither is run-state. Cron registration leaves the handler
 entirely (item 7d's `POST /cron/discover` and item 6a's run-route cron field migrate to activities).
 
-### Build order (§10)
-1. **`arm-cron` activity + `revise` arm-at-birth** *(prove the shape — Job 2)*. A `register-cron`
+### Build order (§10) — ALL LANDED (2026-07-12)
+1. ✅ **`arm-cron` activity + `revise` arm-at-birth** *(prove the shape — Job 2)*. A `register-cron`
    activity (sibling of `write-wf-row`; runs on workflow-svc; reuses `registerCronForFire`; LOUD on
    failure; `ActivityEnv` widened with `CronStore` [+ the registration fn's env]). It takes a resolved
    recur registration and, for the arm-at-birth guard, an optional `requirePrFrom` output blob: parse
@@ -461,25 +461,24 @@ entirely (item 7d's `POST /cron/discover` and item 6a's run-route cron field mig
    `feature verify create-pr arm-revise`. This is Job 2: discover issue → feature-pr → opens PR → arms
    a revise-until-merged recur cron (the recur cron + `revise` + the `===GOAL===RESOLVED` handshake
    already exist).
-2. **`watch:` stays in the fire handler — NOT migrated.** The watcher is the sole exception: its row
+2. ✅ **`watch:` stays in the fire handler — NOT migrated.** The watcher is the sole exception: its row
    must precede the run it supervises (mark-before-fire), which the handler's persist-then-invoke
    already gives and an in-run activity cannot. `invokeWithWatch` stays. *(This is a REVISION of the
    earlier plan to move it to an `arm-watch` bracket — see the §10 principle: before-work state stays
    in the handler; only after-work state is an activity.)*
-3. **Migrate `--cron` + discovery to activities** *(crons via activities, uniformly)*. Prereq: make
-   **`registerCronForFire` idempotent ensure-exists** (no-op when an ACTIVE row exists) so re-runs
-   (retries, `--cron` self-recur, a `feature-pr` re-run) don't reset `fires`/epoch — the re-run-safety
-   the whole `arm-*` pattern needs; the arm-at-birth arm-revise already relies on it.
-   - **`--cron`**: `generic.workflow` arms the recur cron in a CLOSING bracket when the run carries a
-     `cron` field (symmetric with the `wf:` bracket; after-work; idempotent). The run route stops
-     calling `registerCronForFire` — it passes the cron config through the workflow input.
-   - **discovery**: a `register-discover` activity + a one-step provision workflow; `h cron discover
-     add` fires the provision workflow (whose `wf:` row audits the registration) instead of
-     `POST /cron/discover`. Delete the route's direct `registerDiscover` call.
-4. **Retire `issue-sweep` (was 7e)** — now that Job 1 (discovery) AND Job 2 (arm-at-birth revise) both
-   have homes, the sweep's discover AND revise halves are replaced; atomic-retire is finally a COMPLETE
-   cutover (delete template + values + schema + golden + runbook refs).
+3. ✅ **Migrate `--cron` + discovery to activities** *(crons via activities, uniformly)*. Prereq
+   (landed): **`registerCronForFire` idempotent ensure-exists** (no-op when an ACTIVE row exists) so
+   re-runs (retries, `--cron` self-recur, a `feature-pr` re-run) don't reset `fires`/epoch.
+   - ✅ **`--cron`**: `generic.workflow` arms the recur cron in a CLOSING bracket (the `armCron` field
+     on the workflow input) via `register-cron` — symmetric with the `wf:` bracket, after-work,
+     idempotent, LOUD. The run route passes `armCron` through instead of calling `registerCronForFire`.
+   - ✅ **discovery**: a `register-discover` activity + a one-step provision workflow; `h cron discover
+     add` fires the provision workflow (its `wf:` row audits the registration) — `POST /cron/discover`
+     DELETED.
+4. ✅ **Retire `issue-sweep` (was 7e)** — both jobs homed, so the sweep's discover AND revise halves are
+   replaced; atomic COMPLETE cutover (template + values + schema + golden + runbook + CLAUDE refs).
 
-**Scope note:** step 1 (LANDED) proved the after-work activity pattern. Step 2 revised: watch is the
-handler exception, not migrated. Step 3 migrates the crons (`--cron`, discovery) onto activities with
-the idempotency prereq. Step 4 is the retire.
+**Outcome:** the h-builds-h loop is now two pure-engine crons — a discovery cron (Job 1) fanning out
+`feature-pr` per labeled issue, and a per-PR revise cron (Job 2) armed at PR birth — with agent
+judgment ONLY inside each fired run. Registry creation follows §10: crons via activities (idempotent,
+`wf:`-audited), the watcher alone persist-then-invoke in the fire handler.
