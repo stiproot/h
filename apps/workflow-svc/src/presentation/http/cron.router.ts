@@ -1,13 +1,18 @@
 import type { WorkflowError } from "core";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Option, Ref, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
 import { type CronScanReport, scanCronsEffect } from "../../domain/cron-scan.ts";
-import { type DiscoverScanReport, scanDiscoverEffect } from "../../domain/discover-scan.ts";
+import {
+  type DiscoverScanReport,
+  registerDiscover,
+  scanDiscoverEffect,
+} from "../../domain/discover-scan.ts";
+import { RegisterDiscoverRequest } from "../../domain/models/discover.model.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
-import { isDue } from "../../domain/scheduling.ts";
+import { assertValidCron, isDue } from "../../domain/scheduling.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
 import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
 import {
@@ -15,7 +20,14 @@ import {
   invokeWithWatch,
   scanWatchesEffect,
 } from "../../domain/watch-scan.ts";
-import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./workflow.router.ts";
+import {
+  InvalidCronError,
+  runRoute,
+  type WorkflowRoutesEnv,
+  type WorkflowRoutesRuntime,
+} from "./workflow.router.ts";
+
+const DEFAULT_DISCOVER_WORKFLOW = "feature-pr";
 
 // The cron binding (dapr/local/workflow-cron.yaml) is named workflow-cron-tick; a cron binding is
 // delivered as POST /<binding-name>, so the route name must match.
@@ -125,8 +137,40 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
         const cs = yield* CronStore;
         const heartbeat = yield* cs.getHeartbeat();
         const crons = yield* cs.listRows();
-        return { heartbeat: Option.getOrNull(heartbeat), crons };
+        // The fan-out sibling (§9) shares the registry family, so one list surfaces both — a recur cron
+        // and a discovery cron are both "crons" to `h cron list`.
+        const discover = yield* cs.listDiscoverRows();
+        return { heartbeat: Option.getOrNull(heartbeat), crons, discover };
       }),
+    ),
+  );
+
+  // Register a discovery cron (§9) — standalone, unlike the recur cron's `--cron` field which rides a
+  // run. Validates the cadence, then writes the cron:discover row via the same engine registration the
+  // scan reads. Normal JSON body (outside the body-ignoring tick scope below).
+  fastify.post("/cron/discover", (request, reply) =>
+    withServerSpan("POST /cron/discover", request.headers, () =>
+      runRoute(
+        runtime,
+        reply,
+        Effect.gen(function* () {
+          const body = yield* Schema.decodeUnknown(RegisterDiscoverRequest)(request.body ?? {});
+          yield* Effect.try({
+            try: () => assertValidCron(body.cadence),
+            catch: () => new InvalidCronError({ schedule: body.cadence }),
+          });
+          return yield* registerDiscover({
+            repo: body.repo,
+            label: body.label,
+            workflow: body.workflow ?? DEFAULT_DISCOVER_WORKFLOW,
+            cadence: body.cadence,
+            ...(body.gates ? { gates: body.gates } : {}),
+            ...(body.fireParams ? { fireParams: body.fireParams } : {}),
+            ...(body.watch ? { watch: body.watch } : {}),
+          });
+        }),
+        { successStatus: 202 },
+      ),
     ),
   );
 

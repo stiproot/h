@@ -75,6 +75,22 @@ export const DiscoverRow = Schema.Struct({
 });
 export type DiscoverRow = Schema.Schema.Type<typeof DiscoverRow>;
 
+/**
+ * The `POST /cron/discover` body — registers a discovery cron. `workflow` defaults to `feature-pr`,
+ * `gates` to a small daily cap; `repo`/`label`/`cadence` are required. Sibling of the recur cron's
+ * `CronPolicy`, but standalone (a discovery cron doesn't ride a workflow run — it IS the recurrence).
+ */
+export const RegisterDiscoverRequest = Schema.Struct({
+  repo: Schema.String,
+  label: Schema.String,
+  workflow: Schema.optional(Schema.String),
+  cadence: Schema.String,
+  gates: Schema.optional(DiscoverGates),
+  fireParams: Schema.optional(WorkflowParams),
+  watch: Schema.optional(WatchPolicy),
+});
+export type RegisterDiscoverRequest = Schema.Schema.Type<typeof RegisterDiscoverRequest>;
+
 /** The store id (index/key suffix) for a discovery cron: `<repo>:<label>`. */
 export const discoverId = (id: { repo: string; label: string }): string => `${id.repo}:${id.label}`;
 

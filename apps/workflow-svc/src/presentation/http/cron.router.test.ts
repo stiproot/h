@@ -8,6 +8,7 @@ import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { emptyChainLedger } from "../../domain/models/chain.model.ts";
 import { emptyCronLedger } from "../../domain/models/cron.model.ts";
+import type { DiscoverRow } from "../../domain/models/discover.model.ts";
 import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
@@ -101,17 +102,36 @@ const envLayer = (
   invoker: WorkflowInvokerService,
   store: WorkflowStoreService,
   watch: WatchStoreService = memoryWatchStore().service,
+  cron: CronStoreService = emptyCronStore,
 ) =>
   Layer.mergeAll(
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, store),
     Layer.succeed(WatchStore, watch),
     Layer.succeed(ChainStore, emptyChainStore),
-    Layer.succeed(CronStore, emptyCronStore),
+    Layer.succeed(CronStore, cron),
     Layer.succeed(WfStore, emptyWfStore),
     Layer.succeed(DaprPublisherTag, stubPublisher),
     Layer.succeed(SourceReader, stubSourceReader),
   );
+
+// A cron store that records the discovery rows it saves, for the /cron/discover route tests.
+function recordingDiscoverStore(): {
+  service: CronStoreService;
+  discover: Map<string, DiscoverRow>;
+} {
+  const discover = new Map<string, DiscoverRow>();
+  return {
+    discover,
+    service: {
+      ...emptyCronStore,
+      getDiscoverRow: (id) => Effect.succeed(Option.fromNullable(discover.get(id))),
+      listDiscoverRows: () => Effect.succeed([...discover.values()]),
+      saveDiscoverRow: (row) =>
+        Effect.sync(() => void discover.set(`${row.repo}:${row.label}`, row)),
+    },
+  };
+}
 
 // A workflow whose every-minute schedule was saved long ago: always due.
 const dueWorkflow: StoredWorkflow = {
@@ -282,8 +302,10 @@ describe("the cron route's Fastify plugin scope", () => {
     while (cleanups.length > 0) await cleanups.pop()!();
   });
 
-  async function makeApp(store: WorkflowStoreService) {
-    const runtime = ManagedRuntime.make(envLayer(stubInvoker(), store));
+  async function makeApp(store: WorkflowStoreService, cron?: CronStoreService) {
+    const runtime = ManagedRuntime.make(
+      envLayer(stubInvoker(), store, memoryWatchStore().service, cron),
+    );
     const app = Fastify();
     registerCronRoutes(app, runtime);
     await app.ready();
@@ -326,5 +348,77 @@ describe("the cron route's Fastify plugin scope", () => {
     });
     expect(res.statusCode).toBe(500);
     expect(res.json()).toMatchObject({ statusCode: 500, error: "Internal Server Error" });
+  });
+});
+
+describe("POST /cron/discover", () => {
+  const cleanups: Array<() => Promise<unknown>> = [];
+  afterEach(async () => {
+    while (cleanups.length > 0) await cleanups.pop()!();
+  });
+
+  async function makeApp(cron: CronStoreService) {
+    const runtime = ManagedRuntime.make(
+      envLayer(stubInvoker(), stubStore(), memoryWatchStore().service, cron),
+    );
+    const app = Fastify();
+    registerCronRoutes(app, runtime);
+    await app.ready();
+    cleanups.push(
+      () => app.close(),
+      () => runtime.dispose(),
+    );
+    return app;
+  }
+
+  it("registers a discovery cron (202) and writes the row with a defaulted workflow", async () => {
+    const cron = recordingDiscoverStore();
+    const app = await makeApp(cron.service);
+    const res = await app.inject({
+      method: "POST",
+      url: "/cron/discover",
+      payload: { repo: "stiproot/h", label: "agent-approved", cadence: "0 * * * *" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ discoverId: "stiproot/h:agent-approved", active: true });
+    const row = cron.discover.get("stiproot/h:agent-approved")!;
+    expect(row.workflow).toBe("feature-pr"); // defaulted
+    expect(row.status).toBe("active");
+    expect(row.source.mode).toBe("github-issues");
+  });
+
+  it("rejects an invalid cadence with 400 and writes nothing", async () => {
+    const cron = recordingDiscoverStore();
+    const app = await makeApp(cron.service);
+    const res = await app.inject({
+      method: "POST",
+      url: "/cron/discover",
+      payload: { repo: "stiproot/h", label: "agent-approved", cadence: "not-a-cron" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(cron.discover.size).toBe(0);
+  });
+
+  it("/cron/list surfaces discovery rows under `discover`", async () => {
+    const cron = recordingDiscoverStore();
+    const app = await makeApp(cron.service);
+    await app.inject({
+      method: "POST",
+      url: "/cron/discover",
+      payload: {
+        repo: "stiproot/h",
+        label: "agent-approved",
+        cadence: "0 * * * *",
+        workflow: "feature-pr",
+      },
+    });
+    const res = await app.inject({ method: "GET", url: "/cron/list" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      crons: unknown[];
+      discover: Array<{ repo: string; label: string }>;
+    };
+    expect(body.discover).toHaveLength(1);
+    expect(body.discover[0]).toMatchObject({ repo: "stiproot/h", label: "agent-approved" });
   });
 });

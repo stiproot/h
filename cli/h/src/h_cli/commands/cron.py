@@ -15,8 +15,11 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.infrastructure import workflow_svc
+from h_cli.params import parse_params
 
 app = typer.Typer(no_args_is_help=True, help="Durable cron registry (workflow-svc recur engine).")
+discover_app = typer.Typer(no_args_is_help=True, help="Discovery/fan-out crons (a source → per-issue fires).")
+app.add_typer(discover_app, name="discover")
 console = Console()
 err_console = Console(stderr=True)
 
@@ -71,13 +74,13 @@ def _print_heartbeat(heartbeat: dict[str, Any] | None) -> None:
 
 @app.command("list")
 def list_() -> None:
-    """List cron rows (recur registrations), with the scan heartbeat above the table."""
+    """List cron rows — recur registrations AND discovery/fan-out crons — with the scan heartbeat."""
     data = _guarded(workflow_svc.cron_list)
     _print_heartbeat(data.get("heartbeat"))
     crons = data.get("crons") or []
     table = Table(
         "cron", "status", "cadence", "fires", "outcome", "lastRunAt", "note",
-        title=f"crons ({len(crons)})",
+        title=f"recur crons ({len(crons)})",
     )
     for row in crons:
         cron_id = f"{row.get('repo', '')}:{row.get('slug', '')}:{row.get('workflow', '')}"
@@ -92,3 +95,47 @@ def list_() -> None:
             row.get("note") or "",
         )
     console.print(table)
+
+    discover = data.get("discover") or []
+    dtable = Table(
+        "discover", "status", "cadence", "workflow", "fires", "lastFired", "lastRunAt", "note",
+        title=f"discovery crons ({len(discover)})",
+    )
+    for row in discover:
+        disc_id = f"{row.get('repo', '')}:{row.get('label', '')}"
+        per_day = (row.get("gates") or {}).get("maxFiresPerDay", "")
+        dtable.add_row(
+            disc_id,
+            row.get("status", ""),
+            row.get("cadence", ""),
+            row.get("workflow", ""),
+            f"{row.get('fires', 0)} (≤{per_day}/day)",
+            str(row.get("lastFiredIssue") or ""),
+            row.get("lastRunAt") or "",
+            row.get("note") or "",
+        )
+    console.print(dtable)
+
+
+@discover_app.command("add")
+def discover_add(
+    repo: str = typer.Argument(..., help="owner/name — the GitHub repo to scan AND the fired runs' identity repo."),
+    label: str = typer.Option(..., "--label", "-l", help="Only open issues with this label are discovered."),
+    cadence: str = typer.Option(..., "--cadence", "-c", help="5-field cron expression (UTC) — how often to scan."),
+    workflow: str = typer.Option("feature-pr", "--workflow", "-w", help="Saved workflow fired per discovered issue."),
+    max_per_day: int | None = typer.Option(None, "--max-per-day", help="Daily fan-out cap (backstop; server default 5)."),
+    param: list[str] = typer.Option([], "--param", "-p", help="key=value merged into every fire (e.g. identity); @path splices a file."),
+) -> None:
+    """Register a discovery/fan-out cron: each due tick lists open '<label>' issues on <repo> and fires
+    ONE <workflow> per newly-discovered issue (serialized, deduped against the wf: keys)."""
+    body: dict[str, Any] = {"repo": repo, "label": label, "cadence": cadence, "workflow": workflow}
+    if max_per_day is not None:
+        body["gates"] = {"maxFiresPerDay": max_per_day}
+    fire_params = parse_params(param)
+    if fire_params:
+        body["fireParams"] = fire_params
+    data = _guarded(lambda: workflow_svc.cron_discover(body))
+    console.print(
+        f"[green]registered[/green] discovery cron [bold]{data.get('discoverId')}[/bold] "
+        f"→ fires [cyan]{workflow}[/cyan] per open '{label}' issue on {repo}"
+    )

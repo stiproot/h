@@ -76,7 +76,7 @@ const RunSavedBody = Schema.Struct({
 });
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
-class InvalidCronError extends Data.TaggedError("InvalidCronError")<{
+export class InvalidCronError extends Data.TaggedError("InvalidCronError")<{
   readonly schedule: string;
 }> {}
 

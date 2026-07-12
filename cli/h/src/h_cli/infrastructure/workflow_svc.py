@@ -114,8 +114,18 @@ def watch_list() -> Any:
 
 
 def cron_list() -> Any:
-    """The cron registry plus the scan heartbeat (the staleness signal, one call)."""
+    """The cron registry plus the scan heartbeat (the staleness signal, one call). Includes both the
+    recur rows (`crons`) and the discovery/fan-out rows (`discover`)."""
     resp = httpx.get(f"{WORKFLOW_URL}/cron/list", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def cron_discover(body: dict[str, Any]) -> Any:
+    """Register a discovery/fan-out cron (POST /cron/discover) — it enumerates a source (open issues
+    with a label) each due tick and fires one workflow per newly-discovered issue, deduped against the
+    wf: keys. workflow-svc is the sole writer of cron:discover:*."""
+    resp = httpx.post(f"{WORKFLOW_URL}/cron/discover", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
