@@ -13,6 +13,7 @@ import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WfStoreLive } from "./infrastructure/dapr-wf-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
 import { WorkflowStoreLive } from "./infrastructure/dapr-workflow-store.ts";
+import { GitHubSourceReaderLive } from "./infrastructure/github-source-reader.ts";
 import { genericWorkflow } from "./infrastructure/workflows/generic.workflow.ts";
 import { registerChainRoutes } from "./presentation/http/chain.router.ts";
 import { registerCronRoutes } from "./presentation/http/cron.router.ts";
@@ -38,6 +39,7 @@ const appLayer = Layer.mergeAll(
   ChainStoreLive,
   CronStoreLive,
   WfStoreLive,
+  GitHubSourceReaderLive,
   DaprInvokerLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   DaprPublisherLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   NodeHttpClient.layer,

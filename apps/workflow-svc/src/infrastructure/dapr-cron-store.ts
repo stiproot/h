@@ -9,18 +9,24 @@ import {
   CronRow,
   emptyCronLedger,
 } from "../domain/models/cron.model.ts";
+import { DiscoverRow } from "../domain/models/discover.model.ts";
 import { CronStore } from "../domain/ports/ICronStore.ts";
 
 const STORE = "statestore";
 // The cron registry's claimed prefix in the flat keyspace, sibling of `watch:`/`chain:` — rows, index,
-// config, heartbeat, and daily ledgers all under `cron:`. Only workflow-svc writes these keys.
+// config, heartbeat, and daily ledgers all under `cron:`. Only workflow-svc writes these keys. The
+// discovery cron (§9) is the fan-out sibling: its own row prefix + index under the same family, sharing
+// config/heartbeat/ledger with the recur rows.
 const ROW_PREFIX = "cron:sub:";
 const INDEX_KEY = "cron:index";
+const DISCOVER_ROW_PREFIX = "cron:discover:";
+const DISCOVER_INDEX_KEY = "cron:discover-index";
 const CONFIG_KEY = "cron:config";
 const TICK_KEY = "cron:__tick__";
 const LEDGER_PREFIX = "cron:ledger:";
 
 const decodeRow = Schema.decodeUnknown(CronRow, { onExcessProperty: "preserve" });
+const decodeDiscoverRow = Schema.decodeUnknown(DiscoverRow, { onExcessProperty: "preserve" });
 const decodeConfig = Schema.decodeUnknown(CronConfig, { onExcessProperty: "preserve" });
 const decodeHeartbeat = Schema.decodeUnknown(CronHeartbeat, { onExcessProperty: "preserve" });
 const decodeLedger = Schema.decodeUnknown(CronLedger, { onExcessProperty: "preserve" });
@@ -64,10 +70,32 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
             Effect.mapError((cause) => new WorkflowError({ cause, instanceId: key })),
           );
 
-    const indexList = (): Effect.Effect<readonly string[], WorkflowError> =>
-      tryState(INDEX_KEY, () => client.state.get(STORE, INDEX_KEY)).pipe(
+    // Index maintenance is identical for both row families (recur `cron:index`, discovery
+    // `cron:discover-index`); parameterize by index key so the two share one implementation.
+    const indexList = (indexKey: string): Effect.Effect<readonly string[], WorkflowError> =>
+      tryState(indexKey, () => client.state.get(STORE, indexKey)).pipe(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
+
+    const addToIndex = (indexKey: string, id: string): Effect.Effect<void, WorkflowError> =>
+      Effect.gen(function* () {
+        const ids = yield* indexList(indexKey);
+        if (!ids.includes(id)) {
+          yield* tryState(indexKey, () =>
+            client.state.save(STORE, [{ key: indexKey, value: [...ids, id] }]),
+          );
+        }
+      });
+
+    const removeFromIndex = (indexKey: string, id: string): Effect.Effect<void, WorkflowError> =>
+      Effect.gen(function* () {
+        const ids = yield* indexList(indexKey);
+        if (ids.includes(id)) {
+          yield* tryState(indexKey, () =>
+            client.state.save(STORE, [{ key: indexKey, value: ids.filter((x) => x !== id) }]),
+          );
+        }
+      });
 
     const getRow = (id: string) =>
       rawGet(ROW_PREFIX + id).pipe(
@@ -76,7 +104,7 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
 
     const listRows = (): Effect.Effect<readonly CronRow[], WorkflowError> =>
       Effect.gen(function* () {
-        const ids = yield* indexList();
+        const ids = yield* indexList(INDEX_KEY);
         const rows = yield* Effect.forEach(ids, getRow, { concurrency: "unbounded" });
         return rows.flatMap((row) => (Option.isSome(row) ? [row.value] : []));
       });
@@ -89,23 +117,43 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
         yield* tryState(ROW_PREFIX + id, () =>
           client.state.save(STORE, [{ key: ROW_PREFIX + id, value: row }]),
         );
-        const ids = yield* indexList();
-        if (!ids.includes(id)) {
-          yield* tryState(INDEX_KEY, () =>
-            client.state.save(STORE, [{ key: INDEX_KEY, value: [...ids, id] }]),
-          );
-        }
+        yield* addToIndex(INDEX_KEY, id);
       });
 
     const deleteRow = (id: string): Effect.Effect<void, WorkflowError> =>
       Effect.gen(function* () {
         yield* tryState(ROW_PREFIX + id, () => client.state.delete(STORE, ROW_PREFIX + id));
-        const ids = yield* indexList();
-        if (ids.includes(id)) {
-          yield* tryState(INDEX_KEY, () =>
-            client.state.save(STORE, [{ key: INDEX_KEY, value: ids.filter((x) => x !== id) }]),
-          );
-        }
+        yield* removeFromIndex(INDEX_KEY, id);
+      });
+
+    // --- Discovery rows (cron:discover:*) — same shape of index-maintained CRUD as the recur rows. ---
+    const getDiscoverRow = (id: string) =>
+      rawGet(DISCOVER_ROW_PREFIX + id).pipe(
+        Effect.flatMap((value) => decodeSome(DISCOVER_ROW_PREFIX + id, decodeDiscoverRow, value)),
+      );
+
+    const listDiscoverRows = (): Effect.Effect<readonly DiscoverRow[], WorkflowError> =>
+      Effect.gen(function* () {
+        const ids = yield* indexList(DISCOVER_INDEX_KEY);
+        const rows = yield* Effect.forEach(ids, getDiscoverRow, { concurrency: "unbounded" });
+        return rows.flatMap((row) => (Option.isSome(row) ? [row.value] : []));
+      });
+
+    const saveDiscoverRow = (row: DiscoverRow): Effect.Effect<void, WorkflowError> =>
+      Effect.gen(function* () {
+        const id = `${row.repo}:${row.label}`;
+        yield* tryState(DISCOVER_ROW_PREFIX + id, () =>
+          client.state.save(STORE, [{ key: DISCOVER_ROW_PREFIX + id, value: row }]),
+        );
+        yield* addToIndex(DISCOVER_INDEX_KEY, id);
+      });
+
+    const deleteDiscoverRow = (id: string): Effect.Effect<void, WorkflowError> =>
+      Effect.gen(function* () {
+        yield* tryState(DISCOVER_ROW_PREFIX + id, () =>
+          client.state.delete(STORE, DISCOVER_ROW_PREFIX + id),
+        );
+        yield* removeFromIndex(DISCOVER_INDEX_KEY, id);
       });
 
     const getConfig = () =>
@@ -137,6 +185,7 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
           cronsRegistered: current.cronsRegistered + (delta.cronsRegistered ?? 0),
           firesTriggered: current.firesTriggered + (delta.firesTriggered ?? 0),
           cronsDeactivated: current.cronsDeactivated + (delta.cronsDeactivated ?? 0),
+          discoveryFires: (current.discoveryFires ?? 0) + (delta.discoveryFires ?? 0),
         };
         yield* tryState(LEDGER_PREFIX + date, () =>
           client.state.save(STORE, [{ key: LEDGER_PREFIX + date, value: next }]),
@@ -148,6 +197,10 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
       listRows,
       saveRow,
       deleteRow,
+      getDiscoverRow,
+      listDiscoverRows,
+      saveDiscoverRow,
+      deleteDiscoverRow,
       getConfig,
       getHeartbeat,
       heartbeat,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { registerCronForFire, scanCronsEffect } from "./cron-scan.ts";
 import { type CronLedger, type CronRow, emptyCronLedger } from "./models/cron.model.ts";
+import type { DiscoverRow } from "./models/discover.model.ts";
 import type { WfRow } from "./models/wf.model.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
 import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
@@ -13,19 +14,27 @@ import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore
 function memoryCronStore(): {
   service: CronStoreService;
   rows: Map<string, CronRow>;
+  discoverRows: Map<string, DiscoverRow>;
   ledgers: Map<string, CronLedger>;
 } {
   const rows = new Map<string, CronRow>();
+  const discoverRows = new Map<string, DiscoverRow>();
   const ledgers = new Map<string, CronLedger>();
   const idOf = (r: CronRow) => `${r.repo}:${r.slug}:${r.workflow}`;
   return {
     rows,
+    discoverRows,
     ledgers,
     service: {
       getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
       listRows: () => Effect.succeed([...rows.values()]),
       saveRow: (row) => Effect.sync(() => void rows.set(idOf(row), row)),
       deleteRow: (id) => Effect.sync(() => void rows.delete(id)),
+      getDiscoverRow: (id) => Effect.succeed(Option.fromNullable(discoverRows.get(id))),
+      listDiscoverRows: () => Effect.succeed([...discoverRows.values()]),
+      saveDiscoverRow: (row) =>
+        Effect.sync(() => void discoverRows.set(`${row.repo}:${row.label}`, row)),
+      deleteDiscoverRow: (id) => Effect.sync(() => void discoverRows.delete(id)),
       getConfig: () => Effect.succeed(Option.none()),
       getHeartbeat: () => Effect.succeed(Option.none()),
       heartbeat: () => Effect.void,
@@ -37,6 +46,7 @@ function memoryCronStore(): {
             cronsRegistered: cur.cronsRegistered + (delta.cronsRegistered ?? 0),
             firesTriggered: cur.firesTriggered + (delta.firesTriggered ?? 0),
             cronsDeactivated: cur.cronsDeactivated + (delta.cronsDeactivated ?? 0),
+            discoveryFires: (cur.discoveryFires ?? 0) + (delta.discoveryFires ?? 0),
           });
         }),
     },
