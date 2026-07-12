@@ -93,7 +93,7 @@ export const WatchRow = Schema.Struct({
   costGap: Schema.optional(Schema.Boolean),
   // Short engine note for humans (e.g. why a retry was abandoned). Not config.
   note: Schema.optional(Schema.String),
-  // Opaque caller passthrough for row consumers (e.g. the sweep's {owner: issue-sweep}).
+  // Opaque caller passthrough for row consumers (e.g. {owner: discover}).
   meta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   updatedAt: Schema.String,
   endedAt: Schema.optional(Schema.String),

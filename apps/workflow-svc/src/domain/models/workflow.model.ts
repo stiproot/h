@@ -48,7 +48,7 @@ export const WorkflowRequest = Schema.Struct({
   // decoupled from the caller, never from the invocation. The routes strip this field before
   // handing the request to the workflow runtime.
   watch: Schema.optional(WatchPolicy),
-  // Opaque passthrough stamped onto the watch row for row consumers (e.g. {owner: "issue-sweep"}).
+  // Opaque passthrough stamped onto the watch row for row consumers (e.g. {owner: "discover"}).
   watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   // Registry identity (docs/plans/workflow-watcher-registry.md §3): when set, generic.workflow
   // brackets its steps with the write-wf-row activity so the run writes its OWN status row at

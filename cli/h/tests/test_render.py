@@ -304,19 +304,6 @@ def test_compose_feature_verify_create_pr_arm_revise_appends_the_arm_step() -> N
     assert arm["input"]["slug"] == "{{params.slug}}"
 
 
-def test_issue_sweep_golden(snapshot) -> None:
-    """The issue-sweep template (h-builds-h): one judgment tick, template config baked."""
-    rendered = helm.render_workflow(
-        "issue-sweep",
-        values={
-            "issueSweep.repo": "owner/h",
-            "issueSweep.coderWorkflowUrl": "http://localhost:8002/workflow",
-        },
-        include_local=False,
-    )
-    assert rendered == snapshot
-
-
 def test_pr_review_golden(snapshot) -> None:
     """The pr-review template (publish-native): setup → review with engine tokens."""
     rendered = helm.render_workflow(
@@ -358,18 +345,3 @@ def test_pr_review_repo_is_a_fire_param_not_required() -> None:
     )
     review_task = definition["steps"][1]["input"]["task"]
     assert "{{params.repo}}" in review_task
-
-
-def test_issue_sweep_dry_run_stops_before_mark() -> None:
-    rendered = helm.render_workflow(
-        "issue-sweep",
-        values={
-            "issueSweep.repo": "owner/h",
-            "issueSweep.coderWorkflowUrl": "http://localhost:8002/workflow",
-            "issueSweep.dryRun": "true",
-        },
-        include_local=False,
-    )
-    assert "DRY RUN: stop here" in rendered
-    assert "M. MARK" not in rendered
-    assert "F. FIRE" not in rendered

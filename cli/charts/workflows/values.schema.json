@@ -147,37 +147,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "issueSweep": {
-      "type": "object",
-      "properties": {
-        "repo": {
-          "type": "string"
-        },
-        "label": {
-          "type": "string"
-        },
-        "maxInFlight": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "coderWorkflowUrl": {
-          "type": "string"
-        },
-        "dryRun": {
-          "type": "boolean"
-        },
-        "models": {
-          "type": "object",
-          "properties": {
-            "sweep": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
     }
   }
 }

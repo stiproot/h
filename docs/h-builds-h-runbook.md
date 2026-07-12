@@ -1,8 +1,17 @@
 # h-builds-h runbook
 
 Operating the self-build loop: labeled GitHub issues → `feature` runs on the h repo → PRs a
-human reviews. Design and rulings: [docs/plans/h-builds-h.md](./plans/h-builds-h.md). Runs
-locally only — no inbound webhooks; all GitHub state is poll-discovered by the sweep tick.
+human reviews → auto-revised until merged. Design and rulings:
+[docs/plans/h-builds-h.md](./plans/h-builds-h.md); the cron mechanism:
+[docs/plans/workflow-watcher-registry.md](./plans/workflow-watcher-registry.md) §9 (discovery/
+Job 1) and §10 (arm-at-birth revise/Job 2). Runs locally only — no inbound webhooks; all GitHub
+state is poll-discovered on the `workflow-cron-tick`.
+
+> **The loop is two crons, no sweep agent.** A **discovery cron** (§9) queries the issue board each
+> tick and fires one `feature-pr` per newly-discovered issue (deduped against the `wf:*` keys). Each
+> `feature-pr` run, on opening its PR, arms a per-PR **revise cron** (§10, `arm-revise`) that re-fires
+> `revise` until the PR merges. Both crons are pure engine loops on workflow-svc — the retired
+> `issue-sweep` agent (which bundled discover + revise into one judgment tick) is gone.
 
 ## Phase 0 — the security boundary (manual, do first)
 
@@ -16,15 +25,16 @@ GitHub (on the target repo):
      (`GIT_AUTH=ssh`, optionally `GIT_SSH_KEY_PATH`), your PAT (`GH_TOKEN`) does API calls
      (PR creation, issue reads/comments) as you. Add a bypass rule so you can approve your
      own PRs. One identity; simplest.
-   - **Two-token split (graduation):** sweep token (`GH_TOKEN` on claude-agent) =
-     issues:read+write + PR read; coder token (`GH_CODER_TOKEN` on claude-coder) =
-     contents:write + pull_requests:write + issues:read ONLY. Prefer a machine user so a
-     human account can approve the bot's PRs.
+   - **Two-token split (graduation):** the engine's discovery token (`GH_TOKEN` on workflow-svc,
+     for the issue-board read) = issues:read; coder token (`GH_CODER_TOKEN` on claude-coder) =
+     contents:write + pull_requests:write + issues:read ONLY. Prefer a machine user so a human
+     account can approve the bot's PRs.
 
 Local:
 
 4. Pre-clone the target repo into the shared workspace root (`cli/scripts/clone.sh`).
-5. `cli/charts/workflows/values.local.yaml` (gitignored):
+5. `cli/charts/workflows/values.local.yaml` (gitignored) — feature/verify/create-pr config only;
+   the discovery cron's repo/label/cadence are CLI args at arm time, not baked values:
 
    ```yaml
    feature:
@@ -34,9 +44,6 @@ Local:
      cmd: "bun install --frozen-lockfile && bun run build && bun run test"  # pure build+unit ONLY
    createPr:
      gitAuth: ssh                           # match feature.gitAuth
-   issueSweep:
-     repo: <owner>/h
-     coderWorkflowUrl: http://localhost:8014/workflow   # claude-coder; claude-agent (8002) until the split
    ```
 
 Acceptance: a push to `main` with the coder credential is rejected; the coder PAT cannot
@@ -45,79 +52,79 @@ create an issue (two-token posture only).
 ## Bring-up order
 
 ```sh
-cli/scripts/run-claude-agent.sh      # the trusted instance (sweep) — full MCP set
 cli/scripts/run-claude-coder.sh      # the stripped instance (feature runs) — github MCP only
 # workflow-svc, workflow-mcp, dapr-mcp, obs-mcp as usual (make dev-tab)
 ```
 
-Keep the MCP servers running whenever agents run — a down MCP silently drops tools; the sweep's
-preflight step turns that into an explicit `TOOLS UNAVAILABLE` stop.
+`GH_TOKEN` must be set on **workflow-svc** — the discovery cron reads the issue board itself (the
+`git-core` GitHub client), no agent involved. Keep the MCP servers running whenever agents run — a
+down MCP silently drops tools from a `feature-pr` run.
 
 ## Publish, seed, arm
 
 ```sh
 # 1. The feature-pr template (feature ⊕ verify ⊕ create-pr ⊕ arm-revise; params: slug, spec,
-#    issueNumber; verify.cmd + config baked from values.local). Each run implements the issue, gates
-#    on the acceptance check, and opens its PR — all in the one implement agent — then arm-revise
-#    appends a register-cron step that arms a revise-until-merged recur cron for the PR it just opened
-#    (docs/plans/workflow-watcher-registry.md §10, Job 2; a SKIPPED push arms nothing).
+#    issueNumber). Each run implements the issue, gates on the acceptance check, and opens its PR —
+#    all in the one implement agent — then arm-revise arms a revise-until-merged recur cron for the
+#    PR it just opened (§10, Job 2; a SKIPPED push arms nothing).
 uv run h template compose feature verify create-pr arm-revise --save feature-pr
 
-# 2. Phase-1 acceptance: hand-fire one issue-linked run before any automation.
-#    Template VALUES ride -p key=value (slug/spec/issueNumber); --agent selects the executor
-#    (machinery). (--via would only ROUTE the submit through an agent's babysitter — different axis.)
-uv run h workflow run feature-pr -p slug=issue-X -p spec=@toy.md \
+# 2. Also publish `revise` (the per-PR loop's target) so the arm-revise cron has a key to re-fire.
+uv run h workflow publish revise
+
+# 3. Phase-1 acceptance: hand-fire one issue-linked run before any automation.
+#    Template VALUES ride -p key=value (slug/spec/issueNumber/repo); --agent selects the executor.
+uv run h workflow run feature-pr -p repo=<owner>/h -p slug=issue-X -p spec=@toy.md \
   -p issueNumber=X --instance-id feature-issue-X --agent claude-coder
+#    Confirm it opened a PR AND armed a revise cron: `h cron list` shows a
+#    cron:sub:<owner>/h:issue-X:revise row.
 
-# 3. Seed the runtime config (dapr MCP state_save, or curl the state API):
-#    key sweep:config
-#    {"enabled": true, "maxAttemptsPerIssue": 2, "maxRunsPerDay": 3,
-#     "dailyBudgetUsd": 5, "runBudgetMs": 2400000}
+# 4. Arm the discovery cron — the standing patrol. This fires a one-step provision workflow whose
+#    register-discover activity writes the cron:discover row (§10 — crons via activities); its wf:
+#    row audits the registration.
+uv run h cron discover add <owner>/h \
+  --label agent-approved --cadence "*/30 * * * *" --workflow feature-pr --max-per-day 3
 
-# 4. Phase-2 acceptance: label ONE toy issue agent-approved, then dry-fire the sweep
-uv run h workflow publish issue-sweep --key issue-sweep-dry   # with issueSweep.dryRun=true set
-uv run h workflow run issue-sweep-dry
-#    then live-fire once, watch it dispatch, fire AGAIN mid-run (gate C stops it),
-#    and again after completion (reconcile stamps done + comments the PR link).
-
-# 5. Arm the clock — parked first, enable deliberately
-uv run h workflow publish issue-sweep --schedule "*/30 * * * *" \
-  --workspace-id h-issue-sweep --disabled
-uv run h workflow publish issue-sweep --schedule "*/30 * * * *" \
-  --workspace-id h-issue-sweep          # re-save without --disabled = armed
+# 5. Inspect the loop.
+uv run h cron list        # recur crons (per-PR revise loops) + discovery crons, with the scan heartbeat
 ```
+
+The discovery cron serializes (one `feature-pr` in flight at a time) and is bounded by
+`--max-per-day`; it reads the issue board only when due (the cadence IS the GitHub read budget). It
+skips any issue that already has a `wf:<repo>:issue-<n>:feature-pr` row — the dedup that fixes the
+duplicate-dispatch bug.
 
 ## Kill switches (in order)
 
-1. `h workflow publish issue-sweep --schedule "*/30 * * * *" --workspace-id h-issue-sweep
-   --disabled` — parks the schedule; honored by the cron and trigger paths.
-2. `state_save sweep:config {"enabled": false}` — the sweep's own gate 0 stops every tick.
-3. Remove `agent-approved` labels on GitHub — nothing is eligible to discover.
+1. `state_save cron:config {"enabled": false}` (dapr MCP) — pauses the WHOLE cron family scan
+   (discovery + every per-PR revise loop) loudly; `cron:__tick__` records disarmed.
+2. Remove `agent-approved` labels on GitHub — nothing new is eligible to discover (in-flight PRs
+   still revise until merged/budget).
+3. `state_save watch:config {"enabled": false}` — pauses the watcher scan (supervision of in-flight
+   runs), independent of the cron family.
 
-## Retry semantics (watcher-engine cutover — docs/plans/watcher-primitive.md)
+*(A per-cron deactivate CLI — `h cron rm <id>` — is a deferred follow-up; today a single discovery/
+revise cron is stopped by letting its budget exhaust, resolving its goal, or the family kill switch.)*
 
-- Mechanical retries are ENGINE-owned now: the sweep's dispatch carries
-  `watch: {maxDurationMs, retry: {maxAttempts, fresh: true}}`, and workflow-svc's scan
-  re-fires a FAILED run under the cap automatically (fresh purge, same instanceId, engine
-  `attempts` on the `watch:sub:feature-issue-<n>` row). The sweep no longer re-dispatches.
-- At the cap, the sweep (reading the watch row) marks the issue `abandoned` + labels
-  `agent-needs-human`, with the instanceId in a comment — feed it to
-  `analyze-workflow-run` / `/observe` / `h watch get <instanceId>`.
-- A human re-arms with the `agent-retry` label; the next sweep dispatch fires with
-  `fresh: true` (a new watch epoch — engine attempts continue, they are monotonic).
-- Retries are cheap: `workspaceId feature-issue-<n>` reuses the worktree and the persisted
-  plan file.
-- Watcher kill switch (separate from the sweep's): `state_save watch:config
-  {"enabled": false}` pauses the scan loudly (`watch:__tick__` records disarmed); the sweep's
-  staleness guard then falls back to direct status polling and reports ENGINE STALE.
+## Termination & budgets (engine-owned)
+
+- **Per-PR revise loop** stops on either the goal (`revise` reports `===GOAL===RESOLVED` when the PR
+  merges → the cron engine reads `wf:*.resolved` and deactivates) OR its `maxFires` budget (a PR that
+  never merges still stops, bounded).
+- **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
+  it runs until the family kill switch or a `h cron rm` (deferred).
+- **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron carries a
+  `watch` policy (wall-clock `maxDurationMs` terminate + engine retries). *(Exposing that policy on
+  `h cron discover add` is a follow-up; until then a hung run is caught by the run's own budget and
+  the discovery cron's in-flight serialize waits it out.)*
+- Inspect any run: `analyze-workflow-run` / `/observe` / `h watch get <instanceId>`; the join key is
+  the `workflowInstanceId` (`feature-issue-<n>` / `revise-issue-<n>`).
 
 ## Named residual risks
 
 - Engine budget-terminate ends the workflow, not the in-flight `claude` subprocess.
 - No hard token cap inside h — set a LiteLLM-proxy budget too.
-- Sweep-overlap safety is the concurrency gate + stable instanceIds, not a lock; the 30-min
-  cadence makes overlap unlikely, not impossible.
 - Local/compose only: the k8s cron path can double-fire (no leader guard).
-- Worktrees accumulate until a GC family ships (phase 4).
-- PR review-comment resolution is designed (plan §Decisions 3) but NOT yet in the sweep
-  prompt — comments on an open agent PR are not acted on automatically yet.
+- Worktrees accumulate until a GC family ships.
+- A hung `feature-pr` stalls the discovery cron's serialize until the run's own budget trips (see
+  above — a discovery-cron watch policy on the CLI is the follow-up that closes this).

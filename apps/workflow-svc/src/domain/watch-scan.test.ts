@@ -124,7 +124,7 @@ describe("registerWatchForFire", () => {
       registerWatchForFire(
         "wf-1",
         { maxDurationMs: 1000 },
-        { resubmit: { steps: [] }, meta: { owner: "issue-sweep" } },
+        { resubmit: { steps: [] }, meta: { owner: "discover" } },
       ).pipe(Effect.provide(Layer.succeed(WatchStore, mem.service))),
     );
     const row = mem.rows.get("wf-1")!;
@@ -132,7 +132,7 @@ describe("registerWatchForFire", () => {
       epoch: 1,
       attempts: 1,
       status: "scheduling",
-      meta: { owner: "issue-sweep" },
+      meta: { owner: "discover" },
     });
     expect(mem.ledgers.get(today())).toMatchObject({ runsFired: 1 });
   });

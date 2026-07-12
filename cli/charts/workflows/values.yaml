@@ -114,24 +114,3 @@ prReview:
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     review: ""
-
-# issue-sweep workflow (templates/issue-sweep.yaml): setup → sweep — one judgment tick of the
-# "h builds h" loop (docs/plans/h-builds-h.md). Publish with a cron schedule + a stable
-# workspaceId, disabled until armed. Runtime knobs (enabled, budgets, attempt cap) live in the
-# statestore key sweep:config, not here.
-issueSweep:
-  # Target GitHub repo (owner/name) whose issue board drives the loop. Required.
-  repo: ""
-  # Maintainer-applied opt-in label that admits an issue's text to the loop.
-  label: "agent-approved"
-  # Max issues in flight at once; the sweep stops when reached.
-  maxInFlight: 1
-  # The coding agent service's standard POST /workflow URL (submit-and-babysit target),
-  # e.g. http://localhost:8002/workflow locally, http://claude-coder:8000/workflow in compose.
-  # Required.
-  coderWorkflowUrl: ""
-  # Stop after composing the spec: report what would fire, write/dispatch nothing.
-  dryRun: false
-  # Model for the sweep tick; cheap-but-capable (it follows an 9-step checklist).
-  models:
-    sweep: claude-sonnet-4-6
