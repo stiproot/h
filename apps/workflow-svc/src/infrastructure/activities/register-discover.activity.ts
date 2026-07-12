@@ -1,6 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
 import { registerDiscover } from "../../domain/discover-scan.ts";
+import type { WatchPolicy } from "../../domain/models/watch.model.ts";
 import { runActivity } from "../activity-runtime.ts";
 
 /**
@@ -23,6 +24,9 @@ type Input = {
   maxFiresPerDay?: number;
   /** Extra params merged into every fired run (e.g. fire-time identity). */
   fireParams?: Record<string, unknown>;
+  /** Watch policy attached to every fired run — the watcher supervises each feature-pr so a hung run
+   * is terminated (and optionally retried) rather than stalling the discovery cron's serialize. */
+  watch?: WatchPolicy;
   traceparent?: string;
 };
 
@@ -30,7 +34,7 @@ export async function registerDiscoverActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<{ discoverId: string; active: boolean }> {
-  const { repo, label, workflow, cadence, maxFiresPerDay, fireParams, traceparent } =
+  const { repo, label, workflow, cadence, maxFiresPerDay, fireParams, watch, traceparent } =
     input as Input;
   return runActivity(
     registerDiscover({
@@ -40,6 +44,7 @@ export async function registerDiscoverActivity(
       cadence,
       ...(maxFiresPerDay !== undefined ? { gates: { maxFiresPerDay } } : {}),
       ...(fireParams ? { fireParams } : {}),
+      ...(watch ? { watch } : {}),
     }),
     traceparent,
   );

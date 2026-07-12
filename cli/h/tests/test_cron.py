@@ -124,4 +124,39 @@ def test_cron_discover_add_fires_a_provision_workflow() -> None:
         "slug": "discover-agent-approved",
         "workflow": "provision-discover",
     }
+    # No watch flags → the fired runs carry no watch policy.
+    assert "watch" not in body["steps"][0]["input"]
     assert "provisioned" in result.output
+
+
+@respx.mock
+def test_cron_discover_add_attaches_a_watch_policy() -> None:
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "provision-discover-agent-approved"})
+    )
+    result = runner.invoke(
+        app,
+        [
+            "cron", "discover", "add", "stiproot/h",
+            "-l", "agent-approved", "-c", "0 * * * *",
+            "--run-budget-mins", "40", "--run-retries", "2",
+        ],
+        env={"COLUMNS": "200"},
+    )
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls.last.request.content)
+    assert body["steps"][0]["input"]["watch"] == {
+        "maxDurationMs": 40 * 60_000,
+        "retry": {"maxAttempts": 2, "fresh": True},
+    }
+    assert "supervised" in result.output
+
+
+def test_cron_discover_add_run_retries_needs_a_budget() -> None:
+    result = runner.invoke(
+        app,
+        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *", "--run-retries", "2"],
+        env={"COLUMNS": "200"},
+    )
+    assert result.exit_code == 1
+    assert "needs --run-budget-mins" in result.output

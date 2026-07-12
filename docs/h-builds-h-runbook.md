@@ -81,9 +81,12 @@ uv run h workflow run feature-pr -p repo=<owner>/h -p slug=issue-X -p spec=@toy.
 
 # 4. Arm the discovery cron — the standing patrol. This fires a one-step provision workflow whose
 #    register-discover activity writes the cron:discover row (§10 — crons via activities); its wf:
-#    row audits the registration.
+#    row audits the registration. --run-budget-mins attaches a watch policy so the watcher engine
+#    terminates a hung feature-pr (and --run-retries re-fires a failed one) rather than it stalling
+#    the one-in-flight serialize.
 uv run h cron discover add <owner>/h \
-  --label agent-approved --cadence "*/30 * * * *" --workflow feature-pr --max-per-day 3
+  --label agent-approved --cadence "*/30 * * * *" --workflow feature-pr --max-per-day 3 \
+  --run-budget-mins 40 --run-retries 2
 
 # 5. Inspect the loop.
 uv run h cron list        # recur crons (per-PR revise loops) + discovery crons, with the scan heartbeat
@@ -113,10 +116,10 @@ revise cron is stopped by letting its budget exhaust, resolving its goal, or the
   never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
   it runs until the family kill switch or a `h cron rm` (deferred).
-- **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron carries a
-  `watch` policy (wall-clock `maxDurationMs` terminate + engine retries). *(Exposing that policy on
-  `h cron discover add` is a follow-up; until then a hung run is caught by the run's own budget and
-  the discovery cron's in-flight serialize waits it out.)*
+- **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron is armed with
+  `--run-budget-mins` (wall-clock `maxDurationMs` terminate) and optionally `--run-retries` (engine
+  re-fire of a failed run). Without those flags the fired runs are unsupervised — a hung run is caught
+  only by its own budget while the discovery cron's serialize waits it out.
 - Inspect any run: `analyze-workflow-run` / `/observe` / `h watch get <instanceId>`; the join key is
   the `workflowInstanceId` (`feature-issue-<n>` / `revise-issue-<n>`).
 
@@ -126,5 +129,5 @@ revise cron is stopped by letting its budget exhaust, resolving its goal, or the
 - No hard token cap inside h — set a LiteLLM-proxy budget too.
 - Local/compose only: the k8s cron path can double-fire (no leader guard).
 - Worktrees accumulate until a GC family ships.
-- A hung `feature-pr` stalls the discovery cron's serialize until the run's own budget trips (see
-  above — a discovery-cron watch policy on the CLI is the follow-up that closes this).
+- An UNsupervised (`--run-budget-mins` omitted) hung `feature-pr` stalls the discovery cron's serialize
+  until the run's own budget trips — arm the watch policy to avoid this.
