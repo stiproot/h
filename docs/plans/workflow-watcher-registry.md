@@ -387,65 +387,67 @@ run ledger lines up).
 daily-cap gates pass, so a 60s tick with a daily-cadence discovery cron hits the API ~once/day — the
 gate order IS the budget, no separate cache key needed.
 
-## §10. Activity-registered registry state — the `arm-*` pattern *(foundational, 2026-07-12)*
+## §10. Where registry state is written — ordering relative to the work *(foundational; refined 2026-07-12)*
 
-**The principle (locked).** A workflow registers ALL of its own registry state through its ACTIVITIES;
-the HTTP edge only FIRES workflows, it never writes a registry row. Registry rows are written by
-activities (inside a run) and engines (on the tick) — never by an HTTP handler directly.
+**The principle.** Registry writes are always workflow-svc-side and single-writer. **Crons are
+registered by workflow ACTIVITIES (the `arm-*` pattern), uniformly. The WATCHER is the sole exception —
+it is persisted in the fire handler.**
 
-> The edge FIRES. Activities WRITE registry rows. Engines READ them on the tick and act.
+> **Crons → an activity** (the run — or a provision run — registers the cron).
+> **Watcher → the fire handler** (persist-then-invoke, because supervision must precede the run).
+> Engines READ the rows on the tick and act.
 
-This is not a new mechanism — it is the `write-wf-row` pattern (an activity on workflow-svc writing a
-`wf:` row from inside a run) generalized to every registry a workflow owns or produces. `arm-watch`
-and `arm-cron` are siblings of `write-wf-row`.
+**Why the watcher alone is the exception — ORDERING.** A `watch:` row must exist *before* the run it
+supervises (mark-before-fire: persist, THEN invoke, same handler — a crash between leaves a healable
+`scheduling` row). Register-inside-the-run flips this to invoke-then-persist and opens a
+schedule→first-activity gap. Neither an `arm-watch` bracket nor a `[register, watched]` chain buys a
+guarantee the handler doesn't already give (a chain also drags in a two-engines-on-one-instance
+muddle). So the watcher stays `invokeWithWatch`.
 
-**Why it holds (the invariant is intact).** A workflow arming a watch/cron is a CLIENT of that
-primitive, not the primitive. The recurrence/supervision still lives in the engine, external, on the
-tick — the workflow only writes the registration row and returns. It never recurs, supervises, or
-sequences *itself*; it registers *for* those services. Single-writer is intact: the activity runs ON
-workflow-svc and calls the SAME epoch-fenced registration functions (`registerWatchForFire`,
-`registerCronForFire`, `registerDiscover`) the edge used to call — one writer, one registration
-entrypoint, now with an in-run caller instead of an HTTP handler.
+**Why crons are NOT special — no ordering constraint.** A cron fires *future / other* runs (guarded by
+in-flight + cadence), so its row never needs to precede *this* run's work. Two "why an activity":
+- **arm-at-birth (data)** — the revise-loop cron needs the PR number, which doesn't exist until
+  `create-pr` runs. So it *must* be armed after the work, by the run itself (the `register-cron`
+  activity / `arm-revise`). Not an ordering rule — a data-availability one.
+- **`--cron` / discovery (uniformity)** — no forcing constraint, so they *could* be handler-side, but
+  we make them activities too for one uniform cron-registration mechanism.
 
-**The bracket ordering (forced, not arbitrary).** `generic.workflow` brackets a wf-identified run:
+**Idempotency (ensure-exists) — the re-run-safety the pattern requires.** Runs get re-fired (watch
+retries, `--cron` self-recur, a `feature-pr` re-run). If an `arm-cron` step re-registered on every
+re-run it would reset the cron's `fires`/epoch each cycle and the budget backstop would never trip. So
+`registerCronForFire` is **idempotent ensure-exists**: no-op when an ACTIVE row already exists (create
+only when absent or deactivated) — the cron analog of the watcher's "existing live row → leave it".
+
+**Why the activity case holds the invariant.** A workflow arming a cron is a CLIENT of the cron
+primitive, not the primitive — the recurrence still lives in the engine, external, on the tick; the
+activity only writes the row and returns. It never recurs/supervises/sequences *itself*. Single-writer
+is intact: the activity runs ON workflow-svc and calls the same epoch-fenced `registerCronForFire` the
+handler used — one writer, one registration entrypoint.
+
+**The cron bracket.** `generic.workflow` brackets a wf-identified run; cron registrations ride it:
 ```
-wf:running          ← FIRST activity: the run's own existence/status (write-wf-row, already exists)
-arm-watch           ← SECOND (if watched): register for supervision — the policy arrives as its input
-  …the real steps…
-arm-cron / arm-*    ← follow-on state as it is PRODUCED (e.g. the revise loop, after the PR opens)
+wf:running          ← FIRST activity: the run's own existence/status (write-wf-row)
+  …the real steps…  ← the work (e.g. create-pr opens the PR)
+arm-cron / arm-*    ← cron registration: arm-at-birth (after the PR opens) OR --cron (recur THIS run)
 wf:done | wf:failed ← closing bracket: records whether everything inside succeeded
 ```
-`wf:running` is first *because* it is the audit surface for the user's failure-capture rule: a failed
-`arm-watch`/`arm-cron` throws → the closing bracket writes `wf:failed`, so "did this registration
-succeed?" is durably answerable from the run's own row. This forces the ordering.
+`wf:running` is first because it is the audit surface: a failed `arm-cron` throws → the closing bracket
+writes `wf:failed`, so "did this cron get armed?" is durably answerable from the run's own row. (The
+`watch:` row is NOT in this bracket — it is persisted in the fire handler before invoke.)
 
-**Loud vs best-effort (the split the failure-capture rule demands).** `write-wf-row` is BEST-EFFORT
-(a status hiccup never fails the run — incidental audit state). An `arm-*` registration is LOUD (the
-cron/watch it creates is the POINT of the step; a registration failure IS the run's failure, recorded
-in `wf:`). This is a deliberate difference: incidental audit → swallow; state-that-is-the-point → throw.
+**Loud vs best-effort.** `write-wf-row` is BEST-EFFORT (a status hiccup never fails the run — incidental
+audit state). An `arm-cron` registration is LOUD (the cron it creates is the POINT of the step; a
+failure IS the run's failure, recorded in `wf:failed`). Incidental audit → swallow; the-point → throw.
 
-**Deterministic keys → confirmation is a read, not a return value.** Moving registration into
-activities means the 202 can no longer report `watching`/`cron-registered` synchronously. It doesn't
-need to: EVERY registry key is deterministic and client-derivable —
+**Confirmation is a read.** Every registry key is deterministic and client-derivable —
 `watch:sub:<instanceId>`, `cron:sub:<repo>:<slug>:<workflow>`, `cron:discover:<repo>:<label>`,
-`wf:<repo>:<slug>:<workflow>` — so a client confirms a registration by READING the key it can construct
-(`h watch get`, `h cron list`), never by a value the route hands back. Async in-run registration costs
-nothing observability-wise.
+`wf:<repo>:<slug>:<workflow>` — so a client confirms any registration by READING the key it can
+construct (`h watch get`, `h cron list`), never a value the route hands back.
 
-**A watch is per-INSTANCE, not per-step.** The row is `watch:sub:<instanceId>` — one per run. The
-policy is run-level (wall-clock `maxDurationMs`, whole-instance `retry`, outcome `escalate`); the
-engine reads `getStatus(instanceId)`, never a step. So `arm-watch` is ONE activity registering ONE
-watch for the one instance it runs in. (No `watch:` carve-out after all — it unifies as the second
-bracket. The only residual vs edge-creation is a run PURGED before its first activity ever executes,
-which is not a supervision case; Dapr durability re-runs a merely-delayed instance's bracket.)
-
-**What stays at the edge.** The workflow-FIRING edge (`POST /workflow/run*`, the trigger topic, the
-cron tick) — something must kick a run; the regress bottoms out at "a human/cron fires a workflow."
-And `POST /workflow/save` — that is definition AUTHORING, not run-state. CLI ergonomics survive as
-TRIGGERS, not registry-writers: `h cron discover add` fires a one-step provision workflow whose
-`arm-cron` activity registers the patrol (and whose `wf:` row audits it); `--cron` on `h workflow run`
-composes an `arm-cron` step into the fired workflow (armed iff a `cadence` param is present, so the
-caller still chooses recurrence).
+**What stays in the fire handler.** Only the WATCHER (`invokeWithWatch`, mark-before-fire). The
+workflow-FIRING edge (`POST /workflow/run*`, the trigger topic, the cron tick) fires runs;
+`POST /workflow/save` authors definitions — neither is run-state. Cron registration leaves the handler
+entirely (item 7d's `POST /cron/discover` and item 6a's run-route cron field migrate to activities).
 
 ### Build order (§10)
 1. **`arm-cron` activity + `revise` arm-at-birth** *(prove the shape — Job 2)*. A `register-cron`
@@ -459,19 +461,25 @@ caller still chooses recurrence).
    `feature verify create-pr arm-revise`. This is Job 2: discover issue → feature-pr → opens PR → arms
    a revise-until-merged recur cron (the recur cron + `revise` + the `===GOAL===RESOLVED` handshake
    already exist).
-2. **Migrate `watch:` to `arm-watch`** *(second bracket)*. `generic.workflow` yields `arm-watch` right
-   after `wf:running` when the run carries a `watch` policy (moved from the fire route's
-   `invokeWithWatch`). The route stops registering the watch; it only fires. `registerWatchForFire` is
-   reused verbatim (it already handles existing-row/fresh/epoch — the engine still writes the row on
-   retry, so the activity must not clobber it).
-3. **Migrate `--cron` + `/cron/discover` to `arm-cron`**. The `--cron` field composes an `arm-cron`
-   step at fire time; `POST /cron/discover` + `h cron discover add` become a provision workflow the CLI
-   fires. Delete the registry-writing edge handlers once the activity path covers them (atomic per
-   caller). The generic `arm-cron` core factors the marker-parse out of step 1 into an optional guard.
+2. **`watch:` stays in the fire handler — NOT migrated.** The watcher is the sole exception: its row
+   must precede the run it supervises (mark-before-fire), which the handler's persist-then-invoke
+   already gives and an in-run activity cannot. `invokeWithWatch` stays. *(This is a REVISION of the
+   earlier plan to move it to an `arm-watch` bracket — see the §10 principle: before-work state stays
+   in the handler; only after-work state is an activity.)*
+3. **Migrate `--cron` + discovery to activities** *(crons via activities, uniformly)*. Prereq: make
+   **`registerCronForFire` idempotent ensure-exists** (no-op when an ACTIVE row exists) so re-runs
+   (retries, `--cron` self-recur, a `feature-pr` re-run) don't reset `fires`/epoch — the re-run-safety
+   the whole `arm-*` pattern needs; the arm-at-birth arm-revise already relies on it.
+   - **`--cron`**: `generic.workflow` arms the recur cron in a CLOSING bracket when the run carries a
+     `cron` field (symmetric with the `wf:` bracket; after-work; idempotent). The run route stops
+     calling `registerCronForFire` — it passes the cron config through the workflow input.
+   - **discovery**: a `register-discover` activity + a one-step provision workflow; `h cron discover
+     add` fires the provision workflow (whose `wf:` row audits the registration) instead of
+     `POST /cron/discover`. Delete the route's direct `registerDiscover` call.
 4. **Retire `issue-sweep` (was 7e)** — now that Job 1 (discovery) AND Job 2 (arm-at-birth revise) both
    have homes, the sweep's discover AND revise halves are replaced; atomic-retire is finally a COMPLETE
    cutover (delete template + values + schema + golden + runbook refs).
 
-**Scope note:** step 1 is the first cut (proves the activity-registration shape on the one case with a
-real need and no edge to preserve). Steps 2–3 migrate the existing edge callers onto it. Step 4 is the
-retire, unblocked once 1 lands.
+**Scope note:** step 1 (LANDED) proved the after-work activity pattern. Step 2 revised: watch is the
+handler exception, not migrated. Step 3 migrates the crons (`--cron`, discovery) onto activities with
+the idempotency prereq. Step 4 is the retire.
