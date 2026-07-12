@@ -1,0 +1,294 @@
+import { WorkflowError } from "core";
+import { Effect, Option } from "effect";
+
+import { decide } from "./discover-engine.ts";
+import { cronLedgerDate } from "./models/cron.model.ts";
+import {
+  type DiscoverGates,
+  type DiscoverRow,
+  type DiscoverSource,
+  discoverId,
+  issueInstanceId,
+  issueSlug,
+} from "./models/discover.model.ts";
+import type { WatchPolicy } from "./models/watch.model.ts";
+import { type WorkflowParams, toRequest } from "./models/workflow.model.ts";
+import { CronStore } from "./ports/ICronStore.ts";
+import { SourceReader } from "./ports/ISourceReader.ts";
+import { WatchStore } from "./ports/IWatchStore.ts";
+import { WfStore } from "./ports/IWfStore.ts";
+import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
+import { WorkflowStore } from "./ports/IWorkflowStore.ts";
+import { invokeWithWatch } from "./watch-scan.ts";
+
+/**
+ * The effectful half of the DISCOVERY cron (docs/plans/workflow-watcher-registry.md §9), the fan-out
+ * sibling of cron-scan.ts: registration on the CLI/route path, and the per-tick scan that reads each
+ * active discovery row, asks the pure engine (discover-engine.ts) whether to enumerate, and — when it
+ * says discover — reads the SOURCE (open issues, oldest-first), dedups each candidate against the
+ * `wf:*` keys by exact read, and fires the OLDEST eligible under a fixed per-issue instance. Where a
+ * recur cron RE-FIRES one workflow until its goal resolves, a discovery cron FANS OUT one fire per
+ * newly-discovered issue, serialized (one in flight at a time) and bounded by a daily cap.
+ *
+ * Dedup is the duplicate-dispatch fix: the fired feature-pr writes `wf:<repo>:issue-<N>:feature-pr`
+ * at its start (bracketing), so the next tick's exact-key read skips it — an issue with a row (running
+ * OR done) is never re-dispatched.
+ *
+ * Read budget (Open Q3): the source is read ONLY after the in-flight + cadence + daily-cap gates, and
+ * the scan stamps `lastRunAt` BEFORE reading (mark-scanned-before-read), so even a failing source read
+ * doesn't re-hit the API until the next cadence. Every row-mutating action is epoch-fenced.
+ * Single-writer: workflow-svc.
+ */
+
+const DEFAULT_MAX_FIRES_PER_DAY = 5;
+
+export type DiscoverScanEnv =
+  | CronStore
+  | WorkflowInvoker
+  | WorkflowStore
+  | WfStore
+  | SourceReader
+  | WatchStore;
+
+export type DiscoverScanReport = {
+  scanned: number;
+  fired: string[];
+  skipped: string[];
+  errors: string[];
+  disabled?: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// Registration (writes the cron:discover row; does NOT itself fire)
+// ---------------------------------------------------------------------------
+
+export type DiscoverRegistration = {
+  readonly repo: string;
+  readonly label: string;
+  /** The saved key to fire per discovered issue (e.g. "feature-pr"). */
+  readonly workflow: string;
+  readonly cadence: string;
+  readonly source?: DiscoverSource;
+  readonly gates?: DiscoverGates;
+  readonly fireParams?: WorkflowParams;
+  readonly watch?: WatchPolicy;
+};
+
+/**
+ * Registers (or epoch-refreshes) a discovery cron row. A re-registration of the same `<repo>:<label>`
+ * coord refreshes the config (cadence/gates/params) and bumps the epoch (fencing any in-flight scan),
+ * preserving the runtime state (lifetime `fires`, `lastRunAt`, the in-flight `currentInstanceId`).
+ */
+export const registerDiscover = (
+  reg: DiscoverRegistration,
+): Effect.Effect<{ discoverId: string; active: boolean }, WorkflowError, CronStore> =>
+  Effect.gen(function* () {
+    const cs = yield* CronStore;
+    const id = discoverId(reg);
+    const existing = yield* cs.getDiscoverRow(id);
+    const nowMs = Date.now();
+    const now = new Date(nowMs).toISOString();
+    const prior = Option.getOrUndefined(existing);
+    const row: DiscoverRow = {
+      repo: reg.repo,
+      label: reg.label,
+      workflow: reg.workflow,
+      status: "active",
+      cadence: reg.cadence,
+      source: reg.source ?? { mode: "github-issues" },
+      gates: reg.gates ?? { maxFiresPerDay: DEFAULT_MAX_FIRES_PER_DAY },
+      ...(reg.fireParams ? { fireParams: reg.fireParams } : {}),
+      ...(reg.watch ? { watch: reg.watch } : {}),
+      epoch: (prior?.epoch ?? 0) + 1,
+      fires: prior?.fires ?? 0,
+      ...(prior?.currentInstanceId ? { currentInstanceId: prior.currentInstanceId } : {}),
+      ...(prior?.lastFiredIssue !== undefined ? { lastFiredIssue: prior.lastFiredIssue } : {}),
+      ...(prior?.lastRunAt ? { lastRunAt: prior.lastRunAt } : {}),
+      createdAt: prior?.createdAt ?? now,
+      updatedAt: now,
+    };
+    yield* cs.saveDiscoverRow(row);
+    return { discoverId: id, active: true };
+  });
+
+// ---------------------------------------------------------------------------
+// The scan (one per cron tick, beside the recur/chain/watch scans)
+// ---------------------------------------------------------------------------
+
+export const scanDiscoverEffect = (
+  traceparent: string | undefined,
+): Effect.Effect<DiscoverScanReport, WorkflowError, DiscoverScanEnv> =>
+  Effect.gen(function* () {
+    const cs = yield* CronStore;
+    const nowMs = Date.now();
+    // Kill switch is shared across the cron family (cron:config); the heartbeat is beaten by the recur
+    // scan (scanCronsEffect), which always runs on the same tick — no double-beat here.
+    const config = yield* cs.getConfig();
+    const enabled = Option.isNone(config) || config.value.enabled !== false;
+
+    const report: DiscoverScanReport = { scanned: 0, fired: [], skipped: [], errors: [] };
+    if (!enabled) return { ...report, disabled: true };
+
+    const rows = (yield* cs.listDiscoverRows()).filter((row) => row.status === "active");
+    report.scanned = rows.length;
+    for (const row of rows) {
+      // One discovery cron's failure never starves the rest.
+      yield* processRow(row, nowMs, traceparent, report).pipe(
+        Effect.catchAll((err) =>
+          Effect.sync(() => {
+            report.errors.push(`${discoverId(row)}: ${messageOf(err)}`);
+          }),
+        ),
+      );
+    }
+    return report;
+  });
+
+const processRow = (
+  row: DiscoverRow,
+  nowMs: number,
+  traceparent: string | undefined,
+  report: DiscoverScanReport,
+): Effect.Effect<void, WorkflowError, DiscoverScanEnv> =>
+  Effect.gen(function* () {
+    const invoker = yield* WorkflowInvoker;
+    const cs = yield* CronStore;
+    // In-flight guard: the last-fired instance's live status (UNKNOWN on transport failure — the engine
+    // treats that as still-live, never double-firing).
+    const runtimeStatus = row.currentInstanceId
+      ? yield* invoker.getStatus(row.currentInstanceId).pipe(
+          Effect.map((s) => s.runtimeStatus),
+          Effect.catchAll(() => Effect.succeed("UNKNOWN")),
+        )
+      : undefined;
+    const todayFires = (yield* cs.getLedger(cronLedgerDate(nowMs))).discoveryFires ?? 0;
+
+    const decision = decide(row, runtimeStatus, todayFires, nowMs);
+    if (decision.kind === "wait") return;
+    return yield* executeDiscover(row, nowMs, traceparent, report);
+  });
+
+// ---------------------------------------------------------------------------
+// Actions (each epoch-fenced)
+// ---------------------------------------------------------------------------
+
+/** Writes `next` only if the stored discovery row still carries `expectEpoch`; false when stale. */
+const saveFenced = (
+  expectEpoch: number,
+  next: DiscoverRow,
+): Effect.Effect<boolean, WorkflowError, CronStore> =>
+  Effect.gen(function* () {
+    const cs = yield* CronStore;
+    const current = yield* cs.getDiscoverRow(discoverId(next));
+    if (Option.isNone(current) || current.value.epoch !== expectEpoch) return false;
+    yield* cs.saveDiscoverRow(next);
+    return true;
+  });
+
+/**
+ * Mark-scanned-before-read (stamp `lastRunAt` + bump epoch, fenced on the OLD epoch) so even a failing
+ * source read doesn't re-hit the API until the next cadence — the read budget. Then read the source,
+ * dedup each candidate vs its `wf:` row, and fire the OLDEST eligible.
+ */
+const executeDiscover = (
+  row: DiscoverRow,
+  nowMs: number,
+  traceparent: string | undefined,
+  report: DiscoverScanReport,
+): Effect.Effect<void, WorkflowError, DiscoverScanEnv> =>
+  Effect.gen(function* () {
+    const now = new Date(nowMs).toISOString();
+    const scanned: DiscoverRow = {
+      ...row,
+      epoch: row.epoch + 1,
+      lastRunAt: now,
+      note: "scanning source",
+      updatedAt: now,
+    };
+    const saved = yield* saveFenced(row.epoch, scanned);
+    if (!saved) return;
+
+    const sr = yield* SourceReader;
+    const wfStore = yield* WfStore;
+    const issues = yield* sr.listOpenIssues({ repo: row.repo, label: row.label });
+    for (const issue of issues) {
+      const slug = issueSlug(issue.number);
+      const existing = yield* wfStore
+        .getRow({ repo: row.repo, slug, workflow: row.workflow })
+        .pipe(Effect.catchAll(() => Effect.succeed(Option.none())));
+      if (Option.isSome(existing)) continue; // dedup — already dispatched (running or done)
+      return yield* fireDiscovered(scanned, issue.number, nowMs, traceparent, report);
+    }
+    // Nothing eligible this pass — lastRunAt already advanced, so the cadence throttles the next read.
+    report.skipped.push(`${discoverId(row)}: nothing eligible`);
+  });
+
+/** Fire one discovered issue's run (fresh, supervised if a watch is set), then stamp the fired state. */
+const fireDiscovered = (
+  scanned: DiscoverRow,
+  issueNumber: number,
+  nowMs: number,
+  traceparent: string | undefined,
+  report: DiscoverScanReport,
+): Effect.Effect<void, WorkflowError, DiscoverScanEnv> =>
+  Effect.gen(function* () {
+    const store = yield* WorkflowStore;
+    const stored = yield* store.get(scanned.workflow);
+    if (Option.isNone(stored) || stored.value.disabled) {
+      return yield* Effect.fail(
+        new WorkflowError({
+          cause: `discovery workflow key '${scanned.workflow}' missing or disabled`,
+          instanceId: discoverId(scanned),
+        }),
+      );
+    }
+    const slug = issueSlug(issueNumber);
+    const instanceId = issueInstanceId(issueNumber);
+    const params: WorkflowParams = {
+      ...scanned.fireParams,
+      repo: scanned.repo,
+      slug,
+      issueNumber: String(issueNumber),
+    };
+    const req = toRequest(stored.value, traceparent, params);
+    yield* invokeWithWatch({
+      ...req,
+      instanceId,
+      workspaceId: instanceId,
+      fresh: true,
+      wf: { repo: scanned.repo, slug, workflow: scanned.workflow },
+      ...(scanned.watch
+        ? {
+            watch: scanned.watch,
+            watchMeta: {
+              owner: "discover",
+              repo: scanned.repo,
+              label: scanned.label,
+              issue: String(issueNumber),
+            },
+          }
+        : {}),
+    });
+
+    const now = new Date(nowMs).toISOString();
+    const fired: DiscoverRow = {
+      ...scanned,
+      currentInstanceId: instanceId,
+      fires: scanned.fires + 1,
+      lastFiredIssue: issueNumber,
+      note: `fired #${issueNumber}`,
+      updatedAt: now,
+    };
+    // Fence on the scanned epoch (a re-registration between mark and fire no-ops this stamp).
+    yield* saveFenced(scanned.epoch, fired);
+    report.fired.push(`${discoverId(scanned)}#${issueNumber}`);
+    yield* (yield* CronStore).bumpLedger(cronLedgerDate(nowMs), { discoveryFires: 1 });
+  });
+
+function messageOf(err: unknown): string {
+  if (err instanceof Error) return err.message || String(err);
+  const cause = (err as { cause?: unknown })?.cause;
+  if (cause instanceof Error && cause.message) return cause.message;
+  if (typeof cause === "string") return cause;
+  return String(err);
+}

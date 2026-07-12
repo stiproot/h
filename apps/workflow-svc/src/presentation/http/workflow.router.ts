@@ -27,6 +27,7 @@ import { registerCronForFire } from "../../domain/cron-scan.ts";
 import { assertValidCron } from "../../domain/scheduling.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
+import { SourceReader } from "../../domain/ports/ISourceReader.ts";
 import { WatchStore } from "../../domain/ports/IWatchStore.ts";
 import { WfStore } from "../../domain/ports/IWfStore.ts";
 import { WorkflowInvoker } from "../../domain/ports/IWorkflowInvoker.ts";
@@ -41,6 +42,7 @@ export type WorkflowRoutesEnv =
   | ChainStore
   | CronStore
   | WfStore
+  | SourceReader
   | DaprPublisherTag;
 
 export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutesEnv, never>;

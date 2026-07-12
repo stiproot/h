@@ -5,6 +5,7 @@ import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
 import { type CronScanReport, scanCronsEffect } from "../../domain/cron-scan.ts";
+import { type DiscoverScanReport, scanDiscoverEffect } from "../../domain/discover-scan.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
@@ -39,6 +40,7 @@ export const tickEffect = (
       watch: WatchScanReport | { error: string };
       chain: ChainScanReport | { error: string };
       cron: CronScanReport | { error: string };
+      discover: DiscoverScanReport | { error: string };
     }
   | { skipped: string },
   WorkflowError,
@@ -63,7 +65,12 @@ export const tickEffect = (
       const cron = yield* scanCronsEffect(traceparent).pipe(
         Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
       );
-      return { fired, watch, chain, cron };
+      // The discovery-cron scan (§9) rides the same tick, the fan-out sibling of the recur cron; its
+      // failure never fails the tick either.
+      const discover = yield* scanDiscoverEffect(traceparent).pipe(
+        Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
+      );
+      return { fired, watch, chain, cron, discover };
     }).pipe(Effect.ensuring(Ref.set(ticking, false)));
   });
 

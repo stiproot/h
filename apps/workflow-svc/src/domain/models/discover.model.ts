@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { WatchPolicy } from "./watch.model.ts";
 import { WorkflowParams } from "./workflow.model.ts";
 
 /**
@@ -53,6 +54,10 @@ export const DiscoverRow = Schema.Struct({
   // Extra params merged into every fire (e.g. fire-time identity: runActivity/agentId/model). `slug`,
   // `repo`, and `issueNumber` are supplied per-issue by the engine and win over these.
   fireParams: Schema.optional(WorkflowParams),
+  // Watch policy attached to every fired run (docs/plans/watcher-primitive.md): supervises each
+  // feature-pr so a hung run is terminated by the watcher engine rather than stalling the discovery
+  // cron on its serialize (in-flight) guard forever. Optional — omit to fire unsupervised.
+  watch: Schema.optional(WatchPolicy),
   // Epoch fence — bumped on every re-registration and every fire, so a stale scan decision no-ops.
   epoch: Schema.Number,
   // Lifetime fan-out count (observability; the daily cap lives on the ledger).

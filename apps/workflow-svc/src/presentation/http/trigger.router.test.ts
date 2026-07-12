@@ -12,6 +12,7 @@ import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainSto
 import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import { WfStore, type WfStoreService } from "../../domain/ports/IWfStore.ts";
+import { SourceReader, type SourceReaderService } from "../../domain/ports/ISourceReader.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -71,6 +72,7 @@ const stubWfStore = (): WfStoreService => ({
 });
 
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
+const stubSourceReader: SourceReaderService = { listOpenIssues: () => Effect.succeed([]) };
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
@@ -106,6 +108,7 @@ async function makeApp(
       Layer.succeed(CronStore, stubCronStore()),
       Layer.succeed(WfStore, stubWfStore()),
       Layer.succeed(DaprPublisherTag, stubPublisher),
+      Layer.succeed(SourceReader, stubSourceReader),
     ),
   );
   const app = Fastify();

@@ -12,6 +12,7 @@ import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainSto
 import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
 import { WfStore, type WfStoreService } from "../../domain/ports/IWfStore.ts";
+import { SourceReader, type SourceReaderService } from "../../domain/ports/ISourceReader.ts";
 import {
   WorkflowInvoker,
   type WorkflowInvokerService,
@@ -56,6 +57,7 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
 }
 
 const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
+const stubSourceReader: SourceReaderService = { listOpenIssues: () => Effect.succeed([]) };
 
 // An empty chain store: the cron tests exercise the schedule-fire + watch scan; the chain scan
 // rides the same tick but finds no chains, so a no-rows stub keeps it a clean no-op.
@@ -108,6 +110,7 @@ const envLayer = (
     Layer.succeed(CronStore, emptyCronStore),
     Layer.succeed(WfStore, emptyWfStore),
     Layer.succeed(DaprPublisherTag, stubPublisher),
+    Layer.succeed(SourceReader, stubSourceReader),
   );
 
 // A workflow whose every-minute schedule was saved long ago: always due.
