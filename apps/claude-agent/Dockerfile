@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM oven/bun:1 AS base
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip su-exec && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
     BUN_INSTALL=/usr/local bun install --global @anthropic-ai/claude-code tessl && \
@@ -51,6 +51,8 @@ WORKDIR /app/apps/claude-agent
 
 EXPOSE 8000
 
-USER claude
+COPY apps/claude-agent/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["bun", "run", "src/index.ts"]
