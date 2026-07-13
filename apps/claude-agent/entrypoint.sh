@@ -6,11 +6,13 @@ set -e
 # The UID is set via CLAUDE_UID (passed from the Dockerfile build arg).
 # Create the subdirs if missing and chown so the runtime user can write.
 #
-# These three directories are the only paths the agent writes to at runtime.
-# Adding a new writeable directory requires updating this list AND rebuilding
-# the image — there is no dynamic configuration.
+# The workspace root is AGENT_BASE_DIR — the same image serves both claude-agent
+# (/workspace/claude-agent) and claude-coder (/workspace/claude-coder), which
+# override it per service, so chown that rather than a hardcoded path. Plus the
+# shared run-ledger (.runs) and worktrees roots. Adding another writeable path
+# requires updating this list AND rebuilding.
 for dir in \
-  /workspace/claude-agent \
+  "${AGENT_BASE_DIR:-/workspace/claude-agent}" \
   /workspace/.runs \
   /workspace/worktrees; do
   if [ ! -d "$dir" ]; then
@@ -19,5 +21,5 @@ for dir in \
   chown "${CLAUDE_UID:-1001}:${CLAUDE_UID:-1001}" "$dir"
 done
 
-# Drop privileges and exec the CMD
-exec su-exec "${CLAUDE_UID:-1001}:${CLAUDE_UID:-1001}" "$@"
+# Drop privileges and exec the CMD (gosu — the Debian equivalent of Alpine's su-exec).
+exec gosu "${CLAUDE_UID:-1001}:${CLAUDE_UID:-1001}" "$@"

@@ -2,7 +2,7 @@
 FROM oven/bun:1 AS base
 
 ARG CLAUDE_UID=1001
-RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip su-exec && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip gosu && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
     BUN_INSTALL=/usr/local bun install --global @anthropic-ai/claude-code tessl && \
