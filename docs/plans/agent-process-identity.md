@@ -140,5 +140,33 @@ per-service deployment, and the frozen-executor invariant becomes "pr-review run
 2. **Per-run trust profile**: bind {`SUB_AGENT_UID`, replace-mode github-only MCP, scoped token} at
    spawn for untrusted runs; move the untrusted boundary from service to run; **retire claude-coder**.
 
+## Validated on openhands (2026-07-13) + migration requirements it surfaced
+
+Proven end-to-end on openhands-agent: the server runs non-root as `agent-svc` (10001), the runner
+drops the CLI to `agent-cli` (10002) via `sudo`, and a real feature run implemented + pushed a PR,
+editing files in the group-writable worktree. The isolated proof surfaced requirements a fleet-wide
+rollout must honour:
+
+1. **Common `AGENT_UID`/`SUB_AGENT_UID`/`AGENT_GID` across ALL agents — required, not optional.** Each
+   agent's entrypoint chowns the SHARED roots (`.runs`, `worktrees`) to its own `AGENT_UID`, so a
+   half-migrated fleet with different UIDs *fights over the shared dirs* (observed: openhands@10001 vs
+   the stopgap claude-coder@1001, last-writer-wins). Cross-agent isolation is the container boundary,
+   not the UID, so a common UID is both correct and necessary. (Defaults chosen: UID 10001 / sub 10002
+   / GID 10001 — high, to dodge the `bun` user at 1000.)
+2. **The shared clone (`clonePath`) needs the same ownership as the workspace roots.** `git worktree`
+   writes the clone's `.git`, so the clone must be `AGENT_UID:AGENT_GID`, group-writable + setgid — but
+   it is NOT one of the entrypoint's per-agent dirs, so provisioning (whoever clones the repo) must set
+   it, or the entrypoint must be told the clone path.
+3. **One-time recursive migration chown of the existing workspace.** Months of root/1000/1001-era runs
+   left `../h-workspace` littered with mixed-owner dirs the non-root `agent-svc` can't write. Migrating
+   needs a one-time `chown -R AGENT_UID:AGENT_GID` + `chmod -R g+w` + setgid-on-dirs of the workspace;
+   thereafter setgid + `umask 002` keep new files consistent.
+4. **Migration is all-agents-at-once**, a consequence of (1) — the fleet shares the workspace, so agents
+   can't be migrated one at a time in a running stack.
+
+Rollout order, therefore: apply the model with the COMMON UIDs to every agent image (CLI agents get the
+full split; Python agents get the baseline), do the one-time workspace + clone chown, then bring the
+whole stack up together and validate a full chain.
+
 Related: [[compose-mode-enabled]], [[harden-by-encoding]]; supersedes the #36/#38 entrypoint and
 fleshes out docs/plans/reviewer-identity-security.md.
