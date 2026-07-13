@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl jq git ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
-    curl -fsSL "https://github.com/OpenHands/OpenHands-CLI/releases/latest/download/openhands-linux-arm64" \
+    ARCH=$(uname -m) && case "$ARCH" in x86_64) OH_ARCH=x86_64 ;; aarch64|arm64) OH_ARCH=arm64 ;; *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; esac && \
+    curl -fsSL "https://github.com/OpenHands/OpenHands-CLI/releases/latest/download/openhands-linux-${OH_ARCH}" \
       -o /usr/local/bin/openhands && \
     chmod 755 /usr/local/bin/openhands && \
     BUN_INSTALL=/usr/local bun install --global tessl
