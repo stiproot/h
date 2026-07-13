@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1
 FROM oven/bun:1 AS base
 
+ARG CLAUDE_UID=1001
 RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip su-exec && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
     BUN_INSTALL=/usr/local bun install --global @anthropic-ai/claude-code tessl && \
-    useradd -m -u 1001 claude
+    useradd -m -u "$CLAUDE_UID" claude
+ENV CLAUDE_UID=$CLAUDE_UID
 
 # AWS CLI v2 — required by ops plugins that inspect infrastructure over aws ssm and for SSO credential
 # resolution from a mounted host ~/.aws session.
@@ -51,6 +53,9 @@ WORKDIR /app/apps/claude-agent
 
 EXPOSE 8000
 
+# The entrypoint script at this path is required — it must exist in the build
+# context for the image to start correctly. If omitted, the COPY will fail
+# immediately rather than producing a broken image.
 COPY apps/claude-agent/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
