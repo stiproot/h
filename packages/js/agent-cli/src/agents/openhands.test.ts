@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { extractAgentMessageText, openhandsStrategy } from "./openhands.ts";
@@ -40,6 +42,17 @@ describe("openhandsStrategy.prepareEnvironment LLM_MODEL routing", () => {
 
     expect(env["LLM_API_KEY"]).toBe("sk-test");
     expect(env["LLM_BASE_URL"]).toBe("https://api.deepseek.com/v1");
+  });
+});
+
+describe("openhandsStrategy.buildInvocation", () => {
+  it("writes the task to a temp file and exposes a cleanup that removes it", async () => {
+    const invocation = await openhandsStrategy.buildInvocation!(baseRequest());
+    const taskFile = invocation.args[invocation.args.indexOf("--file") + 1]!;
+
+    expect(existsSync(taskFile)).toBe(true);
+    await invocation.cleanup?.();
+    expect(existsSync(taskFile)).toBe(false);
   });
 });
 

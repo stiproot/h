@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,7 +32,9 @@ export function extractPiText(line: string): string | null {
 // Resolve a model string for pi: bare id → openai/ prefix (routes via LiteLLM proxy);
 // a provider-prefixed id (e.g. anthropic/…, openai/…) is passed through unchanged.
 function resolvePiModel(model?: string): string {
-  if (!model) return "openai/claude-sonnet-4-6";
+  // claude-sonnet-4-6 is an Anthropic model — route it via the anthropic/ provider
+  // (prepareEnvironment then forwards ANTHROPIC_API_KEY), not a bogus openai/ prefix.
+  if (!model) return "anthropic/claude-sonnet-4-6";
   return model.includes("/") ? model : `openai/${model}`;
 }
 
@@ -118,6 +120,7 @@ export const piStrategy: AgentStrategy = {
       command: "pi",
       args: ["--mode", "json", "--approve", "--model", model, "--file", taskFile],
       streamParser: piJsonlParser,
+      cleanup: () => rm(taskFile, { force: true }),
     };
   },
 

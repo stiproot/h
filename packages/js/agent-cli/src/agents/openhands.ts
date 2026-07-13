@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -98,6 +98,7 @@ export const openhandsStrategy: AgentStrategy = {
         "--override-with-envs",
       ],
       streamParser: openhandsJsonlParser,
+      cleanup: () => rm(taskFile, { force: true }),
     };
   },
 

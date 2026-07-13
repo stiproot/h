@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { extractPiText, piStrategy } from "./pi.ts";
@@ -76,6 +78,22 @@ describe("piStrategy.buildInvocation", () => {
 
     const modelIdx = invocation.args.indexOf("--model");
     expect(invocation.args[modelIdx + 1]).toBe("openai/deepseek-v4-flash");
+  });
+
+  it("defaults an absent model to the anthropic/ provider (a resolvable model)", async () => {
+    const invocation = await piStrategy.buildInvocation!(baseRequest());
+
+    const modelIdx = invocation.args.indexOf("--model");
+    expect(invocation.args[modelIdx + 1]).toBe("anthropic/claude-sonnet-4-6");
+  });
+
+  it("writes the task to a temp file and exposes a cleanup that removes it", async () => {
+    const invocation = await piStrategy.buildInvocation!(baseRequest());
+    const taskFile = invocation.args[invocation.args.indexOf("--file") + 1]!;
+
+    expect(existsSync(taskFile)).toBe(true);
+    await invocation.cleanup?.();
+    expect(existsSync(taskFile)).toBe(false);
   });
 });
 

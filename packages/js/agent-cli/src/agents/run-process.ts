@@ -9,6 +9,7 @@ import type {
   AgentStrategy,
   InvocationResult,
   LiteLlmError,
+  PreparedAgentInvocation,
   StreamEvent,
 } from "./types.ts";
 import { AgentSpawnError, AgentTimeoutError } from "./types.ts";
@@ -53,6 +54,34 @@ export function runAgentProcessEffect(
       : // The strategy contract requires at least one of the two build methods.
         yield* Effect.promise(() => strategy.buildInvocation!(request));
 
+    // The strategy may have written temp artifacts (e.g. the `--file` task file)
+    // in buildInvocation; guarantee its teardown runs on every exit path below —
+    // success, failure, timeout, interruption, or an early command-not-found return.
+    const runInvocation = runPreparedInvocation(strategy, request, prepared, envOverrides, log);
+    return yield* prepared.cleanup
+      ? runInvocation.pipe(
+          Effect.ensuring(Effect.promise(async () => prepared.cleanup!()).pipe(Effect.ignore)),
+        )
+      : runInvocation;
+  });
+}
+
+/**
+ * The subprocess run itself, split out so {@link runAgentProcessEffect} can wrap
+ * it in a cleanup finalizer that fires regardless of how it terminates.
+ */
+function runPreparedInvocation(
+  strategy: AgentStrategy,
+  request: AgentInvocationRequest,
+  prepared: PreparedAgentInvocation,
+  envOverrides: Record<string, string> | undefined,
+  log: Logger,
+): Effect.Effect<
+  InvocationResult,
+  AgentSpawnError | AgentTimeoutError,
+  CommandExecutor.CommandExecutor
+> {
+  return Effect.gen(function* () {
     const found = yield* Effect.sync(() => commandExists(prepared.command));
     if (!found) {
       log.error(`Command not found: ${prepared.command}`);
