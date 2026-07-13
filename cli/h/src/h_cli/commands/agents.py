@@ -15,10 +15,17 @@ console = Console()
 @app.command("list")
 def list_() -> None:
     """List all workflow-invokable agents and their identities."""
-    names = sorted(AGENT_IDENTITY.keys())
-    table = Table("agent", "runActivity", "agentId", "url", title=f"agents ({len(names)})")
-    for name in names:
+    seen: set[str] = set()
+    rows: list[tuple[str, str, str, str]] = []
+    for name in sorted(AGENT_IDENTITY.keys()):
         run_activity, agent_id = AGENT_IDENTITY[name]
+        if agent_id in seen:
+            continue
+        seen.add(agent_id)
         url = AGENT_URLS.get(agent_id, "-")
-        table.add_row(name, run_activity, agent_id, url)
+        rows.append((name, run_activity, agent_id, url))
+
+    table = Table("agent", "runActivity", "agentId", "url", title=f"agents ({len(rows)})")
+    for row in rows:
+        table.add_row(*row)
     console.print(table)
