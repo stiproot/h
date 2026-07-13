@@ -22,4 +22,8 @@ for dir in "${AGENT_BASE_DIR:-/workspace/agent}" /workspace/.runs /workspace/wor
   chmod 2775 "$dir"
 done
 
+# umask 002 so files the server (and its git worktree ops) creates are group-writable — setgid gives
+# the dropped CLI subprocess (same AGENT_GID) the group, umask 002 gives it the write bit.
+umask 002
+
 exec gosu "${AGENT_UID}:${AGENT_GID}" "$@"
