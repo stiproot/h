@@ -6,11 +6,9 @@ import { join } from "node:path";
 import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
 
-// OpenHands --json streams JSONL events plus a human-readable banner (e.g. its whole tool inventory).
-// The run ledger (onEvent) still sees every raw line for debugging, but the RETURNED output must be
-// only the agent's final message text: capturing the entire transcript (the old behaviour) bloated
-// the result to ~130KB and, once interpolated into the next step's task, blew past the OS single-arg
-// limit (E2BIG). Only a MessageEvent from source "agent" carries the agent's actual answer.
+// OpenHands --json streams JSONL events plus a human-readable banner. The returned output must be
+// only the agent's final message text — the full transcript bloated to ~130KB and blew past the OS
+// single-arg limit (E2BIG) when interpolated into the next step's task.
 export function extractAgentMessageText(line: string): string | null {
   try {
     const ev = JSON.parse(line) as {
@@ -25,9 +23,7 @@ export function extractAgentMessageText(line: string): string | null {
         .join("\n");
       return text || null;
     }
-  } catch {
-    // Non-JSON banner/debug line — not part of the agent's answer.
-  }
+  } catch {}
   return null;
 }
 
@@ -83,8 +79,7 @@ export const openhandsStrategy: AgentStrategy = {
   },
 
   async buildInvocation(request) {
-    // Pass the task via --file, not --task: a task carrying a prior step's output can exceed the OS
-    // single-argument limit (E2BIG on posix_spawn). A file has no such limit.
+    // Use --file to avoid the OS single-argument limit (E2BIG on posix_spawn).
     const taskFile = join(tmpdir(), `openhands-task-${randomUUID()}.md`);
     await writeFile(taskFile, request.taskPrompt, "utf-8");
     return {

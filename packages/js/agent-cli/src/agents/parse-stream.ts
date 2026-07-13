@@ -104,7 +104,5 @@ function appendStreamEventFromLine(
 
     events.push(event);
     onEvent?.(event as unknown as Record<string, unknown>);
-  } catch {
-    // Ignore non-JSON lines such as debug output.
-  }
+  } catch {}
 }

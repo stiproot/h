@@ -14,21 +14,12 @@ import type {
 } from "./types.ts";
 import { AgentSpawnError, AgentTimeoutError } from "./types.ts";
 
-/**
- * Run an agent CLI subprocess. The subprocess is started with `Command.start`
- * inside a `Scope`, so interruption (e.g. the timeout) kills the process via
- * the scope finalizer — replacing the legacy `setTimeout` + `kill`
- * bookkeeping. Stdout is decoded and split into lines by
- * the stream pipeline (`Stream.decodeText` → `Stream.splitLines` subsumes the
- * legacy partial-line buffer and close-time flush), and `onEvent` fires
- * incrementally as lines arrive because the stdout pipeline runs concurrently
- * with the exit wait.
+/** Run an agent CLI subprocess inside a `Scope` so interruption kills the process
+ * via the scope finalizer. Stdout is decoded and split into lines by the stream
+ * pipeline; `onEvent` fires incrementally as lines arrive.
  *
  * Failure channel: `AgentTimeoutError` / `AgentSpawnError` are internal — the
- * invoker layer maps them back to the exit-124 / exit-1 structured results the
- * legacy implementation resolved with. LiteLLM errors (from
- * `buildInvocationEffect`) propagate, matching the legacy throw.
- */
+ * invoker layer maps them back to exit-124 / exit-1 structured results. */
 export function runAgentProcessEffect(
   strategy: AgentStrategy,
   request: AgentInvocationRequest,
@@ -54,9 +45,8 @@ export function runAgentProcessEffect(
       : // The strategy contract requires at least one of the two build methods.
         yield* Effect.promise(() => strategy.buildInvocation!(request));
 
-    // The strategy may have written temp artifacts (e.g. the `--file` task file)
-    // in buildInvocation; guarantee its teardown runs on every exit path below —
-    // success, failure, timeout, interruption, or an early command-not-found return.
+    // Guarantee the strategy's cleanup runs on every exit path — success, failure,
+    // timeout, interruption, or early command-not-found return.
     const runInvocation = runPreparedInvocation(strategy, request, prepared, envOverrides, log);
     return yield* prepared.cleanup
       ? runInvocation.pipe(
@@ -109,9 +99,6 @@ function runPreparedInvocation(
     log.debug(`Spawning ${strategy.name} in: ${request.cwd}`);
     log.debug(`Command: ${prepared.command} ${prepared.args.join(" ")}`);
 
-    // splitLines already delivers whole lines (partial-line carryover and the
-    // trailing flush included), so each line is handed to the existing pure
-    // per-line parsers as a self-contained chunk.
     const handleLine = (line: string): void => {
       if (prepared.streamParser) {
         prepared.streamParser.parseChunk("", `${line}\n`, streamEvents, request.onEvent);
@@ -129,8 +116,6 @@ function runPreparedInvocation(
     const command = Command.make(prepared.command, ...prepared.args).pipe(
       Command.workingDirectory(request.cwd),
       Command.env(childEnv),
-      // Feeding the (possibly empty) stdin input writes it and closes the
-      // child's stdin — the equivalent of the legacy write-then-end / end.
       Command.feed(prepared.stdinInput ?? ""),
     );
 
@@ -140,8 +125,6 @@ function runPreparedInvocation(
 
         const awaitExit = proc.exitCode.pipe(
           Effect.map((code) => ({ exitCode: code as number | null, signal: null })),
-          // The executor fails `exitCode` when the child was killed by a
-          // signal; the legacy contract reports that as a signal exit.
           Effect.catchAll((error) =>
             Effect.succeed({ exitCode: null, signal: extractSignal(error) }),
           ),

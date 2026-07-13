@@ -6,10 +6,8 @@ import { join } from "node:path";
 import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
 
-// pi --mode json streams JSONL events. The agent's final text arrives as a series of
-// message_update events with assistantMessageEvent.type === "text_delta". Each delta is
-// concatenated on the ledger side; here we surface each delta as an assistant StreamEvent
-// so the run ledger's output captures the full response.
+// pi --mode json streams JSONL. The agent's final text arrives as
+// message_update/text_delta events concatenated on the ledger side.
 export function extractPiText(line: string): string | null {
   try {
     const ev = JSON.parse(line) as {
@@ -23,9 +21,7 @@ export function extractPiText(line: string): string | null {
     ) {
       return ev.assistantMessageEvent.delta;
     }
-  } catch {
-    // Non-JSON banner/debug line — not part of the agent's answer.
-  }
+  } catch {}
   return null;
 }
 
@@ -59,9 +55,7 @@ const piJsonlParser: AgentStreamParser = {
           if (text)
             events.push({ type: "assistant", message: { content: [{ type: "text", text }] } });
         }
-      } catch {
-        // Non-JSON line — already surfaced via onEvent above.
-      }
+      } catch {}
     }
 
     return remainder;
@@ -111,8 +105,7 @@ export const piStrategy: AgentStrategy = {
   },
 
   async buildInvocation(request) {
-    // Pass the task via --file, not inline: a task carrying a prior step's output can exceed
-    // the OS single-argument limit (E2BIG on posix_spawn). A file has no such limit.
+    // Use --file to avoid the OS single-argument limit (E2BIG on posix_spawn).
     const taskFile = join(tmpdir(), `pi-task-${randomUUID()}.md`);
     await writeFile(taskFile, request.taskPrompt, "utf-8");
     const model = resolvePiModel(request.model);
@@ -130,7 +123,7 @@ export const piStrategy: AgentStrategy = {
 
   extractMetrics(_events: StreamEvent[], _request): Partial<InvocationResult> {
     // pi --mode json does not emit token usage; costUsd remains unknown.
-    // The watcher engine already handles a costGap — do NOT invent a fake $0.
+    // Do NOT invent a fake $0 — the watcher handles a costGap.
     return {};
   },
 };

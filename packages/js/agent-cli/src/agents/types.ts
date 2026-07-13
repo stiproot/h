@@ -38,36 +38,25 @@ export type AgentInvoker = (params: {
   cwd: string;
   env: Record<string, string>;
   timeout: number;
-  /** Model to use for this invocation */
   model?: string;
-  /** Agent CLI to use (default: 'claude') */
+  /** default: 'claude' */
   agent?: string;
-  /** Resume an existing session instead of starting a new one */
   resumeSessionId?: string;
-  /** Optional callback for streaming events (for sys-log.jsonl) */
   onEvent?: AgentEventCallback;
-  /** Enable verbose debug output */
   verbose?: boolean;
-  /** LLM provider configuration from job config */
   llmConfig?: LlmConfig;
-  /** "plan" → invoke the CLI read-only via --permission-mode plan instead of skip-permissions */
+  /** "plan" → read-only mode; omit for skip-permissions */
   permissionMode?: "plan";
 }) => Promise<{
   success: boolean;
   stdout?: string;
   stderr?: string;
   exitCode?: number;
-  /** Aggregated token usage across all models */
   tokenUsage?: { input: number; output: number };
-  /** Primary model (highest cost) */
   model?: string;
-  /** Per-model usage breakdown */
   modelUsage?: Record<string, ModelUsage>;
-  /** Total cost across all models */
   costUsd?: number;
-  /** Number of agent conversation turns */
   numTurns?: number;
-  /** Session ID for conversation continuation */
   sessionId?: string;
 }>;
 
@@ -212,10 +201,9 @@ export interface PreparedAgentInvocation {
   shouldFilterEvent?: (event: StreamEvent) => boolean;
   streamParser?: AgentStreamParser;
   /**
-   * Optional teardown run once the subprocess has finished — on success,
-   * failure, timeout, or interruption alike. Used to remove temp artifacts a
-   * strategy writes in {@link AgentStrategy.buildInvocation} (e.g. the `--file`
-   * task file). Must not throw; the runner ignores its errors.
+   * Teardown run on every exit path — success, failure, timeout, or
+   * interruption. Removes temp artifacts from buildInvocation (e.g. the
+   * `--file` task file). Must not throw; errors are silently ignored.
    */
   cleanup?: () => void | Promise<void>;
 }

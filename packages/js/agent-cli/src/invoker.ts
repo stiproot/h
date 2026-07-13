@@ -24,28 +24,18 @@ export interface AgentInvokeParams {
   cwd: string;
   env: Record<string, string>;
   timeout: number;
-  /** Model to use for this invocation */
   model?: string;
-  /** Resume an existing session instead of starting a new one */
   resumeSessionId?: string;
-  /** Optional callback for streaming events (for sys-log.jsonl) */
   onEvent?: AgentEventCallback;
-  /** Enable verbose debug output */
   verbose?: boolean;
-  /** LLM provider configuration from job config */
   llmConfig?: LlmConfig;
-  /** "plan" → invoke the CLI read-only via --permission-mode plan instead of skip-permissions */
+  /** "plan" → read-only mode; omit for skip-permissions */
   permissionMode?: "plan";
 }
 
-/**
- * Port: invoke an agent CLI subprocess and produce its run result.
- *
- * Failure channel carries only the LiteLLM model-check errors — the legacy
- * contract resolved (never rejected) on timeout (exit 124), spawn failure
- * (exit 1), missing command (exit 127), and non-zero exits, and the Effect
- * version preserves that by folding those cases into the `InvocationResult`.
- */
+/** Invoke an agent CLI subprocess. Timeouts (exit 124), spawn failures (exit 1),
+ * and missing commands (exit 127) are folded into `InvocationResult` — the
+ * error channel carries only LiteLLM model-check errors. */
 export interface AgentInvokerService {
   readonly invoke: (params: AgentInvokeParams) => Effect.Effect<InvocationResult, LiteLlmError>;
 }
@@ -123,7 +113,7 @@ function invokeAgent(
 
     return runAgentProcessEffect(strategy, request, log);
   }).pipe(
-    // Behaviour flag (plan §6): a timeout must not fail the call — it resolves
+    // Behaviour flag: a timeout must not fail the call — it resolves
     // the legacy exit-124 structured result. Spawn failures likewise resolved
     // as exit-1 results.
     Effect.catchTags({
