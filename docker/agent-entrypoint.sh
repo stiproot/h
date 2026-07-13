@@ -1,0 +1,25 @@
+#!/bin/sh
+# Shared agent entrypoint (Debian-based images; requires gosu). Used by EVERY agent image.
+#
+# The single privileged moment in the design (docs/plans/agent-process-identity.md): the
+# bind-mounted /workspace is owned by the host user, so as root at container start we ensure the
+# agent's workspace roots exist and are owned AGENT_UID:AGENT_GID — group-writable + setgid, so files
+# the dropped CLI subprocess (SUB_AGENT_UID, same AGENT_GID) creates stay group-accessible — then
+# exec the server dropped to the non-root AGENT_UID. Everything after this runs unprivileged.
+#
+# Inert in local (host) mode: this only runs inside the container images; the run-scripts never
+# invoke it.
+set -e
+
+AGENT_UID="${AGENT_UID:-1000}"
+AGENT_GID="${AGENT_GID:-1000}"
+
+# AGENT_BASE_DIR is the per-service workspace root (claude-agent vs claude-coder override it), plus
+# the shared run-ledger and worktrees roots every agent writes to.
+for dir in "${AGENT_BASE_DIR:-/workspace/agent}" /workspace/.runs /workspace/worktrees; do
+  mkdir -p "$dir"
+  chown "${AGENT_UID}:${AGENT_GID}" "$dir"
+  chmod 2775 "$dir"
+done
+
+exec gosu "${AGENT_UID}:${AGENT_GID}" "$@"

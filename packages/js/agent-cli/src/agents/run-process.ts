@@ -113,7 +113,18 @@ function runPreparedInvocation(
       }
     };
 
-    const command = Command.make(prepared.command, ...prepared.args).pipe(
+    // Config-gated privilege drop (docs/plans/agent-process-identity.md): when SUB_AGENT_UID is set
+    // (container mode) the untrusted CLI runs as that lower-trust non-root user via sudo — a non-root
+    // agent-server can't setuid on its own. Unset (local/host mode) → spawn directly as the current
+    // user, the unchanged behaviour. --preserve-env carries childEnv to the CLI (the sudoers rule
+    // grants SETENV); the server's working directory is inherited so the CLI runs in the run's cwd.
+    const subAgentUid = process.env.SUB_AGENT_UID;
+    const execCommand = subAgentUid ? "sudo" : prepared.command;
+    const execArgs = subAgentUid
+      ? ["--preserve-env", "-u", `#${subAgentUid}`, "--", prepared.command, ...prepared.args]
+      : prepared.args;
+
+    const command = Command.make(execCommand, ...execArgs).pipe(
       Command.workingDirectory(request.cwd),
       Command.env(childEnv),
       Command.feed(prepared.stdinInput ?? ""),
