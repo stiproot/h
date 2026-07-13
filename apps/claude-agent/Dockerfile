@@ -3,6 +3,7 @@ FROM oven/bun:1 AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip && \
     rm -rf /var/lib/apt/lists/* && \
+    git config --system --add safe.directory '*' && \
     BUN_INSTALL=/usr/local bun install --global @anthropic-ai/claude-code tessl && \
     useradd -m -u 1001 claude
 

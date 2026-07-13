@@ -4,6 +4,7 @@ FROM oven/bun:1 AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl jq git ca-certificates nodejs npm && \
     rm -rf /var/lib/apt/lists/* && \
+    git config --system --add safe.directory '*' && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 WORKDIR /app

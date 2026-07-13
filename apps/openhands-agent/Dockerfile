@@ -4,6 +4,7 @@ FROM oven/bun:1 AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl jq git ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
+    git config --system --add safe.directory '*' && \
     curl -fsSL "https://github.com/OpenHands/OpenHands-CLI/releases/latest/download/openhands-linux-arm64" \
       -o /usr/local/bin/openhands && \
     chmod 755 /usr/local/bin/openhands && \
