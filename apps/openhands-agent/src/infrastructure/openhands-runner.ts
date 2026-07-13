@@ -48,7 +48,11 @@ const openhandsConfig = Effect.gen(function* () {
   // provisions it into a per-run HOME so the CLI reads it ($HOME/.openhands/mcp.json). Unset →
   // no MCP servers (the legacy behaviour), so this is backward-compatible.
   const mcpConfigSrc = yield* Config.option(Config.string("MCP_CONFIG_SRC"));
-  return { apiKey, baseUrl, model, baseDir, runsDir, daprHttpPort, mcpConfigSrc };
+  // Max wall-clock for one agent CLI run. A real feature (edit several files, then commit/push/open
+  // a PR) routinely exceeds 5 minutes — especially on a slower model — so default to 30 minutes,
+  // well under the 1h Dapr resiliency timeout. Override with AGENT_RUN_TIMEOUT_MS (mirrors claude-runner).
+  const runTimeoutMs = yield* Config.withDefault(Config.number("AGENT_RUN_TIMEOUT_MS"), 1_800_000);
+  return { apiKey, baseUrl, model, baseDir, runsDir, daprHttpPort, mcpConfigSrc, runTimeoutMs };
 });
 
 /**
@@ -137,7 +141,7 @@ export const OpenhandsRunnerLive: Layer.Layer<
               ...(workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {}),
               ...mcpEnv,
             },
-            timeout: 300_000,
+            timeout: cfg.runTimeoutMs,
             model,
             llmConfig: { apiKey: cfg.apiKey, baseUrl: cfg.baseUrl },
             // The invoker delivers events on a sync callback; the logger effect is a sync

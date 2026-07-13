@@ -42,7 +42,10 @@ const piConfig = Effect.gen(function* () {
     join(baseDir, "..", ".runs"),
   );
   const daprHttpPort = yield* Config.option(Config.string("DAPR_HTTP_PORT"));
-  return { apiKey, baseUrl, model, baseDir, runsDir, daprHttpPort };
+  // Max wall-clock for one agent CLI run; default 30 min, override with AGENT_RUN_TIMEOUT_MS
+  // (mirrors claude-runner). A real feature can exceed the old 5-minute cap on a slower model.
+  const runTimeoutMs = yield* Config.withDefault(Config.number("AGENT_RUN_TIMEOUT_MS"), 1_800_000);
+  return { apiKey, baseUrl, model, baseDir, runsDir, daprHttpPort, runTimeoutMs };
 });
 
 /**
@@ -105,7 +108,7 @@ export const PiRunnerLive: Layer.Layer<
             env: {
               ...(workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {}),
             },
-            timeout: 300_000,
+            timeout: cfg.runTimeoutMs,
             model,
             llmConfig: { apiKey: cfg.apiKey, baseUrl: cfg.baseUrl },
             onEvent: (event) => {
