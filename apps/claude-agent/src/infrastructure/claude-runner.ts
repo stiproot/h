@@ -162,6 +162,9 @@ const runClaude = (
 
     // From here on a failure records a failed ledger entry before surfacing (the same scope as
     // the legacy try/catch — failures before the ledger starts never wrote one).
+    // Captures stdout from a partial result so the failed ledger entry preserves agent output
+    // (the invoker result is not in scope of tapErrorCause below).
+    let capturedOutput = "";
     return yield* Effect.gen(function* () {
       const invoker = yield* AgentInvoker;
       const model = modelOverride ?? cfg.model;
@@ -179,6 +182,18 @@ const runClaude = (
           llmConfig: { apiKey: cfg.apiKey, baseUrl: cfg.baseUrl },
         })
         .pipe(Effect.withSpan("claude cli", { attributes: { "claude.model": model } }));
+
+      capturedOutput = result.stdout ?? "";
+
+      // A resolved InvocationResult may carry a non-zero exit code (timeout → 124,
+      // spawn failure → 1, or the agent itself exited with an error). Fail here so the
+      // outer tapErrorCause records the ledger entry and the workflow step doesn't
+      // silently succeed.
+      if (result.exitCode !== undefined && result.exitCode !== 0) {
+        return yield* Effect.fail(
+          new Error(result.stderr ?? `Agent exited with code ${result.exitCode}`),
+        );
+      }
 
       const summary = yield* ledger.finish({
         status: "completed",
@@ -205,7 +220,11 @@ const runClaude = (
       // also record a failed ledger entry before surfacing. Cause.squash recovers the original
       // error for the same `String(err)` ledger message as before.
       Effect.tapErrorCause((cause) =>
-        ledger.finish({ status: "failed", output: "", error: String(Cause.squash(cause)) }),
+        ledger.finish({
+          status: "failed",
+          output: capturedOutput,
+          error: String(Cause.squash(cause)),
+        }),
       ),
     );
   });
