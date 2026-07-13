@@ -109,4 +109,36 @@ user already owns the workspace, so none of this must engage. Two rules guarante
 - **Verify with an actual `docker compose build` + a run** — the gap that let #38's `su-exec` and
   hardcoded-dir bugs through was that only unit tests ran, never the image build.
 
-Related: [[compose-mode-enabled]], [[harden-by-encoding]]; supersedes the #36/#38 entrypoint.
+## End state: the per-run trust profile (retire claude-coder)
+
+`SUB_AGENT_UID` isolates the untrusted CLI at the **OS layer** (files, UID, inherited env). It does
+NOT cover the **capability layer** — which MCP tools and secrets the agent can reach over HTTP. That
+capability minimization is exactly what **claude-coder** provides today, at the *service* level:
+
+1. `MCP_CONFIG_MODE=replace` — never inherit the cwd's `.mcp.json` (a target repo can't smuggle in a
+   server).
+2. github-only MCP surface — no `workflows`/`dapr`/`obs` tools, no `notion`/`linear` secret-bearing
+   servers.
+3. a scoped token (`GH_CODER_TOKEN`: contents + PR write, no issue write).
+4. frozen as pr-review's executor (reviewer-identity-security.md) so no fire re-points it.
+
+claude-coder is a *separate service* only because those restrictions are bound at the service level.
+The end state binds the untrusted boundary **per run** instead: when the server drops the CLI to
+`SUB_AGENT_UID`, it also hands that spawn a **stripped profile** — replace-mode + github-only MCP,
+scoped token, no secret env. A single `claude-agent` then serves both trusted and untrusted tasks by
+profile, and **claude-coder as a separate service is retired.**
+
+This is the fleshing-out of `docs/plans/reviewer-identity-security.md`: its "minimal-surface property"
+(github-only tools, no secret-bearing MCP, config-replace) becomes a **per-run binding** rather than a
+per-service deployment, and the frozen-executor invariant becomes "pr-review runs with the untrusted
+**profile**" — the security control is the profile, not a specific service.
+
+### Increments
+
+1. **Process identity** (this plan's core): `AGENT_UID` / `SUB_AGENT_UID` / `AGENT_GID`, entrypoint
+   bootstrap, config-gated sudo drop, env-scrubbing. claude-coder unchanged.
+2. **Per-run trust profile**: bind {`SUB_AGENT_UID`, replace-mode github-only MCP, scoped token} at
+   spawn for untrusted runs; move the untrusted boundary from service to run; **retire claude-coder**.
+
+Related: [[compose-mode-enabled]], [[harden-by-encoding]]; supersedes the #36/#38 entrypoint and
+fleshes out docs/plans/reviewer-identity-security.md.
