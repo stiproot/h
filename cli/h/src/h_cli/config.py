@@ -1,8 +1,8 @@
-"""Env-derived settings — defaults mirror the cli/scripts siblings, overridable the same way.
+"""Env-derived CLI configuration, agent identity tables, and agent URL registry.
 
-The CLI is installed editable as a uv workspace member, so file-relative resolution reaches the
-repo checkout: this file lives at cli/h/src/h_cli/config.py, making parents[3] the cli/ dir.
-"""
+Defaults mirror the cli/scripts siblings and are overridable via environment variables. The agent
+identity/URL lookup tables map user-facing --agent names to their service endpoints and fire-time
+{runActivity, agentId} parameter pairs."""
 
 import os
 from pathlib import Path
