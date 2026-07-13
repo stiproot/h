@@ -102,6 +102,10 @@ apps/openhands-agent/src/                 # openhands-agent
 ├── index.ts                              # composition root – registers shared agent-server routes, starts Fastify
 └── infrastructure/openhands-runner.ts    # IAgentRunner impl; /run, /setup, /dapr/subscribe come from agent-server
 
+apps/pi-agent/src/                        # pi-agent — pi CLI coding agent
+├── index.ts                              # composition root – registers shared agent-server routes, starts Fastify
+└── infrastructure/pi-runner.ts           # IAgentRunner impl using PiInvokerLive; no MCP provisioning (pi has no MCP)
+
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
 ├── main.py                               # composition root – registers shared agent-server routes + /workflow (babysitter); opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
 ├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – delegates to agent_core's ReAct loop (OpenAIChatAdapter); merges the workflow-mcp toolset when enabled
@@ -165,7 +169,7 @@ apps/workflow-svc/src/
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
-│       ├── setup / clone-repo / create-worktree / run-{claude,openhands,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy
+│       ├── setup / clone-repo / create-worktree / run-{claude,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy
 │       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + ===GOAL===RESOLVED); BEST-EFFORT (§3/§10)
 │       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: parse ===PR=== for arm-revise); LOUD, idempotent
 │       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD
@@ -213,6 +217,7 @@ packages/js/agent-cli/src/
 └── agents/
     ├── claude.ts      # ClaudeStrategy – claude CLI flags, JSONL stream parser
     ├── openhands.ts   # OpenhandsStrategy – openhands CLI flags, per-line stdout parser with onEvent callback
+    ├── pi.ts          # PiStrategy – pi CLI --mode json JSONL parser; BYOK provider env routing
     ├── shared.ts      # shared env helpers
     └── types.ts       # AgentInvoker, AgentEnv/AGENT_ENV_KEYS, LlmConfig, ModelUsage, strategy contracts
 

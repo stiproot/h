@@ -144,6 +144,35 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
 
 
 @respx.mock
+def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
+    route = _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/feature-pr").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "feature-pr",
+                "steps": [],
+                "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "-w", "feature-pr", "--agent", "pi", "-w", "pr-review",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["workflows"][0]["params"] == {
+        "runActivity": "run-pi",
+        "agentId": "pi-agent",
+    }
+    assert "params" not in body["workflows"][1]
+
+
+@respx.mock
 def test_chain_run_agent_on_slotless_workflow_fails_loud(tmp_path: Path) -> None:
     _mock_run()
     # Published before fire-time identity: no runActivity default → --agent must not silently bake.

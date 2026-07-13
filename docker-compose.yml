@@ -396,6 +396,51 @@ services:
     depends_on:
       - openhands-agent
 
+  # --- Pi coding-agent CLI agent ---
+  pi-agent:
+    container_name: pi-agent
+    profiles: [all, pi-agent]
+    build:
+      context: .
+      dockerfile: apps/pi-agent/Dockerfile
+    environment:
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - AGENT_MODEL=${PI_MODEL:-claude-sonnet-4-6}
+      - AGENT_BASE_DIR=/workspace/pi-agent
+    volumes:
+      - ../h-workspace:/workspace
+    ports:
+      - "8015:8000"
+      - "3515:3500"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "which pi"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  pi-agent-dapr:
+    container_name: pi-agent-dapr
+    profiles: [all, pi-agent]
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=pi-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+    network_mode: "service:pi-agent"
+    depends_on:
+      - pi-agent
+
   # --- Dapr Agents SDK agent ---
   dapr-agent:
     container_name: dapr-agent

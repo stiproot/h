@@ -13,6 +13,7 @@ import type {
 import { AGENT_ENV_KEYS } from "./agents/types.ts";
 import { claudeStrategy } from "./agents/claude.ts";
 import { openhandsStrategy } from "./agents/openhands.ts";
+import { piStrategy } from "./agents/pi.ts";
 import { runAgentProcessEffect } from "./agents/run-process.ts";
 import { createLogger } from "./lib/logger.ts";
 
@@ -87,6 +88,12 @@ export const OpenhandsInvokerLive: Layer.Layer<
   never,
   CommandExecutor.CommandExecutor | HttpClient.HttpClient
 > = layerAgentInvoker(openhandsStrategy);
+
+export const PiInvokerLive: Layer.Layer<
+  AgentInvoker,
+  never,
+  CommandExecutor.CommandExecutor | HttpClient.HttpClient
+> = layerAgentInvoker(piStrategy);
 
 function invokeAgent(
   strategy: AgentStrategy,

@@ -27,6 +27,7 @@ AGENT_URLS = {
     "claude-agent": "http://localhost:8002",
     "claude-coder": "http://localhost:8014",
     "openhands-agent": "http://localhost:8004",
+    "pi-agent": "http://localhost:8015",
     "dapr-agent": "http://localhost:8006",
     "dapr-claude-loop-agent": "http://localhost:8007",
     "langgraph-agent": "http://localhost:8009",
@@ -52,6 +53,8 @@ AGENT_IDENTITY: dict[str, tuple[str, str]] = {
     "claude-coder": ("run-claude-coder", "claude-coder"),
     "openhands": ("run-openhands", "openhands-agent"),
     "openhands-agent": ("run-openhands", "openhands-agent"),
+    "pi": ("run-pi", "pi-agent"),
+    "pi-agent": ("run-pi", "pi-agent"),
 }
 
 # The model param slots publish-mode templates expose (chain's KIND_MODEL_PARAMS, unioned).

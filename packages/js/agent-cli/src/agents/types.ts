@@ -7,13 +7,7 @@ import type { Logger } from "../lib/logger.ts";
  * LLM API keys forwarded to agent CLI processes. Which key is required
  * depends on the agent type and is validated contextually at invocation time.
  */
-export const AGENT_ENV_KEYS = [
-  "ANTHROPIC_API_KEY",
-  "CURSOR_API_KEY",
-  "GEMINI_API_KEY",
-  "OPENAI_API_KEY",
-  "LLM_API_KEY",
-] as const;
+export const AGENT_ENV_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "LLM_API_KEY"] as const;
 
 export type AgentEnv = Partial<Record<(typeof AGENT_ENV_KEYS)[number], string>>;
 
@@ -77,7 +71,7 @@ export type AgentInvoker = (params: {
   sessionId?: string;
 }>;
 
-export type AgentType = "claude" | "cursor" | "gemini" | "codex" | "openhands";
+export type AgentType = "claude" | "openhands" | "pi";
 
 /** The agent CLI subprocess could not be spawned or its stdio streams failed. */
 export class AgentSpawnError extends Data.TaggedError("AgentSpawnError")<{
@@ -217,6 +211,13 @@ export interface PreparedAgentInvocation {
   stdinInput?: string;
   shouldFilterEvent?: (event: StreamEvent) => boolean;
   streamParser?: AgentStreamParser;
+  /**
+   * Optional teardown run once the subprocess has finished — on success,
+   * failure, timeout, or interruption alike. Used to remove temp artifacts a
+   * strategy writes in {@link AgentStrategy.buildInvocation} (e.g. the `--file`
+   * task file). Must not throw; the runner ignores its errors.
+   */
+  cleanup?: () => void | Promise<void>;
 }
 
 export interface AgentStrategy {
