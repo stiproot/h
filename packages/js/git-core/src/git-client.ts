@@ -6,11 +6,12 @@ import { Context, Data, Effect, Layer, Stream } from "effect";
 /**
  * How git authenticates to the remote. Strategies are *named* in workflow/step config; the
  * secrets stay in env/mounts on the agent service, never in a definition.
- *  - `pat`: inject a token into the https URL per-invocation (never persisted) — the original
- *    behaviour; `token` on Clone/Worktree options is shorthand for this strategy.
- *  - `ssh`: rewrite a github https URL to its `git@github.com:` form and let SSH authenticate
- *    the transport — via `keyPath` (`GIT_SSH_COMMAND -i`) or the ambient agent/config when
- *    unset. SSH covers git transport only; API calls (PR creation) authenticate separately.
+ *  - `pat`: inject a token into a github URL — in EITHER form (https or scp-style ssh) — per
+ *    invocation (never persisted), so the transport resolves over https regardless of the origin
+ *    the clone carries; `token` on Clone/Worktree options is shorthand for this strategy.
+ *  - `ssh`: rewrite a github URL (either form) to its `git@github.com:` form and let SSH
+ *    authenticate the transport — via `keyPath` (`GIT_SSH_COMMAND -i`) or the ambient agent/config
+ *    when unset. SSH covers git transport only; API calls (PR creation) authenticate separately.
  * A `github-app` strategy (mint an installation token per op, then the pat path) can slot in
  * here without touching callers.
  */
@@ -28,21 +29,32 @@ export type CloneOptions = {
 };
 
 const GITHUB_HTTPS = "https://github.com/";
+const GITHUB_SSH = "git@github.com:";
 
-// Inject a GitHub token into an https github URL so private repos resolve. Done in-process at
-// clone time; the token is passed to git as an argument (no shell), so it never lands in a shell
-// command line, the workflow definition, or the task entry.
-function authenticatedUrl(url: string, token?: string): string {
-  if (!token || !url.startsWith(GITHUB_HTTPS)) return url;
-  return `https://x-access-token:${token}@github.com/${url.slice(GITHUB_HTTPS.length)}`;
+// The `owner/repo(.git)` path of a github remote in EITHER transport form — https
+// (`https://github.com/owner/repo`) or scp-style ssh (`git@github.com:owner/repo`); undefined for a
+// non-github URL. Extracting the path independently of the form is what lets a transport strategy be
+// chosen per repo without depending on the form the clone's origin happens to carry.
+function githubRepoPath(url: string): string | undefined {
+  if (url.startsWith(GITHUB_HTTPS)) return url.slice(GITHUB_HTTPS.length);
+  if (url.startsWith(GITHUB_SSH)) return url.slice(GITHUB_SSH.length);
+  return undefined;
 }
 
-// Rewrite a github https URL to its SSH form so the transport authenticates via SSH keys.
-// Non-github and already-SSH URLs pass through untouched.
+// Inject a GitHub token into a github URL — in either form — so a private repo resolves over https.
+// Done in-process at invocation time; the token is passed to git as an argument (no shell), so it
+// never lands in a shell command line, the workflow definition, or the task entry. Non-github URLs
+// and the tokenless case pass through untouched.
+function authenticatedUrl(url: string, token?: string): string {
+  const path = token ? githubRepoPath(url) : undefined;
+  return path === undefined ? url : `https://x-access-token:${token}@github.com/${path}`;
+}
+
+// Rewrite a github URL — in either form — to its scp-style SSH form so the transport authenticates
+// via SSH keys. Non-github URLs pass through untouched; an already-SSH URL normalizes to itself.
 function sshUrl(url: string): string {
-  if (!url.startsWith(GITHUB_HTTPS)) return url;
-  const path = url.slice(GITHUB_HTTPS.length).replace(/\.git$/, "");
-  return `git@github.com:${path}.git`;
+  const path = githubRepoPath(url);
+  return path === undefined ? url : `git@github.com:${path.replace(/\.git$/, "")}.git`;
 }
 
 const normalizeAuth = (auth: GitAuth | undefined, token: string | undefined): GitAuth =>

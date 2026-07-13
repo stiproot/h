@@ -191,9 +191,14 @@ describe("GitAuth strategy (pure helpers)", () => {
     expect(resolveUrl("/local/path/repo", { kind: "ssh" })).toBe("/local/path/repo");
   });
 
-  it("pat injects the token into a github https URL only", () => {
+  it("pat injects the token into a github URL in either form (https or scp-ssh)", () => {
     expect(resolveUrl("https://github.com/o/r", { kind: "pat", token: "tok" })).toBe(
       "https://x-access-token:tok@github.com/o/r",
+    );
+    // A scp-style ssh origin normalizes to the tokened https form, so a clone whose origin is ssh
+    // can still fetch/push over https with a PAT — no ssh key needed in the container.
+    expect(resolveUrl("git@github.com:o/r.git", { kind: "pat", token: "tok" })).toBe(
+      "https://x-access-token:tok@github.com/o/r.git",
     );
     expect(resolveUrl("https://github.com/o/r", { kind: "pat" })).toBe("https://github.com/o/r");
     expect(resolveUrl("/local/path/repo", { kind: "pat", token: "tok" })).toBe("/local/path/repo");
