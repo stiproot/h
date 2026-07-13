@@ -125,6 +125,19 @@ export const PiRunnerLive: Layer.Layer<
             ),
           );
 
+        // A resolved InvocationResult may carry a non-zero exit code (timeout → 124,
+        // spawn failure → 1, or the agent itself exited with an error). Check and
+        // propagate as a run failure so the workflow step does not silently succeed.
+        if (result.exitCode !== undefined && result.exitCode !== 0) {
+          const msg = result.stderr ?? `Agent exited with code ${result.exitCode}`;
+          yield* handle.finish({
+            status: "failed",
+            output: result.stdout ?? "",
+            error: msg,
+          });
+          return yield* Effect.fail(new PiRunError({ cause: new Error(msg) }));
+        }
+
         const summary = yield* handle.finish({
           status: "completed",
           output: result.stdout,

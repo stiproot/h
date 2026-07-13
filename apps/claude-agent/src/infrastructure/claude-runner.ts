@@ -180,6 +180,16 @@ const runClaude = (
         })
         .pipe(Effect.withSpan("claude cli", { attributes: { "claude.model": model } }));
 
+      // A resolved InvocationResult may carry a non-zero exit code (timeout → 124,
+      // spawn failure → 1, or the agent itself exited with an error). Fail here so the
+      // outer tapErrorCause records the ledger entry and the workflow step doesn't
+      // silently succeed.
+      if (result.exitCode !== undefined && result.exitCode !== 0) {
+        return yield* Effect.fail(
+          new Error(result.stderr ?? `Agent exited with code ${result.exitCode}`),
+        );
+      }
+
       const summary = yield* ledger.finish({
         status: "completed",
         output: result.stdout ?? "",
