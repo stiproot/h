@@ -161,6 +161,13 @@ const fireWorkflow = (
     yield* invoker.invoke({
       ...toRequest(stored.value, traceparent, params),
       instanceId,
+      // Chain members are sequential work on ONE branch/PR, so they SHARE a workspace keyed by the
+      // chain id (the reusable-workspace pattern): every member's worktree/workspace dir resolves to
+      // the same path. Without this, member N's create-worktree cuts feature/<slug> at a
+      // per-instanceId path and collides with an earlier member's worktree of the same branch
+      // ("'feature/<slug>' is already used by worktree at …"). Idempotent: the first member creates
+      // the worktree, later members reuse it.
+      workspaceId: row.chainId,
       // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
       fresh: forceFresh || (workflow.fresh ?? false),
       ...(wf ? { wf } : {}),

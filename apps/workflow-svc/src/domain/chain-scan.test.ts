@@ -148,6 +148,10 @@ describe("registerChainForFire", () => {
     // workflow 0 fired: feature-pr resolved, under feature-x, with the spec threaded in.
     expect(inv.invokes).toHaveLength(1);
     expect(inv.invokes[0].instanceId).toBe("feature-x");
+    // Every member shares a workspaceId = chainId, so all resolve ONE worktree (feature-pr creates
+    // it, revise reuses it). Without this, members cut the same branch at per-instanceId paths and
+    // collide ("'feature/<slug>' is already used by worktree at …").
+    expect(inv.invokes[0].workspaceId).toBe("x");
     expect(inv.invokes[0].steps).toEqual([{ activity: "run-feature-pr" }]);
     expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "do it" });
     expect(mem.ledgers.get(new Date().toISOString().slice(0, 10))).toMatchObject({

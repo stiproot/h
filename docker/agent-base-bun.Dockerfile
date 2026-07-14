@@ -24,6 +24,11 @@ RUN groupadd -g "$AGENT_GID" agent && \
     useradd -u "$AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-svc agent-svc && \
     useradd -u "$SUB_AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-cli agent-cli && \
     echo 'agent-svc ALL=(agent-cli) NOPASSWD:SETENV: ALL' > /etc/sudoers.d/agent && \
+    # sudo resets umask, so the dropped CLI (agent-cli) would create files 0644 (not group-writable)
+    # — then the server (agent-svc, same group) can't modify them, and neither can another chain
+    # member sharing the worktree (observed: revise EACCES overwriting .mcp.json a prior member's CLI
+    # restored via `git checkout`). Force umask 002 for the drop so shared-workspace files stay g+w.
+    printf 'Defaults:agent-svc umask=0002, umask_override\n' >> /etc/sudoers.d/agent && \
     chmod 0440 /etc/sudoers.d/agent && \
     # Debian's HOME_MODE is 0700, so the dropped CLI (agent-cli) can't traverse into agent-svc's
     # home to reach the SHARED ~/.claude (skills + the claude CLI's session-env). Both users are in
