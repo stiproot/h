@@ -14,7 +14,7 @@ set -e
 AGENT_UID="${AGENT_UID:-1000}"
 AGENT_GID="${AGENT_GID:-1000}"
 
-# AGENT_BASE_DIR is the per-service workspace root (claude-agent vs claude-coder override it), plus
+# AGENT_BASE_DIR is the per-service workspace root (each agent service sets its own), plus
 # the shared run-ledger and worktrees roots every agent writes to.
 for dir in "${AGENT_BASE_DIR:-/workspace/agent}" /workspace/.runs /workspace/worktrees; do
   mkdir -p "$dir"

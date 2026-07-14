@@ -20,15 +20,13 @@ GitHub (on the target repo):
 1. Labels: `agent-approved` (the maintainer trust gate — restrict labeling to triage+
    collaborators), `agent-in-flight`, `agent-done`, `agent-needs-human`, `agent-retry`.
 2. Branch protection on `main`: require a PR; the agent must never be able to push to main.
-3. Credentials — either posture:
-   - **Owner-repo trial (current):** your SSH key does git transport as you
-     (`GIT_AUTH=ssh`, optionally `GIT_SSH_KEY_PATH`), your PAT (`GH_TOKEN`) does API calls
-     (PR creation, issue reads/comments) as you. Add a bypass rule so you can approve your
-     own PRs. One identity; simplest.
-   - **Two-token split (graduation):** the engine's discovery token (`GH_TOKEN` on workflow-svc,
-     for the issue-board read) = issues:read; coder token (`GH_CODER_TOKEN` on claude-coder) =
-     contents:write + pull_requests:write + issues:read ONLY. Prefer a machine user so a human
-     account can approve the bot's PRs.
+3. Credentials — **owner-repo trust model (current):** your SSH key does git transport as you
+   (`GIT_AUTH=ssh`, optionally `GIT_SSH_KEY_PATH`), your PAT (`GH_TOKEN`) does API calls
+   (PR creation, issue reads/comments) as you. Add a bypass rule so you can approve your own PRs.
+   One identity; simplest — we own the repos the loop builds, so the executor (claude-agent) runs
+   with full tools and the full token. A scoped coder token bound to a minimal-surface executor
+   returns as a per-run trust profile if untrusted third-party repos come into play
+   (docs/plans/reviewer-identity-security.md); claude-coder as a separate service was retired.
 
 Local:
 
@@ -46,13 +44,13 @@ Local:
      gitAuth: ssh                           # match feature.gitAuth
    ```
 
-Acceptance: a push to `main` with the coder credential is rejected; the coder PAT cannot
-create an issue (two-token posture only).
+Acceptance: a push to `main` with the loop's credential is rejected (branch protection), so the
+loop can only land work through a PR.
 
 ## Bring-up order
 
 ```sh
-cli/scripts/run-claude-coder.sh      # the stripped instance (feature runs) — github MCP only
+cli/scripts/run-claude-agent.sh      # the loop's executor (feature runs + pr-review)
 # workflow-svc, workflow-mcp, dapr-mcp, obs-mcp as usual (make dev-tab)
 ```
 
@@ -75,7 +73,7 @@ uv run h workflow publish revise
 # 3. Phase-1 acceptance: hand-fire one issue-linked run before any automation.
 #    Template VALUES ride -p key=value (slug/spec/issueNumber/repo); --agent selects the executor.
 uv run h workflow run feature-pr -p repo=<owner>/h -p slug=issue-X -p spec=@toy.md \
-  -p issueNumber=X --instance-id feature-issue-X --agent claude-coder
+  -p issueNumber=X --instance-id feature-issue-X --agent claude-agent
 #    Confirm it opened a PR AND armed a revise cron: `h cron list` shows a
 #    cron:sub:<owner>/h:issue-X:revise row.
 

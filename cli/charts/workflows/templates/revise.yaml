@@ -6,7 +6,7 @@ github MCP), addresses each in a worktree of the PR's branch, replies inline + r
 pushes — updating the PR. It reads its subject from GitHub, not a chain blackboard, so it runs
 standalone:
 
-  h workflow run revise -p pr=30 -p slug=pi-agent --agent claude-coder
+  h workflow run revise -p pr=30 -p slug=pi-agent --agent claude-agent
 
 and as a chain member (the engine threads pr + slug from the prior workflow). Publish-native: pr /
 slug are {{params.*}} engine tokens; identity is fire-time params (runActivity/agentId); gitAuth

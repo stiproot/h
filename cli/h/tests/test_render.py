@@ -331,10 +331,9 @@ def test_pr_review_publish_mode_opens_param_slots() -> None:
     assert "{{params.focus}}" in review_task
     assert "{{params.repo}}" in review_task  # the target repo is a fire-time identity token
     assert "===REVIEW===" in review_task
-    # Executor must be claude-coder — the security property.
-    assert definition["steps"][0]["input"]["agentId"] == "claude-coder"
-    # Activity must be run-claude-coder, not run-claude.
-    assert definition["steps"][1]["activity"] == "run-claude-coder"
+    # Executor is claude-agent — the loop's pinned reviewer (trust model; no longer claude-coder).
+    assert definition["steps"][0]["input"]["agentId"] == "claude-agent"
+    assert definition["steps"][1]["activity"] == "run-claude"
 
 
 def test_pr_review_repo_is_a_fire_param_not_required() -> None:

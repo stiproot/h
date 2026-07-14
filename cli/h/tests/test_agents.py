@@ -15,7 +15,6 @@ def test_agents_list() -> None:
     # Each agent name and its agentId should appear in the table.
     for name, agent_id in (
         ("claude", "claude-agent"),
-        ("claude-coder", "claude-coder"),
         ("openhands", "openhands-agent"),
         ("pi", "pi-agent"),
     ):

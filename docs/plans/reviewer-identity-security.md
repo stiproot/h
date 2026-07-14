@@ -1,22 +1,37 @@
-**Status:** STUB (2026-07-09) — a placeholder to be fleshed out; captures a ruling made during the
-chain-composition-surface work so it isn't lost. Not yet designed.
+**Status:** STUB (2026-07-09) — a placeholder to be fleshed out.
+**RELAXED under the trust model (2026-07-14):** claude-coder was retired and pr-review now runs on
+the trusted claude-agent — see "Current posture" below. This doc is now the home for reintroducing a
+minimal-surface reviewer as a **per-run trust profile** if/when untrusted third-party repos appear.
 **Living doc** — flesh out when reviewer-identity flexibility is actually needed.
 
 # Reviewer identity: minimal-surface executors for untrusted-input workflows
 
-## The invariant (what exists)
+## Current posture (2026-07-14) — trust model
 
-`pr-review`'s executor is hardcoded to **claude-coder** deliberately: the PR diff it reads is
-untrusted third-party text, so the reviewing agent's tool surface is minimized — github-only MCP,
-no workflows/dapr/obs tools, no Linear/Notion secrets, and `MCP_CONFIG_MODE=replace` so it never
-inherits a target repo's own servers. Identity-as-params (chain-composition-surface §1.9) applies
-to every other template, but making pr-review's executor a fire-time param would let any fire
-re-point the reviewer at a full-tool agent. It got the `modelReview` param only.
+We own the repos the loop reviews, so the reviewing agent no longer needs capability isolation.
+**claude-coder (the separate minimal-surface service) is retired** (docs/plans/agent-process-identity.md
+increment 2). `pr-review`'s executor is now **pinned to claude-agent** — the loop's consistent
+reviewer, an *operational* pin (still frozen via `FROZEN_EXECUTOR_KEYS`, `--agent` warns-and-ignores),
+not a security boundary. The task prose still frames the PR diff as data-to-review, not instructions —
+that hygiene is independent of trust.
 
-## Interim ruling (2026-07-09)
+## The original invariant (superseded — reinstate per-run if untrusted repos return)
 
-`--agent` on a frozen-executor workflow **logs a warning and defaults to the hardcoded executor** — it
-does not error, and it must never silently comply. The warning names the invariant and this doc.
+Before the trust model, `pr-review`'s executor was hardcoded to **claude-coder** deliberately: the PR
+diff is untrusted third-party text, so the reviewer's surface was minimized — github-only MCP, no
+workflows/dapr/obs tools, no Linear/Notion secrets, `MCP_CONFIG_MODE=replace` so it never inherited a
+target repo's own servers, and a scoped `GH_CODER_TOKEN`. Those four restrictions were bound at the
+*service* level, which is why claude-coder was a separate deployment. If untrusted repos return, the
+right shape is **not** a second service but a **per-run trust profile**: bind {replace-mode + github-only
+MCP src, scoped token, env `subset` (docs/plans/agent-env-propagation.md)} at spawn — alongside the OS
+drop to `SUB_AGENT_UID` (docs/plans/agent-process-identity.md) — so a single claude-agent serves both
+trusted and untrusted runs by profile. The frozen-executor invariant then becomes "pr-review runs with
+the untrusted **profile**", the security control being the profile, not a specific service.
+
+## Interim ruling (2026-07-09, still in force)
+
+`--agent` on a frozen-executor workflow **logs a warning and defaults to the pinned executor** — it
+does not error, and it must never silently comply. The warning names this doc.
 
 ## To flesh out later
 

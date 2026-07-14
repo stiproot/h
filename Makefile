@@ -208,7 +208,7 @@ dev-tab: ## Add the service stack as a new named tab in the current zellij sessi
 #
 # Like dev / dev-tab but uses the h-builds-h.kdl layout: all services run under
 # cli/scripts/_supervise.sh, which restarts them automatically on exit with capped
-# exponential backoff. Includes claude-coder (the stripped coding agent for the loop).
+# exponential backoff. claude-agent is the loop's executor (trust model — claude-coder retired).
 # Use this layout for unattended cron-driven operation; use dev / dev-tab for interactive dev.
 
 .PHONY: h-builds-h h-builds-h-tab

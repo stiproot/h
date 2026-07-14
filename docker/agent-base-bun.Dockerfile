@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Shared base for the bun-stack CLI agents (claude/claude-coder, openhands, pi). Bakes the
+# Shared base for the bun-stack CLI agents (claude, openhands, pi). Bakes the
 # process-identity model ONCE (docs/plans/agent-process-identity.md): the non-root service user
 # (AGENT_UID / agent-svc), the dropped-CLI user (SUB_AGENT_UID / agent-cli), the shared group
 # (AGENT_GID), the scoped sudoers drop, and the shared entrypoint. Agents `FROM h-agent-base-bun`,

@@ -36,7 +36,7 @@ describe("provisionMcpConfig", () => {
     );
 
   it("replace mode overwrites the cwd config with only the source's servers", async () => {
-    const src = join(srcDir, ".mcp.coder.json");
+    const src = join(srcDir, ".mcp.src.json");
     writeFileSync(src, H_SERVERS);
     writeFileSync(join(cwd, ".mcp.json"), CWD_SERVERS);
     const exit = await run(src, "replace");

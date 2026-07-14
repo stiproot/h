@@ -44,8 +44,9 @@ Pick the closest existing agent as the template (a **CLI** agent → `openhands-
 - [ ] `cli/h/src/h_cli/config.py`: `AGENT_IDENTITY` (+`<name>` and `<name>-agent` keys), `AGENT_URLS`.
 - [ ] `docker-compose.yml` (app + `-dapr` sidecar, profiles, ports, healthcheck), `run-<name>-agent.sh`,
       `dapr/resiliency.yaml` + `dapr/local/resiliency.yaml`, `.env.example`.
-- [ ] Port block: next free after the current max (as of #24, claude-coder holds `8014/3514/36014/61015`
-      → next is `8015/3515/36015/61016`). Pin app / dapr-http / dapr-grpc / dapr-internal-grpc.
+- [ ] Port block: next free after the current max (as of #24, pi-agent holds `8015/3515/36015/61016`
+      → next is `8016/3516/36016/61017`; `8014/3514/36014/61015` freed by claude-coder's retirement).
+      Pin app / dapr-http / dapr-grpc / dapr-internal-grpc.
 - [ ] `README.md` (agent list, start block, profile table, stack table, **port-allocation table**),
       `CLAUDE.md` (app-tree, `run-{…}.activity.ts` list, agent-cli `agents/` list).
 - [ ] k8s: NOT required for parity — only `claude-agent` has k8s manifests.

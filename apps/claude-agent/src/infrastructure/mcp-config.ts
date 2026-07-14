@@ -9,7 +9,7 @@ type McpConfig = { mcpServers?: Record<string, unknown>; [key: string]: unknown 
  *   operate in a worktree that carries its own .mcp.json (e.g. a target repo ships one with
  *   only a `tessl` server) while still gaining h's dapr/obs/workflows servers.
  * - `"replace"`: the existing config is discarded entirely — servers AND other top-level
- *   keys — and only the incoming config survives. The claude-coder posture: the agent that
+ *   keys — and only the incoming config survives. A minimal-surface posture: an agent that
  *   executes untrusted specs must never inherit any cwd servers, whatever the target repo
  *   (a hostile third-party repo's .mcp.json is exactly as dangerous as h's own).
  *

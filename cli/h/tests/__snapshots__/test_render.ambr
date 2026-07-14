@@ -277,12 +277,12 @@
     - id: setup
       activity: setup
       input:
-        agentId: "claude-coder"
+        agentId: "claude-agent"
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
           - cmd: "if [ -f $AGENT_APP_DIR/steering/h-lab-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-lab-runtime.md ~/.claude/CLAUDE.md; fi"
     - id: review
-      activity: run-claude-coder
+      activity: run-claude
       input:
         task: |-
           You are a code reviewer for the {{params.repo}} GitHub repository. Your task is to review

@@ -27,7 +27,7 @@ const claudeRunnerConfig = Config.all({
   runsDir: Config.option(Config.string("AGENT_RUNS_DIR")),
   // Source .mcp.json merged into each run's cwd (defaults to the file mounted at baseDir).
   mcpConfigSrc: Config.option(Config.string("MCP_CONFIG_SRC")),
-  // "replace" overwrites the cwd's servers entirely (the claude-coder posture); default "merge".
+  // "replace" overwrites the cwd's servers entirely (a minimal-surface posture); default "merge".
   // Config.literal makes any other value a typed startup failure — this knob is a security
   // boundary, so a typo must fail closed at boot, never silently fall back to merge.
   mcpConfigMode: Config.literal(
@@ -76,8 +76,8 @@ const resolveConfig = claudeRunnerConfig.pipe(
  *   own servers and top-level keys survive; h's win on a name conflict). A missing `src` is
  *   skipped — merge mode is a convenience, not a guarantee.
  * - `replace`: the cwd's config is discarded entirely and only `src`'s servers survive — the
- *   claude-coder posture, where the cwd is a target repo whose `.mcp.json` must never reach
- *   the agent executing untrusted specs. Fails CLOSED: a missing `src` is a defect (the run
+ *   minimal-surface posture, where the cwd is a target repo whose `.mcp.json` must never reach
+ *   an agent executing untrusted specs. Fails CLOSED: a missing `src` is a defect (the run
  *   aborts loudly), because silently skipping the rewrite would leave the target repo's own
  *   servers — potentially h's control-plane set — in place.
  */

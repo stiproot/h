@@ -2,6 +2,11 @@
 
 **Status:** design complete (2026-07-05); phase 0 not started
 **Living doc** — update the Progress log as phases land.
+**Superseded detail (2026-07-14):** the `claude-coder` split described below (the stripped,
+github-only executor) was **retired** — under the trust model the loop's executor is the trusted
+`claude-agent` (docs/plans/agent-process-identity.md increment 2 + reviewer-identity-security.md).
+Read the claude-coder references below as historical design; the operational companion is
+docs/h-builds-h-runbook.md.
 
 ## Context
 

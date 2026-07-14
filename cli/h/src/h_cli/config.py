@@ -25,7 +25,6 @@ STATE_URL = f"http://localhost:{DAPR_HTTP_PORT}/v1.0/state/statestore"
 # submit-and-babysit endpoint; a full http(s) URL is also accepted wherever a name is.
 AGENT_URLS = {
     "claude-agent": "http://localhost:8002",
-    "claude-coder": "http://localhost:8014",
     "openhands-agent": "http://localhost:8004",
     "pi-agent": "http://localhost:8015",
     "dapr-agent": "http://localhost:8006",
@@ -50,7 +49,6 @@ def resolve_agent_url(agent: str) -> str | None:
 AGENT_IDENTITY: dict[str, tuple[str, str]] = {
     "claude": ("run-claude", "claude-agent"),
     "claude-agent": ("run-claude", "claude-agent"),
-    "claude-coder": ("run-claude-coder", "claude-coder"),
     "openhands": ("run-openhands", "openhands-agent"),
     "openhands-agent": ("run-openhands", "openhands-agent"),
     "pi": ("run-pi", "pi-agent"),
@@ -61,8 +59,10 @@ AGENT_IDENTITY: dict[str, tuple[str, str]] = {
 # `--model` is execution machinery (like `--agent`): it sets these slots on `h workflow run`.
 MODEL_PARAM_SLOTS: tuple[str, ...] = ("modelPlan", "modelImplement", "modelReview")
 
-# Saved keys whose executor is frozen by the untrusted-input security invariant
-# (docs/plans/reviewer-identity-security.md): --agent is warned-and-ignored, never applied.
+# Saved keys whose executor is pinned: --agent is warned-and-ignored, never applied. pr-review's
+# executor is the loop's consistent reviewer (claude-agent). Under the trust model this pin is an
+# operational default, not a security boundary (docs/plans/reviewer-identity-security.md — a
+# minimal-surface reviewer returns as a per-run trust profile if untrusted repos do).
 FROZEN_EXECUTOR_KEYS: frozenset[str] = frozenset({"pr-review"})
 
 

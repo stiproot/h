@@ -4,9 +4,17 @@ Status: **increment 1 landed + validated** (2026-07-14). Every agent image is on
 full split, Python agents baseline); the CLI fleet is validated end-to-end — a full
 feature→pr-review→revise chain completed with openhands AND claude-coder both running their servers
 non-root as `agent-svc` (10001) and dropping the untrusted CLI to `agent-cli` (10002). Local mode
-verified inert. Supersedes the per-agent claude entrypoint merged in #38. Remaining: increment 2 (the
-per-run trust profile that retires claude-coder); the Python images are wired but build-verify only
-(not in the running stack).
+verified inert. Supersedes the per-agent claude entrypoint merged in #38. The Python images are wired
+but build-verify only (not in the running stack).
+
+**Increment 2 — resolved by SIMPLIFICATION, not built (2026-07-14).** Rather than build the per-run
+trust profile, the user chose to **embrace the trust model** (we own the repos the fleet works in and
+don't run h against third-party repos soon) and **retire claude-coder outright** — pr-review + the
+h-builds-h loop now run on the trusted claude-agent (full tools, full env). The per-run trust profile
+(and the env `subset` strategy) are **deferred to stubs** — docs/plans/reviewer-identity-security.md
+and docs/plans/agent-env-propagation.md — to revisit if/when untrusted repos actually appear. The OS
+process-identity model (this plan's core, increment 1) is unchanged and still carries the untrusted
+CLI's file/UID isolation.
 
 ## Problem
 
@@ -141,10 +149,16 @@ per-service deployment, and the frozen-executor invariant becomes "pr-review run
 
 ### Increments
 
-1. **Process identity** (this plan's core): `AGENT_UID` / `SUB_AGENT_UID` / `AGENT_GID`, entrypoint
-   bootstrap, config-gated sudo drop, env-scrubbing. claude-coder unchanged.
-2. **Per-run trust profile**: bind {`SUB_AGENT_UID`, replace-mode github-only MCP, scoped token} at
-   spawn for untrusted runs; move the untrusted boundary from service to run; **retire claude-coder**.
+1. **Process identity** (this plan's core, DONE): `AGENT_UID` / `SUB_AGENT_UID` / `AGENT_GID`,
+   entrypoint bootstrap, config-gated sudo drop. (Env-scrubbing was scoped OUT — see increment 2 —
+   and is now the env-propagation stub.) claude-coder unchanged at this point.
+2. **Per-run trust profile — DEFERRED, superseded by simplification (2026-07-14).** The intent was
+   to bind {`SUB_AGENT_UID`, replace-mode github-only MCP, scoped token, env `subset`} at spawn for
+   untrusted runs and move the boundary from service to run. Instead we **embraced the trust model
+   and retired claude-coder** (owned repos need no per-run isolation). What actually landed: delete
+   the claude-coder service + activity + wiring, repoint pr-review/the loop to claude-agent. The
+   profile itself is documented for later in docs/plans/reviewer-identity-security.md (the capability
+   binding) + docs/plans/agent-env-propagation.md (the env `subset` half).
 
 ## Validated on openhands (2026-07-13) + migration requirements it surfaced
 
