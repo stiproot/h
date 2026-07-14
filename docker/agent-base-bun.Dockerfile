@@ -24,7 +24,12 @@ RUN groupadd -g "$AGENT_GID" agent && \
     useradd -u "$AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-svc agent-svc && \
     useradd -u "$SUB_AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-cli agent-cli && \
     echo 'agent-svc ALL=(agent-cli) NOPASSWD:SETENV: ALL' > /etc/sudoers.d/agent && \
-    chmod 0440 /etc/sudoers.d/agent
+    chmod 0440 /etc/sudoers.d/agent && \
+    # Debian's HOME_MODE is 0700, so the dropped CLI (agent-cli) can't traverse into agent-svc's
+    # home to reach the SHARED ~/.claude (skills + the claude CLI's session-env). Both users are in
+    # group `agent`; 0750 lets agent-cli traverse+read the home while setup keeps ~/.claude g+w
+    # (umask 002). Without this a dropped run fails with EACCES writing ~/.claude/session-env.
+    chmod 0750 /home/agent-svc
 COPY docker/agent-entrypoint.sh /agent-entrypoint.sh
 RUN chmod +x /agent-entrypoint.sh
 ENTRYPOINT ["/agent-entrypoint.sh"]
