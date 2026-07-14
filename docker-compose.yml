@@ -104,6 +104,7 @@ services:
     container_name: workflow-svc-dapr
     profiles: [all]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=workflow-svc"
@@ -118,6 +119,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:workflow-svc"
     depends_on:
       - workflow-svc
@@ -155,6 +157,7 @@ services:
     container_name: workflow-mcp-dapr
     profiles: [all, mcps]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=workflow-mcp"
@@ -168,6 +171,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:workflow-mcp"
     depends_on:
       - workflow-mcp
@@ -193,6 +197,7 @@ services:
     container_name: dapr-mcp-dapr
     profiles: [all, mcps]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=dapr-mcp"
@@ -206,6 +211,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:dapr-mcp"
     depends_on:
       - dapr-mcp
@@ -262,6 +268,7 @@ services:
     container_name: claude-agent-dapr
     profiles: [all, claude-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=claude-agent"
@@ -275,6 +282,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:claude-agent"
     depends_on:
       - claude-agent
@@ -319,6 +327,7 @@ services:
     container_name: openhands-agent-dapr
     profiles: [all, openhands-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=openhands-agent"
@@ -332,6 +341,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:openhands-agent"
     depends_on:
       - openhands-agent
@@ -364,6 +374,7 @@ services:
     container_name: pi-agent-dapr
     profiles: [all, pi-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=pi-agent"
@@ -377,6 +388,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:pi-agent"
     depends_on:
       - pi-agent
@@ -414,6 +426,7 @@ services:
     container_name: dapr-agent-dapr
     profiles: [all, dapr-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=dapr-agent"
@@ -427,6 +440,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:dapr-agent"
     depends_on:
       - dapr-agent
@@ -455,6 +469,7 @@ services:
     container_name: dapr-claude-loop-agent-dapr
     profiles: [all, dapr-claude-loop-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=dapr-claude-loop-agent"
@@ -468,6 +483,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:dapr-claude-loop-agent"
     depends_on:
       - dapr-claude-loop-agent
@@ -496,6 +512,7 @@ services:
     container_name: langgraph-agent-dapr
     profiles: [all, langgraph-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=langgraph-agent"
@@ -509,6 +526,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:langgraph-agent"
     depends_on:
       - langgraph-agent
@@ -533,6 +551,7 @@ services:
     container_name: claude-managed-agent-dapr
     profiles: [all, claude-managed-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=claude-managed-agent"
@@ -547,6 +566,7 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:claude-managed-agent"
     depends_on:
       - claude-managed-agent
@@ -577,6 +597,7 @@ services:
     container_name: workflow-agent-dapr
     profiles: [all, workflow-agent]
     image: daprio/daprd:edge
+    user: "0:0"
     command:
       - "./daprd"
       - "--app-id=workflow-agent"
@@ -590,6 +611,11 @@ services:
     volumes:
       - ./dapr:/components
       - ./secrets:/secrets:ro
+      - dapr-nr:/nr
     network_mode: "service:workflow-agent"
     depends_on:
       - workflow-agent
+
+volumes:
+  # Shared SQLite name-resolution DB (see dapr/appconfig.yaml nameResolution).
+  dapr-nr:
