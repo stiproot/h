@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1 AS base
+FROM h-agent-base-bun
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl jq git ca-certificates nodejs npm gosu sudo && \
+# pi coding-agent CLI (npm) + its node runtime. Common tools + the process-identity model come from
+# the base image.
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && \
     rm -rf /var/lib/apt/lists/* && \
-    git config --system --add safe.directory '*' && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 WORKDIR /app
@@ -38,25 +38,9 @@ RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
     bunx turbo build --filter=pi-agent...
 
 WORKDIR /app/apps/pi-agent
-
-# --- process identity (docs/plans/agent-process-identity.md) ---
-# Non-root service (AGENT_UID) + dropped-CLI user (SUB_AGENT_UID), both in AGENT_GID. COMMON UIDs
-# across all agents (shared .runs/worktrees/clone). High UIDs dodge oven/bun's `bun` (1000). The root
-# entrypoint chowns the workspace + drops to AGENT_UID; the sudoers rule drops the CLI to SUB_AGENT_UID.
-ARG AGENT_UID=10001
-ARG SUB_AGENT_UID=10002
-ARG AGENT_GID=10001
-ENV AGENT_UID=$AGENT_UID AGENT_GID=$AGENT_GID SUB_AGENT_UID=$SUB_AGENT_UID HOME=/home/agent-svc
-RUN groupadd -g "$AGENT_GID" agent && \
-    useradd -u "$AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-svc agent-svc && \
-    useradd -u "$SUB_AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-cli agent-cli && \
-    echo 'agent-svc ALL=(agent-cli) NOPASSWD:SETENV: ALL' > /etc/sudoers.d/agent && \
-    chmod 0440 /etc/sudoers.d/agent && \
-    chown -R "$AGENT_UID:$AGENT_GID" /app /home/agent-svc
-COPY docker/agent-entrypoint.sh /agent-entrypoint.sh
-RUN chmod +x /agent-entrypoint.sh
+# The non-root server (agent-svc) owns its built code; identity + entrypoint come from the base.
+RUN chown -R agent-svc:agent /app
 
 EXPOSE 8000
 
-ENTRYPOINT ["/agent-entrypoint.sh"]
 CMD ["bun", "run", "src/index.ts"]

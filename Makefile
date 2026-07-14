@@ -71,6 +71,11 @@ infra-up: ## Start local infra via Docker Compose (placement, scheduler, redis, 
 infra-down: ## Stop local infra and remove volumes
 	docker compose --profile infra -f docker-compose.yml -f docker-compose.local.yml down -v
 
+.PHONY: agent-bases
+agent-bases: ## Build the shared agent base images (the process-identity model) — run before `docker compose build`
+	docker build -f docker/agent-base-bun.Dockerfile -t h-agent-base-bun .
+	docker build -f docker/agent-base-py.Dockerfile -t h-agent-base-py .
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 #
 # One command across both ecosystems. `test-js` runs vitest via Turborepo; `test-py`
