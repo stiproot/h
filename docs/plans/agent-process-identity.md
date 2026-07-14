@@ -1,6 +1,12 @@
 # Agent process identity & workspace permissions
 
-Status: **design, agreed** (2026-07-13). Supersedes the per-agent claude entrypoint merged in #38.
+Status: **increment 1 landed + validated** (2026-07-14). Every agent image is on the model (CLI agents
+full split, Python agents baseline); the CLI fleet is validated end-to-end — a full
+feature→pr-review→revise chain completed with openhands AND claude-coder both running their servers
+non-root as `agent-svc` (10001) and dropping the untrusted CLI to `agent-cli` (10002). Local mode
+verified inert. Supersedes the per-agent claude entrypoint merged in #38. Remaining: increment 2 (the
+per-run trust profile that retires claude-coder); the Python images are wired but build-verify only
+(not in the running stack).
 
 ## Problem
 
