@@ -1,13 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM oven/bun:1 AS base
 
-ARG CLAUDE_UID=1001
-RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip gosu && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl jq git ca-certificates unzip gosu sudo && \
     rm -rf /var/lib/apt/lists/* && \
     git config --system --add safe.directory '*' && \
-    BUN_INSTALL=/usr/local bun install --global @anthropic-ai/claude-code tessl && \
-    useradd -m -u "$CLAUDE_UID" claude
-ENV CLAUDE_UID=$CLAUDE_UID
+    BUN_INSTALL=/usr/local bun install --global @anthropic-ai/claude-code tessl
 
 # AWS CLI v2 — required by ops plugins that inspect infrastructure over aws ssm and for SSO credential
 # resolution from a mounted host ~/.aws session.
@@ -46,18 +43,30 @@ COPY apps/claude-agent/ ./apps/claude-agent/
 RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
     bunx turbo build --filter=claude-agent...
 
-RUN chmod +x /app/apps/claude-agent/.claude/hooks/publish-event.sh && \
-    chown -R claude:claude /app
+RUN chmod +x /app/apps/claude-agent/.claude/hooks/publish-event.sh
 
 WORKDIR /app/apps/claude-agent
 
+# --- process identity (docs/plans/agent-process-identity.md) ---
+# Non-root service (AGENT_UID) + dropped-CLI user (SUB_AGENT_UID), both in AGENT_GID. COMMON UIDs
+# across all agents (shared .runs/worktrees/clone). The claude CLI refuses to run as root — the
+# canary that made claude the first non-root agent; now every agent follows this model, and the
+# claude CLI runs unprivileged as agent-cli. High UIDs dodge the `bun` user (1000). Root entrypoint
+# chowns the workspace + drops to AGENT_UID; the sudoers rule drops the CLI to SUB_AGENT_UID.
+ARG AGENT_UID=10001
+ARG SUB_AGENT_UID=10002
+ARG AGENT_GID=10001
+ENV AGENT_UID=$AGENT_UID AGENT_GID=$AGENT_GID SUB_AGENT_UID=$SUB_AGENT_UID HOME=/home/agent-svc
+RUN groupadd -g "$AGENT_GID" agent && \
+    useradd -u "$AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-svc agent-svc && \
+    useradd -u "$SUB_AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-cli agent-cli && \
+    echo 'agent-svc ALL=(agent-cli) NOPASSWD:SETENV: ALL' > /etc/sudoers.d/agent && \
+    chmod 0440 /etc/sudoers.d/agent && \
+    chown -R "$AGENT_UID:$AGENT_GID" /app /home/agent-svc
+COPY docker/agent-entrypoint.sh /agent-entrypoint.sh
+RUN chmod +x /agent-entrypoint.sh
+
 EXPOSE 8000
 
-# The entrypoint script at this path is required — it must exist in the build
-# context for the image to start correctly. If omitted, the COPY will fail
-# immediately rather than producing a broken image.
-COPY apps/claude-agent/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
-
+ENTRYPOINT ["/agent-entrypoint.sh"]
 CMD ["bun", "run", "src/index.ts"]

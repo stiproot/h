@@ -15,4 +15,19 @@ ENV PYTHONPATH=/app/src
 
 EXPOSE 8000
 
+# --- process identity (docs/plans/agent-process-identity.md, baseline) ---
+# In-process agent: no spawned CLI subprocess, so no SUB_AGENT_UID drop — the whole process runs
+# non-root as AGENT_UID (its agentic loop runs at service privilege, a documented limitation of the
+# in-process model). Still gets the non-root + AGENT_GID + entrypoint baseline like every agent.
+ARG AGENT_UID=10001
+ARG AGENT_GID=10001
+ENV AGENT_UID=$AGENT_UID AGENT_GID=$AGENT_GID HOME=/home/agent-svc
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/* && \
+    groupadd -g "$AGENT_GID" agent && \
+    useradd -u "$AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-svc agent-svc && \
+    chown -R "$AGENT_UID:$AGENT_GID" /app /home/agent-svc
+COPY docker/agent-entrypoint.sh /agent-entrypoint.sh
+RUN chmod +x /agent-entrypoint.sh
+
+ENTRYPOINT ["/agent-entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
