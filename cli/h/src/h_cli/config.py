@@ -1,8 +1,5 @@
-"""Env-derived settings — defaults mirror the cli/scripts siblings, overridable the same way.
-
-The CLI is installed editable as a uv workspace member, so file-relative resolution reaches the
-repo checkout: this file lives at cli/h/src/h_cli/config.py, making parents[3] the cli/ dir.
-"""
+"""Env-derived configuration for the h CLI, plus agent identity and URL tables for
+dispatching workflow runs to registered backend services."""
 
 import os
 from pathlib import Path
