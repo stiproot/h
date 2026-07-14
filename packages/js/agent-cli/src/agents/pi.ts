@@ -1,8 +1,3 @@
-import { randomUUID } from "node:crypto";
-import { rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
 
@@ -25,13 +20,26 @@ export function extractPiText(line: string): string | null {
   return null;
 }
 
-// Resolve a model string for pi: bare id → openai/ prefix (routes via LiteLLM proxy);
-// a provider-prefixed id (e.g. anthropic/…, openai/…) is passed through unchanged.
-function resolvePiModel(model?: string): string {
-  // claude-sonnet-4-6 is an Anthropic model — route it via the anthropic/ provider
-  // (prepareEnvironment then forwards ANTHROPIC_API_KEY), not a bogus openai/ prefix.
-  if (!model) return "anthropic/claude-sonnet-4-6";
-  return model.includes("/") ? model : `openai/${model}`;
+type PiProvider = "deepseek" | "anthropic" | "openai";
+
+// pi selects its backend from the model's optional "provider/id" prefix. Resolve a (provider,
+// modelId) pair the runner passes as `--provider <provider> --model <modelId>`, and that
+// prepareEnvironment uses to route the API key to the provider-specific env var. A bare id is
+// mapped by name (deepseek-* / claude-* have native pi providers; anything else → openai). pi's
+// deepseek + anthropic providers use their NATIVE endpoints; only openai honors a custom base URL.
+function resolvePiModel(model?: string): { provider: PiProvider; modelId: string } {
+  const m = model ?? "deepseek-v4-flash";
+  const slash = m.indexOf("/");
+  if (slash !== -1) {
+    const prov = m.slice(0, slash);
+    const provider: PiProvider =
+      prov === "deepseek" || prov === "anthropic" || prov === "openai" ? prov : "openai";
+    return { provider, modelId: m.slice(slash + 1) };
+  }
+  if (m.startsWith("claude") || m.startsWith("anthropic"))
+    return { provider: "anthropic", modelId: m };
+  if (m.startsWith("deepseek")) return { provider: "deepseek", modelId: m };
+  return { provider: "openai", modelId: m };
 }
 
 const piJsonlParser: AgentStreamParser = {
@@ -90,31 +98,35 @@ export const piStrategy: AgentStrategy = {
     const { llmConfig, model } = request;
     if (!llmConfig) return {};
 
-    const resolved = resolvePiModel(model);
+    const { provider } = resolvePiModel(model);
     const env: Record<string, string> = {};
 
-    // Route the API key to the correct provider env var pi expects.
-    if (resolved.startsWith("anthropic/")) {
-      env["ANTHROPIC_API_KEY"] = llmConfig.apiKey;
-    } else {
-      env["OPENAI_API_KEY"] = llmConfig.apiKey;
-    }
-    if (llmConfig.baseUrl) env["OPENAI_BASE_URL"] = llmConfig.baseUrl;
+    // Route the API key to the provider-specific env var pi reads.
+    const keyVar =
+      provider === "anthropic"
+        ? "ANTHROPIC_API_KEY"
+        : provider === "deepseek"
+          ? "DEEPSEEK_API_KEY"
+          : "OPENAI_API_KEY";
+    env[keyVar] = llmConfig.apiKey;
+    // Only pi's openai provider honors a custom base URL (an openai-compatible proxy); deepseek and
+    // anthropic use their native endpoints.
+    if (provider === "openai" && llmConfig.baseUrl) env["OPENAI_BASE_URL"] = llmConfig.baseUrl;
 
     return env;
   },
 
-  async buildInvocation(request) {
-    // Use --file to avoid the OS single-argument limit (E2BIG on posix_spawn).
-    const taskFile = join(tmpdir(), `pi-task-${randomUUID()}.md`);
-    await writeFile(taskFile, request.taskPrompt, "utf-8");
-    const model = resolvePiModel(request.model);
-    return {
+  buildInvocation(request) {
+    const { provider, modelId } = resolvePiModel(request.model);
+    // pi 0.80 CLI: `-p` is non-interactive (process the prompt and exit) and reads the prompt from
+    // STDIN — E2BIG-safe, so no temp task file. `--approve` trusts the worktree's project-local pi
+    // files for this run; `--mode json` streams the JSONL the parser below consumes.
+    return Promise.resolve({
       command: "pi",
-      args: ["--mode", "json", "--approve", "--model", model, "--file", taskFile],
+      args: ["-p", "--mode", "json", "--approve", "--provider", provider, "--model", modelId],
+      stdinInput: request.taskPrompt,
       streamParser: piJsonlParser,
-      cleanup: () => rm(taskFile, { force: true }),
-    };
+    });
   },
 
   extractSessionId(events: StreamEvent[]) {

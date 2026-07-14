@@ -2,10 +2,20 @@
 FROM h-agent-base-bun
 
 # pi coding-agent CLI (npm) + its node runtime. Common tools + the process-identity model come from
-# the base image.
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && \
+# the base image. pi requires Node >=22.19 (its bundled undici calls webidl APIs missing on Node 20 —
+# Debian's `nodejs` is 20.x, which crashes the CLI on load), so install Node 22.x from NodeSource
+# rather than the distro package.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/* && \
+    node --version && \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+
+# pi writes its session state to ~/.pi/agent/sessions. The CLI runs dropped to agent-cli, which
+# can't create ~/.pi under agent-svc's 0750 home (no group write) — and pi, unlike claude, has no
+# setup step that would pre-create it. So provision ~/.pi group-writable + setgid here (the pi
+# analogue of setup provisioning claude's ~/.claude); umask 002 keeps the session subdirs g+w.
+RUN mkdir -p /home/agent-svc/.pi && chown agent-svc:agent /home/agent-svc/.pi && chmod 2775 /home/agent-svc/.pi
 
 WORKDIR /app
 

@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
 import { extractPiText, piStrategy } from "./pi.ts";
@@ -19,32 +17,34 @@ function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvo
 }
 
 describe("piStrategy.prepareEnvironment model routing", () => {
-  it("prefixes a bare model id with openai/ and sets OPENAI_API_KEY", () => {
+  it("routes a bare deepseek model to the deepseek provider (DEEPSEEK_API_KEY)", () => {
     const env = piStrategy.prepareEnvironment!(baseRequest({ model: "deepseek-v4-flash" }));
 
-    expect(env["OPENAI_API_KEY"]).toBe("sk-test");
+    expect(env["DEEPSEEK_API_KEY"]).toBe("sk-test");
+    expect(env["OPENAI_API_KEY"]).toBeUndefined();
     expect(env["ANTHROPIC_API_KEY"]).toBeUndefined();
   });
 
-  it("sets ANTHROPIC_API_KEY when the model is anthropic-prefixed", () => {
-    const env = piStrategy.prepareEnvironment!(
-      baseRequest({ model: "anthropic/claude-sonnet-4-6" }),
-    );
-
-    expect(env["ANTHROPIC_API_KEY"]).toBe("sk-test");
-    expect(env["OPENAI_API_KEY"]).toBeUndefined();
+  it("routes an anthropic-prefixed (or bare claude) model to ANTHROPIC_API_KEY", () => {
+    for (const model of ["anthropic/claude-sonnet-4-6", "claude-sonnet-4-6"]) {
+      const env = piStrategy.prepareEnvironment!(baseRequest({ model }));
+      expect(env["ANTHROPIC_API_KEY"]).toBe("sk-test");
+      expect(env["OPENAI_API_KEY"]).toBeUndefined();
+    }
   });
 
-  it("passes a provider-prefixed openai model through and sets OPENAI_API_KEY", () => {
+  it("sets OPENAI_API_KEY for an openai-prefixed model", () => {
     const env = piStrategy.prepareEnvironment!(baseRequest({ model: "openai/gpt-4o" }));
 
     expect(env["OPENAI_API_KEY"]).toBe("sk-test");
   });
 
-  it("forwards the base url as OPENAI_BASE_URL", () => {
-    const env = piStrategy.prepareEnvironment!(baseRequest({ model: "deepseek-v4-flash" }));
-
-    expect(env["OPENAI_BASE_URL"]).toBe("https://api.litellm.test/v1");
+  it("forwards the base url as OPENAI_BASE_URL only for the openai provider", () => {
+    const openai = piStrategy.prepareEnvironment!(baseRequest({ model: "openai/gpt-4o" }));
+    expect(openai["OPENAI_BASE_URL"]).toBe("https://api.litellm.test/v1");
+    // deepseek uses its native endpoint — a base url is never forwarded for it
+    const deepseek = piStrategy.prepareEnvironment!(baseRequest({ model: "deepseek-v4-flash" }));
+    expect(deepseek["OPENAI_BASE_URL"]).toBeUndefined();
   });
 
   it("omits OPENAI_BASE_URL when llmConfig has no baseUrl", () => {
@@ -57,43 +57,45 @@ describe("piStrategy.prepareEnvironment model routing", () => {
 });
 
 describe("piStrategy.buildInvocation", () => {
-  it("includes --mode json, --approve, --model, and --file in args", async () => {
+  it("runs pi non-interactively (-p) in json mode with --provider and --model", async () => {
     const invocation = await piStrategy.buildInvocation!(
       baseRequest({ model: "anthropic/claude-sonnet-4-6" }),
     );
 
     expect(invocation.command).toBe("pi");
+    expect(invocation.args).toContain("-p");
     expect(invocation.args).toContain("--mode");
     expect(invocation.args).toContain("json");
     expect(invocation.args).toContain("--approve");
-    expect(invocation.args).toContain("--model");
-    expect(invocation.args).toContain("anthropic/claude-sonnet-4-6");
-    expect(invocation.args).toContain("--file");
+    expect(invocation.args[invocation.args.indexOf("--provider") + 1]).toBe("anthropic");
+    expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("claude-sonnet-4-6");
+    expect(invocation.args).not.toContain("--file");
   });
 
-  it("prefixes a bare model with openai/ in args", async () => {
+  it("resolves a bare deepseek model to --provider deepseek --model <id>", async () => {
     const invocation = await piStrategy.buildInvocation!(
       baseRequest({ model: "deepseek-v4-flash" }),
     );
 
-    const modelIdx = invocation.args.indexOf("--model");
-    expect(invocation.args[modelIdx + 1]).toBe("openai/deepseek-v4-flash");
+    expect(invocation.args[invocation.args.indexOf("--provider") + 1]).toBe("deepseek");
+    expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("deepseek-v4-flash");
   });
 
-  it("defaults an absent model to the anthropic/ provider (a resolvable model)", async () => {
+  it("defaults an absent model to the deepseek provider", async () => {
     const invocation = await piStrategy.buildInvocation!(baseRequest());
 
-    const modelIdx = invocation.args.indexOf("--model");
-    expect(invocation.args[modelIdx + 1]).toBe("anthropic/claude-sonnet-4-6");
+    expect(invocation.args[invocation.args.indexOf("--provider") + 1]).toBe("deepseek");
+    expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("deepseek-v4-flash");
   });
 
-  it("writes the task to a temp file and exposes a cleanup that removes it", async () => {
-    const invocation = await piStrategy.buildInvocation!(baseRequest());
-    const taskFile = invocation.args[invocation.args.indexOf("--file") + 1]!;
+  it("passes the task via stdin (E2BIG-safe), not a temp file", async () => {
+    const invocation = await piStrategy.buildInvocation!(
+      baseRequest({ taskPrompt: "implement X" }),
+    );
 
-    expect(existsSync(taskFile)).toBe(true);
-    await invocation.cleanup?.();
-    expect(existsSync(taskFile)).toBe(false);
+    expect(invocation.stdinInput).toBe("implement X");
+    expect(invocation.args).not.toContain("--file");
+    expect(invocation.cleanup).toBeUndefined();
   });
 });
 
