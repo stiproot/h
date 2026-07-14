@@ -1,5 +1,7 @@
 """Env-derived configuration for the h CLI, plus agent identity and URL tables for
-dispatching workflow runs to registered backend services."""
+dispatching workflow runs to registered backend services.
+
+This file lives at cli/h/src/h_cli/config.py; parents[3] resolves to cli/."""
 
 import os
 from pathlib import Path
