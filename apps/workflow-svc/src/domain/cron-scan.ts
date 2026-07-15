@@ -17,6 +17,8 @@ import { WfStore } from "./ports/IWfStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 
+export type DisarmCronError = { readonly _tag: "NotFound" } | WorkflowError;
+
 /**
  * The effectful half of the cron engine (docs/plans/workflow-watcher-registry.md §5), sibling of
  * chain-scan.ts / watch-scan.ts: registration on the fire path, and the per-tick scan that reads each
@@ -101,6 +103,45 @@ export const registerCronForFire = (
     yield* cs.saveRow(row);
     yield* cs.bumpLedger(cronLedgerDate(nowMs), { cronsRegistered: 1 });
     return { cronId: id, active: true };
+  });
+
+// ---------------------------------------------------------------------------
+// Operator disarm (POST /cron/disarm)
+// ---------------------------------------------------------------------------
+
+/**
+ * Deactivates a recur cron row by operator request. Epoch-fenced (bumps epoch on write) so any
+ * in-flight scan decision with the old epoch no-ops. Idempotent: an already-inactive row is
+ * returned as-is with no ledger bump. Missing id → `{ _tag: "NotFound" }`.
+ */
+export const disarmCron = (
+  id: string,
+): Effect.Effect<CronRow, DisarmCronError, CronStore> =>
+  Effect.gen(function* () {
+    const cs = yield* CronStore;
+    const nowMs = Date.now();
+    const now = new Date(nowMs).toISOString();
+    const existing = yield* cs.getRow(id);
+    if (Option.isNone(existing)) return yield* Effect.fail<DisarmCronError>({ _tag: "NotFound" });
+    const row = existing.value;
+    if (row.status === "inactive") return row;
+    const disarmed: CronRow = {
+      ...row,
+      epoch: row.epoch + 1,
+      status: "inactive",
+      outcome: "disabled",
+      note: "disarmed by operator",
+      endedAt: now,
+      updatedAt: now,
+    };
+    const saved = yield* saveFenced(row.epoch, disarmed);
+    if (!saved) {
+      return yield* Effect.fail<DisarmCronError>(
+        new WorkflowError({ cause: "concurrent modification, retry", instanceId: id }),
+      );
+    }
+    yield* cs.bumpLedger(cronLedgerDate(nowMs), { cronsDeactivated: 1 });
+    return disarmed;
   });
 
 // ---------------------------------------------------------------------------

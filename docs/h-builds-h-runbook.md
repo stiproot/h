@@ -104,8 +104,9 @@ duplicate-dispatch bug.
 3. `state_save watch:config {"enabled": false}` — pauses the watcher scan (supervision of in-flight
    runs), independent of the cron family.
 
-*(A per-cron deactivate CLI — `h cron rm <id>` — is a deferred follow-up; today a single discovery/
-revise cron is stopped by letting its budget exhaust, resolving its goal, or the family kill switch.)*
+To disarm a specific recur cron (stops a single workflow from recurring without touching the kill
+switch), use `h cron rm <repo> <slug> <workflow>` — e.g. `h cron rm stiproot/h dark-mode revise`.
+This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays for audit.
 
 ## Termination & budgets (engine-owned)
 
@@ -114,7 +115,7 @@ revise cron is stopped by letting its budget exhaust, resolving its goal, or the
   `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
   (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
-  it runs until the family kill switch or a `h cron rm` (deferred).
+  it runs until the family kill switch or `h cron rm`.
 - **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron is armed with
   `--run-budget-mins` (wall-clock `maxDurationMs` terminate) and optionally `--run-retries` (engine
   re-fire of a failed run). Without those flags the fired runs are unsupervised — a hung run is caught

@@ -1,7 +1,7 @@
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { registerCronForFire, scanCronsEffect } from "./cron-scan.ts";
+import { disarmCron, registerCronForFire, scanCronsEffect } from "./cron-scan.ts";
 import { type CronLedger, type CronRow, emptyCronLedger } from "./models/cron.model.ts";
 import type { DiscoverRow } from "./models/discover.model.ts";
 import type { WfRow } from "./models/wf.model.ts";
@@ -296,5 +296,55 @@ describe("scanCronsEffect", () => {
     await scan(cs.service, inv.service);
     expect(inv.invokes[0].steps).toEqual([{ activity: "run-claude", input: { task: "t" } }]);
     expect(inv.invokes[0].wf).toEqual(identity);
+  });
+});
+
+describe("disarmCron", () => {
+  const disarm = (cs: CronStoreService, id: string) =>
+    Effect.runPromise(
+      disarmCron(id).pipe(Effect.provide(Layer.succeed(CronStore, cs))),
+    );
+
+  const disarmFail = (cs: CronStoreService, id: string) =>
+    Effect.runPromise(
+      disarmCron(id).pipe(
+        Effect.flip,
+        Effect.provide(Layer.succeed(CronStore, cs)),
+      ),
+    );
+
+  it("disarms an active cron: sets inactive+disabled, bumps epoch, stamps note, bumps ledger", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ epoch: 3, fires: 5 }));
+    const result = await disarm(cs.service, "stiproot/h:pi-agent:revise");
+    expect(result.status).toBe("inactive");
+    expect(result.outcome).toBe("disabled");
+    expect(result.note).toBe("disarmed by operator");
+    expect(result.epoch).toBe(4);
+    expect(result.endedAt).toBeDefined();
+    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(row.status).toBe("inactive");
+    expect(row.epoch).toBe(4);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(cs.ledgers.get(today)?.cronsDeactivated).toBe(1);
+  });
+
+  it("disarming an already-inactive cron is idempotent: returns the row as-is, no ledger bump", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set(
+      "stiproot/h:pi-agent:revise",
+      activeRow({ status: "inactive", outcome: "disabled", epoch: 7, fires: 3 }),
+    );
+    const result = await disarm(cs.service, "stiproot/h:pi-agent:revise");
+    expect(result.status).toBe("inactive");
+    expect(result.epoch).toBe(7);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(cs.ledgers.get(today)?.cronsDeactivated).toBeUndefined();
+  });
+
+  it("fails with NotFound for an unknown cron id", async () => {
+    const cs = memoryCronStore();
+    const err = await disarmFail(cs.service, "no-such:cron:id");
+    expect((err as { _tag: string })._tag).toBe("NotFound");
   });
 });

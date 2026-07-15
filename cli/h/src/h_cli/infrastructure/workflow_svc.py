@@ -110,6 +110,18 @@ def run_steps(
     return resp.json()
 
 
+def cron_disarm(repo: str, slug: str, workflow: str) -> Any:
+    """Deactivate a recur cron row (set inactive/disabled; keep for audit). Idempotent when already
+    inactive. Raises httpx.HTTPStatusError on 404 (unknown id) or 500 (concurrent modification)."""
+    resp = httpx.post(
+        f"{WORKFLOW_URL}/cron/disarm",
+        json={"repo": repo, "slug": slug, "workflow": workflow},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def watch_list() -> Any:
     """The watch registry plus the scan heartbeat (the staleness signal, one call)."""
     resp = httpx.get(f"{WORKFLOW_URL}/watch/list", timeout=10)

@@ -1,4 +1,4 @@
-"""h cron list — the recur registry's inspection surface (respx-mocked wire)."""
+"""h cron list / h cron rm — the recur registry's inspection surface (respx-mocked wire)."""
 
 import json
 from datetime import UTC, datetime
@@ -167,3 +167,27 @@ def test_cron_discover_add_run_retries_needs_a_budget() -> None:
     )
     assert result.exit_code == 1
     assert "needs --run-budget-mins" in result.output
+
+
+@respx.mock
+def test_cron_rm_disarms_an_active_cron() -> None:
+    route = respx.post(f"{WORKFLOW_URL}/cron/disarm").mock(
+        return_value=Response(
+            200,
+            json={"disarmed": "stiproot/h:dark-mode:revise", "status": "inactive", "outcome": "disabled"},
+        )
+    )
+    result = runner.invoke(app, ["cron", "rm", "stiproot/h", "dark-mode", "revise"])
+    assert result.exit_code == 0, result.output
+    assert route.called
+    body = json.loads(route.calls.last.request.content)
+    assert body == {"repo": "stiproot/h", "slug": "dark-mode", "workflow": "revise"}
+    assert "cron:sub:stiproot/h:dark-mode:revise" in result.output
+    assert "inactive" in result.output
+
+
+@respx.mock
+def test_cron_rm_404_exits_nonzero() -> None:
+    respx.post(f"{WORKFLOW_URL}/cron/disarm").mock(return_value=Response(404, json={"error": "cron not found"}))
+    result = runner.invoke(app, ["cron", "rm", "stiproot/h", "no-such", "workflow"])
+    assert result.exit_code == 1
