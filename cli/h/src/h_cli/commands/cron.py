@@ -123,7 +123,9 @@ def list_() -> None:
 
 @app.command("rm")
 def rm(
-    repo: str = typer.Argument(..., help="owner/name — the GitHub repo coord for the cron identity."),
+    repo: str = typer.Argument(
+        ..., help="owner/name — the GitHub repo coord for the cron identity."
+    ),
     slug: str = typer.Argument(..., help="Slug coord (e.g. pi-agent)."),
     workflow: str = typer.Argument(..., help="Workflow coord (e.g. revise)."),
 ) -> None:

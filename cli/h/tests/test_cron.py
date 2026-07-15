@@ -174,7 +174,11 @@ def test_cron_rm_disarms_an_active_cron() -> None:
     route = respx.post(f"{WORKFLOW_URL}/cron/disarm").mock(
         return_value=Response(
             200,
-            json={"disarmed": "stiproot/h:dark-mode:revise", "status": "inactive", "outcome": "disabled"},
+            json={
+                "disarmed": "stiproot/h:dark-mode:revise",
+                "status": "inactive",
+                "outcome": "disabled",
+            },
         )
     )
     result = runner.invoke(app, ["cron", "rm", "stiproot/h", "dark-mode", "revise"])
@@ -188,6 +192,8 @@ def test_cron_rm_disarms_an_active_cron() -> None:
 
 @respx.mock
 def test_cron_rm_404_exits_nonzero() -> None:
-    respx.post(f"{WORKFLOW_URL}/cron/disarm").mock(return_value=Response(404, json={"error": "cron not found"}))
+    respx.post(f"{WORKFLOW_URL}/cron/disarm").mock(
+        return_value=Response(404, json={"error": "cron not found"})
+    )
     result = runner.invoke(app, ["cron", "rm", "stiproot/h", "no-such", "workflow"])
     assert result.exit_code == 1

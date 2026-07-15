@@ -115,7 +115,8 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
   `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
   (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
-  it runs until the family kill switch or `h cron rm`.
+  it runs until the family kill switch (`h cron rm` is RECUR-only — a discovery row's identity is
+  repo+label, which `REPO SLUG WORKFLOW` cannot address; a discovery disarm is a follow-up).
 - **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron is armed with
   `--run-budget-mins` (wall-clock `maxDurationMs` terminate) and optionally `--run-retries` (engine
   re-fire of a failed run). Without those flags the fired runs are unsupervised — a hung run is caught
