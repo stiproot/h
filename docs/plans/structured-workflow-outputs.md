@@ -3,7 +3,8 @@ conversion, two live chain validations, and then the complete retirement of outp
 one day; see the Progress log. STRUCTURED-ONLY: every machine consumer (chain contracts,
 goalResolved, register-cron) reads the validated block exclusively; marker parsing is deleted.
 Output markers no longer exist in any template — `===X===` survives solely as prompt-section
-headings (input delimiters), which no code parses. Open: D4 (extract activity — rung 3 not built).
+headings (input delimiters), which no code parses. D4 (rung-3 extract) closed 2026-07-16:
+deferred with a tripwire — nothing open.
 Extends [workflow-composition.md](./workflow-composition.md) (the chain's original marker-threading
 contracts) and [chain-composition-surface.md](./chain-composition-surface.md) (the chain
 expression). Grew out of re-evaluating the `===MARKER===` decision; the body below is the design
@@ -174,8 +175,17 @@ a CLI flag) — coexistence is per-member, not global.
   steering.
 - (D3, settled) Validation is code-side at the producing boundary (rung 2 minimum for declaring
   templates); a mismatch fails the step loud.
-- (D4, open) Rung 3 (`extract` activity) — always-on for declaring templates, or per-template
-  opt-in? Leaning per-template (cost of an extra model call vs re-run cost of the main step).
+- (D4, closed 2026-07-16: DEFERRED with a tripwire) Rung 3 (the extract step) is not built —
+  speculative machinery for a failure never observed: across every contracted live run (~8 agent
+  steps: two e2e features, three reviews, the cron-rm implement, the rebase), zero rung-2
+  validation failures; the protocol rule + adjacent epilogue proved highly reliable. The one
+  adjacent wobble (the rebase run's hedged `notes`) was a CONTENT problem a formatter-extractor
+  cannot fix. **Tripwire:** the first time a rung-2 failure burns a re-run of a step costing more
+  than ~5 minutes, build the COMPOSITION shape — an `extract` chart atom = a run-claude step on a
+  cheap model whose input is the expensive step's `{{output}}` plus the outputContract (the
+  contract MOVES to the extract step, so the expensive step can no longer fail on its tail).
+  Never the alternative shape (a workflow-svc activity calling a model directly): only agent
+  services hold LLM credentials — that invariant is worth more than provider-forced schemas.
 - (D5, open) Where `outputs:` lives on the wire: a top-level field on `StoredWorkflow` (visible to
   `get_workflow`/registration validation) vs baked only into step prose. Leaning top-level —
   registration validation (§1 consumer 3) needs it addressable.
@@ -263,3 +273,8 @@ agent- and human-consumed, not engine-consumed.
   section HEADINGS (`===FEATURE SPEC===`, `===IMPLEMENTATION PLAN===`, `===ISSUE===`,
   `===OUTPUT CONTRACT===` itself) are input structure no code parses — renamed only where the old
   name implied an output channel (verify's heading → `===ACCEPTANCE CHECK===`).
+- 2026-07-16 — **D4 closed: deferred with a tripwire.** Zero rung-2 validation failures across
+  every contracted live run — build-what's-needed says no speculative extract machinery. The
+  decision block records the tripwire (first expensive re-run burned by a tail failure) and pins
+  the shape to build when it trips (composition: a cheap-agent extract atom; never LLM creds on
+  workflow-svc). Plan complete.
