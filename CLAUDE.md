@@ -67,7 +67,9 @@ stack, and the design principles; this section is the terse runtime-facing index
   (idempotent ensure-exists, so a re-fire doesn't reset the budget); a discovery cron is armed by
   `h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins]`
   firing a one-step provision workflow whose `register-discover` activity writes the row (its own `wf:`
-  row audits the registration). Inspect with `h cron list`. Recur source modes: saved key + params, or
+  row audits the registration). Inspect with `h cron list`; disarm with `h cron rm REPO SLUG WORKFLOW`
+  (`POST /cron/disarm` — single-writer; sets inactive+disabled, keeps row for audit, epoch-fenced).
+  Recur source modes: saved key + params, or
   an embedded definition (mode 3 dynamic-params deferred).
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
@@ -288,7 +290,7 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline] [--cron/--max-fires]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover)
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline] [--cron/--max-fires]|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover)
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```

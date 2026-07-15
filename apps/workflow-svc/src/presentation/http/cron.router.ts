@@ -1,11 +1,12 @@
 import type { WorkflowError } from "core";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Option, Ref, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
-import { type CronScanReport, scanCronsEffect } from "../../domain/cron-scan.ts";
+import { type CronScanReport, disarmCron, scanCronsEffect } from "../../domain/cron-scan.ts";
 import { type DiscoverScanReport, scanDiscoverEffect } from "../../domain/discover-scan.ts";
+import { cronId } from "../../domain/models/cron.model.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
@@ -15,7 +16,18 @@ import {
   invokeWithWatch,
   scanWatchesEffect,
 } from "../../domain/watch-scan.ts";
-import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./workflow.router.ts";
+import {
+  NotFoundError,
+  runRoute,
+  type WorkflowRoutesEnv,
+  type WorkflowRoutesRuntime,
+} from "./workflow.router.ts";
+
+const DisarmBody = Schema.Struct({
+  repo: Schema.String,
+  slug: Schema.String,
+  workflow: Schema.String,
+});
 
 // The cron binding (dapr/local/workflow-cron.yaml) is named workflow-cron-tick; a cron binding is
 // delivered as POST /<binding-name>, so the route name must match.
@@ -129,6 +141,25 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
         // and a discovery cron are both "crons" to `h cron list`.
         const discover = yield* cs.listDiscoverRows();
         return { heartbeat: Option.getOrNull(heartbeat), crons, discover };
+      }),
+    ),
+  );
+
+  fastify.post("/cron/disarm", (request, reply) =>
+    runRoute(
+      runtime,
+      reply,
+      Effect.gen(function* () {
+        const body = yield* Schema.decodeUnknown(DisarmBody)(request.body);
+        const id = cronId(body);
+        const row = yield* disarmCron(id).pipe(
+          Effect.mapError((e) =>
+            "_tag" in e && e._tag === "NotFound"
+              ? new NotFoundError({ message: `cron not found: ${id}` })
+              : (e as WorkflowError),
+          ),
+        );
+        return { disarmed: id, status: row.status, outcome: row.outcome };
       }),
     ),
   );

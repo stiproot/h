@@ -121,6 +121,25 @@ def list_() -> None:
     console.print(dtable)
 
 
+@app.command("rm")
+def rm(
+    repo: str = typer.Argument(
+        ..., help="owner/name — the GitHub repo coord for the cron identity."
+    ),
+    slug: str = typer.Argument(..., help="Slug coord (e.g. pi-agent)."),
+    workflow: str = typer.Argument(..., help="Workflow coord (e.g. revise)."),
+) -> None:
+    """Disarm a recur cron: set inactive+disabled, keep the row for audit.
+
+    Calls workflow-svc's POST /cron/disarm — only workflow-svc writes cron:* rows (single-writer).
+    Idempotent: an already-inactive cron is a success, not an error."""
+    result = _guarded(lambda: workflow_svc.cron_disarm(repo, slug, workflow))
+    cron_key = f"cron:sub:{repo}:{slug}:{workflow}"
+    console.print(
+        f"[green]disarmed[/green] {cron_key} → {result['status']} / {result.get('outcome', '')}"
+    )
+
+
 @discover_app.command("add")
 def discover_add(
     repo: str = typer.Argument(
