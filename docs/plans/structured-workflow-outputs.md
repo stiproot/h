@@ -232,4 +232,14 @@ agent- and human-consumed, not engine-consumed.
   (`cron:sub:owner/name:…`, `wf:owner/name:…`) saved fine but 404'd (ERR_DIRECT_INVOKE) on every
   read; NO recur cron had ever been armed for a slashed repo. Fixed via core-dapr `pathStateKey`
   (percent-encode every path-position key) — after which arm-revise armed the FIRST `cron:sub:*`
-  row ever (then disarmed by hand: e2e artifact). PR #46 is the test artifact.
+  row ever (then disarmed by hand: e2e artifact). PR #46 is the test artifact (closed unmerged).
+- 2026-07-15 — **Round 2 validated LIVE: loop-until-clean on the declared until.** Chain
+  `e2e-structured-2` = feature-pr → pr-review (`--until verdict=CLEAN`) → revise, strategy
+  loop-until-clean, fresh slug. Exercised what round 1 didn't: `--until` through the full stack
+  (expression parse → registration validation against pr-review's declared schema → durable row
+  `until: {path: verdict, equals: CLEAN}` → engine); PR #47 opened from a fresh worktree,
+  `prNumber=47` captured structured-first; the review's validated block was `{verdict: "CLEAN"}`
+  (summary legitimately omitted — only verdict is required) and the chain finalized
+  `clean after 0 revise iteration(s)` — the loop-stop decision made by `loopIsClean`'s
+  DECLARED-UNTIL branch on the structured verdict, no marker sniff, no revise fire. Artifacts
+  cleaned: cron disarmed, PR #47 closed unmerged, both e2e branches deleted.
