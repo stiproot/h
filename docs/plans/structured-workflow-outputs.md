@@ -220,3 +220,16 @@ agent- and human-consumed, not engine-consumed.
   and humans); goldens re-blessed; saved workflows republished. Deferred: rung-3 extract activity
   (D4), `===GOAL===`/register-cron structured cutover, deleting marker parsers (blocked on those
   two consumers + marker-era saved workflows aging out).
+- 2026-07-15 — **Validated LIVE** (compose stack): chain `e2e-structured` = feature-pr → pr-review
+  on stiproot/h, toy spec. Evidence per seam: the implement envelope carried the code-validated
+  `structured: {pr: 46, url}` (rung 2 accepted the agent's fenced block — the agent emitted it
+  correctly after its markers, so protocol + epilogue steering held); the chain blackboard's
+  `prNumber=46` came from the structured-first `capturePr` branch; pr-review fired with `pr=46`
+  and its own envelope validated `{verdict: FINDINGS, summary: …}` — a legitimately non-CLEAN
+  verdict (the toy doc referenced a plan file not yet pushed to origin), so the findings path was
+  exercised too; chain finalized `completed`. Bonus: the run flushed out a PRE-EXISTING state-key
+  bug — Dapr's state HTTP API carries keys in the URL path on get/delete, so slashed keys
+  (`cron:sub:owner/name:…`, `wf:owner/name:…`) saved fine but 404'd (ERR_DIRECT_INVOKE) on every
+  read; NO recur cron had ever been armed for a slashed repo. Fixed via core-dapr `pathStateKey`
+  (percent-encode every path-position key) — after which arm-revise armed the FIRST `cron:sub:*`
+  row ever (then disarmed by hand: e2e artifact). PR #46 is the test artifact.
