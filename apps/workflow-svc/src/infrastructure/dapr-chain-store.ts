@@ -1,4 +1,5 @@
 import { DaprClient } from "@dapr/dapr";
+import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
@@ -47,7 +48,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
       });
 
     const rawGet = (key: string): Effect.Effect<Option.Option<unknown>, WorkflowError> =>
-      tryState(key, () => client.state.get(STORE, key)).pipe(
+      tryState(key, () => client.state.get(STORE, pathStateKey(key))).pipe(
         Effect.map((result) =>
           result == null || (result as unknown) === "" ? Option.none() : Option.some(result),
         ),
@@ -66,7 +67,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
           );
 
     const indexList = (): Effect.Effect<readonly string[], WorkflowError> =>
-      tryState(INDEX_KEY, () => client.state.get(STORE, INDEX_KEY)).pipe(
+      tryState(INDEX_KEY, () => client.state.get(STORE, pathStateKey(INDEX_KEY))).pipe(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
 
@@ -98,7 +99,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
     const deleteRow = (chainId: string): Effect.Effect<void, WorkflowError> =>
       Effect.gen(function* () {
         yield* tryState(ROW_PREFIX + chainId, () =>
-          client.state.delete(STORE, ROW_PREFIX + chainId),
+          client.state.delete(STORE, pathStateKey(ROW_PREFIX + chainId)),
         );
         const ids = yield* indexList();
         if (ids.includes(chainId)) {
@@ -147,7 +148,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
       });
 
     const listRunKeys = (): Effect.Effect<readonly string[], WorkflowError> =>
-      tryState("runs:index", () => client.state.get(STORE, "runs:index")).pipe(
+      tryState("runs:index", () => client.state.get(STORE, pathStateKey("runs:index"))).pipe(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
 

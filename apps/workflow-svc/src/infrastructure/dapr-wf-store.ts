@@ -1,4 +1,5 @@
 import { DaprClient } from "@dapr/dapr";
+import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
@@ -31,7 +32,7 @@ export const WfStoreLive: Layer.Layer<WfStore> = Layer.scoped(
 
     const getRow = (id: WfIdentity) => {
       const key = wfKey(id);
-      return tryState(key, () => client.state.get(STORE, key)).pipe(
+      return tryState(key, () => client.state.get(STORE, pathStateKey(key))).pipe(
         // A missing key reads as "" (or null) from the SDK; both are Option.none.
         Effect.flatMap((result) =>
           result == null || (result as unknown) === ""

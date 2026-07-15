@@ -1,4 +1,5 @@
 import { DaprClient } from "@dapr/dapr";
+import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
@@ -37,13 +38,13 @@ export const WorkflowStoreLive: Layer.Layer<WorkflowStore> = Layer.scoped(
     const list = (): Effect.Effect<readonly string[], WorkflowError> =>
       // A missing key comes back as "" (not null) from the Dapr state SDK, so guard on the shape
       // rather than nullishness — otherwise an empty index yields a string where callers expect [].
-      tryState(INDEX_KEY, () => client.state.get(STORE, INDEX_KEY)).pipe(
+      tryState(INDEX_KEY, () => client.state.get(STORE, pathStateKey(INDEX_KEY))).pipe(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
 
     const get = (key: string): Effect.Effect<Option.Option<StoredWorkflow>, WorkflowError> =>
       Effect.gen(function* () {
-        const result = yield* tryState(key, () => client.state.get(STORE, key));
+        const result = yield* tryState(key, () => client.state.get(STORE, pathStateKey(key)));
         // A missing key reads as "" (or null) from the SDK; both are Option.none.
         if (result == null || (result as unknown) === "") return Option.none();
         const workflow = yield* decodeStored(result).pipe(

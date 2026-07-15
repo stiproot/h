@@ -1,5 +1,6 @@
 // Effect surface — tags, layers, and local error tags. DaprInvokeError (the invoker's
 // failure) lives in `core` — it crosses the TS-to-TS Dapr-invoke boundary.
+export { pathStateKey } from "./state-key.ts";
 export { DaprInvokerLive, DaprInvokerTag } from "./invoker.ts";
 export type { DaprInvokerService } from "./invoker.ts";
 export { DaprPublisherLive, DaprPublisherTag, DaprPubSubError } from "./publisher.ts";

@@ -1,4 +1,5 @@
 import { DaprClient } from "@dapr/dapr";
+import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
@@ -52,7 +53,7 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
       });
 
     const rawGet = (key: string): Effect.Effect<Option.Option<unknown>, WorkflowError> =>
-      tryState(key, () => client.state.get(STORE, key)).pipe(
+      tryState(key, () => client.state.get(STORE, pathStateKey(key))).pipe(
         Effect.map((result) =>
           result == null || (result as unknown) === "" ? Option.none() : Option.some(result),
         ),
@@ -73,7 +74,7 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
     // Index maintenance is identical for both row families (recur `cron:index`, discovery
     // `cron:discover-index`); parameterize by index key so the two share one implementation.
     const indexList = (indexKey: string): Effect.Effect<readonly string[], WorkflowError> =>
-      tryState(indexKey, () => client.state.get(STORE, indexKey)).pipe(
+      tryState(indexKey, () => client.state.get(STORE, pathStateKey(indexKey))).pipe(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
 
@@ -122,7 +123,9 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
 
     const deleteRow = (id: string): Effect.Effect<void, WorkflowError> =>
       Effect.gen(function* () {
-        yield* tryState(ROW_PREFIX + id, () => client.state.delete(STORE, ROW_PREFIX + id));
+        yield* tryState(ROW_PREFIX + id, () =>
+          client.state.delete(STORE, pathStateKey(ROW_PREFIX + id)),
+        );
         yield* removeFromIndex(INDEX_KEY, id);
       });
 
@@ -151,7 +154,7 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
     const deleteDiscoverRow = (id: string): Effect.Effect<void, WorkflowError> =>
       Effect.gen(function* () {
         yield* tryState(DISCOVER_ROW_PREFIX + id, () =>
-          client.state.delete(STORE, DISCOVER_ROW_PREFIX + id),
+          client.state.delete(STORE, pathStateKey(DISCOVER_ROW_PREFIX + id)),
         );
         yield* removeFromIndex(DISCOVER_INDEX_KEY, id);
       });
