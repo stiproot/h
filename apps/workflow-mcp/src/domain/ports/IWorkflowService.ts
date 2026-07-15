@@ -74,6 +74,12 @@ export const SaveWorkflowRequest = Schema.Struct({
         "Default parameter values for this saved workflow; run_saved_workflow params override them key-by-key.",
     }),
   ),
+  outputs: Schema.optional(
+    Schema.Record({ key: Schema.String, value: Schema.Unknown }).annotations({
+      description:
+        "Declared output schema (JSON-Schema subset) — the workflow's typed output signature; its agent step must carry a matching outputContract input, and chain registration validates capture mappings against it.",
+    }),
+  ),
 });
 export type SaveWorkflowRequest = Schema.Schema.Type<typeof SaveWorkflowRequest>;
 

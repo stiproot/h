@@ -95,7 +95,9 @@ uv run h workflow publish <template>        # render publish-mode ({{params.*}} 
 uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name] [--cron CADENCE] [--max-fires N]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing); --cron arms a recur cron on the RUN (§10 arm-* activity, not the handler)
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
 uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); values ride -p; EXPR: -w KEY | -t ATOMS...
-                                          #   with per-workflow --agent/--model/--fresh/--kind flags
+                                          #   with per-workflow --agent/--model/--fresh/--kind flags and structured-output
+                                          #   threading mappings --capture BB=FIELD / --input PARAM=BB / --until PATH=VALUE
+                                          #   (validated against the workflow's declared outputs schema at registration)
 uv run h chain list                       # the durable chain registry + scan heartbeat
 uv run h watch list|get|delete            # the watcher registry
 uv run h cron list                        # the cron registry — recur crons + discovery/fan-out crons, with the scan heartbeat

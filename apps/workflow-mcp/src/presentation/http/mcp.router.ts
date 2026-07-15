@@ -120,6 +120,11 @@ export const TOOL_DEFINITIONS = [
           description:
             "Default parameter values for this saved workflow; run_saved_workflow params override them key-by-key.",
         },
+        outputs: {
+          type: "object",
+          description:
+            "Declared output schema (JSON-Schema subset) — the workflow's typed output signature; its agent step must carry a matching outputContract input, and chain registration validates capture mappings against it.",
+        },
       },
       required: ["key", "steps"],
     },

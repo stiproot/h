@@ -11,8 +11,11 @@ Small primitives; everything larger is a composition of them.
 - **Watcher** — a registered policy + engine that *supervises* one workflow on the cron tick
   (terminate / retry / escalate). Registry `watch:*`; `h watch list`.
 - **Chain** — a registered policy + engine that *sequences* workflows on the cron tick (fire the
-  next workflow when the last lands, threading state by parsing each one's output). Registry
-  `chain:*`; `h chain list`.
+  next workflow when the last lands, threading state by parsing each one's output — structured-first:
+  a workflow that declares an `outputs:` schema ends its agent step with a machine-validated fenced
+  json block the engine reads before falling back to `===MARKER===` greps; either way the workflow's
+  contract is "params in, declared output out", runnable standalone —
+  docs/plans/structured-workflow-outputs.md). Registry `chain:*`; `h chain list`.
 - **Cron** — a registered policy + engine that *recurs* one workflow on the cron tick (re-fire until
   its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. A **discovery** variant
   fans out instead of re-firing: it reads a source (open issues on a label) and fires one workflow per
