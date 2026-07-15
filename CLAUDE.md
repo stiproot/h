@@ -94,7 +94,7 @@ edge FIRES workflows; it no longer writes cron rows (`POST /cron/discover` was d
 ```
 apps/claude-agent/src/                    # claude-agent
 ├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), fatal crash handlers, starts Fastify
-├── steering/h-lab-runtime.md         # h runtime steering (the MCP set + how to use it); a triage setup step copies it to the agent's ~/.claude/CLAUDE.md
+├── ../steering/h-runtime.md          # h runtime steering (the MCP set + how to use it), at the APP root not src/; a triage setup step copies it to the agent's ~/.claude/CLAUDE.md
 ├── infrastructure/mcp-config.ts          # mergeMcpConfig – merge h's MCP servers into the cwd's existing .mcp.json (pure, value-tested)
 └── infrastructure/claude-runner.ts       # IAgentRunner impl; honours an optional cwd (e.g. a worktree); merges MCP config into cwd; routes (/run, /setup, /clone, /worktree, /dapr/subscribe) come from agent-server
 
