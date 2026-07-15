@@ -83,6 +83,11 @@ export const SaveWorkflowRequest = Schema.Struct({
   // Stored watch policy: every fire of this saved workflow (HTTP, trigger event, cron tick)
   // registers a watch row — how trigger- and cron-fired runs gain supervision (agreement 9).
   watch: Schema.optional(WatchPolicy),
+  // Declared output schema (docs/plans/structured-workflow-outputs.md §1, D5): the structured
+  // summary this workflow promises — the workflow's typed output signature. Top-level so chain
+  // registration can validate capture/input mappings against it via get. Enforcement happens at
+  // the step that carries the matching outputContract input, not here.
+  outputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });
 export type SaveWorkflowRequest = Schema.Schema.Type<typeof SaveWorkflowRequest>;
 
@@ -108,6 +113,8 @@ export const StoredWorkflow = Schema.Struct({
   params: Schema.optional(WorkflowParams),
   // Stored watch policy applied on every fire path (see SaveWorkflowRequest.watch).
   watch: Schema.optional(WatchPolicy),
+  // Declared output schema — the saved workflow's typed output signature (see SaveWorkflowRequest.outputs).
+  outputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });
 export type StoredWorkflow = Schema.Schema.Type<typeof StoredWorkflow>;
 
@@ -127,6 +134,9 @@ export type AgentResult = {
   sessionId: string | null;
   output: string;
   workspacePath?: string;
+  // The validated structured-output block (docs/plans/structured-workflow-outputs.md): present iff
+  // the step carried an outputContract — code-guaranteed by the rung-2 seam, never raw prose.
+  structured?: unknown;
 };
 
 export type WorkflowStatus = {

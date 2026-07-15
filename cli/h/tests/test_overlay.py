@@ -70,3 +70,21 @@ def test_params_merge_key_wise_not_clobbered() -> None:
         "modelReview": "opus",
     }
     assert a["params"]["agentId"] == "claude-agent"  # source untouched
+
+
+def test_single_outputs_declaration_flows_through() -> None:
+    # The declared output schema (structured-workflow-outputs plan) is a top-level key like any
+    # other: the one declaring atom's schema lands on the composed definition.
+    contract = {"type": "object", "required": ["pr"], "properties": {"pr": {"type": "integer"}}}
+    a = {"steps": [{"id": "implement", "input": {"task": "do it"}}]}
+    b = {"outputs": contract, "steps": [{"id": "implement", "input": {"task": "open the PR"}}]}
+    assert overlay(a, b)["outputs"] == contract
+
+
+def test_two_outputs_declarations_fail_loud() -> None:
+    # Two declaring atoms would append two conflicting ===OUTPUT CONTRACT=== epilogues into the
+    # merged step's task — exactly one template owns the composed contract.
+    a = {"outputs": {"type": "object"}, "steps": [{"id": "s"}]}
+    b = {"outputs": {"type": "object"}, "steps": [{"id": "s"}]}
+    with pytest.raises(ValueError, match="exactly one template"):
+        overlay(a, b)

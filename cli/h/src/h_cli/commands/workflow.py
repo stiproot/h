@@ -121,6 +121,8 @@ def publish(
             # the render emits e.g. {runActivity, agentId} from values; fire-time params
             # override them key-by-key.
             params=definition.get("params"),
+            # Declared output schema — the template's typed output signature, when it renders one.
+            outputs=definition.get("outputs"),
             schedule=schedule,
             workspace_id=workspace_id,
             disabled=disabled if (disabled or schedule) else None,

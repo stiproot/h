@@ -2,6 +2,7 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect } from "effect";
 
 import type { AgentResult } from "../../domain/models/workflow.model.ts";
+import { applyOutputContract } from "../../domain/structured-output.ts";
 import { invokeAgentMethod, runActivity } from "../activity-runtime.ts";
 
 type Input = {
@@ -10,6 +11,10 @@ type Input = {
   preset?: string;
   workflowInstanceId: string;
   workspaceId?: string;
+  // Structured-output contract (docs/plans/structured-workflow-outputs.md): when set, the
+  // agent's final output must end with a fenced json block matching it — validated here on
+  // return; a missing or mismatching block FAILS THE STEP (rung 2, D3).
+  outputContract?: Record<string, unknown>;
   traceparent?: string;
 };
 
@@ -17,8 +22,9 @@ export async function runLanggraphActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<AgentResult> {
-  const { task, graph, preset, workflowInstanceId, workspaceId, traceparent } = input as Input;
-  return runActivity(
+  const { task, graph, preset, workflowInstanceId, workspaceId, outputContract, traceparent } =
+    input as Input;
+  const result = await runActivity(
     invokeAgentMethod({
       label: "run-langgraph",
       appId: "langgraph-agent",
@@ -34,4 +40,5 @@ export async function runLanggraphActivity(
     ),
     traceparent,
   );
+  return applyOutputContract(result, outputContract);
 }

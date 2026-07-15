@@ -7,12 +7,18 @@ The grammar (docs/plans/chain-composition-surface.md §1.5):
     STAGE   := WF ( "--parallel" WF )*    # infix --parallel joins workflows into one parallel group
     WF      := ( "-w" KEY | "-t" ATOM ATOM* ) FLAG*
     FLAG := "--agent" A | "--model" M | "--budget" DUR | "--fresh" | "--kind" K
+           | "--capture" DEST=SRC | "--input" DEST=SRC | "--until" PATH=VALUE
 
 Scope is position (never dash count): a FLAG binds to the workflow it follows; before any
 workflow it sets a chain-wide default a workflow can override. Adjacent stages run sequentially;
 a parallel group has an implied join barrier. Typer must never declare these flag names on
 `h chain run` — click consumes declared options wherever they appear in argv, which would destroy
 their position.
+
+--capture/--input/--until are the declarative structured-output mappings
+(docs/plans/structured-workflow-outputs.md §4-5): per-workflow ONLY (like --kind — a mapping is a
+member's contract, never a chain-wide default), repeatable for --capture/--input, assignment-
+ordered destination=source.
 """
 
 from __future__ import annotations
@@ -20,10 +26,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 
-VALUE_FLAGS = ("--agent", "--model", "--budget", "--kind")
+VALUE_FLAGS = ("--agent", "--model", "--budget", "--kind", "--until")
+# Repeatable dest=source mapping flags — accumulate instead of the duplicate-flag rejection.
+MAP_FLAGS = ("--capture", "--input")
 BOOL_FLAGS = ("--fresh",)
 CONNECTOR = "--parallel"
 WORKFLOW_INTRODUCERS = ("-w", "-t")
+# Per-workflow-only value flags: meaningless as chain-wide defaults (each is one member's contract).
+PER_WORKFLOW_FLAGS = ("--kind", "--until")
 
 # A watch/chain budget: <n>m, <n>h, or bare milliseconds — validated here so a typo fails at
 # parse time, not minutes later in the engine.
@@ -43,6 +53,12 @@ class WorkflowConfig:
     budget: str | None = None  # raw duration token, validated against _BUDGET_RE
     fresh: bool = False
     kind: str | None = None
+    # Structured-output mappings (per-workflow only, assignment-ordered destination=source):
+    # captures: blackboardKey=outputField pairs; inputs: param=blackboardKey pairs; until: the
+    # raw PATH=VALUE token (chain.py shapes it for the engine).
+    captures: tuple[tuple[str, str], ...] = ()
+    inputs: tuple[tuple[str, str], ...] = ()
+    until: str | None = None
 
 
 @dataclass(frozen=True)
@@ -78,12 +94,23 @@ def effective_config(defaults: WorkflowConfig, workflow: WorkflowConfig) -> Work
         budget=workflow.budget if workflow.budget is not None else defaults.budget,
         fresh=workflow.fresh or defaults.fresh,
         kind=workflow.kind,  # kind is per-workflow only; defaults never carry one (parser enforces)
+        # Mappings are per-workflow only too (parser enforces) — no defaults to merge.
+        captures=workflow.captures,
+        inputs=workflow.inputs,
+        until=workflow.until,
     )
 
 
 def _validated(flag: str, value: str) -> str:
     if flag == "--budget" and not _BUDGET_RE.match(value):
         raise ExprError(f"bad {flag} '{value}' — expected milliseconds, <n>m, or <n>h (e.g. 45m)")
+    if flag in (*MAP_FLAGS, "--until"):
+        dest, sep, src = value.partition("=")
+        if not sep or not dest or not src:
+            shape = "PATH=VALUE (e.g. verdict=CLEAN)" if flag == "--until" else (
+                "destination=source (e.g. prNumber=pr)"
+            )
+            raise ExprError(f"bad {flag} '{value}' — expected {shape}")
     return value
 
 
@@ -154,6 +181,19 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
             # stage (A --parallel B --parallel C chains into one three-way group).
             finish_workflow()
             joining = True
+        elif token in MAP_FLAGS:
+            flag = token
+            value = flag_value(flag)
+            if current is None:
+                raise ExprError(f"{flag} is per-workflow only — place it after a -w/-t workflow")
+            name = "captures" if flag == "--capture" else "inputs"
+            pairs: tuple[tuple[str, str], ...] = getattr(current.config, name)
+            dest, _, src = value.partition("=")
+            if any(existing == dest for existing, _ in pairs):
+                raise ExprError(f"duplicate {flag} destination '{dest}' on '{current.label}'")
+            current = replace(
+                current, config=replace(current.config, **{name: (*pairs, (dest, src))})
+            )
         elif token in VALUE_FLAGS:
             flag = token
             value = flag_value(flag)
@@ -163,8 +203,10 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                     config=_set_flag(current.config, flag, value, f"on workflow '{current.label}'"),
                 )
             elif not stages:
-                if flag == "--kind":
-                    raise ExprError("--kind is per-workflow only — place it after a -w/-t workflow")
+                if flag in PER_WORKFLOW_FLAGS:
+                    raise ExprError(
+                        f"{flag} is per-workflow only — place it after a -w/-t workflow"
+                    )
                 defaults = _set_flag(defaults, flag, value, "in the chain-wide prefix")
             else:
                 raise ExprError(
@@ -183,7 +225,9 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                     f"{token} must follow a workflow (or precede the first workflow as a default)"
                 )
         elif token.startswith("-"):
-            known = ", ".join((*WORKFLOW_INTRODUCERS, CONNECTOR, *VALUE_FLAGS, *BOOL_FLAGS))
+            known = ", ".join(
+                (*WORKFLOW_INTRODUCERS, CONNECTOR, *VALUE_FLAGS, *MAP_FLAGS, *BOOL_FLAGS)
+            )
             raise ExprError(f"unknown token '{token}' in the chain expression — known: {known}")
         else:
             raise ExprError(

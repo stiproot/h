@@ -17,6 +17,7 @@ wherever they sit; everything workflow-scoped is positional in the expression:
     STAGE   := WF ( --parallel WF )*      # infix; parallel groups need the Phase-5 engine
     WF      := ( -w KEY | -t ATOM ATOM... ) FLAG*
     FLAG    := --agent A | --model M | --budget DUR | --fresh | --kind K
+             | --capture DEST=SRC | --input DEST=SRC | --until PATH=VALUE
 
 A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
 chain-scoped key `<slug>-w<N>`. Identity flags become fire-time params (§1.9): --agent maps to
@@ -152,6 +153,33 @@ def _check_identity_slots(key: str, cfg: WorkflowConfig, kind: str) -> None:
             )
 
 
+def _check_output_mappings(
+    entry: dict[str, Any], declared: dict[str, Any] | None, label: str
+) -> None:
+    """Registration-time validation (structured-workflow-outputs §1, consumer 3): every --capture
+    source field and the --until path must exist in the workflow's declared outputs schema, so a
+    broken thread fails HERE, not mid-chain. --input maps blackboard keys (dynamic) — not checkable."""
+    refs = list((entry.get("captures") or {}).values())
+    if entry.get("until"):
+        refs.append(entry["until"]["path"])
+    if not refs:
+        return
+    if not isinstance(declared, dict) or not declared:
+        _fail(
+            f"'{label}' uses --capture/--until but its workflow declares no outputs schema — "
+            "republish the template with an outputs declaration (structured-workflow-outputs plan)"
+        )
+        raise AssertionError("unreachable")
+    properties = declared.get("properties")
+    known = sorted(properties) if isinstance(properties, dict) else []
+    missing = [ref for ref in refs if ref.split(".")[0] not in known]
+    if missing:
+        _fail(
+            f"'{label}': the declared outputs schema has no field(s) {', '.join(missing)} — "
+            f"declared: {', '.join(known) or '(none)'}"
+        )
+
+
 def _resolve_workflow(
     workflow: WorkflowRef, cfg: WorkflowConfig, slug: str, index: int
 ) -> dict[str, Any]:
@@ -183,11 +211,17 @@ def _resolve_workflow(
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
     params = _identity_params(kind, cfg, workflow.label)
+    declared_outputs: dict[str, Any] | None = None
     if workflow.key is None:
         # Compose-on-fire: overlay the group's templates into one definition and publish it under
         # the chain-scoped key (idempotent — re-firing the chain republishes the same key).
         merged = compose_templates(list(workflow.templates))
-        _guarded(lambda: workflow_svc.save(key, merged["steps"], params=merged.get("params")))
+        declared_outputs = merged.get("outputs")
+        _guarded(
+            lambda: workflow_svc.save(
+                key, merged["steps"], params=merged.get("params"), outputs=declared_outputs
+            )
+        )
         console.print(f"==> composed [{' ⊕ '.join(workflow.templates)}] published as '{key}'")
     elif params:
         _check_identity_slots(key, cfg, kind)
@@ -206,6 +240,21 @@ def _resolve_workflow(
     }
     if params:
         entry["params"] = params
+    # Structured-output mappings (structured-workflow-outputs §4): each declared half replaces its
+    # side of the kind's coded contract in the engine; validated against the workflow's declared
+    # outputs schema at registration so a broken thread never fires.
+    if cfg.captures:
+        entry["captures"] = dict(cfg.captures)
+    if cfg.inputs:
+        entry["inputs"] = dict(cfg.inputs)
+    if cfg.until:
+        path, _, expected = cfg.until.partition("=")
+        entry["until"] = {"path": path, "equals": expected}
+    if entry.get("captures") or entry.get("until"):
+        if declared_outputs is None and workflow.key is not None:
+            stored = _guarded(lambda: workflow_svc.get(key))
+            declared_outputs = stored.get("outputs") if isinstance(stored, dict) else None
+        _check_output_mappings(entry, declared_outputs, workflow.label)
     return entry
 
 
@@ -252,6 +301,12 @@ def run(
       --agent A --model M --budget DUR --fresh --kind K   bind to the workflow they FOLLOW;
                         before the first workflow they set chain-wide defaults (a prefix --budget is
                         the whole-chain wall clock: <n>m, <n>h, or milliseconds)
+
+      --capture BB=FIELD --input PARAM=BB --until PATH=VALUE   structured-output threading for
+                        the workflow they follow (per-workflow only): capture a declared output
+                        FIELD onto blackboard key BB; feed blackboard key BB in as PARAM; stop a
+                        loop when the structured field at PATH equals VALUE. Validated against the
+                        workflow's declared outputs schema at registration.
 
       --parallel        joins adjacent workflows into a parallel group (needs the Phase-5 engine)
 

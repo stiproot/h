@@ -53,6 +53,44 @@ export function stepOutputs(workflowOutput: string | undefined): string[] {
     .map((v) => v.output);
 }
 
+/**
+ * Sibling of stepOutputs for STRUCTURED outputs (docs/plans/structured-workflow-outputs.md): merge
+ * each step envelope's validated `structured` value, in step order (later steps win — mirroring
+ * "the last fenced block wins" one level up). Undefined when no step carried one, which is how the
+ * engine tells a marker-era run from a declaring one.
+ */
+export function stepStructured(
+  workflowOutput: string | undefined,
+): Record<string, unknown> | undefined {
+  let results: unknown = workflowOutput;
+  for (let i = 0; i < 3; i++) {
+    if (typeof results !== "string") break;
+    try {
+      results = JSON.parse(results);
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof results !== "object" || results === null) return undefined;
+  let merged: Record<string, unknown> | undefined;
+  for (const step of Object.values(results as Record<string, unknown>)) {
+    const structured = (step as { structured?: unknown } | null)?.structured;
+    if (typeof structured === "object" && structured !== null && !Array.isArray(structured))
+      merged = { ...merged, ...(structured as Record<string, unknown>) };
+  }
+  return merged;
+}
+
+/** Walk a dot-path ("pr" or "review.verdict") into a structured value; undefined when any hop misses. */
+function structuredField(value: Record<string, unknown>, path: string): unknown {
+  let current: unknown = value;
+  for (const segment of path.split(".")) {
+    if (typeof current !== "object" || current === null || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
 /** The text following `marker` in whichever step output carries it (trimmed), else undefined. */
 export function afterMarker(
   workflowOutput: string | undefined,
@@ -65,8 +103,19 @@ export function afterMarker(
   return undefined;
 }
 
-/** Capture a `===PR===` marker into prUrl + prNumber (the number parsed from a /pull/<n> URL). */
+/**
+ * Capture the PR a run produced: STRUCTURED-FIRST (D1 — a declaring workflow's validated block is
+ * authoritative), falling back to the `===PR===` marker for non-declaring runs. Structured shape:
+ * `pr` (number) + `url`, or `skipped` when no PR exists — a skip sets nothing, so the next
+ * workflow's buildParams fails loud exactly like the marker-era SKIPPED tail.
+ */
 export function capturePr(output: string | undefined, data: Blackboard): void {
+  const s = stepStructured(output);
+  if (s && ("pr" in s || "url" in s || "skipped" in s)) {
+    if (s.pr !== undefined && s.pr !== null) data.prNumber = String(s.pr);
+    if (typeof s.url === "string" && s.url) data.prUrl = s.url;
+    return;
+  }
   const tail = afterMarker(output, "===PR===");
   if (!tail) return;
   const url = (tail.split("\n")[0] ?? "").trim();
@@ -75,8 +124,16 @@ export function capturePr(output: string | undefined, data: Blackboard): void {
   if (match) data.prNumber = match[1];
 }
 
-/** Capture a `===REVIEW===` marker into reviewFindings (empty string when absent — a valid CLEAN run). */
+/**
+ * Capture a review's findings: STRUCTURED-FIRST (`verdict` + `summary`; CLEAN ⇒ empty findings),
+ * falling back to the `===REVIEW===` marker (empty string when absent — a valid CLEAN run).
+ */
 export function captureReview(output: string | undefined, data: Blackboard): void {
+  const s = stepStructured(output);
+  if (s && typeof s.verdict === "string") {
+    data.reviewFindings = s.verdict === "CLEAN" ? "" : String(s.summary ?? "");
+    return;
+  }
   data.reviewFindings = afterMarker(output, "===REVIEW===") ?? "";
 }
 
@@ -86,6 +143,9 @@ export function captureReview(output: string | undefined, data: Blackboard): voi
  * `CLEAN` (case-insensitive) all mean nothing left to address — the loop stops.
  */
 export function reviewIsClean(output: string | undefined): boolean {
+  // Structured-first (D1): a declaring review's validated verdict is authoritative.
+  const s = stepStructured(output);
+  if (s && typeof s.verdict === "string") return s.verdict === "CLEAN";
   const tail = afterMarker(output, "===REVIEW===");
   if (!tail) return true;
   return (tail.split("\n")[0] ?? "").trim().toUpperCase() === "CLEAN";
@@ -104,6 +164,74 @@ function requireStr(data: Blackboard, key: string, hint: string): string {
  */
 function withRepo(params: Record<string, unknown>, data: Blackboard): Record<string, unknown> {
   return typeof data.repo === "string" && data.repo ? { ...params, repo: data.repo } : params;
+}
+
+/** The declarative slice of a chain member the generic contract reads (chain.model's fields). */
+export type MemberMappings = {
+  readonly kind: ChainWorkflowKind;
+  readonly captures?: Readonly<Record<string, string>>;
+  readonly inputs?: Readonly<Record<string, string>>;
+  readonly until?: { readonly path: string; readonly equals: string };
+};
+
+/**
+ * The effective contract for a chain member: a declared mapping replaces its HALF of the kind's
+ * coded contract (captures → capture, inputs → buildParams), so structured threading is the default
+ * exactly where a member declares it and the marker kinds remain the fallback (D1). Fail-loud
+ * mirrors requireStr: a missing structured envelope or mapped field is a ChainThreadError, which
+ * the scan turns into a failed-chain finalize — never fire-on-a-guess.
+ */
+export function contractFor(member: MemberMappings): WorkflowContract {
+  const kind = WORKFLOW_KINDS[member.kind];
+  const captures = member.captures;
+  const inputs = member.inputs;
+  return {
+    capture: !captures
+      ? kind.capture
+      : (output, data) => {
+          const structured = stepStructured(output);
+          if (!structured)
+            throw new ChainThreadError(
+              `'${member.kind}' declares captures but the completed workflow emitted no ` +
+                "structured output — does its template carry the outputContract step input?",
+            );
+          for (const [bbKey, field] of Object.entries(captures)) {
+            const value = structuredField(structured, field);
+            if (value === undefined || value === null)
+              throw new ChainThreadError(
+                `structured output has no field '${field}' (capture → ${bbKey})`,
+              );
+            data[bbKey] = value;
+          }
+        },
+    buildParams: !inputs
+      ? kind.buildParams
+      : (data) => {
+          const params: Record<string, unknown> = {};
+          for (const [param, bbKey] of Object.entries(inputs)) {
+            const value = data[bbKey];
+            if (value === undefined || value === null || value === "")
+              throw new ChainThreadError(
+                `'${member.kind}' needs '${bbKey}' on the blackboard (input → ${param})`,
+              );
+            params[param] = value;
+          }
+          return withRepo(params, data);
+        },
+  };
+}
+
+/**
+ * The loop-until-clean stop check for the loop-start member: a declared `until` evaluates against
+ * the structured output (absent structured/field ⇒ NOT satisfied — the iteration budget is the
+ * backstop); undeclared falls back to the coded reviewIsClean marker sniff.
+ */
+export function loopIsClean(member: MemberMappings, workflowOutput: string | undefined): boolean {
+  if (!member.until) return reviewIsClean(workflowOutput);
+  const structured = stepStructured(workflowOutput);
+  const value = structured ? structuredField(structured, member.until.path) : undefined;
+  if (value === undefined || value === null) return false;
+  return String(value) === member.until.equals;
 }
 
 export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {

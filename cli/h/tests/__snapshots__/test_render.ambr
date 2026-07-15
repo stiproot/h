@@ -22,6 +22,7 @@
   steps:
     - id: implement
       input:
+        outputContract: {"properties":{"pr":{"description":"the pull request number, when a PR exists (opened, updated, or pre-existing)","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why no PR exists (auth failure, nothing to push, ...)","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"type":"object"}
         task: |-
           ===ISSUE===
           {{params.issueNumber}}
@@ -56,8 +57,42 @@
                resolve_thread passing the thread node id.
              d. Do NOT reply to or resolve threads this run did not address.
              e. Never APPROVE or REQUEST_CHANGES on the PR.
-          End your response with the exact marker ===PR=== on its own line, then the PR
-          URL — or SKIPPED and the reason — on the next line.
+          Report the exact marker ===PR=== on its own line, then the PR URL — or SKIPPED
+          and the reason — on the next line.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          {
+            "properties": {
+              "pr": {
+                "description": "the pull request number, when a PR exists (opened, updated, or pre-existing)",
+                "type": "integer"
+              },
+              "skipped": {
+                "description": "present INSTEAD of pr/url — why no PR exists (auth failure, nothing to push, ...)",
+                "type": "string"
+              },
+              "url": {
+                "description": "the pull request URL",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+  outputs:
+    type: object
+    properties:
+      pr:
+        type: integer
+        description: the pull request number, when a PR exists (opened, updated, or pre-existing)
+      url:
+        type: string
+        description: the pull request URL
+      skipped:
+        type: string
+        description: present INSTEAD of pr/url — why no PR exists (auth failure, nothing to push, ...)
   
   '''
 # ---
@@ -284,6 +319,7 @@
     - id: review
       activity: run-claude
       input:
+        outputContract: {"properties":{"summary":{"description":"one line per finding, \"FILE:LINE — defect summary\"; empty or omitted when CLEAN","type":"string"},"verdict":{"description":"CLEAN when the review found no actionable findings, else FINDINGS","enum":["CLEAN","FINDINGS"]}},"required":["verdict"],"type":"object"}
         task: |-
           You are a code reviewer for the {{params.repo}} GitHub repository. Your task is to review
           pull request #{{params.pr}} and post your findings as a GitHub
@@ -327,8 +363,45 @@
              d. pull_request_review_write with method "submit_pending" and event "COMMENT".
                 NEVER use APPROVE or REQUEST_CHANGES — human trust gates stay human.
   
-          End your response with the exact marker ===REVIEW=== on its own line, then one line
-          per finding in the format "FILE:LINE — <defect summary>", or "CLEAN" if no findings.
+          Report the exact marker ===REVIEW=== on its own line, then one line per finding
+          in the format "FILE:LINE — <defect summary>", or "CLEAN" if no findings.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          {
+            "properties": {
+              "summary": {
+                "description": "one line per finding, \"FILE:LINE — defect summary\"; empty or omitted when CLEAN",
+                "type": "string"
+              },
+              "verdict": {
+                "description": "CLEAN when the review found no actionable findings, else FINDINGS",
+                "enum": [
+                  "CLEAN",
+                  "FINDINGS"
+                ]
+              }
+            },
+            "required": [
+              "verdict"
+            ],
+            "type": "object"
+          }
+  outputs:
+    type: object
+    required:
+      - verdict
+    properties:
+      verdict:
+        enum:
+          - CLEAN
+          - FINDINGS
+        description: CLEAN when the review found no actionable findings, else FINDINGS
+      summary:
+        type: string
+        description: one line per finding, "FILE:LINE — defect summary"; empty or omitted when CLEAN
   
   '''
 # ---
@@ -353,6 +426,7 @@
     - id: revise
       activity: "{{params.runActivity}}"
       input:
+        outputContract: {"properties":{"goal":{"description":"RESOLVED when the PR is merged, else PENDING","enum":["RESOLVED","PENDING"]},"pr":{"description":"the pull request number this run revised","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why the push/PR update did not happen","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"required":["goal"],"type":"object"}
         cwd: "{{worktree.worktreePath}}"
         task: |-
           You are in a git worktree of the target repository, on branch feature/{{params.slug}} — the head
@@ -380,9 +454,60 @@
              gates stay human.
           6. Report the GOAL state for the recurrence engine: this workflow's goal is PR #{{params.pr}}
              being MERGED. Read the PR (github MCP pull_request_read) and check its `merged` field.
-          Then end your response with TWO markers, each on its own line:
+          Then report TWO markers, each on its own line:
           - ===PR=== followed by the PR URL (or SKIPPED and the reason) on the next line.
           - ===GOAL=== followed by RESOLVED if the PR is merged, else PENDING, on the next line.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          {
+            "properties": {
+              "goal": {
+                "description": "RESOLVED when the PR is merged, else PENDING",
+                "enum": [
+                  "RESOLVED",
+                  "PENDING"
+                ]
+              },
+              "pr": {
+                "description": "the pull request number this run revised",
+                "type": "integer"
+              },
+              "skipped": {
+                "description": "present INSTEAD of pr/url — why the push/PR update did not happen",
+                "type": "string"
+              },
+              "url": {
+                "description": "the pull request URL",
+                "type": "string"
+              }
+            },
+            "required": [
+              "goal"
+            ],
+            "type": "object"
+          }
+  outputs:
+    type: object
+    required:
+      - goal
+    properties:
+      pr:
+        type: integer
+        description: the pull request number this run revised
+      url:
+        type: string
+        description: the pull request URL
+      skipped:
+        type: string
+        description: present INSTEAD of pr/url — why the push/PR update did not happen
+      goal:
+        enum:
+          - RESOLVED
+          - PENDING
+        description: RESOLVED when the PR is merged, else PENDING
   
   '''
 # ---

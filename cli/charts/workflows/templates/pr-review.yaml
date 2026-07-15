@@ -32,9 +32,29 @@ Publish:
   helm template pr-review cli/charts/workflows -s templates/pr-review.yaml \
     --set template=pr-review --set prReview.repo=owner/h
 */ -}}
+{{- /*
+The declared output contract (structured-workflow-outputs plan): verdict is the loop-until-clean
+predicate (the chain engine stops on CLEAN — structured-first, ===REVIEW=== the fallback); summary
+carries the findings a human (or a downstream judge) reads off the blackboard.
+*/ -}}
+{{- define "h.contract.pr-review" -}}
+type: object
+required:
+  - verdict
+properties:
+  verdict:
+    enum:
+      - CLEAN
+      - FINDINGS
+    description: CLEAN when the review found no actionable findings, else FINDINGS
+  summary:
+    type: string
+    description: one line per finding, "FILE:LINE — defect summary"; empty or omitted when CLEAN
+{{- end }}
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "pr-review" }}
 {{- $p := .Values.prReview }}
+{{- $contract := include "h.contract.pr-review" . | fromYaml }}
 {{- /* Fire-time identity params: repo (owner/name — BOTH the review target and the wf-key segment)
 and slug (the wf-key branch segment; per-PR). repo carries the values default; both override per fire
 (-p repo=… -p slug=…). Model HALF is modelReview (values default). The EXECUTOR stays pinned
@@ -56,6 +76,7 @@ steps:
   - id: review
     activity: run-claude
     input:
+      outputContract: {{ $contract | toJson }}
       {{- with $p.models.review }}
       model: {{ include "h.token" "params.modelReview" | quote }}
       {{- end }}
@@ -103,6 +124,9 @@ steps:
            d. pull_request_review_write with method "submit_pending" and event "COMMENT".
               NEVER use APPROVE or REQUEST_CHANGES — human trust gates stay human.
 
-        End your response with the exact marker ===REVIEW=== on its own line, then one line
-        per finding in the format "FILE:LINE — <defect summary>", or "CLEAN" if no findings.
+        Report the exact marker ===REVIEW=== on its own line, then one line per finding
+        in the format "FILE:LINE — <defect summary>", or "CLEAN" if no findings.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "h.contract.pr-review" . | nindent 2 }}
 {{- end }}

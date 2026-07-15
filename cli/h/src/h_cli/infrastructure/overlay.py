@@ -55,6 +55,16 @@ def overlay(*definitions: dict[str, Any]) -> dict[str, Any]:
     steps_by_id: dict[str, dict[str, Any]] = {}
     order: list[str] = []
 
+    declared_outputs = sum(1 for d in definitions if d.get("outputs"))
+    if declared_outputs > 1:
+        # An outputs declaration renders a contract epilogue into its atom's task prose; two
+        # declaring atoms would append two conflicting ===OUTPUT CONTRACT=== blocks into the merged
+        # step. One atom owns the composed workflow's output signature — fail loud, not last-wins.
+        raise ValueError(
+            "overlay: more than one atom declares `outputs` — exactly one template may own the "
+            "composed workflow's output contract"
+        )
+
     for definition in definitions:
         for key, value in definition.items():
             if key == "steps":

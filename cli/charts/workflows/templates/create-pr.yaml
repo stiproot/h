@@ -19,14 +19,37 @@ Compose (the intended path):
 Render alone (for inspection):
   helm template create-pr cli/charts/workflows -s templates/create-pr.yaml --set template=create-pr
 */ -}}
+{{- /*
+The declared output contract (structured-workflow-outputs plan): the workflow's typed output
+signature, rendered three ways below — the step's outputContract input (validated at the run
+activity, rung 2), the schema-derived task epilogue (steering that cannot drift), and the
+top-level outputs: block (the registration surface). No `required`: a run that cannot open a PR
+reports `skipped` instead of pr/url, and the chain fails loud downstream exactly like the
+marker-era SKIPPED tail.
+*/ -}}
+{{- define "h.contract.create-pr" -}}
+type: object
+properties:
+  pr:
+    type: integer
+    description: the pull request number, when a PR exists (opened, updated, or pre-existing)
+  url:
+    type: string
+    description: the pull request URL
+  skipped:
+    type: string
+    description: present INSTEAD of pr/url — why no PR exists (auth failure, nothing to push, ...)
+{{- end }}
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "create-pr" }}
 {{- $c := .Values.createPr }}
 {{- $slug := include "h.token" "params.slug" }}
 {{- $issueNumber := include "h.token" "params.issueNumber" }}
+{{- $contract := include "h.contract.create-pr" . | fromYaml }}
 steps:
   - id: implement
     input:
+      outputContract: {{ $contract | toJson }}
       task: |-
         ===ISSUE===
         {{ $issueNumber }}
@@ -67,6 +90,9 @@ steps:
              resolve_thread passing the thread node id.
            d. Do NOT reply to or resolve threads this run did not address.
            e. Never APPROVE or REQUEST_CHANGES on the PR.
-        End your response with the exact marker ===PR=== on its own line, then the PR
-        URL — or SKIPPED and the reason — on the next line.
+        Report the exact marker ===PR=== on its own line, then the PR URL — or SKIPPED
+        and the reason — on the next line.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "h.contract.create-pr" . | nindent 2 }}
 {{- end }}

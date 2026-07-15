@@ -368,3 +368,87 @@ def test_chain_list_http_error_exits_1() -> None:
     respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(500))
     result = runner.invoke(app, ["chain", "list"])
     assert result.exit_code == 1
+
+
+PR_OUTPUTS = {
+    "type": "object",
+    "required": ["pr"],
+    "properties": {"pr": {"type": "integer"}, "url": {"type": "string"}},
+}
+
+
+def _mock_get(key: str, outputs: dict | None = None):
+    stored: dict = {"key": key, "steps": [], "params": {}}
+    if outputs is not None:
+        stored["outputs"] = outputs
+    return respx.get(f"{WORKFLOW_URL}/workflow/get/{key}").mock(
+        return_value=Response(200, json=stored)
+    )
+
+
+@respx.mock
+def test_chain_run_mapping_flags_land_on_the_member(tmp_path: Path) -> None:
+    route = _mock_run()
+    _mock_get("feature-pr", outputs=PR_OUTPUTS)
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prUrl=url",
+            "-w", "pr-review", "--input", "pr=prNumber",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    feature, review = body["workflows"]
+    assert feature["captures"] == {"prNumber": "pr", "prUrl": "url"}
+    assert "inputs" not in feature
+    assert review["inputs"] == {"pr": "prNumber"}
+
+
+@respx.mock
+def test_chain_run_until_shapes_the_predicate(tmp_path: Path) -> None:
+    route = _mock_run()
+    _mock_get("pr-review", outputs={"type": "object", "properties": {"verdict": {}}})
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "-w", "pr-review", "--until", "verdict=CLEAN",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["workflows"][1]["until"] == {"path": "verdict", "equals": "CLEAN"}
+
+
+@respx.mock
+def test_chain_run_capture_without_declared_outputs_fails_at_registration(
+    tmp_path: Path,
+) -> None:
+    _mock_run()
+    _mock_get("feature-pr")  # no outputs declaration on the saved workflow
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "--capture", "prNumber=pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "declares no outputs schema" in _all_output(result)
+
+
+@respx.mock
+def test_chain_run_capture_of_undeclared_field_fails_at_registration(tmp_path: Path) -> None:
+    _mock_run()
+    _mock_get("feature-pr", outputs=PR_OUTPUTS)
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "--capture", "prNumber=prNum",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "no field(s) prNum" in _all_output(result)

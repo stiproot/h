@@ -16,9 +16,37 @@ Render (for inspection):
   helm template revise cli/charts/workflows -s templates/revise.yaml \
     --set template=revise --set publish=true
 */ -}}
+{{- /*
+The declared output contract (structured-workflow-outputs plan): pr/url/skipped mirror
+create-pr's shape (capturePr reads either workflow's block); goal is the recurrence engine's
+handshake — RESOLVED (merged) flips the wf: row's resolved flag and stops the revise cron.
+The ===GOAL=== marker stays alongside: generic.workflow's goalResolved parses it (its cutover to
+the structured block is a follow-up).
+*/ -}}
+{{- define "h.contract.revise" -}}
+type: object
+required:
+  - goal
+properties:
+  pr:
+    type: integer
+    description: the pull request number this run revised
+  url:
+    type: string
+    description: the pull request URL
+  skipped:
+    type: string
+    description: present INSTEAD of pr/url — why the push/PR update did not happen
+  goal:
+    enum:
+      - RESOLVED
+      - PENDING
+    description: RESOLVED when the PR is merged, else PENDING
+{{- end }}
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "revise" }}
 {{- $r := .Values.revise }}
+{{- $contract := include "h.contract.revise" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
 {{- /* Publish-native: identity + subject are always {{params.*}} tokens (revise is only ever fired
 with fire-time params). $activityRef is pre-quoted so the bare `{{` isn't read as a YAML mapping. */ -}}
@@ -61,6 +89,7 @@ steps:
   - id: revise
     activity: {{ $activityRef }}
     input:
+      outputContract: {{ $contract | toJson }}
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $r.models.revise }}
       model: {{ include "h.token" "params.modelRevise" | quote }}
@@ -97,7 +126,10 @@ steps:
            gates stay human.
         6. Report the GOAL state for the recurrence engine: this workflow's goal is PR #{{ $pr }}
            being MERGED. Read the PR (github MCP pull_request_read) and check its `merged` field.
-        Then end your response with TWO markers, each on its own line:
+        Then report TWO markers, each on its own line:
         - ===PR=== followed by the PR URL (or SKIPPED and the reason) on the next line.
         - ===GOAL=== followed by RESOLVED if the PR is merged, else PENDING, on the next line.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "h.contract.revise" . | nindent 2 }}
 {{- end }}

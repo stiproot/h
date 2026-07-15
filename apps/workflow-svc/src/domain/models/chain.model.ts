@@ -69,6 +69,17 @@ export const ChainWorkflow = Schema.Struct({
   // model*, mapped by the CLI from workflow flags). Merged OVER the kind contract's buildParams output
   // at fire time — the CLI never sets threading keys (slug/spec/pr), so the sets stay disjoint.
   params: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Declarative threading over STRUCTURED output (docs/plans/structured-workflow-outputs.md §4).
+  // Each field, when present, replaces its half of the kind's coded contract; the DSL is
+  // deliberately tiny (rename / require / equals) — anything needing a transform or a conditional
+  // earns a coded kind instead. Assignment-ordered: destination ← source.
+  // captures: blackboardKey ← structured-output field of THIS workflow's completed run.
+  captures: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  // inputs: fire param ← blackboard key, built when THIS workflow fires.
+  inputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  // until: loop-until-clean predicate on THIS workflow's structured output (replaces the coded
+  // reviewIsClean marker sniff when declared): satisfied when String(field at path) === equals.
+  until: Schema.optional(Schema.Struct({ path: Schema.String, equals: Schema.String })),
 });
 export type ChainWorkflow = Schema.Schema.Type<typeof ChainWorkflow>;
 

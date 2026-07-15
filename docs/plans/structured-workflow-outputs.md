@@ -1,4 +1,6 @@
-**Status:** DESIGNED (2026-07-15) — not started. Extends
+**Status:** IMPLEMENTED (2026-07-15) — machinery + the three-template conversion landed in one
+day; see the Progress log. Open: D4 (extract activity — rung 3 not yet built), the `===GOAL===` →
+structured cutover in generic.workflow/register-cron, and live validation of a structured chain. Extends
 [workflow-composition.md](./workflow-composition.md) (the chain's marker-threading contracts) and
 [chain-composition-surface.md](./chain-composition-surface.md) (the chain expression). Grew out of
 re-evaluating the `===MARKER===` decision: markers stay, structured output lands beside them, and
@@ -201,3 +203,20 @@ agent- and human-consumed, not engine-consumed.
 - 2026-07-15 — Plan written. Context: grew out of a first-principles review of the marker syntax
   (why it exists, what it compensates for). Same day: `h-lab-runtime.md` renamed `h-runtime.md`
   (5f557ab) and the three saved workflows republished with the new path.
+- 2026-07-15 — **Implemented end-to-end.** (1) Protocol rule in `h-runtime.md`. (2) Rung-2 seam:
+  `workflow-svc domain/structured-output.ts` — fail-closed JSON-Schema SUBSET validator
+  (type/properties/required/items/enum/const; dependency-free, an unsupported keyword rejects the
+  whole contract), last-fenced-```json extraction, `applyOutputContract` wired into all 7 run-*
+  activities (envelope gains `structured`); `StoredWorkflow.outputs` (D5: top-level). (3) Chain
+  engine: `ChainWorkflow.{captures,inputs,until}` + `contractFor` (a declared mapping replaces its
+  HALF of the kind contract) + `loopIsClean`; **D1 lands as structured-first kind contracts** —
+  `capturePr`/`captureReview`/`reviewIsClean` read `stepStructured()` before grepping markers, so
+  declaring workflows thread structured with ZERO chain-side config and marker-era saved workflows
+  keep working (no CLI preset table, no extra registration GETs). (4) Chart: `h.outputContractEpilogue`
+  helper; one-declarer-per-composition guard in `overlay()`; `outputs` through compose/publish/save.
+  (5) CLI: `--capture/--input/--until` position-scoped expression flags + registration validation
+  against the declared schema. (6) Conversion: create-pr / pr-review / revise declare contracts
+  (dual emission — markers kept for register-cron's `===PR===` guard, `goalResolved`'s `===GOAL===`,
+  and humans); goldens re-blessed; saved workflows republished. Deferred: rung-3 extract activity
+  (D4), `===GOAL===`/register-cron structured cutover, deleting marker parsers (blocked on those
+  two consumers + marker-era saved workflows aging out).

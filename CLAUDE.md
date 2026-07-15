@@ -33,14 +33,22 @@ stack, and the design principles; this section is the terse runtime-facing index
   data}` plus a shared engine that, on the same cron tick, reads the current workflow's persisted
   state and acts through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher
   RE-fires one instance, a chain FIRES THE NEXT workflow. State threads workflow-to-workflow
-  through the row's `data`, filled by the engine parsing each one's `===MARKER===` output (no
-  actor), so chained workflows stay chain-agnostic. IMPLEMENTED: engine in workflow-svc
+  through the row's `data`, filled by the engine parsing each one's output (no actor) —
+  STRUCTURED-FIRST since docs/plans/structured-workflow-outputs.md: a workflow that declares an
+  `outputs:` schema ends its agent step with a validated fenced json block (the `outputContract`
+  step input → the run activities' rung-2 seam, `domain/structured-output.ts`; envelope gains
+  `structured`) and the kind contracts read it before falling back to `===MARKER===` greps —
+  chained workflows stay chain-agnostic either way. IMPLEMENTED: engine in workflow-svc
   (`domain/chain-*.ts`, scan on the workflow-cron-tick beside the watch scan), rows
   `chain:sub:<chainId>`; `h chain run` registers (fire-and-forget) via the chain EXPRESSION —
   ordered `-w KEY` / `-t ATOM…` members with position-scoped `--agent/--model/--fresh/--kind`
-  flags (suffix = that workflow, prefix = chain-wide default); a `-t` group overlays inline and
-  publishes under `<slug>-w<N>` (compose-on-fire). `h chain list` inspects. Strategies:
-  `sequential`, `loop-until-clean` (`--parallel` grammar exists; engine strategy deferred).
+  flags plus declarative threading mappings `--capture BB=FIELD / --input PARAM=BB /
+  --until PATH=VALUE` (validated against the declared outputs schema at registration; each
+  declared half replaces its side of the kind contract) (suffix = that workflow, prefix =
+  chain-wide default); a `-t` group overlays inline and publishes under `<slug>-w<N>`
+  (compose-on-fire; at most ONE atom per composition declares `outputs`). `h chain list`
+  inspects. Strategies: `sequential`, `loop-until-clean` (`--parallel` grammar exists; engine
+  strategy deferred).
 - **Cron** — the recurrence sibling: a durable registration `{cadence, source, budget}` plus the same
   shared engine that, on the same cron tick, reads the target `wf:` row + the live instance and acts
   through a closed vocabulary (fire-again, deactivate) — where a watcher RE-fires one instance on a

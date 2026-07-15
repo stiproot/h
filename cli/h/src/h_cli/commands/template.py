@@ -83,7 +83,9 @@ def compose(
     joined = " ⊕ ".join(templates)
     if save:
         try:
-            result = workflow_svc.save(save, merged["steps"], params=merged.get("params"))
+            result = workflow_svc.save(
+                save, merged["steps"], params=merged.get("params"), outputs=merged.get("outputs")
+            )
         except httpx.HTTPError as err:
             err_console.print(f"[red]http:[/red] {err}")
             err_console.print("Is workflow-svc running? (make dev-tab)")

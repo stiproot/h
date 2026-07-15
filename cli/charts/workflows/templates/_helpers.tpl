@@ -21,3 +21,22 @@ allowlist; here it needs nothing).
 - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
 - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
 {{- end }}
+
+{{/*
+h.outputContractEpilogue — the per-step INSTANCE of the output contract
+(docs/plans/structured-workflow-outputs.md §2): rendered from the template's declared schema so
+instruction and contract cannot drift. The shared PROTOCOL rule lives in h-runtime.md (installed by
+h.setupSteps); this block supplies the schema adjacent to the task it governs. The declaring
+template appends it to its final agent step's task (nindent to the block scalar), sets the SAME
+schema as that step's `outputContract` input (the rung-2 validation seam), and emits it top-level
+as `outputs:` (the registration surface). Pass the schema dict:
+  {{ include "h.outputContractEpilogue" $schema | nindent 8 }}
+At most ONE atom in a composition declares a contract — overlay() fails loud on two.
+*/}}
+{{- define "h.outputContractEpilogue" -}}
+===OUTPUT CONTRACT===
+End your final message with a fenced ```json code block containing a single JSON
+object matching this schema. The block is machine-validated: a missing or
+mismatching block fails this step. Nothing may follow the block.
+{{ . | toPrettyJson }}
+{{- end }}

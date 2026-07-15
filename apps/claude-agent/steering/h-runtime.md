@@ -25,6 +25,14 @@ rather than guessing at the runtime's state.
   `run_get`, `system_overview`. Use these to find out what a previous run did. The join key across
   traces, logs, and the run ledger is the workflow instance id.
 
+## Output contracts
+
+When a task contains an `===OUTPUT CONTRACT===` block holding a JSON schema, your final message
+MUST end with a fenced ```json code block containing a single JSON object that matches that schema.
+The block is machine-validated against the schema; a missing or mismatching block fails the step.
+Put the fenced block last — nothing after it. Any narrative, evidence, or markers the task asks for
+come before it. Tasks without an `===OUTPUT CONTRACT===` block are unaffected by this rule.
+
 ## Publishing an event for another workflow to pick up
 
 When your task says to publish feedback, a result, or a request for follow-up work, publish it with

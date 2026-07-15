@@ -201,7 +201,7 @@ export function registerWorkflowRoutes(
         runtime,
         reply,
         Effect.gen(function* () {
-          const { key, steps, workspaceId, schedule, disabled, params, watch } =
+          const { key, steps, workspaceId, schedule, disabled, params, watch, outputs } =
             yield* Schema.decodeUnknown(SaveWorkflowRequest)(request.body);
           if (schedule !== undefined) {
             yield* Effect.try({
@@ -217,6 +217,7 @@ export function registerWorkflowRoutes(
             disabled,
             params,
             watch,
+            outputs,
           });
           return { key };
         }),

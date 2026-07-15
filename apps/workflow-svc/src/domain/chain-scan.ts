@@ -3,12 +3,7 @@ import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
 import { decide } from "./chain-engine.ts";
-import {
-  type Blackboard,
-  ChainThreadError,
-  WORKFLOW_KINDS,
-  reviewIsClean,
-} from "./chain-workflows.ts";
+import { type Blackboard, ChainThreadError, contractFor, loopIsClean } from "./chain-workflows.ts";
 import {
   type ChainWorkflow,
   type ChainOutcome,
@@ -140,7 +135,7 @@ const fireWorkflow = (
     // identity from the CLI) merge OVER the threading params — disjoint by convention, workflow wins.
     const params = yield* Effect.try({
       try: () => ({
-        ...WORKFLOW_KINDS[workflow.kind].buildParams(row.data),
+        ...contractFor(workflow).buildParams(row.data),
         ...(workflow.params ?? {}),
       }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),
@@ -242,7 +237,15 @@ const processRow = (
         return;
       }
       case "advance": {
-        if (loop && row.cursor === loop.startCursor && reviewIsClean(output)) {
+        // The just-completed member IS the loop-start (review) workflow here; its declared `until`
+        // (structured) or the coded reviewIsClean marker sniff decides whether the loop stops.
+        const loopMember = loop ? row.workflows[row.cursor] : undefined;
+        if (
+          loop &&
+          loopMember &&
+          row.cursor === loop.startCursor &&
+          loopIsClean(loopMember, output)
+        ) {
           const note = `clean after ${loop.iterations} revise iteration(s)`;
           return yield* executeFinalize({ ...row, note }, "completed", nowMs, report);
         }
@@ -332,9 +335,10 @@ const executeAdvance = (
   report: ChainScanReport,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
-    // Capture what the just-completed workflow produced (===PR===/===REVIEW===) into a fresh blackboard.
+    // Capture what the just-completed workflow produced into a fresh blackboard — its structured
+    // output when the member declares captures, its ===PR===/===REVIEW=== markers otherwise.
     const data: Blackboard = { ...row.data };
-    WORKFLOW_KINDS[row.workflows[row.cursor].kind].capture(completedOutput, data);
+    contractFor(row.workflows[row.cursor]).capture(completedOutput, data);
 
     const now = new Date(nowMs).toISOString();
     const instanceId = instanceIdAt(row.chainId, row.workflows, nextCursor);

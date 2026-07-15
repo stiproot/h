@@ -150,3 +150,35 @@ def test_hops_property_flattens_stages_in_order() -> None:
     expr = parse_expr(["-w", "a", "--parallel", "-w", "b", "-w", "c"])
     assert isinstance(expr, ChainExpr)
     assert [h.label for h in expr.workflows] == ["a", "b", "c"]
+
+
+def test_capture_and_input_accumulate_per_workflow() -> None:
+    expr = parse_expr(
+        # fmt: off
+        ["-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prUrl=url",
+         "-w", "pr-review", "--input", "pr=prNumber", "--until", "verdict=CLEAN"]
+        # fmt: on
+    )
+    first, second = expr.workflows
+    assert first.config.captures == (("prNumber", "pr"), ("prUrl", "url"))
+    assert second.config.inputs == (("pr", "prNumber"),)
+    assert second.config.until == "verdict=CLEAN"
+
+
+def test_mapping_flags_are_per_workflow_only() -> None:
+    with pytest.raises(ExprError, match="per-workflow only"):
+        parse_expr(["--capture", "a=b", "-w", "feature-pr"])
+    with pytest.raises(ExprError, match="per-workflow only"):
+        parse_expr(["--until", "verdict=CLEAN", "-w", "feature-pr"])
+
+
+def test_mapping_flags_validate_the_assignment_shape() -> None:
+    with pytest.raises(ExprError, match="destination=source"):
+        parse_expr(["-w", "feature-pr", "--capture", "justakey"])
+    with pytest.raises(ExprError, match="PATH=VALUE"):
+        parse_expr(["-w", "pr-review", "--until", "CLEAN"])
+
+
+def test_duplicate_capture_destination_is_rejected() -> None:
+    with pytest.raises(ExprError, match="duplicate --capture destination 'prNumber'"):
+        parse_expr(["-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prNumber=url"])

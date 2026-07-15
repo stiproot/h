@@ -32,10 +32,12 @@ def save(
     schedule: str | None = None,
     workspace_id: str | None = None,
     disabled: bool | None = None,
+    outputs: dict[str, Any] | None = None,
 ) -> Any:
     """Persist a (possibly parameterized) workflow definition under a key. A cron schedule
     makes workflow-svc fire it on its own; disabled parks the schedule without deleting it;
-    a workspace_id pins every run to one reusable agent workspace."""
+    a workspace_id pins every run to one reusable agent workspace; outputs is the declared
+    output schema — the workflow's typed output signature (structured-workflow-outputs plan)."""
     body: dict[str, Any] = {"key": key, "steps": steps}
     if params:
         body["params"] = params
@@ -45,6 +47,8 @@ def save(
         body["workspaceId"] = workspace_id
     if disabled is not None:
         body["disabled"] = disabled
+    if outputs:
+        body["outputs"] = outputs
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/save", json=body, timeout=10)
     resp.raise_for_status()
     return resp.json()
