@@ -238,7 +238,7 @@ const processRow = (
       }
       case "advance": {
         // The just-completed member IS the loop-start (review) workflow here; its declared `until`
-        // (structured) or the coded reviewIsClean marker sniff decides whether the loop stops.
+        // (structured) or the kind's coded reviewIsClean verdict check decides whether the loop stops.
         const loopMember = loop ? row.workflows[row.cursor] : undefined;
         if (
           loop &&
@@ -335,8 +335,8 @@ const executeAdvance = (
   report: ChainScanReport,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
-    // Capture what the just-completed workflow produced into a fresh blackboard — its structured
-    // output when the member declares captures, its ===PR===/===REVIEW=== markers otherwise.
+    // Capture what the just-completed workflow produced into a fresh blackboard — its validated
+    // structured output (explicit captures mapping, else the kind contract).
     const data: Blackboard = { ...row.data };
     contractFor(row.workflows[row.cursor]).capture(completedOutput, data);
 

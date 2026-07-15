@@ -4,10 +4,12 @@ import type { ChainWorkflowKind } from "./models/chain.model.ts";
  * The engine-coded workflow port contracts — how each workflow KIND threads state through the chain's
  * blackboard (the row's `data`). This is the durable, machine-code home of what Phase 1 proved live
  * as the CLI's `CHAIN_TEMPLATES` closures (cli/h/src/h_cli/commands/chain.py): `buildParams(data)`
- * reads the blackboard for a workflow's fire-params, `capture(output, data)` parses the workflow's OUTPUT
- * markers back into it. Threading is engine code, never a config DSL (mirrors the watcher's ruling
- * W3), and it reads the workflow's output — NOT a chain actor — so the workflows it chains stay
- * chain-agnostic (params in, `===MARKER===` out) and runnable standalone.
+ * reads the blackboard for a workflow's fire-params, `capture(output, data)` reads the workflow's
+ * validated STRUCTURED output back into it (docs/plans/structured-workflow-outputs.md — the marker
+ * parsing this file once did was retired 2026-07-15; every chained template declares an outputs
+ * contract). Threading is engine code, never a config DSL (mirrors the watcher's ruling W3), and it
+ * reads the workflow's output — NOT a chain actor — so the workflows it chains stay chain-agnostic
+ * (params in, declared structured output out) and runnable standalone.
  *
  * Pure and dependency-free (no Effect, no I/O): the scan (chain-scan.ts) calls these around the
  * invoker/store ports. A missing required input throws `ChainThreadError`, which the scan turns into
@@ -26,38 +28,12 @@ export interface WorkflowContract {
 }
 
 /**
- * Pull each step's `output` text from a workflow's result. The generic workflow returns
- * JSON.stringify(results); Dapr serializes that again into the status `output`, so the value can
- * arrive DOUBLE-encoded (a JSON string whose content is itself a JSON string) — unwrap successive
- * string layers until a dict surfaces. (Phase 1 caught this live; the single-encoded mocks hid it.)
- */
-export function stepOutputs(workflowOutput: string | undefined): string[] {
-  let results: unknown = workflowOutput;
-  for (let i = 0; i < 3; i++) {
-    if (typeof results !== "string") break;
-    try {
-      results = JSON.parse(results);
-    } catch {
-      return [];
-    }
-  }
-  if (typeof results !== "object" || results === null) return [];
-  return Object.values(results as Record<string, unknown>)
-    .filter((v): v is { output: string } => {
-      return (
-        typeof v === "object" &&
-        v !== null &&
-        typeof (v as { output?: unknown }).output === "string"
-      );
-    })
-    .map((v) => v.output);
-}
-
-/**
- * Sibling of stepOutputs for STRUCTURED outputs (docs/plans/structured-workflow-outputs.md): merge
- * each step envelope's validated `structured` value, in step order (later steps win — mirroring
- * "the last fenced block wins" one level up). Undefined when no step carried one, which is how the
- * engine tells a marker-era run from a declaring one.
+ * Merge each step envelope's validated `structured` value from a workflow's result, in step order
+ * (later steps win — mirroring "the last fenced block wins" one level up). The generic workflow
+ * returns JSON.stringify(results); Dapr serializes that again into the status `output`, so the
+ * value can arrive DOUBLE-encoded — unwrap successive string layers until a dict surfaces (Phase 1
+ * caught this live; single-encoded mocks hid it). Undefined when no step carried a structured
+ * value — a run whose template declares no outputs contract.
  */
 export function stepStructured(
   workflowOutput: string | undefined,
@@ -91,64 +67,49 @@ function structuredField(value: Record<string, unknown>, path: string): unknown 
   return current;
 }
 
-/** The text following `marker` in whichever step output carries it (trimmed), else undefined. */
-export function afterMarker(
-  workflowOutput: string | undefined,
-  marker: string,
-): string | undefined {
-  for (const text of stepOutputs(workflowOutput)) {
-    const idx = text.indexOf(marker);
-    if (idx !== -1) return text.slice(idx + marker.length).trim();
-  }
-  return undefined;
+/** No structured output at all means the chained workflow's template declares no contract — a
+ * misconfigured chain, never a silent no-op. */
+function requireStructured(output: string | undefined, what: string): Record<string, unknown> {
+  const structured = stepStructured(output);
+  if (!structured)
+    throw new ChainThreadError(
+      `${what}: the completed workflow emitted no structured output — its template must declare ` +
+        "an outputs contract (docs/plans/structured-workflow-outputs.md)",
+    );
+  return structured;
 }
 
 /**
- * Capture the PR a run produced: STRUCTURED-FIRST (D1 — a declaring workflow's validated block is
- * authoritative), falling back to the `===PR===` marker for non-declaring runs. Structured shape:
- * `pr` (number) + `url`, or `skipped` when no PR exists — a skip sets nothing, so the next
- * workflow's buildParams fails loud exactly like the marker-era SKIPPED tail.
+ * Capture the PR a run produced from its validated structured output: `pr` (number) + `url`, or
+ * `skipped` when no PR exists. A skip sets nothing, so the next workflow's buildParams fails loud
+ * with its own hint — a chain must never fire a review of a PR that was never opened.
  */
 export function capturePr(output: string | undefined, data: Blackboard): void {
-  const s = stepStructured(output);
-  if (s && ("pr" in s || "url" in s || "skipped" in s)) {
-    if (s.pr !== undefined && s.pr !== null) data.prNumber = String(s.pr);
-    if (typeof s.url === "string" && s.url) data.prUrl = s.url;
-    return;
-  }
-  const tail = afterMarker(output, "===PR===");
-  if (!tail) return;
-  const url = (tail.split("\n")[0] ?? "").trim();
-  data.prUrl = url;
-  const match = url.match(/\/pull\/(\d+)/);
-  if (match) data.prNumber = match[1];
+  const s = requireStructured(output, "capturePr");
+  if (s.pr !== undefined && s.pr !== null) data.prNumber = String(s.pr);
+  if (typeof s.url === "string" && s.url) data.prUrl = s.url;
 }
 
 /**
- * Capture a review's findings: STRUCTURED-FIRST (`verdict` + `summary`; CLEAN ⇒ empty findings),
- * falling back to the `===REVIEW===` marker (empty string when absent — a valid CLEAN run).
+ * Capture a review's findings from its validated structured output: `verdict` + `summary`
+ * (CLEAN ⇒ empty findings). A missing verdict is a broken review contract — fail loud.
  */
 export function captureReview(output: string | undefined, data: Blackboard): void {
-  const s = stepStructured(output);
-  if (s && typeof s.verdict === "string") {
-    data.reviewFindings = s.verdict === "CLEAN" ? "" : String(s.summary ?? "");
-    return;
-  }
-  data.reviewFindings = afterMarker(output, "===REVIEW===") ?? "";
+  const s = requireStructured(output, "captureReview");
+  if (typeof s.verdict !== "string")
+    throw new ChainThreadError("captureReview: structured output has no 'verdict'");
+  data.reviewFindings = s.verdict === "CLEAN" ? "" : String(s.summary ?? "");
 }
 
 /**
- * The loop-until-clean predicate: is a review workflow's output CLEAN? The pr-review template ends
- * `===REVIEW===` then either the findings or `CLEAN`, so no marker, an empty tail, or a first line of
- * `CLEAN` (case-insensitive) all mean nothing left to address — the loop stops.
+ * The loop-until-clean predicate: is a review workflow's validated verdict CLEAN? Anything else —
+ * FINDINGS, a missing verdict, no structured output — is NOT clean, and the iteration budget is
+ * the backstop. (The marker era treated an ABSENT ===REVIEW=== as clean; with a declared contract
+ * the verdict is required, so absence now means something is wrong and must never stop a loop
+ * as if the review passed.)
  */
 export function reviewIsClean(output: string | undefined): boolean {
-  // Structured-first (D1): a declaring review's validated verdict is authoritative.
-  const s = stepStructured(output);
-  if (s && typeof s.verdict === "string") return s.verdict === "CLEAN";
-  const tail = afterMarker(output, "===REVIEW===");
-  if (!tail) return true;
-  return (tail.split("\n")[0] ?? "").trim().toUpperCase() === "CLEAN";
+  return stepStructured(output)?.verdict === "CLEAN";
 }
 
 function requireStr(data: Blackboard, key: string, hint: string): string {
@@ -176,8 +137,8 @@ export type MemberMappings = {
 
 /**
  * The effective contract for a chain member: a declared mapping replaces its HALF of the kind's
- * coded contract (captures → capture, inputs → buildParams), so structured threading is the default
- * exactly where a member declares it and the marker kinds remain the fallback (D1). Fail-loud
+ * coded contract (captures → capture, inputs → buildParams), so explicit mappings compose novel
+ * chains; the kind presets thread the well-known shapes. Fail-loud
  * mirrors requireStr: a missing structured envelope or mapped field is a ChainThreadError, which
  * the scan turns into a failed-chain finalize — never fire-on-a-guess.
  */
@@ -224,7 +185,7 @@ export function contractFor(member: MemberMappings): WorkflowContract {
 /**
  * The loop-until-clean stop check for the loop-start member: a declared `until` evaluates against
  * the structured output (absent structured/field ⇒ NOT satisfied — the iteration budget is the
- * backstop); undeclared falls back to the coded reviewIsClean marker sniff.
+ * backstop); undeclared falls back to the coded reviewIsClean verdict check.
  */
 export function loopIsClean(member: MemberMappings, workflowOutput: string | undefined): boolean {
   if (!member.until) return reviewIsClean(workflowOutput);
@@ -255,7 +216,7 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
       if (typeof pr !== "string" || pr === "") {
         throw new ChainThreadError(
           "pr-review needs a PR number, but the previous workflow produced none " +
-            "(no ===PR=== marker in its output). Did the feature workflow open a PR?",
+            "(no `pr` in its structured output — was the PR skipped?). Did the feature workflow open a PR?",
         );
       }
       return withRepo({ pr }, data);
@@ -273,7 +234,7 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
           pr: requireStr(
             data,
             "prNumber",
-            "revise needs a PR number on the blackboard (create-pr's ===PR===)",
+            "revise needs a PR number on the blackboard (create-pr's structured `pr`)",
           ),
           slug: requireStr(data, "slug", "revise needs a slug on the blackboard"),
         },

@@ -120,11 +120,17 @@ const DEFAULT_WORKFLOWS = [
   { kind: "revise", key: "revise", instanceId: "feature-x", fresh: true },
 ] as const;
 
+// Structured envelopes, as the rung-2 seam produces them (structured-workflow-outputs): a
+// pull/<n> url carries pr+url; anything else is a skip (no pr → downstream fails loud).
 function pr(url: string): string {
-  return JSON.stringify({ implement: { output: `done\n===PR===\n${url}` } });
+  const match = url.match(/pull\/(\d+)/);
+  const structured = match ? { pr: Number(match[1]), url } : { skipped: url };
+  return JSON.stringify({ implement: { output: "done", structured } });
 }
 function review(findings: string): string {
-  return JSON.stringify({ review: { output: `===REVIEW===\n${findings}` } });
+  const structured =
+    findings === "CLEAN" ? { verdict: "CLEAN" } : { verdict: "FINDINGS", summary: findings };
+  return JSON.stringify({ review: { output: "reviewed", structured } });
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +273,7 @@ async function seedAt(cursor: number, statuses: Record<string, WorkflowStatus>) 
 }
 
 describe("scanChainsEffect: advance threads state to the next workflow", () => {
-  it("captures ===PR=== and fires pr-review with the parsed pr number", async () => {
+  it("captures the structured pr and fires pr-review with it", async () => {
     const { mem, inv } = await seedAt(0, {
       "feature-x": {
         instanceId: "feature-x",

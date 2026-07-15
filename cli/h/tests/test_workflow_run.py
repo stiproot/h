@@ -21,7 +21,8 @@ needs_helm = pytest.mark.skipif(
 @needs_helm
 @respx.mock
 def test_inline_renders_a_template_and_fires_its_steps() -> None:
-    """--inline posts the rendered steps + merged params to /workflow/run (no saved key, no publish)."""
+    """--inline posts the rendered steps + merged params to /workflow/run (no saved key, no
+    publish)."""
     route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
         return_value=Response(202, json={"instanceId": "revise-pi-agent", "watching": False})
     )

@@ -1,6 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
 import { type CronRegistration, registerCronForFire } from "../../domain/cron-scan.ts";
+import { lastFencedJson } from "../../domain/structured-output.ts";
 import { runActivity } from "../activity-runtime.ts";
 
 /**
@@ -17,8 +18,9 @@ import { runActivity } from "../activity-runtime.ts";
  * durable audit of "did this cron get armed?" (§10).
  *
  * The arm-at-birth guard: when `requirePrFrom` is set (create-pr's `{{implement.output}}`), only arm
- * if a PR actually opened — parse `===PR===` for a `/pull/<n>` URL (SKIPPED / no URL → a valid no-op,
- * NOT a failure), and thread that PR number into the fired workflow's params.
+ * if a PR actually opened — read the `pr` field of the step's structured output block (a skip or a
+ * missing block → a valid no-op, NOT a failure), and thread that PR number into the fired
+ * workflow's params.
  */
 export type RegisterCronInput = {
   /** The saved key to recur (e.g. "revise"). */
@@ -29,7 +31,7 @@ export type RegisterCronInput = {
   maxFires?: number;
   /** Base params the recurred workflow fires with; `repo`/`slug`/`pr` are set/overridden here. */
   params?: Record<string, unknown>;
-  /** When set, only arm if this output blob carries a `===PR===` /pull/<n> URL; the number → params.pr. */
+  /** When set, only arm if this output blob's structured json block carries a `pr`; the number → params.pr. */
   requirePrFrom?: string;
   /** The fixed instance the recur cron fires under; defaults to `<workflow>-<slug>`. */
   instanceId?: string;
@@ -43,22 +45,30 @@ export type CronPlan =
   | { armed: false; reason: string }
   | { armed: true; registration: CronRegistration };
 
-// Parse a PR number out of a single step's RAW agent output (a `{{implement.output}}` string) — the
-// tail after `===PR===`, first `/pull/<n>` URL. (Distinct from the chain's afterMarker, which parses
-// a JSON results blob; here the input is one step's own output text.) SKIPPED / no marker → undefined.
+// Parse a PR number out of a single step's RAW agent output (a `{{implement.output}}` string): the
+// last fenced ```json block is the step's validated structured output (the rung-2 seam already
+// enforced it against the declared contract — docs/plans/structured-workflow-outputs.md), and its
+// `pr` field is the number. A skip (`skipped` instead of `pr`) or no block → undefined.
 const prNumberFrom = (blob: string | undefined): string | undefined => {
   if (typeof blob !== "string") return undefined;
-  const idx = blob.lastIndexOf("===PR===");
-  if (idx === -1) return undefined;
-  const match = blob.slice(idx + "===PR===".length).match(/\/pull\/(\d+)/);
-  return match ? match[1] : undefined;
+  const raw = lastFencedJson(blob);
+  if (raw === undefined) return undefined;
+  try {
+    const value = JSON.parse(raw) as { pr?: unknown };
+    return typeof value?.pr === "number" || typeof value?.pr === "string"
+      ? String(value.pr)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 /**
  * The pure decision (unit-tested): assemble the recur registration from the input, applying the
- * arm-at-birth guard. When `requirePrFrom` is set and carries no `/pull/<n>` URL (create-pr SKIPPED,
- * or no marker), return a no-op — arming a revise loop for a PR that doesn't exist is wrong, and it is
- * a valid outcome, NOT a failure. Otherwise thread the parsed PR number into the fired params.
+ * arm-at-birth guard. When `requirePrFrom` is set and its structured block carries no `pr` (a
+ * create-pr skip, or no block), return a no-op — arming a revise loop for a PR that doesn't exist
+ * is wrong, and it is a valid outcome, NOT a failure. Otherwise thread the PR number into the
+ * fired params.
  */
 export function planCron(input: RegisterCronInput): CronPlan {
   const fireParams: Record<string, unknown> = {

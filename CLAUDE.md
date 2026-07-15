@@ -34,11 +34,11 @@ stack, and the design principles; this section is the terse runtime-facing index
   state and acts through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher
   RE-fires one instance, a chain FIRES THE NEXT workflow. State threads workflow-to-workflow
   through the row's `data`, filled by the engine parsing each one's output (no actor) —
-  STRUCTURED-FIRST since docs/plans/structured-workflow-outputs.md: a workflow that declares an
-  `outputs:` schema ends its agent step with a validated fenced json block (the `outputContract`
-  step input → the run activities' rung-2 seam, `domain/structured-output.ts`; envelope gains
-  `structured`) and the kind contracts read it before falling back to `===MARKER===` greps —
-  chained workflows stay chain-agnostic either way. IMPLEMENTED: engine in workflow-svc
+  STRUCTURED ONLY since docs/plans/structured-workflow-outputs.md (marker parsing retired
+  2026-07-15): every chained template declares an `outputs:` schema and ends its agent step with a
+  validated fenced json block (the `outputContract` step input → the run activities' rung-2 seam,
+  `domain/structured-output.ts`; envelope gains `structured`), which the kind contracts read —
+  chained workflows stay chain-agnostic. IMPLEMENTED: engine in workflow-svc
   (`domain/chain-*.ts`, scan on the workflow-cron-tick beside the watch scan), rows
   `chain:sub:<chainId>`; `h chain run` registers (fire-and-forget) via the chain EXPRESSION —
   ordered `-w KEY` / `-t ATOM…` members with position-scoped `--agent/--model/--fresh/--kind`
@@ -55,7 +55,7 @@ stack, and the design principles; this section is the terse runtime-facing index
   failure policy and a chain FIRES THE NEXT workflow, a cron RE-FIRES the SAME workflow on a clock
   until its GOAL resolves or a budget trips. The goal is the `wf:` row's `resolved` flag — a real
   state check (e.g. PR merged), DISTINCT from run-status `done` (the steps finished) — which the
-  workflow reports via a `===GOAL===RESOLVED` output marker. A **discovery / fan-out** variant (rows
+  workflow reports via a `goal: RESOLVED` field in its validated structured output. A **discovery / fan-out** variant (rows
   `cron:discover:<repo>:<label>`, index `cron:discover-index`) does NOT re-fire one workflow: each tick
   it reads a SOURCE (open issues on a label, via git-core's `GitHubClient` behind an `ISourceReader`
   port) and fires ONE workflow per newly-seen item — serialized (one in flight), daily-capped, deduped
@@ -160,7 +160,7 @@ apps/workflow-svc/src/
 │   ├── {watch,chain,cron}-engine.ts                  # pure decide() per primitive — supervise | sequence | recur; unit-tested policy surfaces
 │   ├── discover-engine.ts                            # pure decide(row, runtimeStatus, todayFires, now) → wait | discover (in-flight serialize → cadence → daily-cap)
 │   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the WATCH fire choke point) + scanWatchesEffect (terminate/retry/escalate/cost-tally/publish)
-│   ├── chain-scan.ts / chain-workflows.ts            # chain registration + per-tick advance/finalize; STRUCTURED-FIRST threading (stepStructured/contractFor; declared captures/inputs/until replace their half of the kind contract) with capturePr/afterMarker marker parsing as the fallback (no actor)
+│   ├── chain-scan.ts / chain-workflows.ts            # chain registration + per-tick advance/finalize; STRUCTURED-ONLY threading (stepStructured/contractFor; declared captures/inputs/until replace their half of the kind contract; no marker parsing — retired 2026-07-15) (no actor)
 │   ├── structured-output.ts                          # the rung-2 seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract called by every run-* activity (docs/plans/structured-workflow-outputs.md)
 │   ├── cron-scan.ts                                  # registerCronForFire (IDEMPOTENT ensure-exists — §10) + scanCronsEffect (recur fire/deactivate, epoch-fenced)
 │   ├── discover-scan.ts                              # registerDiscover + scanDiscoverEffect (read source after gates=budget → dedup by exact-key wf: read → fire OLDEST eligible, supervised if watch set)
@@ -179,8 +179,8 @@ apps/workflow-svc/src/
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
 │       ├── setup / clone-repo / create-worktree / run-{claude,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
-│       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + ===GOAL===RESOLVED); BEST-EFFORT (§3/§10)
-│       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: parse ===PR=== for arm-revise); LOUD, idempotent
+│       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + structured goal: RESOLVED); BEST-EFFORT (§3/§10)
+│       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: the structured block's `pr` for arm-revise); LOUD, idempotent
 │       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD
 └── infrastructure/workflows/
     └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; brackets a wf-identified run write-wf-row(running)→steps→arm-cron(if armCron)→write-wf-row(done|failed); resolves the activity NAME too (fire-time identity — unresolved token fails loud)

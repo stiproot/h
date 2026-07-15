@@ -78,8 +78,10 @@ earlier outputs with `{"$ref": "stepId.field"}` or `"{{stepId.field}}"`.
 ## Special cases
 
 **Two reports.** If the task asks for two reports (e.g. an issue diagnosis AND a plugin-quality
-report), make the `run-claude` step instruct the agent to emit both, each delimited by the exact
-markers `===ISSUE REPORT===` and `===PLUGIN FEEDBACK===`, and return that combined text verbatim.
+report), give the `run-claude` step an `outputContract` with one string property per report (e.g.
+`{type: object, required: [issueReport, pluginFeedback], properties: {issueReport: {type: string},
+pluginFeedback: {type: string}}}`) — the validated block in the step result's `structured` carries
+both, machine-separable; return them verbatim.
 
 **Repo Q&A.** When the task is to answer questions about a repository: parse the repo URL, the branch
 (if given), and the questions out of the task text. Build a TWO-step workflow and start it with

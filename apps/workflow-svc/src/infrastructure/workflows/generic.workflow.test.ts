@@ -66,25 +66,25 @@ describe("genericWorkflow — wf: bracketing", () => {
     expect(typeof calls[2].input.output).toBe("string");
   });
 
-  it("sets resolved on the done row when a step emits ===GOAL===RESOLVED (the goal handshake)", async () => {
+  it("sets resolved on the done row when a step's structured output reports goal RESOLVED", async () => {
     const input: WorkflowRequest = {
       steps: [step("run-claude", "revise")],
       wf: { repo: "stiproot/h", slug: "pi-agent", workflow: "revise" },
     } as WorkflowRequest;
     const { calls } = await run(input, {
-      stepResult: { output: "addressed comments\n===PR===\nurl\n===GOAL===\nRESOLVED" },
+      stepResult: { output: "addressed comments", structured: { pr: 57, goal: "RESOLVED" } },
     });
     const done = calls.find((c) => c.activity === writeWfRow && c.input.status === "done");
     expect(done?.input.resolved).toBe(true);
   });
 
-  it("leaves resolved false when no ===GOAL===RESOLVED marker is present", async () => {
+  it("leaves resolved false when the structured goal is PENDING (or absent)", async () => {
     const input: WorkflowRequest = {
       steps: [step("run-claude", "revise")],
       wf: { repo: "r", slug: "s", workflow: "revise" },
     } as WorkflowRequest;
     const { calls } = await run(input, {
-      stepResult: { output: "addressed\n===PR===\nurl\n===GOAL===\nPENDING" },
+      stepResult: { output: "addressed", structured: { pr: 57, goal: "PENDING" } },
     });
     const done = calls.find((c) => c.activity === writeWfRow && c.input.status === "done");
     expect(done?.input.resolved).toBe(false);

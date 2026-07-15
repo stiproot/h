@@ -3,9 +3,9 @@
 A chain is a registered policy the chain engine (workflow-svc) sequences on the cron tick,
 mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the
 workflows run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable
-registry. State threads workflow-to-workflow IN THE ENGINE (it parses each workflow's
-`===MARKER===` output into the chain's blackboard and builds the next workflow's params), so the
-chained workflows stay chain-agnostic.
+registry. State threads workflow-to-workflow IN THE ENGINE (it reads each workflow's validated
+structured output — docs/plans/structured-workflow-outputs.md — into the chain's blackboard and
+builds the next workflow's params), so the chained workflows stay chain-agnostic.
 
 The workflow list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5),
 hand-parsed from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the
@@ -77,7 +77,7 @@ KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
 # Untrusted-input executors are FROZEN: --agent warns and keeps the published executor
 # (docs/plans/reviewer-identity-security.md — never an error, never silent compliance).
 FROZEN_EXECUTOR_KINDS = {"pr-review"}
-# -t group kind inference: the terminal atom's closing marker IS the threading contract.
+# -t group kind inference: the terminal atom's declared output contract IS the threading contract.
 TERMINAL_ATOM_KIND = {"create-pr": "feature-pr"}
 
 DEFAULT_EXPR = ["-w", "feature-pr", "-w", "pr-review", "-w", "revise"]
@@ -158,7 +158,8 @@ def _check_output_mappings(
 ) -> None:
     """Registration-time validation (structured-workflow-outputs §1, consumer 3): every --capture
     source field and the --until path must exist in the workflow's declared outputs schema, so a
-    broken thread fails HERE, not mid-chain. --input maps blackboard keys (dynamic) — not checkable."""
+    broken thread fails HERE, not mid-chain. --input maps blackboard keys (dynamic) — not
+    checkable."""
     refs = list((entry.get("captures") or {}).values())
     if entry.get("until"):
         refs.append(entry["until"]["path"])
@@ -202,7 +203,8 @@ def _resolve_workflow(
         if inferred is None:
             _fail(
                 f"cannot infer the workflow kind for `-t {' '.join(workflow.templates)}` — "
-                "end the group with create-pr (its ===PR=== marker is the feature-pr contract) "
+                "end the group with create-pr (its structured pr output is the feature-pr "
+                "contract) "
                 "or pass --kind"
             )
         kind = inferred or ""

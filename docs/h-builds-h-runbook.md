@@ -109,11 +109,10 @@ revise cron is stopped by letting its budget exhaust, resolving its goal, or the
 
 ## Termination & budgets (engine-owned)
 
-- **Per-PR revise loop** stops on either the goal (`revise` reports `===GOAL===RESOLVED` when the PR
-  merges → the cron engine reads `wf:*.resolved` and deactivates) OR its `maxFires` budget (a PR that
-  never merges still stops, bounded). (`revise` also reports `goal: RESOLVED|PENDING` in its
-  structured output block — docs/plans/structured-workflow-outputs.md — but the goal handshake still
-  reads the MARKER today; the structured cutover for `goalResolved`/`register-cron` is deferred.)
+- **Per-PR revise loop** stops on either the goal (`revise` reports `goal: RESOLVED` in its
+  validated structured output when the PR merges — docs/plans/structured-workflow-outputs.md — →
+  `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
+  (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
   it runs until the family kill switch or a `h cron rm` (deferred).
 - **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron is armed with

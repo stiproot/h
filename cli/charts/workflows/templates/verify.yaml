@@ -28,7 +28,7 @@ steps:
   - id: implement
     input:
       task: |-
-        ===VERIFY===
+        ===ACCEPTANCE CHECK===
         Before you finish, prove the change with the acceptance check. Run exactly this
         command in the worktree root:
 
@@ -39,10 +39,10 @@ steps:
         skipping tests, no suppressing errors).
 
         This check GATES everything below it. If the command STILL fails after your
-        attempts, STOP here: do not commit, do not push, do not open a pull request. End
-        your response with the exact marker ===VERIFY=== on its own line, then FAIL, then a
-        short summary of the command output as evidence.
+        attempts, STOP here: do not commit, do not push, do not open a pull request —
+        and report the failure in your final json block: `"verify": "FAIL"` plus a
+        `skipped` field summarizing the failing command output as evidence.
 
-        If it passes, note ===VERIFY=== PASS with that evidence, then carry out any
-        remaining instructions below.
+        If it passes, include `"verify": "PASS"` in your final json block, then carry
+        out any remaining instructions below.
 {{- end }}

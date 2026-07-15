@@ -104,7 +104,7 @@ def test_template_compose_prints_merged_definition() -> None:
     result = runner.invoke(app, ["template", "compose", "feature", "create-pr"])
     assert result.exit_code == 0, _all_output(result)
     # The merged YAML carries feature's four steps with create-pr's epilogue folded into implement.
-    assert "worktree" in result.output and "===PR===" in result.output
+    assert "worktree" in result.output and "OUTPUT CONTRACT" in result.output
     assert "feature ⊕ create-pr" in result.output
 
 

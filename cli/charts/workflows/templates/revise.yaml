@@ -19,9 +19,8 @@ Render (for inspection):
 {{- /*
 The declared output contract (structured-workflow-outputs plan): pr/url/skipped mirror
 create-pr's shape (capturePr reads either workflow's block); goal is the recurrence engine's
-handshake — RESOLVED (merged) flips the wf: row's resolved flag and stops the revise cron.
-The ===GOAL=== marker stays alongside: generic.workflow's goalResolved parses it (its cutover to
-the structured block is a follow-up).
+handshake — generic.workflow's goalResolved reads it off the validated block, and RESOLVED
+(merged) flips the wf: row's resolved flag so the cron engine stops the revise loop.
 */ -}}
 {{- define "h.contract.revise" -}}
 type: object
@@ -111,13 +110,13 @@ steps:
            and leave any plan-*.md uncommitted (run context, not code).
         {{- if eq ($r.gitAuth | default "") "ssh" }}
         4. Push: git push origin feature/{{ $slug }} — the origin remote's SSH transport is already
-           authenticated (agent-mounted key). If the push is rejected for auth, skip it and say so
-           under ===PR=== — do not retry with credentials.
+           authenticated (agent-mounted key). If the push is rejected for auth, skip it and explain
+           why in the `skipped` field of your final json block — do not retry with credentials.
         {{- else }}
         4. Push with a one-shot token URL — derive <owner>/<repo> from `git remote get-url origin`:
            git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
            Never write the token into git config or the remote URL; if GH_TOKEN is unset, skip the
-           push and say so under ===PR===.
+           push and explain why in the `skipped` field of your final json block.
         {{- end }}
         5. Respond to the threads you addressed: reply inline with add_reply_to_pull_request_comment
            (body: "Addressed in <sha>: <what changed>"), then resolve with pull_request_review_write
@@ -126,9 +125,9 @@ steps:
            gates stay human.
         6. Report the GOAL state for the recurrence engine: this workflow's goal is PR #{{ $pr }}
            being MERGED. Read the PR (github MCP pull_request_read) and check its `merged` field.
-        Then report TWO markers, each on its own line:
-        - ===PR=== followed by the PR URL (or SKIPPED and the reason) on the next line.
-        - ===GOAL=== followed by RESOLVED if the PR is merged, else PENDING, on the next line.
+        Report the PR (number + URL, or a skip reason) and the goal state (RESOLVED if
+        the PR is merged, else PENDING) ONLY via the fields of your final json block
+        below; there is no other reporting channel.
         {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
 outputs:
   {{- include "h.contract.revise" . | nindent 2 }}

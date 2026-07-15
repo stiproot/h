@@ -1,13 +1,17 @@
-**Status:** IMPLEMENTED (2026-07-15) — machinery + the three-template conversion landed in one
-day; see the Progress log. Open: D4 (extract activity — rung 3 not yet built), the `===GOAL===` →
-structured cutover in generic.workflow/register-cron, and live validation of a structured chain. Extends
-[workflow-composition.md](./workflow-composition.md) (the chain's marker-threading contracts) and
-[chain-composition-surface.md](./chain-composition-surface.md) (the chain expression). Grew out of
-re-evaluating the `===MARKER===` decision: markers stay, structured output lands beside them, and
-**chains default to structured output** for members that declare it.
+**Status:** IMPLEMENTED + FULL MARKER CUTOVER (2026-07-15) — machinery, the template
+conversion, two live chain validations, and then the complete retirement of output markers, all in
+one day; see the Progress log. STRUCTURED-ONLY: every machine consumer (chain contracts,
+goalResolved, register-cron) reads the validated block exclusively; marker parsing is deleted.
+Output markers no longer exist in any template — `===X===` survives solely as prompt-section
+headings (input delimiters), which no code parses. Open: D4 (extract activity — rung 3 not built).
+Extends [workflow-composition.md](./workflow-composition.md) (the chain's original marker-threading
+contracts) and [chain-composition-surface.md](./chain-composition-surface.md) (the chain
+expression). Grew out of re-evaluating the `===MARKER===` decision; the body below is the design
+as first written (coexistence framing) — the Decisions and Progress log carry the same-day
+supersession to structured-only.
 **Living doc** — update Decisions as they resolve and append to the Progress log.
 
-# Structured workflow outputs: typed I/O signatures beside the markers
+# Structured workflow outputs: typed I/O signatures (né "beside the markers")
 
 ## Framing
 
@@ -162,8 +166,9 @@ a CLI flag) — coexistence is per-member, not global.
 
 ## Decisions
 
-- (D1, settled) Both strategies coexist; per-template opt-in via `outputs:`; **chains default to
-  structured** for declaring members, markers as fallback and explicit override.
+- (D1, settled — then superseded 2026-07-15) Originally: coexistence, structured default with
+  marker fallback. Superseded by the full cutover: STRUCTURED ONLY for every machine consumer;
+  marker parsing deleted; `===X===` survives only as prompt-section headings no code parses.
 - (D2, settled) Steering split: protocol rule in `h-runtime.md` via setup; schema instance in the
   step epilogue, generated from the declaration. Setup carries only shared, workspace-stable
   steering.
@@ -243,3 +248,18 @@ agent- and human-consumed, not engine-consumed.
   `clean after 0 revise iteration(s)` — the loop-stop decision made by `loopIsClean`'s
   DECLARED-UNTIL branch on the structured verdict, no marker sniff, no revise fire. Artifacts
   cleaned: cron disarmed, PR #47 closed unmerged, both e2e branches deleted.
+- 2026-07-15 — **Full marker cutover (structured-only).** Ruling: consistency beats coexistence —
+  all OUTPUT markers retired in one change set (the atomic-cutover principle), same day the seams
+  proved out live. Engine: `goalResolved` reads the structured `goal`; `register-cron`'s arm guard
+  reads the block's `pr` (via `lastFencedJson`); chain contracts (`capturePr`/`captureReview`/
+  `reviewIsClean`) are structured-only — `afterMarker`/`stepOutputs` DELETED, absence of structured
+  output is a loud `ChainThreadError`, and an absent review verdict is NOT-clean (inverted from the
+  marker era: a loop must never stop as if the review passed). Templates: `===PR===`/`===GOAL===`/
+  `===REVIEW===` emission removed (skip reasons ride `skipped`); `===VERIFY===` folded into the
+  contract as a declared `verify: PASS|FAIL` (the gate behavior stays prose; the outcome is now a
+  validated field on create-pr's composed contract); plugin-improvement's verify step gained its own
+  per-step contract. The orchestrator skill's two-report convention (`===ISSUE REPORT===`/
+  `===PLUGIN FEEDBACK===`) became a two-property outputContract. The boundary that stays: prompt-
+  section HEADINGS (`===FEATURE SPEC===`, `===IMPLEMENTATION PLAN===`, `===ISSUE===`,
+  `===OUTPUT CONTRACT===` itself) are input structure no code parses — renamed only where the old
+  name implied an output channel (verify's heading → `===ACCEPTANCE CHECK===`).

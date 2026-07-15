@@ -60,7 +60,8 @@ def test_verify_requires_a_cmd() -> None:
 
 def test_revise_golden(snapshot) -> None:
     """revise — a standalone, publish-native workflow that reads a PR's unresolved review threads
-    itself (github MCP) and addresses them. worktree → setup → revise, {{params.pr}}/{{params.slug}}."""
+    itself (github MCP) and addresses them. worktree → setup → revise,
+    {{params.pr}}/{{params.slug}}."""
     rendered = helm.render_workflow("revise", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
@@ -97,7 +98,7 @@ def test_compose_feature_verify_create_pr_orders_and_gates() -> None:
     assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement"]
     task = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
     # the check gates the PR: verify prose (and its stop-on-fail) precede the open-PR prose
-    assert task.index("===VERIFY===") < task.index("open (or update) a pull request")
+    assert task.index("===ACCEPTANCE CHECK===") < task.index("open (or update) a pull request")
     assert "do not open a pull request" in task  # the gate
 
 
@@ -261,7 +262,8 @@ def test_compose_feature_create_pr_extends_implement() -> None:
 
 
 def test_arm_revise_golden(snapshot) -> None:
-    """arm-revise overlay (§10, Job 2): a lone register-cron step arming a revise-until-merged cron."""
+    """arm-revise overlay (§10, Job 2): a lone register-cron step arming a revise-until-merged
+    cron."""
     rendered = helm.render_workflow("arm-revise", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
@@ -298,7 +300,7 @@ def test_compose_feature_verify_create_pr_arm_revise_appends_the_arm_step() -> N
     arm = next(s for s in merged["steps"] if s["id"] == "arm-revise")
     assert arm["activity"] == "register-cron"
     assert arm["input"]["workflow"] == "revise"
-    # The guard reads the implement step's output for the ===PR=== marker; identity threads as params.
+    # The guard reads the implement step's structured output for `pr`; identity threads as params.
     assert arm["input"]["requirePrFrom"] == "{{implement.output}}"
     assert arm["input"]["repo"] == "{{params.repo}}"
     assert arm["input"]["slug"] == "{{params.slug}}"
@@ -330,7 +332,8 @@ def test_pr_review_publish_mode_opens_param_slots() -> None:
     assert "{{params.pr}}" in review_task
     assert "{{params.focus}}" in review_task
     assert "{{params.repo}}" in review_task  # the target repo is a fire-time identity token
-    assert "===REVIEW===" in review_task
+    # The verdict rides the validated structured block, never a marker.
+    assert "OUTPUT CONTRACT" in review_task and "verdict" in review_task
     # Executor is claude-agent — the loop's pinned reviewer (trust model; no longer claude-coder).
     assert definition["steps"][0]["input"]["agentId"] == "claude-agent"
     assert definition["steps"][1]["activity"] == "run-claude"

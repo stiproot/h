@@ -100,13 +100,17 @@ def test_cron_discover_add_fires_a_provision_workflow() -> None:
     )
     result = runner.invoke(
         app,
-        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *", "--max-per-day", "3"],
+        # fmt: off
+        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *",
+         "--max-per-day", "3"],
+        # fmt: on
         env={"COLUMNS": "200"},
     )
     assert result.exit_code == 0, result.output
     assert route.called
     body = json.loads(route.calls.last.request.content)
-    # One register-discover step carrying the discovery params; a wf: identity to audit the provision.
+    # One register-discover step carrying the discovery params; a wf: identity audits the
+    # provision.
     assert body["steps"] == [
         {
             "activity": "register-discover",
@@ -155,7 +159,10 @@ def test_cron_discover_add_attaches_a_watch_policy() -> None:
 def test_cron_discover_add_run_retries_needs_a_budget() -> None:
     result = runner.invoke(
         app,
-        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *", "--run-retries", "2"],
+        # fmt: off
+        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *",
+         "--run-retries", "2"],
+        # fmt: on
         env={"COLUMNS": "200"},
     )
     assert result.exit_code == 1

@@ -32,7 +32,8 @@ describe("planCron (the arm-* decision)", () => {
   it("arms and threads the PR number when the guard output carries a /pull/<n> URL", () => {
     const plan = planCron({
       ...base,
-      requirePrFrom: "did the work\n===PR===\nhttps://github.com/stiproot/h/pull/57",
+      requirePrFrom:
+        'did the work\n```json\n{"pr": 57, "url": "https://github.com/stiproot/h/pull/57"}\n```\n',
     });
     expect(plan.armed).toBe(true);
     if (!plan.armed) throw new Error("unreachable");
@@ -49,12 +50,12 @@ describe("planCron (the arm-* decision)", () => {
   it("no-ops (armed:false) when the guard output has no PR — SKIPPED push", () => {
     const plan = planCron({
       ...base,
-      requirePrFrom: "could not push\n===PR===\nSKIPPED: GH_TOKEN unset",
+      requirePrFrom: 'could not push\n```json\n{"skipped": "GH_TOKEN unset"}\n```\n',
     });
     expect(plan).toEqual({ armed: false, reason: "no PR opened — revise loop not armed" });
   });
 
-  it("no-ops when the guard output has no ===PR=== marker at all", () => {
+  it("no-ops when the guard output has no structured block at all", () => {
     const plan = planCron({ ...base, requirePrFrom: "the agent said nothing about a PR" });
     expect(plan.armed).toBe(false);
   });

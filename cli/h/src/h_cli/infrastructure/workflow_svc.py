@@ -134,11 +134,12 @@ def provision_discover(
     fire_params: dict[str, Any] | None = None,
     watch: dict[str, Any] | None = None,
 ) -> Any:
-    """Register a discovery/fan-out cron by firing a one-step PROVISION workflow whose register-discover
-    activity writes the cron:discover row (docs/plans/workflow-watcher-registry.md §10 — crons via
-    activities, not an HTTP handler). The provision run's wf: row audits whether the patrol armed. The
-    discovery cron then, each due tick, enumerates open '<label>' issues on <repo> and fires <workflow>
-    per newly-discovered issue, deduped against the wf: keys. `watch` (a WatchPolicy) supervises each
+    """Register a discovery/fan-out cron by firing a one-step PROVISION workflow whose
+    register-discover activity writes the cron:discover row (workflow-watcher-registry §10 — crons
+    via activities, not an HTTP handler). The provision run's wf: row audits whether the patrol
+    armed. The discovery cron then, each due tick, enumerates open '<label>' issues on <repo> and
+    fires <workflow> per newly-discovered issue, deduped against the wf: keys. `watch` (a
+    WatchPolicy) supervises each
     fired run so a hung feature-pr is terminated/retried rather than stalling the serialize."""
     step_input: dict[str, Any] = {
         "repo": repo,

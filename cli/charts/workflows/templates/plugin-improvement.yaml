@@ -61,9 +61,15 @@ steps:
         ===FEEDBACK===
         {{- include "h.token" "params.feedback" | nindent 8 }}
   {{- if $p.verifyCmd }}
+  {{- /* The verify step's output contract (structured-workflow-outputs): the PASS/FAIL outcome is
+  a validated field, machine-readable off the step envelope. */}}
+  {{- $verifyContract := dict "type" "object" "required" (list "verify") "properties" (dict
+        "verify" (dict "enum" (list "PASS" "FAIL"))
+        "evidence" (dict "type" "string" "description" "a short summary of the final command output")) }}
   - id: verify
     activity: run-claude
     input:
+      outputContract: {{ $verifyContract | toJson }}
       cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       {{- with $p.models.verify }}
       model: {{ . | quote }}
@@ -79,8 +85,9 @@ steps:
         If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
         until it passes or you have made 3 fix attempts. Do not weaken the check (no
         skipping tests, no suppressing errors); do not commit or push.
-        End your response with the exact marker ===VERIFY=== on its own line, then PASS or
-        FAIL on the next line, then a short summary of the final command output as evidence.
+        Report the outcome ONLY via your final json block below: `verify` PASS or FAIL,
+        `evidence` a short summary of the final command output.
+        {{ include "h.outputContractEpilogue" $verifyContract | nindent 8 }}
 
         ===IMPLEMENTED===
         {{- include "h.token" "improve.output" | nindent 8 }}

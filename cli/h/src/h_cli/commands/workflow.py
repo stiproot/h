@@ -210,7 +210,8 @@ def run(
         bool,
         typer.Option(
             "--inline",
-            help="Treat the argument as a TEMPLATE name, not a saved key: render it (compose-on-fire, "
+            help="Treat the argument as a TEMPLATE name, not a saved key: render it "
+            "(compose-on-fire, "
             "sibling to chain -t) and fire its steps directly — no publish, leaving only the wf: "
             "status row. -p/--agent/--model override the template's value-defaults.",
         ),
@@ -347,7 +348,8 @@ def run(
             err_console.print(f"[red]Template '{key}' rendered no steps[/red] — check its values.")
             raise typer.Exit(1)
         # Merge -p/--agent/--model OVER the template's rendered value-defaults (there is no stored
-        # definition to merge against server-side, so the CLI does it — same result as a saved fire).
+        # definition to merge against server-side, so the CLI does it — same result as a saved
+        # fire).
         merged = {**(definition.get("params") or {}), **params}
         result = _guarded(
             lambda: workflow_svc.run_steps(steps, merged, instance_id, fresh, watch_policy)

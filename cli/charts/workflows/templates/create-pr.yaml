@@ -38,7 +38,12 @@ properties:
     description: the pull request URL
   skipped:
     type: string
-    description: present INSTEAD of pr/url — why no PR exists (auth failure, nothing to push, ...)
+    description: present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)
+  verify:
+    enum:
+      - PASS
+      - FAIL
+    description: the acceptance-gate outcome, present when a verify gate is composed in (verify.yaml); FAIL means the gate stopped the run before any PR step
 {{- end }}
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "create-pr" }}
@@ -63,13 +68,14 @@ steps:
         {{- if eq ($c.gitAuth | default "") "ssh" }}
         2. Push the branch: git push origin feature/{{ $slug }} — the origin remote's SSH
            transport is already authenticated (agent-mounted key). If the push is rejected
-           for auth, skip it and say so under ===PR=== — do not retry with credentials.
+           for auth, skip it and explain why in the `skipped` field of your final json
+           block — do not retry with credentials.
         {{- else }}
         2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
            from `git remote get-url origin` and push with a one-shot token URL:
            git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{ $slug }}
            Never write the token into git config or the remote URL; if GH_TOKEN is unset,
-           skip the push and say so under ===PR===.
+           skip the push and explain why in the `skipped` field of your final json block.
         {{- end }}
         3. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body summarizing the
@@ -90,8 +96,8 @@ steps:
              resolve_thread passing the thread node id.
            d. Do NOT reply to or resolve threads this run did not address.
            e. Never APPROVE or REQUEST_CHANGES on the PR.
-        Report the exact marker ===PR=== on its own line, then the PR URL — or SKIPPED
-        and the reason — on the next line.
+        Report the PR (number + URL) — or why it was skipped — ONLY via the fields of
+        your final json block below; there is no other reporting channel.
         {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
 outputs:
   {{- include "h.contract.create-pr" . | nindent 2 }}

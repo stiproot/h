@@ -83,28 +83,18 @@ export async function* genericWorkflow(
 }
 
 /**
- * The goal handshake (docs/plans/workflow-watcher-registry.md §6): a wf-identified workflow may end an
- * agent step with a `===GOAL===` marker reporting whether its SUBJECT is resolved (e.g. the PR merged)
- * — distinct from run-status `done` (the steps finished). We scan the step outputs for
- * `===GOAL=== … RESOLVED` so write-wf-row records `resolved`, the flag the cron engine reads to stop
- * recurring. Pure string parsing — replay-safe. Absent marker ⇒ false (not resolved; keep recurring).
+ * The goal handshake (docs/plans/workflow-watcher-registry.md §6): a wf-identified workflow may
+ * report whether its SUBJECT is resolved (e.g. the PR merged) — distinct from run-status `done`
+ * (the steps finished) — via a `goal: "RESOLVED"` field in its validated structured output
+ * (docs/plans/structured-workflow-outputs.md; e.g. the revise template's declared contract). We
+ * scan the step envelopes for it so write-wf-row records `resolved`, the flag the cron engine
+ * reads to stop recurring. Pure, replay-safe. Absent ⇒ false (not resolved; keep recurring).
  */
 function goalResolved(results: Record<string, unknown>): boolean {
-  const MARK = "===GOAL===";
   for (const v of Object.values(results)) {
-    const out = (v as { output?: unknown } | null | undefined)?.output;
-    if (typeof out !== "string") continue;
-    const idx = out.lastIndexOf(MARK);
-    if (
-      idx !== -1 &&
-      out
-        .slice(idx + MARK.length)
-        .trim()
-        .toUpperCase()
-        .startsWith("RESOLVED")
-    ) {
-      return true;
-    }
+    const structured = (v as { structured?: unknown } | null | undefined)?.structured;
+    if (typeof structured !== "object" || structured === null) continue;
+    if ((structured as { goal?: unknown }).goal === "RESOLVED") return true;
   }
   return false;
 }

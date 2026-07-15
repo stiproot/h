@@ -3,7 +3,8 @@
 The third sibling of `h watch` / `h chain list`. Every list render leads with the `cron:__tick__`
 heartbeat: a missing or stale (>5 min) heartbeat means the scan engine is not running and the rows
 are not truth (docs/plans/workflow-watcher-registry.md §5). Crons are REGISTERED by
-`h workflow run <key> --cron <cadence>` (workflow-svc is the sole writer); this surface inspects them.
+`h workflow run <key> --cron <cadence>` (workflow-svc is the sole writer); this surface inspects
+them.
 """
 
 from datetime import UTC, datetime
@@ -18,7 +19,9 @@ from h_cli.infrastructure import workflow_svc
 from h_cli.params import parse_params
 
 app = typer.Typer(no_args_is_help=True, help="Durable cron registry (workflow-svc recur engine).")
-discover_app = typer.Typer(no_args_is_help=True, help="Discovery/fan-out crons (a source → per-issue fires).")
+discover_app = typer.Typer(
+    no_args_is_help=True, help="Discovery/fan-out crons (a source → per-issue fires)."
+)
 app.add_typer(discover_app, name="discover")
 console = Console()
 err_console = Console(stderr=True)
@@ -74,7 +77,8 @@ def _print_heartbeat(heartbeat: dict[str, Any] | None) -> None:
 
 @app.command("list")
 def list_() -> None:
-    """List cron rows — recur registrations AND discovery/fan-out crons — with the scan heartbeat."""
+    """List cron rows — recur registrations AND discovery/fan-out crons — with the scan
+    heartbeat."""
     data = _guarded(workflow_svc.cron_list)
     _print_heartbeat(data.get("heartbeat"))
     crons = data.get("crons") or []
@@ -119,24 +123,52 @@ def list_() -> None:
 
 @discover_app.command("add")
 def discover_add(
-    repo: str = typer.Argument(..., help="owner/name — the GitHub repo to scan AND the fired runs' identity repo."),
-    label: str = typer.Option(..., "--label", "-l", help="Only open issues with this label are discovered."),
-    cadence: str = typer.Option(..., "--cadence", "-c", help="5-field cron expression (UTC) — how often to scan."),
-    workflow: str = typer.Option("feature-pr", "--workflow", "-w", help="Saved workflow fired per discovered issue."),
-    max_per_day: int | None = typer.Option(None, "--max-per-day", help="Daily fan-out cap (backstop; server default 5)."),
-    run_budget_mins: int | None = typer.Option(None, "--run-budget-mins", help="Supervise each fired run: terminate it after this many minutes (attaches a watch policy)."),
-    run_retries: int | None = typer.Option(None, "--run-retries", help="Engine-retry a failed fired run up to N times (needs --run-budget-mins)."),
-    param: list[str] = typer.Option([], "--param", "-p", help="key=value merged into every fire (e.g. identity); @path splices a file."),
+    repo: str = typer.Argument(
+        ..., help="owner/name — the GitHub repo to scan AND the fired runs' identity repo."
+    ),
+    label: str = typer.Option(
+        ..., "--label", "-l", help="Only open issues with this label are discovered."
+    ),
+    cadence: str = typer.Option(
+        ..., "--cadence", "-c", help="5-field cron expression (UTC) — how often to scan."
+    ),
+    workflow: str = typer.Option(
+        "feature-pr", "--workflow", "-w", help="Saved workflow fired per discovered issue."
+    ),
+    max_per_day: int | None = typer.Option(
+        None, "--max-per-day", help="Daily fan-out cap (backstop; server default 5)."
+    ),
+    run_budget_mins: int | None = typer.Option(
+        None,
+        "--run-budget-mins",
+        help="Supervise each fired run: terminate it after this many minutes "
+        "(attaches a watch policy).",
+    ),
+    run_retries: int | None = typer.Option(
+        None,
+        "--run-retries",
+        help="Engine-retry a failed fired run up to N times (needs --run-budget-mins).",
+    ),
+    param: list[str] = typer.Option(
+        [],
+        "--param",
+        "-p",
+        help="key=value merged into every fire (e.g. identity); @path splices a file.",
+    ),
 ) -> None:
-    """Register a discovery/fan-out cron: each due tick lists open '<label>' issues on <repo> and fires
+    """Register a discovery/fan-out cron: each due tick lists open '<label>' issues on <repo> and
+    fires
     ONE <workflow> per newly-discovered issue (serialized, deduped against the wf: keys). Fires a
     one-step provision workflow whose register-discover activity writes the cron:discover row (§10 —
     crons via activities); the provision run's wf: row audits the registration.
 
-    --run-budget-mins attaches a watch policy so the watcher engine terminates a hung run (and retries
-    it, with --run-retries) instead of the run stalling the discovery cron's one-in-flight serialize."""
+    --run-budget-mins attaches a watch policy so the watcher engine terminates a hung run (and
+    retries it, with --run-retries) instead of the run stalling the discovery cron's one-in-flight
+    serialize."""
     if run_retries is not None and run_budget_mins is None:
-        err_console.print("[red]--run-retries[/red] needs --run-budget-mins (a watch needs a budget).")
+        err_console.print(
+            "[red]--run-retries[/red] needs --run-budget-mins (a watch needs a budget)."
+        )
         raise typer.Exit(1)
     watch: dict[str, Any] | None = None
     if run_budget_mins is not None:
@@ -152,5 +184,6 @@ def discover_add(
     supervised = f", supervised ≤{run_budget_mins}m" if run_budget_mins else ""
     console.print(
         f"[green]provisioned[/green] discovery cron for open '{label}' issues on {repo} "
-        f"→ fires [cyan]{workflow}[/cyan]{supervised} (provision run [bold]{data.get('instanceId')}[/bold])"
+        f"→ fires [cyan]{workflow}[/cyan]{supervised} "
+        f"(provision run [bold]{data.get('instanceId')}[/bold])"
     )
