@@ -60,7 +60,10 @@ def test_no_warning_for_existing_or_default_source_repo(capsys, tmp_path) -> Non
 def test_feature_render_json_is_a_valid_definition(hostile_spec: Path) -> None:
     result = runner.invoke(app, ["feature", "render", str(hostile_spec), "--json"])
     assert result.exit_code == 0, _all_output(result)
-    definition = json.loads(result.output)
+    # result.stdout, not .output: --json promises machine-parseable STDOUT; .output is the
+    # combined terminal view (click ≥8.2), where a values.local.yaml clonePath warning on
+    # stderr would corrupt the parse.
+    definition = json.loads(result.stdout)
     assert definition["instanceId"] == "feature-hostile"
     # This goes through the real CLI path, which merges the dev's gitignored values.local.yaml —
     # so the optional verify step (feature.verifyCmd) may or may not be present. The hermetic
@@ -76,7 +79,7 @@ def test_feature_render_slug_override(hostile_spec: Path) -> None:
         app, ["feature", "render", str(hostile_spec), "--slug", "ui-theme", "--json"]
     )
     assert result.exit_code == 0, _all_output(result)
-    assert json.loads(result.output)["instanceId"] == "feature-ui-theme"
+    assert json.loads(result.stdout)["instanceId"] == "feature-ui-theme"
 
 
 def test_feature_render_missing_spec_exits_1(

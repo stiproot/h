@@ -159,7 +159,7 @@ def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "x", "--spec", str(_spec(tmp_path)),
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "feature-pr", "--agent", "pi", "-w", "pr-review",
         ],
     )  # fmt: skip
