@@ -1,0 +1,154 @@
+{{- /*
+bootstrap-repo workflow — setup → bootstrap (create repo / scaffold / verify / push).
+
+A STANDALONE, genesis-path template: given an idea and a repo name, it creates a NEW GitHub
+repository, scaffolds the project from a spec, runs an acceptance gate, commits, and pushes to
+main. There is no worktree (no pre-cloned repo), no branch, and no PR flow in v1 — a fresh repo
+has no reviewers or branch protection yet. Enabling PR gating on a bootstrapped repo is the
+owner's post-run step.
+
+Fire-time params:
+  repoName    GitHub repository name to create (required)
+  spec        Markdown project spec under a ===SPEC=== heading (required)
+  verifyCmd   Acceptance command run after scaffolding; on failure the run stops before any push
+  plugins     Space-separated name@marketplace tokens (empty = no-op)
+  visibility  GitHub repo visibility: "private" (default) or "public"
+
+Identity params (fire-time, baked as stored defaults from values):
+  runActivity  Activity name for the bootstrap step (default: run-claude)
+  agentId      Agent service id (default: claude-agent)
+
+Template config (values, baked at publish time):
+  bootstrapRepo.visibility (default: private)
+  plugins.marketplaces (curated list of marketplace URLs; trust split — sources are config,
+    not fire-time; WHICH plugins to install is the `plugins` fire-time param)
+
+Trust notes:
+  GH_TOKEN must carry the `repo` scope (repository creation requires it).
+  plugins are installed only from values-curated marketplaces — fire-time params name
+  which plugins to install, not where to fetch them from.
+
+No PR flow, no revise loop, no armCron in v1.
+
+Publish:
+  helm template bootstrap-repo cli/charts/workflows -s templates/bootstrap-repo.yaml \
+    --set template=bootstrap-repo --set publish=true
+*/ -}}
+{{- /*
+The declared output contract: result is the run outcome; repoUrl and defaultBranch are
+populated on CREATED; verify reports the gate outcome; skipped carries the reason when
+the run halts early (repo exists, gate failure, missing GH_TOKEN).
+*/ -}}
+{{- define "h.contract.bootstrap-repo" -}}
+type: object
+required:
+  - result
+properties:
+  result:
+    enum:
+      - CREATED
+      - FAILED
+    description: CREATED when the repository was created, committed, and pushed; FAILED otherwise
+  repoUrl:
+    type: string
+    description: the HTML URL of the created repository
+  defaultBranch:
+    type: string
+    description: the default branch name (main)
+  verify:
+    enum:
+      - PASS
+      - FAIL
+    description: the acceptance-gate outcome; FAIL means the run stopped before any push
+  skipped:
+    type: string
+    description: present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, ...)
+{{- end }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "bootstrap-repo" }}
+{{- $b := .Values.bootstrapRepo }}
+{{- $contract := include "h.contract.bootstrap-repo" . | fromYaml }}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
+{{- $activityRef := include "h.token" "params.runActivity" | quote }}
+{{- $agentIdRef := include "h.token" "params.agentId" }}
+{{- $repoName := include "h.token" "params.repoName" }}
+{{- $visibility := include "h.token" "params.visibility" }}
+{{- $spec := include "h.token" "params.spec" }}
+{{- $verifyCmd := include "h.token" "params.verifyCmd" }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  visibility: {{ $b.visibility | quote }}
+  {{- with $b.models.run }}
+  modelRun: {{ . | quote }}
+  {{- end }}
+steps:
+  - id: setup
+    activity: setup
+    input:
+      agentId: {{ $agentIdRef | quote }}
+      setup:
+        {{- include "h.setupSteps" . | nindent 8 }}
+        {{- include "h.pluginSetupSteps" . | nindent 8 }}
+  - id: bootstrap
+    activity: {{ $activityRef }}
+    input:
+      outputContract: {{ $contract | toJson }}
+      {{- with $b.models.run }}
+      model: {{ include "h.token" "params.modelRun" | quote }}
+      {{- end }}
+      task: |-
+        Your job is to create a new GitHub repository named {{ $repoName }} and bootstrap it
+        from the spec below. Work in your current directory (the agent workspace). There is no
+        pre-cloned repo — you are building from scratch.
+
+        ===SPEC===
+        {{ $spec }}
+
+        Follow this procedure exactly, in order. Stop immediately on any failure and report via
+        the final json block.
+
+        1. CREATE the repository.
+           Use the github MCP tool create_repository:
+             name: {{ $repoName }}
+             visibility: {{ $visibility }}
+           If the repository already exists (the tool returns an error indicating the name is
+           taken), STOP. Report `result: FAILED` and `skipped: "repo already exists"`. Do not
+           adopt, modify, or push to an existing repository.
+           On success: note the returned `html_url` as `repoUrl` and the `default_branch` as
+           `defaultBranch` for your final json block.
+
+        2. SCAFFOLD the project.
+           In your current working directory:
+             git init
+           Implement the project as described under ===SPEC=== above. Create all files needed to
+           satisfy the spec. Do not create files outside the spec.
+
+        3. VERIFY.
+           Run the acceptance command exactly as given (no modifications, no weakening):
+             {{ $verifyCmd }}
+           If it fails, fix forward and retry up to 3 times. If it still fails after 3 attempts,
+           STOP. Report `result: FAILED`, `verify: FAIL`, and `skipped: "verify gate failed after
+           3 attempts"`. Do not push a repository that does not pass the gate.
+           On success: note `verify: PASS` for your final json block.
+
+        4. COMMIT and PUSH.
+           Stage and commit files individually (never `git add -A` or `git commit -a`):
+             git add <file>   # repeat for each file
+           Use a single conventional commit message summarising the scaffold.
+           Set the default branch:
+             git branch -M main
+           Push with a one-shot token URL — derive <owner> from `git remote get-url origin` if a
+           remote exists, otherwise use your GitHub username; the repo name is {{ $repoName }}:
+             git remote add origin "https://github.com/<owner>/{{ $repoName }}.git"
+             git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/{{ $repoName }}.git" main
+           Never write the token into git config or the remote URL permanently.
+           If GH_TOKEN is unset, STOP. Report `result: FAILED` and
+           `skipped: "GH_TOKEN is not set"`.
+
+        Report the outcome ONLY via the fields of your final json block below. There is no other
+        reporting channel.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "h.contract.bootstrap-repo" . | nindent 2 }}
+{{- end }}

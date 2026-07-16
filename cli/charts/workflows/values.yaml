@@ -113,6 +113,16 @@ plugins:
   # marketplaces:
   #   - https://example.com/marketplace.json
 
+# bootstrap-repo workflow (templates/bootstrap-repo.yaml): setup → bootstrap. Publish-native
+# — creates a new GitHub repository from a spec, scaffolds, verifies, and pushes. No worktree,
+# no pre-cloned repo, no PR flow in v1 (the owner gates the repo post-run).
+bootstrapRepo:
+  # Default repository visibility for newly created repos.
+  visibility: private
+  # Per-step model override; empty = the agent's AGENT_MODEL.
+  models:
+    run: ""
+
 # pr-review workflow (templates/pr-review.yaml): setup → review. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.focus}} slots.
 prReview:

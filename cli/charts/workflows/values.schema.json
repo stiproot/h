@@ -148,6 +148,26 @@
       },
       "additionalProperties": false
     },
+    "bootstrapRepo": {
+      "type": "object",
+      "$comment": "bootstrap-repo template (templates/bootstrap-repo.yaml). Publish-native: repoName/spec/verifyCmd/plugins/visibility are fire-time params; only visibility default and models bake here.",
+      "properties": {
+        "visibility": {
+          "enum": ["private", "public"],
+          "$comment": "Default GitHub repo visibility for newly created repositories."
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "run": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "plugins": {
       "type": "object",
       "$comment": "Plugin provisioning. marketplaces bake at publish time (curated config); which plugins to install is the fire-time `plugins` param (space-separated name@marketplace tokens).",
