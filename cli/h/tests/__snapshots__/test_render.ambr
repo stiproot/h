@@ -375,6 +375,13 @@
              d. pull_request_review_write with method "submit_pending" and event "COMMENT".
                 NEVER use APPROVE or REQUEST_CHANGES — human trust gates stay human.
   
+          COHERENCE RULE — the posted review and your verdict must agree exactly: post
+          line-anchored finding comments if and ONLY if your verdict is FINDINGS, and the
+          summary must list exactly the comments you posted — no more, no fewer. If while
+          drafting you conclude a candidate finding is not actionable, do NOT post its
+          comment (delete it from the pending review before submitting). A defect comment
+          alongside a CLEAN verdict orphans a thread no revise run will ever answer.
+  
           Report your verdict and findings ONLY via your final json block below: verdict
           CLEAN or FINDINGS, and on FINDINGS a summary of one line per finding in the
           format "FILE:LINE — <defect summary>".
