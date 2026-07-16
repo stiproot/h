@@ -69,7 +69,7 @@ properties:
 {{- $b := .Values.bootstrapRepo }}
 {{- $contract := include "h.contract.bootstrap-repo" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
-{{- $activityRef := include "h.token" "params.runActivity" | quote }}
+{{- $activityRef := include "h.token" "params.runActivity" }}
 {{- $agentIdRef := include "h.token" "params.agentId" }}
 {{- $repoName := include "h.token" "params.repoName" }}
 {{- $visibility := include "h.token" "params.visibility" }}
