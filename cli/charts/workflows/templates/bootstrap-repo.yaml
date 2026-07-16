@@ -111,7 +111,7 @@ steps:
         1. CREATE the repository.
            Use the github MCP tool create_repository:
              name: {{ $repoName }}
-             visibility: {{ $visibility }}
+             private: {{ eq $visibility "private" }}
            If the repository already exists (the tool returns an error indicating the name is
            taken), STOP. Report `result: FAILED` and `skipped: "repo already exists"`. Do not
            adopt, modify, or push to an existing repository.
