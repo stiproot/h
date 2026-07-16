@@ -23,6 +23,27 @@ allowlist; here it needs nothing).
 {{- end }}
 
 {{/*
+h.pluginSetupSteps — optional per-run Claude Code plugin provisioning.
+Trust split:
+  - SOURCES (plugins.marketplaces in values) are curated config, baked at publish time.
+  - WHICH plugins to install is fire-time: the `plugins` param (space-separated
+    name@marketplace tokens), always emitted as {{params.plugins}}.
+No-op: if {{params.plugins}} is empty at runtime the script exits immediately —
+no marketplace is added, no plugin is touched. Emits nothing when plugins.marketplaces
+is empty in values. Requires h.setupSteps to precede it (script ships via H_SKILLS_DIR).
+Safe to leave open in publish mode: {{params.plugins}} can be empty at fire-time; the
+runtime script guards against it, so callers need not. When marketplaces are configured,
+the helper always emits this step; fire-time params control which plugins install.
+*/}}
+{{- define "h.pluginSetupSteps" -}}
+{{- $mps := ((.Values.plugins).marketplaces) | default list -}}
+{{- if $mps -}}
+{{- $pluginsToken := include "h.token" "params.plugins" -}}
+- cmd: {{ printf "bash ~/.claude/skills/install-plugins.sh \"%s\" %s" $pluginsToken (join " " $mps) | quote }}
+{{- end -}}
+{{- end }}
+
+{{/*
 h.outputContractEpilogue — the per-step INSTANCE of the output contract
 (docs/plans/structured-workflow-outputs.md §2): rendered from the template's declared schema so
 instruction and contract cannot drift. The shared PROTOCOL rule lives in h-runtime.md (installed by

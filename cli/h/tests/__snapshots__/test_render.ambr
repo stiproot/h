@@ -315,6 +315,20 @@
   
   '''
 # ---
+# name: test_plugin_setup_steps_with_marketplaces_golden
+  '''
+  steps:
+    - id: setup
+      activity: setup
+      input:
+        agentId: "claude-agent"
+        setup:
+          - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
+          - cmd: "bash ~/.claude/skills/install-plugins.sh \"{{params.plugins}}\" https://example.com/marketplace.json"
+  
+  '''
+# ---
 # name: test_pr_review_golden
   '''
   params:

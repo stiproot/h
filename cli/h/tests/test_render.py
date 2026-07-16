@@ -174,12 +174,14 @@ def test_templates_do_not_cross_demand_values(hostile_spec: Path) -> None:
         values={"pluginImprovement.tile": "plugins/linear"},
         include_local=False,
     )
-    # …and pr-review renders without feature.slug/spec or pluginImprovement.tile set.
+    # …pr-review renders without feature.slug/spec or pluginImprovement.tile set…
     helm.render_workflow(
         "pr-review",
         values={"prReview.repo": "owner/h"},
         include_local=False,
     )
+    # …and plugin-setup-test renders without any other template's required values.
+    helm.render_workflow("plugin-setup-test", values={}, include_local=False)
 
 
 def test_hostile_tokens_survive_verbatim(hostile_spec: Path) -> None:
@@ -347,3 +349,66 @@ def test_pr_review_repo_is_a_fire_param_not_required() -> None:
     )
     review_task = definition["steps"][1]["input"]["task"]
     assert "{{params.repo}}" in review_task
+
+
+def test_plugin_setup_steps_with_marketplaces_golden(snapshot) -> None:
+    """h.pluginSetupSteps with a marketplace set: baked URL + {{params.plugins}} token."""
+    rendered = helm.render_workflow(
+        "plugin-setup-test",
+        values={
+            "plugins.marketplaces[0]": "https://example.com/marketplace.json",
+            "publish": "true",
+        },
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_plugin_setup_steps_empty_is_noop() -> None:
+    """No plugins.marketplaces → helper emits nothing; setup has only the two h.setupSteps cmds."""
+    rendered = helm.render_workflow("plugin-setup-test", values={}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+    setup_cmds = definition["steps"][0]["input"]["setup"]
+    assert len(setup_cmds) == 2
+    assert all("install-plugins" not in c["cmd"] for c in setup_cmds)
+
+
+def test_plugin_setup_steps_publish_mode_has_params_token() -> None:
+    """publish=true + a marketplace → the install cmd holds the open {{params.plugins}} slot."""
+    rendered = helm.render_workflow(
+        "plugin-setup-test",
+        values={
+            "plugins.marketplaces[0]": "https://example.com/marketplace.json",
+            "publish": "true",
+        },
+        include_local=False,
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    setup_cmds = definition["steps"][0]["input"]["setup"]
+    # Find the install-plugins command
+    plugin_cmd = next(c["cmd"] for c in setup_cmds if "install-plugins" in c["cmd"])
+    # Verify the command structure: params token and unquoted marketplace URL
+    assert "{{params.plugins}}" in plugin_cmd
+    assert "https://example.com/marketplace.json" in plugin_cmd
+    # Verify token and URL are present in rendered output
+    assert "{{params.plugins}}" in rendered
+    assert "https://example.com/marketplace.json" in rendered
+
+
+def test_plugin_setup_steps_marketplace_url_with_query_params() -> None:
+    """Marketplace URL with query parameters (e.g., token=abc) is passed correctly to the script."""
+    rendered = helm.render_workflow(
+        "plugin-setup-test",
+        values={
+            "plugins.marketplaces[0]": "https://example.com/marketplace.json?token=abc",
+            "publish": "true",
+        },
+        include_local=False,
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    setup_cmds = definition["steps"][0]["input"]["setup"]
+    plugin_cmd = next(c["cmd"] for c in setup_cmds if "install-plugins" in c["cmd"])
+    # URL with query params should be present as-is in the command
+    assert "https://example.com/marketplace.json?token=abc" in plugin_cmd
+    # Params token should still be present
+    assert "{{params.plugins}}" in plugin_cmd

@@ -100,6 +100,11 @@ uses the flags.
 - Org/repo config (clonePath, models, verifyCmd, gitAuth) bakes from values.yaml +
   values.local.yaml at publish time; per-run content rides `-p key=value` at fire time. Never bake
   a secret; never make config a fire-time param.
+- Plugin provisioning (opt-in): `{{- include "h.pluginSetupSteps" . | nindent 8 }}` in the
+  `setup:` block, after `h.setupSteps`. Marketplace SOURCES (`plugins.marketplaces` in values)
+  bake at publish time; WHICH plugins to install is the `plugins` fire-time param (space-separated
+  `name@marketplace` tokens, always `{{params.plugins}}`). Empty param = runtime no-op — no
+  marketplace is added, no plugin touched. Omit when the template never needs plugins.
 
 ## 6. Verify and ship
 

@@ -147,6 +147,17 @@
         }
       },
       "additionalProperties": false
+    },
+    "plugins": {
+      "type": "object",
+      "$comment": "Plugin provisioning. marketplaces bake at publish time (curated config); which plugins to install is the fire-time `plugins` param (space-separated name@marketplace tokens).",
+      "properties": {
+        "marketplaces": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }
