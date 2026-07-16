@@ -31,12 +31,19 @@ Trust split:
 No-op: if {{params.plugins}} is empty at runtime the script exits immediately —
 no marketplace is added, no plugin is touched. Emits nothing when plugins.marketplaces
 is empty in values. Requires h.setupSteps to precede it (script ships via H_SKILLS_DIR).
+Safe to leave open in publish mode: {{params.plugins}} can be empty at fire-time; the
+runtime script guards against it, so callers need not. When marketplaces are configured,
+the helper always emits this step; fire-time params control which plugins install.
 */}}
 {{- define "h.pluginSetupSteps" -}}
 {{- $mps := ((.Values.plugins).marketplaces) | default list -}}
 {{- if $mps -}}
 {{- $pluginsToken := include "h.token" "params.plugins" -}}
-- cmd: {{ printf "bash ~/.claude/skills/install-plugins.sh \"%s\" %s" $pluginsToken ($mps | join " ") | quote }}
+{{- $quotedMps := list -}}
+{{- range $mps -}}
+{{- $quotedMps = append $quotedMps (printf "\"%s\"" .) -}}
+{{- end -}}
+- cmd: {{ printf "bash ~/.claude/skills/install-plugins.sh \"%s\" %s" $pluginsToken ($quotedMps | join " ") | quote }}
 {{- end -}}
 {{- end }}
 

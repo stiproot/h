@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Usage: install-plugins.sh "<plugins>" <marketplace-url>...
-# No-op when the plugins arg is empty. marketplace add is idempotent (|| true);
+# plugins: space-separated name@marketplace tokens. No-op when empty.
+# marketplace-url: one or more marketplace URLs (each individually quoted).
+# Plugin names must not contain spaces; marketplace add is idempotent (|| true);
 # plugin install errors propagate — a failed install fails the step.
 set -e
 plugins="$1"; shift
