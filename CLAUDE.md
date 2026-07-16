@@ -361,9 +361,12 @@ into a CLI agent's user-global `~/.claude/skills/` (`cp -r $H_SKILLS_DIR/* ~/.cl
 `LINEAR_API_KEY` with `get-issue.sh`, post comments back with `add-comment.sh` — the hosted Linear
 MCP can't authenticate unattended), `analyze-workflow-run` (correlate every observability source for
 a run), `workflow-orchestrator` (turn a task into a saved/run/monitored workflow via the
-workflows MCP), and `h-issues` (file a well-formed improvement issue on the h repo — h only; other
+workflows MCP), `h-issues` (file a well-formed improvement issue on the h repo — h only; other
 repos carry their own conventions — with `create-issue.sh`, which refuses to self-apply the
-`agent-approved` trust label). A **Python** agent consumes a skill's body directly as its system prompt via
+`agent-approved` trust label), and `author-workflow-template` (the authoring recipe for chart
+templates: the template gate, render modes, the output contract in its three places, the
+one-declarer composition rule, goldens, publish — for any agent creating or modifying a template,
+incl. h-builds-h feature runs). A **Python** agent consumes a skill's body directly as its system prompt via
 `agent_core.load_skill_instructions` — workflow-agent loads `workflow-orchestrator` this way (the
 same source a CLI agent gets), so the orchestration procedure has a single home. This is a skill
 source alongside the tessl registry (org-published plugins) and a repo's own `.claude/` skills.
