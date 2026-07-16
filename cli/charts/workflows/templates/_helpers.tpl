@@ -39,11 +39,7 @@ the helper always emits this step; fire-time params control which plugins instal
 {{- $mps := ((.Values.plugins).marketplaces) | default list -}}
 {{- if $mps -}}
 {{- $pluginsToken := include "h.token" "params.plugins" -}}
-{{- $quotedMps := list -}}
-{{- range $mps -}}
-{{- $quotedMps = append $quotedMps (printf "\"%s\"" .) -}}
-{{- end -}}
-- cmd: {{ printf "bash ~/.claude/skills/install-plugins.sh \"%s\" %s" $pluginsToken ($quotedMps | join " ") | quote }}
+- cmd: {{ printf "bash ~/.claude/skills/install-plugins.sh \"%s\" %s" $pluginsToken (join " " $mps) | quote }}
 {{- end -}}
 {{- end }}
 

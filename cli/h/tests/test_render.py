@@ -387,9 +387,28 @@ def test_plugin_setup_steps_publish_mode_has_params_token() -> None:
     setup_cmds = definition["steps"][0]["input"]["setup"]
     # Find the install-plugins command
     plugin_cmd = next(c["cmd"] for c in setup_cmds if "install-plugins" in c["cmd"])
-    # Verify the command structure: marketplace URLs are individually quoted
+    # Verify the command structure: params token and unquoted marketplace URL
     assert "{{params.plugins}}" in plugin_cmd
-    assert '"https://example.com/marketplace.json"' in plugin_cmd
+    assert "https://example.com/marketplace.json" in plugin_cmd
     # Verify token and URL are present in rendered output
     assert "{{params.plugins}}" in rendered
     assert "https://example.com/marketplace.json" in rendered
+
+
+def test_plugin_setup_steps_marketplace_url_with_query_params() -> None:
+    """Marketplace URL with query parameters (e.g., token=abc) is passed correctly to the script."""
+    rendered = helm.render_workflow(
+        "plugin-setup-test",
+        values={
+            "plugins.marketplaces[0]": "https://example.com/marketplace.json?token=abc",
+            "publish": "true",
+        },
+        include_local=False,
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    setup_cmds = definition["steps"][0]["input"]["setup"]
+    plugin_cmd = next(c["cmd"] for c in setup_cmds if "install-plugins" in c["cmd"])
+    # URL with query params should be present as-is in the command
+    assert "https://example.com/marketplace.json?token=abc" in plugin_cmd
+    # Params token should still be present
+    assert "{{params.plugins}}" in plugin_cmd
