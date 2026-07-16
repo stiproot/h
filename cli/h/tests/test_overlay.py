@@ -29,6 +29,66 @@ def test_non_task_input_fields_are_later_wins() -> None:
     assert merged["steps"][0]["input"]["cwd"] == "{{w}}"  # preserved
 
 
+def test_setup_lists_concatenate_base_first() -> None:
+    # A setup-contributing atom (e.g. a plugins-install fragment) EXTENDS the base step's setup
+    # command list instead of clobbering it — the list sibling of the task-prose append.
+    base = {
+        "steps": [{"id": "setup", "input": {"setup": ["cp -r $H_SKILLS_DIR/. ~/.claude/skills"]}}]
+    }
+    layer = {
+        "steps": [
+            {
+                "id": "setup",
+                "input": {"setup": ["claude plugin install foo", "claude plugin install bar"]},
+            }
+        ]
+    }
+    merged = overlay(base, layer)
+    assert merged["steps"][0]["input"]["setup"] == [
+        "cp -r $H_SKILLS_DIR/. ~/.claude/skills",
+        "claude plugin install foo",
+        "claude plugin install bar",
+    ]
+
+
+def test_setup_on_one_side_only_is_unchanged() -> None:
+    base_only = overlay(
+        {"steps": [{"id": "s", "input": {"setup": ["a"]}}]},
+        {"steps": [{"id": "s", "input": {"task": "t"}}]},
+    )
+    assert base_only["steps"][0]["input"]["setup"] == ["a"]
+    layer_only = overlay(
+        {"steps": [{"id": "s", "input": {"task": "t"}}]},
+        {"steps": [{"id": "s", "input": {"setup": ["b"]}}]},
+    )
+    assert layer_only["steps"][0]["input"]["setup"] == ["b"]
+
+
+def test_non_list_setup_values_keep_later_wins() -> None:
+    # Only list⊕list concatenates; any non-list side falls back to plain later-wins.
+    merged = overlay(
+        {"steps": [{"id": "s", "input": {"setup": ["a"]}}]},
+        {"steps": [{"id": "s", "input": {"setup": "echo scalar"}}]},
+    )
+    assert merged["steps"][0]["input"]["setup"] == "echo scalar"
+    merged = overlay(
+        {"steps": [{"id": "s", "input": {"setup": "echo scalar"}}]},
+        {"steps": [{"id": "s", "input": {"setup": ["b"]}}]},
+    )
+    assert merged["steps"][0]["input"]["setup"] == ["b"]
+
+
+def test_concatenated_setup_is_deep_copied_not_aliased() -> None:
+    base = {"steps": [{"id": "s", "input": {"setup": [{"cmd": "base"}]}}]}
+    layer = {"steps": [{"id": "s", "input": {"setup": [{"cmd": "layer"}]}}]}
+    merged = overlay(base, layer)
+    merged["steps"][0]["input"]["setup"][0]["cmd"] = "mutated-base"
+    merged["steps"][0]["input"]["setup"][1]["cmd"] = "mutated-layer"
+    merged["steps"][0]["input"]["setup"].append({"cmd": "extra"})
+    assert base["steps"][0]["input"]["setup"] == [{"cmd": "base"}]  # sources untouched
+    assert layer["steps"][0]["input"]["setup"] == [{"cmd": "layer"}]
+
+
 def test_top_level_keys_are_later_wins() -> None:
     merged = overlay({"instanceId": "a", "steps": []}, {"instanceId": "b", "steps": []})
     assert merged["instanceId"] == "b"

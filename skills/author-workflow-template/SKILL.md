@@ -29,8 +29,9 @@ Without the gate, your template's `required` values break every other template's
   with values-baked defaults. This is the mode `h workflow publish` and `h template compose` use.
 - **`--set composable=true`** — an overlay ATOM: render only the step fragments you contribute;
   omit standalone closers. Overlay (⊕) merges by step `id`: same id → your `input.task` APPENDS to
-  the existing task, other input fields are later-wins; new id → appended step. Every step needs an
-  `id`.
+  the existing task and your `input.setup` list CONCATENATES onto the existing one (base first —
+  so a setup-contributing atom extends, never clobbers); every other input field is later-wins;
+  new id → appended step. Every step needs an `id`.
 
 ## 3. The structured output contract (when a machine consumes your output)
 

@@ -466,3 +466,10 @@ output, it can aggregate parallel outputs too — the actor likely evaporates th
   `packages/js/core/src/errors.ts` "tagged-error family" (a different sense), and the historical plan
   docs under docs/plans/ (point-in-time records). Suites green: h-cli 86, workflow-svc 94, py
   agent-server 10.
+- **2026-07-16 — overlay merges step `setup` lists additively.** `_merge_step` now CONCATENATES
+  `input.setup` when both the base step and the layer step carry a list (base first, then layer) —
+  the list sibling of the `input.task` prose append, so an overlay atom can contribute setup
+  commands (e.g. a future plugins-install fragment) without clobbering the base template's setup.
+  Everything else stays later-wins; a `setup` on one side only, or with a non-list value, behaves
+  as before. Module docstring updated; 4 new tests (concat order, one-side-only, non-list
+  later-wins, deep-copy). h-cli suite green (171), ruff clean.

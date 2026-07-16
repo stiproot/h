@@ -11,8 +11,11 @@ Merge semantics (a later layer over the accumulator):
 - Steps merge BY `id`:
   - a step whose id is new is appended (preserving first-seen order);
   - a step whose id already exists is merged into the existing one — its `input.task` is APPENDED
-    to the existing task (prose extension, e.g. the PR epilogue), every other `input` field and
-    top-level step field is later-wins.
+    to the existing task (prose extension, e.g. the PR epilogue), its `input.setup` list is
+    CONCATENATED onto the existing setup list (command extension, base first — so an atom can
+    contribute setup commands without clobbering the base's), every other `input` field and
+    top-level step field is later-wins. `task`/`setup` present on only one side, or with
+    non-string/non-list values, follow later-wins like any other field.
 
 Pure and dependency-free: takes/returns plain dicts (parsed YAML/JSON), no helm, no network.
 """
@@ -26,7 +29,8 @@ TASK_SEPARATOR = "\n"
 
 
 def _merge_step(base_step: dict[str, Any], layer_step: dict[str, Any]) -> None:
-    """Merge `layer_step` into `base_step` in place: append `input.task`, later-wins the rest."""
+    """Merge `layer_step` into `base_step` in place: append `input.task`, concatenate
+    `input.setup` lists, later-wins the rest."""
     base_input: dict[str, Any] = base_step.setdefault("input", {})
     for key, value in (layer_step.get("input") or {}).items():
         if (
@@ -35,6 +39,12 @@ def _merge_step(base_step: dict[str, Any], layer_step: dict[str, Any]) -> None:
             and isinstance(base_input.get("task"), str)
         ):
             base_input["task"] = base_input["task"].rstrip("\n") + TASK_SEPARATOR + value
+        elif (
+            key == "setup"
+            and isinstance(value, list)
+            and isinstance(base_input.get("setup"), list)
+        ):
+            base_input["setup"] = base_input["setup"] + value
         else:
             base_input[key] = value
     for key, value in layer_step.items():
