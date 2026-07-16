@@ -10,7 +10,7 @@ owner's post-run step.
 Fire-time params:
   repoName    GitHub repository name to create (required)
   spec        Markdown project spec under a ===SPEC=== heading (required)
-  verifyCmd   Acceptance command run after scaffolding; on failure the run stops before any push
+  verifyCmd   Acceptance command run after scaffolding (required); on failure the run stops before any push. If the command is empty or missing, the run stops with result: FAILED and skipped: "verifyCmd not provided"
   plugins     Space-separated name@marketplace tokens (empty = no-op)
   visibility  GitHub repo visibility: "private" (default) or "public"
 
@@ -35,9 +35,9 @@ Publish:
     --set template=bootstrap-repo --set publish=true
 */ -}}
 {{- /*
-The declared output contract: result is the run outcome; repoUrl and defaultBranch are
-populated on CREATED; verify reports the gate outcome; skipped carries the reason when
-the run halts early (repo exists, gate failure, missing GH_TOKEN).
+The declared output contract: result is the run outcome.
+On CREATED: repoUrl, defaultBranch, and verify are required (verify: PASS only on full success).
+On FAILED: skipped is required (explains why); repoUrl and defaultBranch are omitted.
 */ -}}
 {{- define "h.contract.bootstrap-repo" -}}
 type: object
@@ -51,18 +51,18 @@ properties:
     description: CREATED when the repository was created, committed, and pushed; FAILED otherwise
   repoUrl:
     type: string
-    description: the HTML URL of the created repository
+    description: the HTML URL of the created repository (required on CREATED, omitted on FAILED)
   defaultBranch:
     type: string
-    description: the default branch name (main)
+    description: the default branch name (main) (required on CREATED, omitted on FAILED)
   verify:
     enum:
       - PASS
       - FAIL
-    description: the acceptance-gate outcome; FAIL means the run stopped before any push
+    description: the acceptance-gate outcome; PASS only when gate ran and passed; omitted if gate was skipped
   skipped:
     type: string
-    description: present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, ...)
+    description: present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, verifyCmd not provided, ...)
 {{- end }}
 {{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "bootstrap-repo" }}
@@ -125,7 +125,9 @@ steps:
            satisfy the spec. Do not create files outside the spec.
 
         3. VERIFY.
-           Run the acceptance command exactly as given (no modifications, no weakening):
+           If verifyCmd is empty or not provided, STOP. Report `result: FAILED` and
+           `skipped: "verifyCmd not provided"`. Do not proceed without a verification gate.
+           Otherwise, run the acceptance command exactly as given (no modifications, no weakening):
              {{ $verifyCmd }}
            If it fails, fix forward and retry up to 3 times. If it still fails after 3 attempts,
            STOP. Report `result: FAILED`, `verify: FAIL`, and `skipped: "verify gate failed after
@@ -138,8 +140,11 @@ steps:
            Use a single conventional commit message summarising the scaffold.
            Set the default branch:
              git branch -M main
-           Push with a one-shot token URL — derive <owner> from `git remote get-url origin` if a
-           remote exists, otherwise use your GitHub username; the repo name is {{ $repoName }}:
+           Push with a one-shot token URL — extract <owner> SAFELY from the creation response or
+           your GitHub username. The owner must be URL-safe; if extracting from `git remote get-url origin`,
+           extract the segment between github.com/ and the repo name, e.g. from
+           https://github.com/octocat/repo.git → octocat. Do not include special characters or slashes.
+           The repo name is {{ $repoName }}:
              git remote add origin "https://github.com/<owner>/{{ $repoName }}.git"
              git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/{{ $repoName }}.git" main
            Never write the token into git config or the remote URL permanently.
