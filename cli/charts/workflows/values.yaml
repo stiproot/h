@@ -92,6 +92,8 @@ pluginImprovement:
 # revise workflow (templates/revise.yaml): worktree → setup → revise. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
 # workflow that reads a PR's unresolved review threads itself and addresses them.
+# revise.verifyCmd (optional): the acceptance gate a revise run must pass before committing —
+# same class as verify.cmd (a property of the target repo; bake from values.local.yaml).
 revise:
   # GitHub repo (owner/name) this run targets — the wf-registry identity segment. Identity only;
   # does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in); -p repo=… per fire.

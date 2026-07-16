@@ -105,6 +105,12 @@ steps:
            - Convention: does the code follow patterns already in the repo (naming, structure,
              no unnecessary comments, no emojis unless asked, no backwards-compat hacks for
              things that can just be changed)?
+           - Acceptance: if the PR body or its linked issue/spec lists acceptance criteria,
+             check EACH one against the diff — an unmet criterion (a missing test, golden,
+             doc update, or named behavior) is a FINDING, not a style note.
+           - Deliberate patterns: a line that looks inconsistent but carries a comment
+             explaining why (or matches a documented sibling template) is NOT a finding —
+             read the comment before flagging style.
         {{- $focus := include "h.token" "params.focus" }}
            Optional focus steer (empty = ignore): {{ $focus }}
 

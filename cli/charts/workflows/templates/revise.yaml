@@ -104,6 +104,14 @@ steps:
            (PRRT_...), and comments with numeric ids and file/line anchors.
         2. For each unresolved thread, implement the requested change in the worktree. If a comment
            is a question or you disagree, make no change — you will explain in the reply (step 5).
+        {{- with $r.verifyCmd }}
+        2b. ACCEPTANCE GATE — before committing anything, prove your changes with exactly this
+           command in the worktree root: {{ . }}
+           If it fails, diagnose, fix forward, and re-run — up to 3 attempts; never weaken the
+           check. If it STILL fails, STOP: do not commit, do not push, do not resolve any thread —
+           report the failure in the `skipped` field of your final json block (goal stays PENDING).
+           A revise run must never push a change it has not verified.
+        {{- end }}
         3. Commit ONLY what you changed, on branch feature/{{ $slug }}, with a concise conventional
            commit message. Add files individually (never `git add -A` or `git commit -a`). Restore
            the runner's MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file),
