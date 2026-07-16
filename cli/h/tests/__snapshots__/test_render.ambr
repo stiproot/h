@@ -50,7 +50,9 @@
           1. CREATE the repository.
              Use the github MCP tool create_repository:
                name: {{params.repoName}}
-               private: false
+               visibility: {{params.visibility}}
+             Set the tool's `private` parameter to true when the visibility value above is
+             "private" (or empty), and to false only when it is exactly "public".
              If the repository already exists (the tool returns an error indicating the name is
              taken), STOP. Report `result: FAILED` and `skipped: "repo already exists"`. Do not
              adopt, modify, or push to an existing repository.
