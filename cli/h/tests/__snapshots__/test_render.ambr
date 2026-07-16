@@ -17,6 +17,147 @@
   
   '''
 # ---
+# name: test_bootstrap_repo_publish_golden
+  '''
+  params:
+    runActivity: "run-claude"
+    agentId: "claude-agent"
+    visibility: "private"
+  steps:
+    - id: setup
+      activity: setup
+      input:
+        agentId: "{{params.agentId}}"
+        setup:
+          - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
+          - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
+          
+    - id: bootstrap
+      activity: "{{params.runActivity}}"
+      input:
+        outputContract: {"properties":{"defaultBranch":{"description":"the default branch name (main) (required on CREATED, omitted on FAILED)","type":"string"},"repoUrl":{"description":"the HTML URL of the created repository (required on CREATED, omitted on FAILED)","type":"string"},"result":{"description":"CREATED when the repository was created, committed, and pushed; FAILED otherwise","enum":["CREATED","FAILED"]},"skipped":{"description":"present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, verifyCmd not provided, ...)","type":"string"},"verify":{"description":"the acceptance-gate outcome; PASS only when gate ran and passed; omitted if gate was skipped","enum":["PASS","FAIL"]}},"required":["result"],"type":"object"}
+        task: |-
+          Your job is to create a new GitHub repository named {{params.repoName}} and bootstrap it
+          from the spec below. Work in your current directory (the agent workspace). There is no
+          pre-cloned repo — you are building from scratch.
+  
+          ===SPEC===
+          {{params.spec}}
+  
+          Follow this procedure exactly, in order. Stop immediately on any failure and report via
+          the final json block.
+  
+          1. CREATE the repository.
+             Use the github MCP tool create_repository:
+               name: {{params.repoName}}
+               private: false
+             If the repository already exists (the tool returns an error indicating the name is
+             taken), STOP. Report `result: FAILED` and `skipped: "repo already exists"`. Do not
+             adopt, modify, or push to an existing repository.
+             On success: note the returned `html_url` as `repoUrl` and the `default_branch` as
+             `defaultBranch` for your final json block.
+  
+          2. SCAFFOLD the project.
+             In your current working directory:
+               git init
+             Implement the project as described under ===SPEC=== above. Create all files needed to
+             satisfy the spec. Do not create files outside the spec.
+  
+          3. VERIFY.
+             If verifyCmd is empty or not provided, STOP. Report `result: FAILED` and
+             `skipped: "verifyCmd not provided"`. Do not proceed without a verification gate.
+             Otherwise, run the acceptance command exactly as given (no modifications, no weakening):
+               {{params.verifyCmd}}
+             If it fails, fix forward and retry up to 3 times. If it still fails after 3 attempts,
+             STOP. Report `result: FAILED`, `verify: FAIL`, and `skipped: "verify gate failed after
+             3 attempts"`. Do not push a repository that does not pass the gate.
+             On success: note `verify: PASS` for your final json block.
+  
+          4. COMMIT and PUSH.
+             Stage and commit files individually (never `git add -A` or `git commit -a`):
+               git add <file>   # repeat for each file
+             Use a single conventional commit message summarising the scaffold.
+             Set the default branch:
+               git branch -M main
+             Push with a one-shot token URL — extract <owner> SAFELY from the creation response or
+             your GitHub username. The owner must be URL-safe; if extracting from `git remote get-url origin`,
+             extract the segment between github.com/ and the repo name, e.g. from
+             https://github.com/octocat/repo.git → octocat. Do not include special characters or slashes.
+             The repo name is {{params.repoName}}:
+               git remote add origin "https://github.com/<owner>/{{params.repoName}}.git"
+               git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/{{params.repoName}}.git" main
+             Never write the token into git config or the remote URL permanently.
+             If GH_TOKEN is unset, STOP. Report `result: FAILED` and
+             `skipped: "GH_TOKEN is not set"`.
+  
+          Report the outcome ONLY via the fields of your final json block below. There is no other
+          reporting channel.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          {
+            "properties": {
+              "defaultBranch": {
+                "description": "the default branch name (main) (required on CREATED, omitted on FAILED)",
+                "type": "string"
+              },
+              "repoUrl": {
+                "description": "the HTML URL of the created repository (required on CREATED, omitted on FAILED)",
+                "type": "string"
+              },
+              "result": {
+                "description": "CREATED when the repository was created, committed, and pushed; FAILED otherwise",
+                "enum": [
+                  "CREATED",
+                  "FAILED"
+                ]
+              },
+              "skipped": {
+                "description": "present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, verifyCmd not provided, ...)",
+                "type": "string"
+              },
+              "verify": {
+                "description": "the acceptance-gate outcome; PASS only when gate ran and passed; omitted if gate was skipped",
+                "enum": [
+                  "PASS",
+                  "FAIL"
+                ]
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object"
+          }
+  outputs:
+    type: object
+    required:
+      - result
+    properties:
+      result:
+        enum:
+          - CREATED
+          - FAILED
+        description: CREATED when the repository was created, committed, and pushed; FAILED otherwise
+      repoUrl:
+        type: string
+        description: the HTML URL of the created repository (required on CREATED, omitted on FAILED)
+      defaultBranch:
+        type: string
+        description: the default branch name (main) (required on CREATED, omitted on FAILED)
+      verify:
+        enum:
+          - PASS
+          - FAIL
+        description: the acceptance-gate outcome; PASS only when gate ran and passed; omitted if gate was skipped
+      skipped:
+        type: string
+        description: present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, verifyCmd not provided, ...)
+  
+  '''
+# ---
 # name: test_create_pr_golden
   '''
   steps:

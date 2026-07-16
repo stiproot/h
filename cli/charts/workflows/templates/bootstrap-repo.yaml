@@ -69,7 +69,9 @@ properties:
 {{- $b := .Values.bootstrapRepo }}
 {{- $contract := include "h.contract.bootstrap-repo" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
-{{- $activityRef := include "h.token" "params.runActivity" }}
+{{- /* Pre-quoted (matching revise.yaml): a bare `{{` at YAML value position parses as a flow
+mapping — the quote is load-bearing, not a style inconsistency. */ -}}
+{{- $activityRef := include "h.token" "params.runActivity" | quote }}
 {{- $agentIdRef := include "h.token" "params.agentId" }}
 {{- $repoName := include "h.token" "params.repoName" }}
 {{- $visibility := include "h.token" "params.visibility" }}
