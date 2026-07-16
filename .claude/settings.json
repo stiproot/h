@@ -1,5 +1,21 @@
 {
+  "extraKnownMarketplaces": {
+    "plugin-builder-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/plugin-builder"
+      }
+    },
+    "steering-hardener-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/steering-hardener"
+      }
+    }
+  },
   "enabledPlugins": {
-    "effect-claude-primitives@effect-primitives": true
+    "effect-claude-primitives@effect-primitives": true,
+    "plugin-builder@plugin-builder-marketplace": true,
+    "steering-hardener@steering-hardener-marketplace": true
   }
 }
