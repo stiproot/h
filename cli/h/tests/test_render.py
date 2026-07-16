@@ -412,3 +412,23 @@ def test_plugin_setup_steps_marketplace_url_with_query_params() -> None:
     assert "https://example.com/marketplace.json?token=abc" in plugin_cmd
     # Params token should still be present
     assert "{{params.plugins}}" in plugin_cmd
+
+
+def test_bootstrap_repo_publish_golden(snapshot) -> None:
+    """bootstrap-repo publish mode: the genesis template's rendered contract is pinned."""
+    rendered = helm.render_workflow(
+        "bootstrap-repo", values={"publish": "true"}, include_local=False
+    )
+    assert rendered == snapshot
+
+
+def test_bootstrap_repo_contract_in_three_places() -> None:
+    """The declared contract is identical on the step input and top-level, and the epilogue
+    is rendered into the task (structured-workflow-outputs §1 — no drift possible)."""
+    rendered = helm.render_workflow(
+        "bootstrap-repo", values={"publish": "true"}, include_local=False
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    agent = next(s for s in definition["steps"] if "outputContract" in s["input"])
+    assert agent["input"]["outputContract"] == definition["outputs"]
+    assert "===OUTPUT CONTRACT===" in agent["input"]["task"]
