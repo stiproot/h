@@ -370,6 +370,9 @@ incl. h-builds-h feature runs). A **Python** agent consumes a skill's body direc
 `agent_core.load_skill_instructions` — workflow-agent loads `workflow-orchestrator` this way (the
 same source a CLI agent gets), so the orchestration procedure has a single home. This is a skill
 source alongside the tessl registry (org-published plugins) and a repo's own `.claude/` skills.
+Skills install unconditionally on every setup; Claude Code marketplace plugins are provisioned
+per-run via `h.pluginSetupSteps` in the setup step — only when the `plugins` fire-time param is
+non-empty (distinct from skills, which copy on every run regardless).
 
 ## Observability
 

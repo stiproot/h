@@ -106,6 +106,13 @@ revise:
   models:
     revise: ""
 
+# Plugin provisioning. Marketplaces are curated config baked at publish time (trust split:
+# sources are config, not fire-time params). Which plugins to install is fire-time content:
+# the `plugins` param (space-separated name@marketplace tokens). Empty/absent → no-op.
+plugins:
+  # marketplaces:
+  #   - https://example.com/marketplace.json
+
 # pr-review workflow (templates/pr-review.yaml): setup → review. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.focus}} slots.
 prReview:

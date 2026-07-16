@@ -1,0 +1,15 @@
+{{- /*
+plugin-setup-test — throwaway template for testing h.pluginSetupSteps.
+Not a real workflow; renders a minimal setup step that exercises both h.setupSteps and
+h.pluginSetupSteps. The real consumer lands with the bootstrap-repo template (separate spec).
+*/ -}}
+{{- if eq (.Values.template | default "") "plugin-setup-test" }}
+steps:
+  - id: setup
+    activity: setup
+    input:
+      agentId: {{ .Values.agentId | quote }}
+      setup:
+        {{- include "h.setupSteps" . | nindent 8 }}
+        {{- include "h.pluginSetupSteps" . | nindent 8 }}
+{{- end }}
