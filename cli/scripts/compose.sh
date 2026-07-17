@@ -21,4 +21,6 @@ if [[ -f .env ]]; then
   done < <(grep -oE '^[A-Za-z_][A-Za-z0-9_]*' .env)
 fi
 
-exec env ${unset_flags[@]+"${unset_flags[@]}"} docker compose "$@"
+# H_COMPOSE=1 satisfies the x-h-compose-guard sentinel in docker-compose.yml — raw
+# `docker compose` (no wrapper) fails interpolation there with a pointer to this script.
+exec env ${unset_flags[@]+"${unset_flags[@]}"} H_COMPOSE=1 docker compose "$@"

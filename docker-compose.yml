@@ -1,3 +1,9 @@
+# Compose interpolation gives the process environment precedence over .env, so raw
+# `docker compose` lets a shell-profile export (e.g. GH_TOKEN) silently shadow an edited
+# .env on recreate (CLAUDE.md "Compose env precedence"). cli/scripts/compose.sh strips the
+# .env-defined keys from the env and sets H_COMPOSE=1; any other invocation fails here.
+x-h-compose-guard: ${H_COMPOSE:?use cli/scripts/compose.sh instead of raw docker compose (shell exports shadow .env)}
+
 services:
   placement:
     container_name: placement
