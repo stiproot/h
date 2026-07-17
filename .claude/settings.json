@@ -11,11 +11,25 @@
         "source": "github",
         "repo": "stiproot/steering-hardener"
       }
+    },
+    "c4-mermaid": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/c4-mermaid-plugin"
+      }
+    },
+    "code-comprehension-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/code-comprehension"
+      }
     }
   },
   "enabledPlugins": {
     "effect-claude-primitives@effect-primitives": true,
     "plugin-builder@plugin-builder-marketplace": true,
-    "steering-hardener@steering-hardener-marketplace": true
+    "steering-hardener@steering-hardener-marketplace": true,
+    "c4-mermaid-plugin@c4-mermaid": true,
+    "code-comprehension@code-comprehension-marketplace": true
   }
 }
