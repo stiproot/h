@@ -54,3 +54,16 @@ that mirrors the same two rules (the planned compose `viz` profile uses nginx).
 | diamond | chain hub — solid edges to members in order, cursor edge highlighted blue |
 | square + ⏱ | cron — amber active, grey inactive; label `fires/maxFires`; dotted edge to the re-fired instance (recur), thin grey edges to fired issue instances (discover) |
 | small dots | agent runs orbiting their instance — orange claude, teal openhands, purple pi; tooltip shows model/cost/turns |
+
+## Driving the page headlessly (bun + playwright)
+
+One-time: `bunx playwright install chromium` (the package is a devDependency).
+
+```sh
+bun run snap http://localhost:5173/ out.png                          # settled overview
+bun run snap http://localhost:5173/ out.png --click panel-smoke-2    # click a node, panel open
+```
+
+`scripts/snap.js` waits one data sweep (`--settle` ms, default 9000), optionally clicks the
+graph node whose label contains the given text, and writes a PNG — also the seed for E2E tests,
+since it exercises the same selectors a user's click does.
