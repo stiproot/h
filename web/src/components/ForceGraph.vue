@@ -6,10 +6,15 @@ import {
   CHAIN_COLOR, CHAIN_ACTIVE_COLOR, CRON_COLOR, CRON_ACTIVE_COLOR,
   RING_WATCHING, RING_TRIPPED,
 } from "../lib/constants.js";
+import { clusterOf, clusterAnchors, CLUSTER_ORDER } from "../lib/layouts/clusters.js";
+import { orbitRadius, ORBIT_GUIDES } from "../lib/layouts/orbits.js";
 
 const props = defineProps({
   graph: { type: Object, default: null }, // { nodes, links, rings } from buildGraph
   selectedId: { type: String, default: null },
+  // force | clusters | orbits — the three force-variant layouts share this one
+  // simulation; switching modes swaps positioning forces, never the component.
+  mode: { type: String, default: "force" },
 });
 const emit = defineEmits(["node-select"]);
 
@@ -18,10 +23,12 @@ const container = ref(null);
 // The svg skeleton is built once; every sweep DIFFS into it. The simulation is
 // reheated only when the topology (node/link id sets) changes — a pure state
 // change (color, size, ring) mutates attributes in place, no relayout.
-let svg, view, linkLayer, nodeLayer;
+let svg, view, guideLayer, linkLayer, nodeLayer;
 let simulation, linkForce;
 let nodes = [], links = [];
 let topoKey = null;
+let clusterKey = null;
+let width = 928, height = 600;
 let nodeSel = d3.select(null), linkSel = d3.select(null);
 
 function drag(sim) {
@@ -67,8 +74,8 @@ function subLabel(d) {
 
 function ensureSvg() {
   const el = container.value;
-  const width = el.clientWidth || 928;
-  const height = el.clientHeight || 600;
+  width = el.clientWidth || 928;
+  height = el.clientHeight || 600;
 
   svg = d3
     .create("svg")
@@ -77,6 +84,7 @@ function ensureSvg() {
     .attr("viewBox", [-width / 2, -height / 2, width, height]);
 
   view = svg.append("g");
+  guideLayer = view.append("g"); // cluster labels / orbit rings, behind everything
   linkLayer = view.append("g");
   nodeLayer = view.append("g");
 
@@ -100,9 +108,8 @@ function ensureSvg() {
     .velocityDecay(0.6)
     .force("link", linkForce)
     .force("charge", d3.forceManyBody().strength(-380).distanceMax(900))
-    .force("collide", d3.forceCollide().radius((d) => d.r + 26).strength(0.9))
-    .force("x", d3.forceX().strength(0.03))
-    .force("y", d3.forceY().strength(0.03));
+    .force("collide", d3.forceCollide().radius((d) => d.r + 26).strength(0.9));
+  applyMode(false);
 
   simulation.on("tick", () => {
     linkSel
@@ -114,6 +121,80 @@ function ensureSvg() {
   });
 
   el.replaceChildren(svg.node());
+}
+
+// Swap the POSITIONING forces per mode; link/charge/collide are shared. In the
+// anchor modes the topology forces are weakened so the grouping dominates.
+function applyPositionForces() {
+  if (props.mode === "clusters") {
+    const anchors = clusterAnchors(width, height);
+    simulation
+      .force("x", d3.forceX((d) => anchors[clusterOf(d)].x).strength(0.16))
+      .force("y", d3.forceY((d) => anchors[clusterOf(d)].y).strength(0.16))
+      .force("radial", null);
+    linkForce.strength(0.02);
+  } else if (props.mode === "orbits") {
+    simulation
+      .force("x", d3.forceX(0).strength(0.02))
+      .force("y", d3.forceY(0).strength(0.02))
+      .force(
+        "radial",
+        d3
+          .forceRadial((d) => orbitRadius(d), 0, 0)
+          // engines get the stronger pull — fewer of them, and a loose inner
+          // ring reads as noise where a loose outer ring still reads as a ring
+          .strength((d) => (d.kind === "instance" ? 0.8 : 1)),
+      );
+    linkForce.strength(0.02);
+  } else {
+    simulation
+      .force("x", d3.forceX(0).strength(0.03))
+      .force("y", d3.forceY(0).strength(0.03))
+      .force("radial", null);
+    linkForce.strength(0.2);
+  }
+}
+
+function drawGuides() {
+  guideLayer.selectAll("*").remove();
+  if (props.mode === "clusters") {
+    const anchors = clusterAnchors(width, height);
+    // Corner labels sit OUTSIDE the bucket's node mass (above top clusters,
+    // below bottom ones) so a dense bucket never buries its own label.
+    const labelY = (c) => {
+      if (c === "engines") return anchors[c].y - 100;
+      return anchors[c].y < 0 ? anchors[c].y - 135 : anchors[c].y + 150;
+    };
+    guideLayer
+      .selectAll("text")
+      .data(CLUSTER_ORDER)
+      .join("text")
+      .attr("class", "cluster-label")
+      .attr("text-anchor", "middle")
+      .attr("x", (c) => anchors[c].x)
+      .attr("y", labelY)
+      .text((c) => c);
+  } else if (props.mode === "orbits") {
+    const g = guideLayer.selectAll("g").data(ORBIT_GUIDES).join("g");
+    g.append("circle")
+      .attr("class", "ring-guide")
+      .attr("r", (d) => d.r)
+      .attr("fill", "none");
+    // "engines" labels the empty ring CENTER; "instances" sits above its ring.
+    g.append("text")
+      .attr("class", "cluster-label small")
+      .attr("text-anchor", "middle")
+      .attr("y", (d) => (d.label === "engines" ? 4 : -d.r - 14))
+      .text((d) => d.label);
+  }
+}
+
+function applyMode(reheat = true) {
+  applyPositionForces();
+  drawGuides();
+  // Buckets/rings dominate in the anchor modes — links stay visible but dim.
+  linkLayer.attr("opacity", props.mode === "force" ? 1 : 0.3);
+  if (reheat) simulation.alpha(0.6).restart();
 }
 
 // Merge the fresh buildGraph output into the live sim arrays, preserving object
@@ -210,10 +291,20 @@ function update() {
 
   refreshVisuals();
 
+  // In clusters mode a status flip moves a node to another bucket — that is a
+  // meaningful relayout even when the topology is unchanged.
+  const ck = props.mode === "clusters" ? nodes.map((n) => `${n.id}=${clusterOf(n)}`).sort().join("|") : "";
+  const clustersMoved = props.mode === "clusters" && clusterKey !== null && ck !== clusterKey;
+  clusterKey = ck;
+
   if (topoChanged) {
     simulation.nodes(nodes);
     linkForce.links(links);
+    applyPositionForces(); // re-initialize anchor targets over the new node set
     simulation.alpha(0.5).restart();
+  } else if (clustersMoved) {
+    applyPositionForces();
+    simulation.alpha(0.35).restart();
   }
 }
 
@@ -307,6 +398,13 @@ onMounted(() => {
 });
 watch(() => props.graph, update);
 watch(() => props.selectedId, refreshVisuals);
+watch(
+  () => props.mode,
+  () => {
+    clusterKey = null;
+    applyMode(true);
+  },
+);
 onBeforeUnmount(() => simulation && simulation.stop());
 </script>
 
@@ -361,6 +459,25 @@ onBeforeUnmount(() => simulation && simulation.stop());
   font: 11px system-ui, sans-serif;
   pointer-events: none;
   user-select: none;
+}
+
+/* Layout guides: faint cluster bucket labels / orbit ring circles behind the graph. */
+.force-graph :deep(text.cluster-label) {
+  font: 700 26px system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  fill: #2c3444;
+  pointer-events: none;
+  user-select: none;
+}
+.force-graph :deep(text.cluster-label.small) {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+.force-graph :deep(circle.ring-guide) {
+  stroke: #2c3648;
+  stroke-width: 1.5;
+  stroke-dasharray: 3 6;
 }
 
 /* Running instances pulse: an expanding, fading halo around the circle. */

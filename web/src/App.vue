@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import ForceGraph from "./components/ForceGraph.vue";
+import Timeline from "./components/Timeline.vue";
 import DetailsPanel from "./components/DetailsPanel.vue";
 import { sweepLists, sweepStatuses } from "./lib/api.js";
 import { buildGraph, collectInstances } from "./lib/buildGraph.js";
@@ -17,6 +18,20 @@ const loaded = ref(false);
 const errors = ref([]);
 let timer = null;
 let sweeping = false;
+
+// Layout switcher — also driven by ?layout= so headless snaps capture each mode
+// without clicking. history.replaceState keeps the URL shareable, no reload.
+const LAYOUTS = ["force", "clusters", "orbits", "timeline"];
+const initialLayout = new URLSearchParams(window.location.search).get("layout");
+const layout = ref(LAYOUTS.includes(initialLayout) ? initialLayout : "force");
+
+function setLayout(mode) {
+  layout.value = mode;
+  const url = new URL(window.location.href);
+  if (mode === "force") url.searchParams.delete("layout");
+  else url.searchParams.set("layout", mode);
+  history.replaceState(null, "", url);
+}
 
 async function sweep() {
   if (sweeping) return; // never overlap sweeps on a slow backend
@@ -62,6 +77,16 @@ const selectedNode = computed(
 <template>
   <div class="titlebar">
     <span class="title">h — runtime graph</span>
+    <span class="modes">
+      <button
+        v-for="m in LAYOUTS"
+        :key="m"
+        :class="{ active: layout === m }"
+        @click="setLayout(m)"
+      >
+        {{ m }}
+      </button>
+    </span>
     <span class="counter">
       <i class="c running" />{{ counts.running }} running
       <i class="c done" />{{ counts.done }} done
@@ -73,11 +98,19 @@ const selectedNode = computed(
     <span v-else-if="!loaded" class="muted">loading…</span>
   </div>
   <div class="canvas">
-    <ForceGraph
-      v-if="graph"
+    <Timeline
+      v-if="graph && layout === 'timeline'"
       class="chart"
       :graph="graph"
       :selected-id="selectedId"
+      @node-select="selectedId = $event"
+    />
+    <ForceGraph
+      v-else-if="graph"
+      class="chart"
+      :graph="graph"
+      :selected-id="selectedId"
+      :mode="layout"
       @node-select="selectedId = $event"
     />
     <DetailsPanel v-if="selectedNode" :node="selectedNode" @close="selectedId = null" />
@@ -94,6 +127,24 @@ const selectedNode = computed(
   background: var(--panel);
 }
 .title { font-weight: 600; letter-spacing: 0.02em; }
+.modes { display: flex; gap: 2px; }
+.modes button {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--panel-border);
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.modes button:first-child { border-radius: 5px 0 0 5px; }
+.modes button:last-child { border-radius: 0 5px 5px 0; }
+.modes button:hover { color: var(--text); }
+.modes button.active {
+  color: var(--text);
+  background: #232b38;
+  border-color: #3b4557;
+}
 .counter { color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .c { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-left: 8px; }
 .c.running { background: var(--running); }

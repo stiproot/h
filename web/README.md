@@ -28,6 +28,24 @@ The dev server proxies `/svc/*` → `localhost:8003` and `/obs/*` → `localhost
 `bun run build` produces static assets in `dist/`; serve them behind any proxy
 that mirrors the same two rules (the planned compose `viz` profile uses nginx).
 
+## Layouts
+
+Four layouts behind the title-bar switcher, also addressable as `?layout=` (for
+headless snaps: `bun run snap 'http://localhost:5173/?layout=timeline' out.png`):
+
+- `force` (default) — organic topology, the baseline.
+- `clusters` — same simulation + `forceX/forceY` status anchors: running / done /
+  failed / pending buckets, engines (chain hubs + crons) in the center.
+- `orbits` — `forceRadial` rings: engines innermost, instances mid-ring, run
+  satellites outermost.
+- `timeline` — no simulation: a `scaleTime` Gantt, one lane per instance (newest
+  top), one bar per agent run colored by agent; concurrent runs stack into
+  sub-rows so parallelism is visible.
+
+`force`/`clusters`/`orbits` share the one simulation component
+(`ForceGraph.vue` + pure force modules under `src/lib/layouts/`); `timeline` is
+its own component over the pure `layouts/timeline.js` geometry.
+
 ## How it works
 
 - `src/lib/api.js` — every fetch; one 5s sweep of the list endpoints plus the

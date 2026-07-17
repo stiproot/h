@@ -78,6 +78,39 @@ Legend explains every shape/color/dash, linear-graph style.
 5. **Compose profile** — `viz` profile (nginx + built assets + proxy), README + CLAUDE.md
    wiring.
 
+## Layout research & variants (2026-07-17)
+
+What D3 v7 actually offers for this graph, and which shapes earn a variant:
+
+- **d3-force** (current baseline) — `forceSimulation` + link/manyBody/center/collide. The
+  under-used pieces are the *positioning* forces: `forceX`/`forceY` pull nodes toward
+  per-group anchors (clusters/swimlanes emerge from the same simulation), and
+  `forceRadial` pins nodes to rings around a center. Organic, handles cross-links
+  (chain + cron + discover edges) natively; weak at showing order/time.
+- **d3-hierarchy** (`tree`/`cluster`/`pack`/`partition`/`treemap`) — tidy trees and
+  containment views; needs a synthetic root and a spanning tree (our graph is a forest
+  with cross-links — linear-graph's buildTree trick). Radial `tree()` reads well for
+  "engines at the center, instances around them"; treemap/pack answer *where does the
+  cost go* better than node size does.
+- **Scales as layout** (`scaleTime` × lanes) — no layout module at all: a timeline/Gantt
+  is just x = startedAt→endedAt bars in per-instance lanes. The ONLY view that shows
+  *concurrency* — a panel's three parallel branches render as literally overlapping bars,
+  and chain sequencing reads left-to-right. The orchestration-native view.
+- **Not in core, noted**: d3-dag (Sugiyama layered DAGs — right if chains get long),
+  d3-sankey (cost flow template→instance→agent), edge bundling (`curveBundle`) for hairball
+  control. Deferred until the graph density demands them.
+
+Variants implemented behind a top-bar switcher (URL `?layout=` param so `bun run snap`
+captures each; one pure module per layout, shared graph data):
+
+1. **force** — the baseline organic topology (unchanged).
+2. **clusters** — same simulation + `forceX/forceY` anchors by *status* (running / done /
+   failed / engines): a triage view — everything alive is in one visual bucket.
+3. **orbits** — `forceRadial` rings by kind: engine hubs (chains/crons) innermost,
+   instances mid-ring, their run satellites outermost; the "h as a solar system" view.
+4. **timeline** — `scaleTime` Gantt: per-instance lanes, run-level bars colored by agent,
+   chain edges drawn as left-to-right connectors; shows parallelism and duration honestly.
+
 ## Non-goals
 
 - No writes (no terminate/fire buttons in increment 1–5; if ever added they go through
