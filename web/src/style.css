@@ -1,0 +1,26 @@
+/* Dark base — the graph is the page; chrome stays quiet. */
+:root {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel-border: #262d38;
+  --text: #d7dde5;
+  --muted: #8b93a7;
+  --running: #3b82f6;
+  --done: #22c55e;
+  --failed: #ef4444;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  font: 13px system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}

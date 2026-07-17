@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import { makeTracingLive } from "telemetry";
 
 import { ObservabilityServiceLive } from "./infrastructure/observability-service.ts";
+import { registerApiRoutes } from "./presentation/http/api.router.ts";
 import { registerMcpRoutes } from "./presentation/http/mcp.router.ts";
 
 // One requirement-free layer per concern, merged and compiled once: tracing (scoped — its
@@ -24,6 +25,7 @@ await runtime.runtime();
 
 const fastify = Fastify({ logger: true });
 await registerMcpRoutes(fastify, runtime);
+registerApiRoutes(fastify, runtime);
 
 const port = Number(process.env.APP_PORT ?? 8000);
 await fastify.listen({ port, host: "0.0.0.0" });

@@ -51,7 +51,9 @@ Legend explains every shape/color/dash, linear-graph style.
 
 ## Stack & layout
 
-- `apps/viz/` — **frontend only**: Vite + Vue 3 + D3 v7 (mirroring linear-graph's web/,
+- `web/` — **frontend only** (NOT under `apps/` — that is a blanket bun-workspace glob, and
+  joining it would drag the viz into turbo + every Dockerfile's lockfile COPY dance): Vite +
+  Vue 3 + D3 v7 (mirroring linear-graph's web/,
   including its pure `lib/buildGraph.js` assembly + component split: ForceGraph / FilterBar
   / DetailsPanel). No backend of its own: the Vite dev server (and the compose nginx
   sibling) proxies `/svc/*` → workflow-svc:8003 and `/obs/*` → obs-mcp:8013, dodging CORS
