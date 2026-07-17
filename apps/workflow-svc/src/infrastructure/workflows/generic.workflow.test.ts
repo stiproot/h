@@ -157,3 +157,82 @@ describe("genericWorkflow — --cron closing bracket (§10)", () => {
     expect(statuses).toEqual(["running", "failed"]);
   });
 });
+
+describe("genericWorkflow — parallel step groups (docs/plans/multi-agent-panel.md)", () => {
+  // Its own driver: the shared `run` doesn't model whenAll. callActivity records the call and
+  // returns its index; whenAll records which call-indices were grouped. The loop feeds each
+  // yield's result back in: an array for a whenAll yield, a scalar for a plain activity yield.
+  async function runParallel(input: WorkflowRequest, branchResult: (call: Call) => unknown) {
+    const calls: Call[] = [];
+    const groups: number[][] = [];
+    const ctx = {
+      getWorkflowInstanceId: () => "inst-1",
+      callActivity: (activity: unknown, actInput: unknown) => {
+        calls.push({ activity, input: actInput as Record<string, unknown> });
+        return { call: calls.length - 1 };
+      },
+      whenAll: (tasks: { call: number }[]) => {
+        groups.push(tasks.map((t) => t.call));
+        return { group: groups.length - 1 };
+      },
+    };
+    const gen = genericWorkflow(ctx as never, input);
+    let sent: unknown;
+    for (;;) {
+      const stepped = await gen.next(sent);
+      if (stepped.done) {
+        return { calls, groups, results: JSON.parse(stepped.value) as Record<string, unknown> };
+      }
+      const value = stepped.value as unknown as { call?: number; group?: number };
+      sent =
+        value.group !== undefined
+          ? groups[value.group].map((i) => branchResult(calls[i]))
+          : branchResult(calls[value.call as number]);
+    }
+  }
+
+  it("fans a group out through ONE whenAll and records branch + group results", async () => {
+    const input: WorkflowRequest = {
+      params: { task: "T" },
+      steps: [
+        {
+          id: "panel",
+          parallel: [
+            { id: "a", activity: "run-claude", input: { task: "{{params.task}}-a" } },
+            { id: "b", activity: "run-openhands", input: { task: "{{params.task}}-b" } },
+          ],
+        },
+        { id: "synth", activity: "run-claude", input: { task: "{{a.output}}|{{b.output}}" } },
+      ],
+    } as WorkflowRequest;
+
+    const { calls, groups, results } = await runParallel(input, (call) => ({
+      output: `out:${call.input.task as string}`,
+    }));
+
+    // Branch inputs resolved against pre-group results only, each branch to its own activity.
+    expect(groups).toEqual([[0, 1]]);
+    expect(calls[0].activity).toBe(getActivity("run-claude"));
+    expect(calls[0].input.task).toBe("T-a");
+    expect(calls[1].activity).toBe(getActivity("run-openhands"));
+    expect(calls[1].input.task).toBe("T-b");
+    // Branch results land under branch ids; the group id gets the {branchId: result} map.
+    expect(results.a).toEqual({ output: "out:T-a" });
+    expect(results.panel).toEqual({
+      a: { output: "out:T-a" },
+      b: { output: "out:T-b" },
+    });
+    // The sequential synthesis step sees both branch results.
+    expect(calls[2].input.task).toBe("out:T-a|out:T-b");
+    expect(results.synth).toEqual({ output: "out:out:T-a|out:T-b" });
+  });
+
+  it("defaults a branch's results key to its activity name when id is absent", async () => {
+    const input: WorkflowRequest = {
+      params: {},
+      steps: [{ parallel: [{ activity: "run-pi", input: { task: "t" } }] }],
+    } as WorkflowRequest;
+    const { results } = await runParallel(input, () => ({ output: "P" }));
+    expect(results["run-pi"]).toEqual({ output: "P" });
+  });
+});

@@ -133,3 +133,13 @@ prReview:
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     review: ""
+
+# agent-panel workflow (templates/agent-panel.yaml): one task, three agents in parallel, one
+# synthesis (docs/plans/multi-agent-panel.md). Publish-native; identity pinned per branch.
+agentPanel:
+  # Per-branch model overrides; empty = each agent's AGENT_MODEL.
+  models:
+    claude: ""
+    openhands: ""
+    pi: ""
+    synthesize: ""

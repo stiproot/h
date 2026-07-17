@@ -35,6 +35,39 @@ export async function* genericWorkflow(
 
   try {
     for (const step of input.steps) {
+      if ("parallel" in step) {
+        // Parallel step group (docs/plans/multi-agent-panel.md): every branch's input resolves
+        // against the results map as it stood BEFORE the group — branches cannot reference each
+        // other, which is what makes them parallelizable — then ONE whenAll fans out. A single
+        // deterministic decision point in the generator, replay-safe; any branch failure fails
+        // the group (and so the run), the same loud contract as sequential steps.
+        const branches = step.parallel.map((branch) =>
+          ctx.callActivity(
+            getActivity(resolveTokenString(branch.activity, results)),
+            resolveRefs(
+              {
+                ...branch.input,
+                workflowInstanceId,
+                workspaceId: input.workspaceId,
+                traceparent: input.traceparent,
+              },
+              results,
+            ),
+          ),
+        );
+        const outs = (yield ctx.whenAll(branches)) as unknown[];
+        step.parallel.forEach((branch, i) => {
+          results[branch.id ?? branch.activity] = outs[i];
+        });
+        // A group id additionally records the {branchId: result} map, so a later step can take
+        // the whole panel in one $ref.
+        if (step.id) {
+          results[step.id] = Object.fromEntries(
+            step.parallel.map((branch, i) => [branch.id ?? branch.activity, outs[i]]),
+          );
+        }
+        continue;
+      }
       // Fire-time identity (chain-composition-surface §1.9): the activity NAME may carry a
       // {{params.*}} token (e.g. "{{params.runActivity}}"), resolved against the same results map
       // as step inputs. An unresolved token or unknown resulting activity throws — never a silent

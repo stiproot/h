@@ -24,8 +24,24 @@ export const StepDefinition = Schema.Struct({
 });
 export type StepDefinition = Schema.Schema.Type<typeof StepDefinition>;
 
+// A parallel step group (docs/plans/multi-agent-panel.md): branches are plain steps run
+// concurrently by the engine through ONE whenAll — groups do not nest, and branches cannot
+// reference each other (inputs resolve against the results map as it stood before the group).
+// Results land under each branch's id exactly like sequential steps; a group id additionally
+// records a {branchId: result} map. Decode is unambiguous against StepDefinition: a group has
+// `parallel` and no `activity`.
+export const ParallelGroup = Schema.Struct({
+  id: Schema.optional(Schema.String),
+  parallel: Schema.Array(StepDefinition),
+});
+export type ParallelGroup = Schema.Schema.Type<typeof ParallelGroup>;
+
+// What a workflow definition's `steps` array holds: a plain step or a parallel group.
+export const WorkflowStep = Schema.Union(StepDefinition, ParallelGroup);
+export type WorkflowStep = Schema.Schema.Type<typeof WorkflowStep>;
+
 export const WorkflowRequest = Schema.Struct({
-  steps: Schema.Array(StepDefinition),
+  steps: Schema.Array(WorkflowStep),
   // Caller-chosen Dapr instance id. When set, the run uses it instead of a generated GUID, so the
   // instance id — and therefore the per-run worktree/workspace key — is stable and readable. Starting
   // a run with an id that already exists reuses that instance rather than creating a duplicate.
@@ -71,7 +87,7 @@ export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
 export const SaveWorkflowRequest = Schema.Struct({
   key: Schema.String,
-  steps: Schema.Array(StepDefinition),
+  steps: Schema.Array(WorkflowStep),
   workspaceId: Schema.optional(Schema.String),
   // Standard cron expression. When set, workflow-svc fires this saved workflow on its schedule.
   schedule: Schema.optional(Schema.String),
@@ -104,7 +120,7 @@ export type WorkflowSchedule = Schema.Schema.Type<typeof WorkflowSchedule>;
 // The persisted representation of a saved workflow: its definition plus optional schedule state.
 // Distinct from WorkflowRequest, which is the shape handed to the workflow runtime on invoke.
 export const StoredWorkflow = Schema.Struct({
-  steps: Schema.Array(StepDefinition),
+  steps: Schema.Array(WorkflowStep),
   workspaceId: Schema.optional(Schema.String),
   schedule: Schema.optional(WorkflowSchedule),
   // When true, the scheduler skips this workflow — a way to pause a schedule without deleting it.

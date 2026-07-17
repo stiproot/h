@@ -59,6 +59,12 @@ members with position-scoped per-workflow flags; a `-t` group overlays inline, c
   one: the **watcher** alone registers *in the fire handler before the run* (persist-then-invoke),
   because supervision must precede what it supervises; everything else is armed by the run itself.
 - **Machines loop, agents judge** — supervision and sequencing are engines on a clock; agents only judge.
+- **Augment agents, never replace them** — an agent runtime's own capabilities (subagents, planning,
+  loops, plugins) are the intelligence layer; h never reimplements them. h owns what agents cannot
+  give themselves: the durable execution environment (workspaces, identity, supervision, recurrence,
+  observability), the collaboration substrate between runs (workflows, chains, parallel step groups,
+  threaded state), and the primitives delivered *to* agents (plugins, skills, MCP servers). Inside a
+  step the agent is sovereign; between steps h is (docs/plans/multi-agent-panel.md).
 - **Fail loud** — surface missing inputs / cost gaps / unavailable tools; never a silent no-op.
 - **Atomic cutovers** — delete the old in the same change that lands the new.
 - **Harden by encoding** — an invariant worth stating is worth a lint rule, not a review habit. When

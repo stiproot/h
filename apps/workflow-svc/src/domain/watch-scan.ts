@@ -10,7 +10,7 @@ import {
   ledgerDate,
 } from "./models/watch.model.ts";
 import {
-  type StepDefinition,
+  type WorkflowStep,
   type WorkflowParams,
   type WorkflowRequest,
   toRequest,
@@ -362,7 +362,7 @@ const executeRetry = (
     yield* invoker
       .invoke({
         // Validated at original fire time (see WatchResubmit); only ever round-tripped here.
-        steps: (row.resubmit.steps ?? []) as readonly StepDefinition[],
+        steps: (row.resubmit.steps ?? []) as readonly WorkflowStep[],
         ...(row.resubmit.params ? { params: row.resubmit.params } : {}),
         ...(row.resubmit.workspaceId ? { workspaceId: row.resubmit.workspaceId } : {}),
         instanceId: row.instanceId,
@@ -501,7 +501,7 @@ export const tallyCost = (
 
 /** Projects a run request into the row's stored resubmit (identity/trace fields dropped). */
 export function toResubmit(req: {
-  steps: readonly StepDefinition[];
+  steps: readonly WorkflowStep[];
   params?: WorkflowParams;
   workspaceId?: string;
 }): WatchResubmit {

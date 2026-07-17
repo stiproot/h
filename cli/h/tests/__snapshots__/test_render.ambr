@@ -1,4 +1,107 @@
 # serializer version: 1
+# name: test_agent_panel_publish_golden
+  '''
+  steps:
+    - id: panel
+      parallel:
+        - id: claude
+          activity: run-claude
+          input:
+            task: |-
+              Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated.
+  
+              ===TASK===
+              {{params.task}}
+        - id: openhands
+          activity: run-openhands
+          input:
+            task: |-
+              Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated.
+  
+              ===TASK===
+              {{params.task}}
+        - id: pi
+          activity: run-pi
+          input:
+            task: |-
+              Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated.
+  
+              ===TASK===
+              {{params.task}}
+    - id: synthesize
+      activity: run-claude
+      input:
+        outputContract: {"properties":{"best":{"description":"which single answer to prefer, or \"merged\" when the consensus beats them all","enum":["claude","openhands","pi","merged"]},"consensus":{"description":"what the panel agrees on — the merged answer to the task","type":"string"},"disagreements":{"description":"where the answers diverge and why it matters (empty if none)","type":"string"}},"required":["consensus","best"],"type":"object"}
+        task: |-
+          Three agents (claude, openhands, pi) independently answered the same task. The task
+          and their answers are below. Compare them: what do they agree on, where do they
+          diverge in ways that matter, and which answer — or a merge — is best?
+          Report the outcome ONLY via the fields of your final json block below.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          {
+            "properties": {
+              "best": {
+                "description": "which single answer to prefer, or \"merged\" when the consensus beats them all",
+                "enum": [
+                  "claude",
+                  "openhands",
+                  "pi",
+                  "merged"
+                ]
+              },
+              "consensus": {
+                "description": "what the panel agrees on — the merged answer to the task",
+                "type": "string"
+              },
+              "disagreements": {
+                "description": "where the answers diverge and why it matters (empty if none)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "consensus",
+              "best"
+            ],
+            "type": "object"
+          }
+  
+          ===TASK===
+          {{params.task}}
+  
+          ===CLAUDE===
+          {{claude.output}}
+  
+          ===OPENHANDS===
+          {{openhands.output}}
+  
+          ===PI===
+          {{pi.output}}
+  outputs:
+    type: object
+    required:
+      - consensus
+      - best
+    properties:
+      consensus:
+        type: string
+        description: what the panel agrees on — the merged answer to the task
+      disagreements:
+        type: string
+        description: where the answers diverge and why it matters (empty if none)
+      best:
+        enum:
+          - claude
+          - openhands
+          - pi
+          - merged
+        description: which single answer to prefer, or "merged" when the consensus beats them all
+  
+  '''
+# ---
 # name: test_arm_revise_golden
   '''
   steps:

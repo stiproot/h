@@ -1,0 +1,84 @@
+# Workflow viz — a live force-directed view of runs, chains, and engines
+
+## Goal
+
+A web frontend that shows, at a glance and in motion, what the h runtime is doing: which
+workflows are running, how chains sequence them, what the watcher/cron engines hold, and
+where money/attention is going. A data-visualization exercise first: shapes, colors, and
+motion carry the state; detail lives one click away. Read-only — the viz never mutates
+runtime state (the CLI and MCP surfaces stay the only write paths).
+
+Inspiration: `stiproot/linear-graph` `web/` — Vue 3 + D3 v7 force-directed tree with typed,
+styled edge layers, a legend that explains every encoding, and a details panel driven by
+selection. We reuse its bones: `buildTree`-style pure graph assembly from a flat list,
+layered edges, zoomable SVG.
+
+## Data sources (all existing, all read-only)
+
+| Source | Surface | Feeds |
+| --- | --- | --- |
+| saved workflows | `GET :8003/workflow/list` | template/definition nodes |
+| instance status | `GET :8003/workflow/status/:id` | node color (RUNNING/COMPLETED/FAILED) |
+| watch rows | `GET :8003/watch/list` | supervision ring on watched instances |
+| chain rows | `GET :8003/chain/list` | chain hub nodes + sequencing edges + cursor |
+| cron rows | `GET :8003/cron/list` | recurrence nodes (recur + discover), budgets |
+| run ledger | obs-mcp (fs reader) | per-run cost/turns/model on the detail panel |
+
+Gap to close: the run ledger is MCP-only today. obs-mcp is a plain Fastify app — add a
+read-only JSON route (`GET /api/runs?instanceId=`) beside `/sse`, reusing the existing
+`IObservabilityService` port. No new service, no sidecar change.
+
+The `wf:` rows (goal/resolved) ride in via `dapr-mcp`'s state read only if needed later;
+increment 1 works without them.
+
+## Graph model
+
+Nodes (shape = kind, color = state):
+
+- **workflow instance** — circle; grey pending → pulsing blue running → green done /
+  red failed. Size ∝ recent cost (ledger), so expensive runs are literally bigger.
+- **chain** — diamond hub; its members orbit it, edges ordered; the cursor edge highlighted.
+- **watch** — ring drawn around its subject instance (not a separate node): amber while
+  watching, red when it terminated/retried.
+- **cron (recur)** — clock-badged square, edge to the workflow it re-fires; badge shows
+  fires/budget.
+- **cron (discover)** — the same square with a fan-out edge per fired issue instance.
+- **saved workflow (template)** — small hollow node; instances cluster around it.
+
+Edges: sequencing (chain member order, solid), supervision (watch → subject, dashed
+amber), recurrence (cron → workflow, dotted), fired-by (discover → instance, thin grey).
+Legend explains every shape/color/dash, linear-graph style.
+
+## Stack & layout
+
+- `apps/viz/` — **frontend only**: Vite + Vue 3 + D3 v7 (mirroring linear-graph's web/,
+  including its pure `lib/buildGraph.js` assembly + component split: ForceGraph / FilterBar
+  / DetailsPanel). No backend of its own: the Vite dev server (and the compose nginx
+  sibling) proxies `/svc/*` → workflow-svc:8003 and `/obs/*` → obs-mcp:8013, dodging CORS
+  without adding a service.
+- Poll loop: one `fetch` sweep every 5s (list + status of non-terminal instances + the
+  three registry lists), diffed into the reactive graph — D3 simulation reheats only on
+  topology change, color/state updates mutate in place (no jarring relayout).
+- Not in the bun/turbo workspace graph initially (its own package.json, like cli/h is for
+  uv) — `bun install` inside apps/viz; a `run-viz.sh` script + compose `viz` profile
+  (nginx serving `vite build` output with the same proxy rules).
+
+## Increments
+
+1. **Read surface** — obs-mcp `GET /api/runs` (+ `GET /api/run/:id`); golden-free unit
+   test on the route.
+2. **Static graph** — apps/viz scaffold; one sweep → force graph of instances + chains +
+   watches + crons, legend, shapes/colors as above. Hardcoded proxy config, `bun run dev`.
+3. **Live state** — the 5s diff loop, pulsing running-state, cost-sized nodes, details
+   panel (instance → status timeline, watch policy, ledger cost/turns/model).
+4. **Filters** — by repo/slug (wf identity), by state, by kind; time horizon (hide
+   terminal runs older than N hours).
+5. **Compose profile** — `viz` profile (nginx + built assets + proxy), README + CLAUDE.md
+   wiring.
+
+## Non-goals
+
+- No writes (no terminate/fire buttons in increment 1–5; if ever added they go through
+  the existing HTTP surfaces with explicit confirmation).
+- No new persistence — the viz renders what the registries already hold.
+- No auth story yet (localhost tool, same trust domain as the MCP ports).

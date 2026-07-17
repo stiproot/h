@@ -432,3 +432,24 @@ def test_bootstrap_repo_contract_in_three_places() -> None:
     agent = next(s for s in definition["steps"] if "outputContract" in s["input"])
     assert agent["input"]["outputContract"] == definition["outputs"]
     assert "===OUTPUT CONTRACT===" in agent["input"]["task"]
+
+
+def test_agent_panel_publish_golden(snapshot) -> None:
+    """agent-panel publish mode: the first parallel-group template — three pinned branches
+    fanned out in ONE group, one synthesis declarer (docs/plans/multi-agent-panel.md)."""
+    rendered = helm.render_workflow("agent-panel", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_agent_panel_is_one_group_plus_synthesis() -> None:
+    """Structure contract: a single parallel group of the three pinned agent branches, then a
+    sequential synthesis step that is the composition's ONE output declarer."""
+    rendered = helm.render_workflow("agent-panel", values={"publish": "true"}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+    group, synth = definition["steps"]
+    assert group["id"] == "panel"
+    assert [b["activity"] for b in group["parallel"]] == ["run-claude", "run-openhands", "run-pi"]
+    assert all("outputContract" not in (b.get("input") or {}) for b in group["parallel"])
+    assert synth["id"] == "synthesize"
+    assert synth["input"]["outputContract"] == definition["outputs"]
+    assert definition["outputs"]["required"] == ["consensus", "best"]

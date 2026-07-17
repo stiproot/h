@@ -1,0 +1,117 @@
+{{- /*
+agent-panel workflow — one task, three agents in parallel, one synthesis.
+
+The first consumer of the engine's parallel step group (docs/plans/multi-agent-panel.md):
+claude, openhands, and pi each answer the SAME task concurrently — three independent
+perspectives, no cross-talk — then a synthesis step compares the answers under a declared
+output contract. h provides the fan-out and the join; the judgment (what agrees, what
+diverges, what's best) stays agent-side, in the synthesis step.
+
+Publish-native: per-run inputs are {{params.*}} engine tokens — save it once, fire it with
+`h workflow run agent-panel -p task=…` (or run_saved_workflow / a workflow-trigger event).
+
+Fire-time params:
+  task  the question or task every panelist answers (required)
+
+Identity is PINNED per branch (run-claude / run-openhands / run-pi) — the panel IS the
+identity, so there are no runActivity/agentId params. Per-branch models come from values
+(agentPanel.models.*, baked at publish time); empty = each agent's AGENT_MODEL.
+
+Publish:
+  helm template agent-panel cli/charts/workflows -s templates/agent-panel.yaml \
+    --set template=agent-panel --set publish=true
+*/ -}}
+{{- /*
+The declared output contract (structured-workflow-outputs): the synthesis is the ONE
+declarer in this composition — branches carry no outputs.
+*/ -}}
+{{- define "h.contract.agent-panel" -}}
+type: object
+required:
+  - consensus
+  - best
+properties:
+  consensus:
+    type: string
+    description: what the panel agrees on — the merged answer to the task
+  disagreements:
+    type: string
+    description: where the answers diverge and why it matters (empty if none)
+  best:
+    enum:
+      - claude
+      - openhands
+      - pi
+      - merged
+    description: which single answer to prefer, or "merged" when the consensus beats them all
+{{- end }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "agent-panel" }}
+{{- $p := .Values.agentPanel }}
+{{- $contract := include "h.contract.agent-panel" . | fromYaml }}
+{{- $task := include "h.token" "params.task" }}
+{{- $brief := "Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated." }}
+steps:
+  - id: panel
+    parallel:
+      - id: claude
+        activity: run-claude
+        input:
+          {{- with $p.models.claude }}
+          model: {{ . | quote }}
+          {{- end }}
+          task: |-
+            {{ $brief }}
+
+            ===TASK===
+            {{- $task | nindent 12 }}
+      - id: openhands
+        activity: run-openhands
+        input:
+          {{- with $p.models.openhands }}
+          model: {{ . | quote }}
+          {{- end }}
+          task: |-
+            {{ $brief }}
+
+            ===TASK===
+            {{- $task | nindent 12 }}
+      - id: pi
+        activity: run-pi
+        input:
+          {{- with $p.models.pi }}
+          model: {{ . | quote }}
+          {{- end }}
+          task: |-
+            {{ $brief }}
+
+            ===TASK===
+            {{- $task | nindent 12 }}
+  - id: synthesize
+    activity: run-claude
+    input:
+      outputContract: {{ $contract | toJson }}
+      {{- with $p.models.synthesize }}
+      model: {{ . | quote }}
+      {{- end }}
+      task: |-
+        Three agents (claude, openhands, pi) independently answered the same task. The task
+        and their answers are below. Compare them: what do they agree on, where do they
+        diverge in ways that matter, and which answer — or a merge — is best?
+        Report the outcome ONLY via the fields of your final json block below.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+
+        ===TASK===
+        {{- $task | nindent 8 }}
+
+        ===CLAUDE===
+        {{- include "h.token" "claude.output" | nindent 8 }}
+
+        ===OPENHANDS===
+        {{- include "h.token" "openhands.output" | nindent 8 }}
+
+        ===PI===
+        {{- include "h.token" "pi.output" | nindent 8 }}
+outputs:
+  {{- include "h.contract.agent-panel" . | nindent 2 }}
+{{- end }}
