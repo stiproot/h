@@ -65,11 +65,11 @@ help: ## Show this help
 
 .PHONY: infra-up
 infra-up: ## Start local infra via Docker Compose (placement, scheduler, redis, logging)
-	docker compose --profile infra -f docker-compose.yml -f docker-compose.local.yml up --build -d
+	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.local.yml up --build -d
 
 .PHONY: infra-down
 infra-down: ## Stop local infra and remove volumes
-	docker compose --profile infra -f docker-compose.yml -f docker-compose.local.yml down -v
+	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.local.yml down -v
 
 .PHONY: agent-bases
 agent-bases: ## Build the shared agent base images (the process-identity model) — run before `docker compose build`

@@ -131,7 +131,7 @@ bun install --frozen-lockfile
 ### 2. Start infrastructure
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.local.yml --profile infra up -d
+cli/scripts/compose.sh -f docker-compose.yml -f docker-compose.local.yml --profile infra up -d
 ```
 
 Starts `placement` (50006), `scheduler` (50007), `redis` (6379), `redis-commander` (16379), `zipkin` (9411), and the logging stack (Loki, Alloy, Grafana).
@@ -141,12 +141,17 @@ Starts `placement` (50006), `scheduler` (50007), `redis` (6379), `redis-commande
 Tear down (always pass `-v` to clear the scheduler's etcd volume):
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.local.yml --profile infra down -v
+cli/scripts/compose.sh -f docker-compose.yml -f docker-compose.local.yml --profile infra down -v
 ```
 
 ### 3. Environment variables
 
 Copy `.env.example` to `.env` and fill in the required values. Scripts source `.env` automatically.
+
+In container mode, `.env` is the exclusive env source: always start compose via
+`cli/scripts/compose.sh` (a `docker compose` pass-through that strips every key defined in `.env`
+from the process environment first). Raw `docker compose` lets a var exported in your shell
+profile silently shadow an edited `.env` on recreate — compose gives the process env precedence.
 
 | Variable | Used by | Notes |
 | --- | --- | --- |
@@ -207,24 +212,27 @@ Not all services need to run simultaneously — start only what a given test req
 
 ## Running in Docker
 
+`cli/scripts/compose.sh` is `docker compose` with deterministic env — `.env` wins over shell
+exports for every key it defines (see §3). Use it for every compose invocation.
+
 | Command | What starts |
 | --- | --- |
-| `docker compose --profile all up --build` | Everything |
-| `docker compose --profile infra up -d` | Dapr infra + logging stack only |
-| `docker compose --profile claude-agent up --build` | claude-agent only |
-| `docker compose --profile openhands-agent up --build` | openhands-agent only |
-| `docker compose --profile pi-agent up --build` | pi-agent only |
-| `docker compose --profile dapr-agent up --build` | dapr-agent only |
-| `docker compose --profile dapr-claude-loop-agent up --build` | dapr-claude-loop-agent only |
-| `docker compose --profile claude-managed-agent up --build` | claude-managed-agent only |
-| `docker compose --profile langgraph-agent up --build` | langgraph-agent only |
-| `docker compose --profile workflow-agent up --build` | workflow-agent only |
-| `docker compose --profile mcps up --build` | MCP servers only |
+| `cli/scripts/compose.sh --profile all up --build` | Everything |
+| `cli/scripts/compose.sh --profile infra up -d` | Dapr infra + logging stack only |
+| `cli/scripts/compose.sh --profile claude-agent up --build` | claude-agent only |
+| `cli/scripts/compose.sh --profile openhands-agent up --build` | openhands-agent only |
+| `cli/scripts/compose.sh --profile pi-agent up --build` | pi-agent only |
+| `cli/scripts/compose.sh --profile dapr-agent up --build` | dapr-agent only |
+| `cli/scripts/compose.sh --profile dapr-claude-loop-agent up --build` | dapr-claude-loop-agent only |
+| `cli/scripts/compose.sh --profile claude-managed-agent up --build` | claude-managed-agent only |
+| `cli/scripts/compose.sh --profile langgraph-agent up --build` | langgraph-agent only |
+| `cli/scripts/compose.sh --profile workflow-agent up --build` | workflow-agent only |
+| `cli/scripts/compose.sh --profile mcps up --build` | MCP servers only |
 
 Tear down (always pass `-v`):
 
 ```sh
-docker compose --profile all down -v
+cli/scripts/compose.sh --profile all down -v
 ```
 
 ## Stack (Docker mode)
