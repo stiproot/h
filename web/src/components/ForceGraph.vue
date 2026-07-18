@@ -8,12 +8,13 @@ import {
 } from "../lib/constants.js";
 import { clusterOf, clusterAnchors, CLUSTER_ORDER } from "../lib/layouts/clusters.js";
 import { orbitRadius, ORBIT_GUIDES } from "../lib/layouts/orbits.js";
+import { resolveSystems, computeSlots, seqArcPath, polar } from "../lib/layouts/engines.js";
 
 const props = defineProps({
   graph: { type: Object, default: null }, // { nodes, links, rings } from buildGraph
   selectedId: { type: String, default: null },
-  // force | clusters | orbits — the three force-variant layouts share this one
-  // simulation; switching modes swaps positioning forces, never the component.
+  // force | clusters | orbits | engines — the force-variant layouts share this
+  // one simulation; switching modes swaps positioning forces, never the component.
   mode: { type: String, default: "force" },
 });
 const emit = defineEmits(["node-select"]);
@@ -24,12 +25,18 @@ const container = ref(null);
 // reheated only when the topology (node/link id sets) changes — a pure state
 // change (color, size, ring) mutates attributes in place, no relayout.
 let svg, view, guideLayer, linkLayer, nodeLayer;
-let simulation, linkForce;
+let simulation, linkForce, zoomBehavior;
 let nodes = [], links = [];
 let topoKey = null;
 let clusterKey = null;
 let width = 928, height = 600;
 let nodeSel = d3.select(null), linkSel = d3.select(null);
+// engines-mode state: resolved orbital systems + the moving decor selections
+// (spokes from the tick, per-engine orbit groups) repositioned on each sim tick.
+let systems = null;
+let graphById = new Map();
+let spokeSel = d3.select(null), orbitSel = d3.select(null);
+let engineFitDone = false;
 
 function drag(sim) {
   return d3
@@ -83,18 +90,31 @@ function ensureSvg() {
     .attr("height", height)
     .attr("viewBox", [-width / 2, -height / 2, width, height]);
 
+  // Arrowhead for the engines-mode sequence arcs.
+  svg
+    .append("defs")
+    .append("marker")
+    .attr("id", "arrow-seq")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 8)
+    .attr("markerWidth", 5)
+    .attr("markerHeight", 5)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", "#60a5fa");
+
   view = svg.append("g");
   guideLayer = view.append("g"); // cluster labels / orbit rings, behind everything
   linkLayer = view.append("g");
   nodeLayer = view.append("g");
 
-  svg.call(
-    d3
-      .zoom()
-      .scaleExtent([0.05, 8])
-      .filter((event) => event.type === "wheel" || event.target === svg.node())
-      .on("zoom", (event) => view.attr("transform", event.transform)),
-  );
+  zoomBehavior = d3
+    .zoom()
+    .scaleExtent([0.05, 8])
+    .filter((event) => event.type === "wheel" || event.target === svg.node())
+    .on("zoom", (event) => view.attr("transform", event.transform));
+  svg.call(zoomBehavior);
   // Clicking empty canvas clears the selection.
   svg.on("click", () => emit("node-select", null));
 
@@ -118,6 +138,14 @@ function ensureSvg() {
       .attr("x2", (d) => d.target.x)
       .attr("y2", (d) => d.target.y);
     nodeSel.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    if (props.mode === "engines") {
+      // Per-engine decor follows its hub: local orbit circle + sequence arc
+      // translate with the hub, spokes stretch from the central tick to it.
+      orbitSel.attr("transform", (d) =>
+        d.node ? `translate(${d.node.x ?? 0},${d.node.y ?? 0})` : null,
+      );
+      spokeSel.attr("x2", (d) => d.node?.x ?? 0).attr("y2", (d) => d.node?.y ?? 0);
+    }
   });
 
   el.replaceChildren(svg.node());
@@ -125,13 +153,34 @@ function ensureSvg() {
 
 // Swap the POSITIONING forces per mode; link/charge/collide are shared. In the
 // anchor modes the topology forces are weakened so the grouping dominates.
+// engines mode: every placed node is nudged toward its slot — engine hubs to
+// their ring-1 position, owned subjects to their polar offset from the hub's
+// CURRENT position (so local orbits follow a dragged/settling hub), unmanaged
+// instances to the outer belt. Geometry is pure (computeSlots); this closure
+// only applies velocities.
+function slotsForce(alpha) {
+  if (!systems) return;
+  const centers = new Map();
+  for (const e of systems.engines) {
+    const n = graphById.get(e.id);
+    if (n) centers.set(e.id, n);
+  }
+  for (const s of computeSlots(systems, centers)) {
+    const n = graphById.get(s.id);
+    if (!n) continue;
+    n.vx += (s.x - n.x) * s.k * alpha;
+    n.vy += (s.y - n.y) * s.k * alpha;
+  }
+}
+
 function applyPositionForces() {
   if (props.mode === "clusters") {
     const anchors = clusterAnchors(width, height);
     simulation
       .force("x", d3.forceX((d) => anchors[clusterOf(d)].x).strength(0.16))
       .force("y", d3.forceY((d) => anchors[clusterOf(d)].y).strength(0.16))
-      .force("radial", null);
+      .force("radial", null)
+      .force("slots", null);
     linkForce.strength(0.02);
   } else if (props.mode === "orbits") {
     simulation
@@ -144,19 +193,96 @@ function applyPositionForces() {
           // engines get the stronger pull — fewer of them, and a loose inner
           // ring reads as noise where a loose outer ring still reads as a ring
           .strength((d) => (d.kind === "instance" ? 0.8 : 1)),
-      );
+      )
+      .force("slots", null);
+    linkForce.strength(0.02);
+  } else if (props.mode === "engines") {
+    simulation
+      .force("x", null)
+      .force("y", null)
+      .force("radial", null)
+      .force("slots", slotsForce);
     linkForce.strength(0.02);
   } else {
     simulation
       .force("x", d3.forceX(0).strength(0.03))
       .force("y", d3.forceY(0).strength(0.03))
-      .force("radial", null);
+      .force("radial", null)
+      .force("slots", null);
     linkForce.strength(0.2);
   }
 }
 
 function drawGuides() {
   guideLayer.selectAll("*").remove();
+  spokeSel = d3.select(null);
+  orbitSel = d3.select(null);
+  if (props.mode === "engines") {
+    if (!systems) return;
+    // Outermost belt: the unmanaged instances' guide ring.
+    guideLayer
+      .append("circle")
+      .attr("class", "ring-guide")
+      .attr("r", systems.unmanagedR)
+      .attr("fill", "none");
+    guideLayer
+      .append("text")
+      .attr("class", "cluster-label small")
+      .attr("text-anchor", "middle")
+      .attr("y", -systems.unmanagedR - 14)
+      .text("unmanaged");
+
+    // Dotted spokes tick → engine hubs (endpoints re-track hubs on sim tick).
+    const engineData = systems.engines.map((e) => ({ ...e, node: graphById.get(e.id) }));
+    spokeSel = guideLayer
+      .append("g")
+      .selectAll("line")
+      .data(engineData, (d) => d.id)
+      .join("line")
+      .attr("class", "spoke")
+      .attr("x1", 0)
+      .attr("y1", 0)
+      .attr("x2", (d) => d.node?.x ?? polar(systems.ringR, d.angle).x)
+      .attr("y2", (d) => d.node?.y ?? polar(systems.ringR, d.angle).y);
+
+    // Per-engine local orbit: faint guide circle + (chains) a thin arc arrow
+    // tracing the member order clockwise from 12 o'clock.
+    orbitSel = guideLayer
+      .append("g")
+      .selectAll("g.orbit")
+      .data(engineData, (d) => d.id)
+      .join((enter) => {
+        const g = enter.append("g").attr("class", "orbit");
+        g.append("circle")
+          .attr("class", "orbit-guide")
+          .attr("r", (d) => d.localR)
+          .attr("fill", "none");
+        g.append("path")
+          .attr("class", "seq-arc")
+          .attr("d", (d) => (d.kind === "chain" ? seqArcPath(d.localR, d.members.length) : null))
+          .attr("marker-end", (d) =>
+            d.kind === "chain" && d.members.length >= 2 ? "url(#arrow-seq)" : null,
+          );
+        return g;
+      })
+      .attr("transform", (d) => {
+        const p = d.node ? { x: d.node.x ?? 0, y: d.node.y ?? 0 } : polar(systems.ringR, d.angle);
+        return `translate(${p.x},${p.y})`;
+      });
+
+    // Dead center: the workflow-cron-tick — the 60s clock driving every scan.
+    const tick = guideLayer.append("g").attr("class", "tick-hub");
+    tick.append("circle").attr("class", "tick-pulse").attr("r", 16);
+    tick.append("circle").attr("class", "tick-core").attr("r", 16);
+    tick.append("text").attr("class", "tick-glyph").attr("text-anchor", "middle").attr("dy", "0.36em").text("⏱");
+    tick
+      .append("text")
+      .attr("class", "cluster-label small")
+      .attr("text-anchor", "middle")
+      .attr("y", 34)
+      .text("cron-tick · 60s");
+    return;
+  }
   if (props.mode === "clusters") {
     const anchors = clusterAnchors(width, height);
     // Corner labels sit OUTSIDE the bucket's node mass (above top clusters,

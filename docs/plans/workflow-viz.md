@@ -1,5 +1,11 @@
 # Workflow viz — a live force-directed view of runs, chains, and engines
 
+> **Phase: experimental research.** This document is the running log of a
+> visualization initiative (`web/`), not a finished spec. We are exploring what
+> D3 v7 can do for h's runtime graph — expect the layout section to keep growing
+> with variants, some frozen as baselines and some superseded. The steering
+> summary lives in the root `CLAUDE.md` (Observability → Viz) and `web/README.md`.
+
 ## Goal
 
 A web frontend that shows, at a glance and in motion, what the h runtime is doing: which
@@ -110,6 +116,26 @@ captures each; one pure module per layout, shared graph data):
    instances mid-ring, their run satellites outermost; the "h as a solar system" view.
 4. **timeline** — `scaleTime` Gantt: per-instance lanes, run-level bars colored by agent,
    chain edges drawn as left-to-right connectors; shows parallelism and duration honestly.
+
+## Engine-centric iteration (2026-07-17, second pass)
+
+`orbits` is FROZEN as a baseline (byte-identical; it is the shape we liked) — iteration
+happens in a new fifth mode, **`engines`**, its engine-centric evolution. The layout draws
+h's actual control topology as nested orbital systems:
+
+- **Dead center: the tick.** One synthetic hub node for the `workflow-cron-tick` — the
+  single 60s clock that drives every engine scan (watch, chain, cron, discover). Faint
+  dotted spokes tick → each engine: the drive shafts.
+- **Ring 1: the engines.** Chain diamonds + cron squares spaced on an inner ring.
+- **Per-engine orbits.** Each engine carries its own local guide circle; its subjects sit
+  ON that circle — chain members at angles encoding their ORDER (clockwise from 12,
+  cursor member highlighted, an arc arrow tracing the sequence direction), a cron's fired
+  instances likewise. Sequence becomes circular geometry.
+- **Outer belt: unmanaged instances** — anything no engine owns drifts to a faint
+  outermost ring. The picture *is* the org chart: driven work inside, ad-hoc work outside.
+
+Same shared simulation (forceRadial for rings + per-subject anchor forces + collide),
+same details panel/sweep/satellites/watch rings. `?layout=engines`.
 
 ## Non-goals
 

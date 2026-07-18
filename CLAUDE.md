@@ -395,13 +395,21 @@ default agent workspace key, a Zipkin span attribute, and the group key of the r
   `GET /workflow/status/:instanceId` does not surface `serializedOutput`, so don't poll it for results.
 - **Logs → Loki.** Alloy scrapes **dockerized** containers only; host-run `dapr run` apps (the usual
   `make dev-tab` mode) do not reach Loki — use traces + the run ledger for app/agent activity.
-- **Viz (web/).** A standalone Vite + Vue 3 + D3 frontend (`web/` — deliberately OUTSIDE the
-  `apps/*` bun-workspace glob; own package.json, `bun install` inside it) renders the runtime as a
+- **Viz (web/).** **Status: EXPERIMENTAL — research phase, not a shipped product.** `web/` is a
+  deliberate sandbox for exploring how to *visualize* h's runtime (workflows, chains, and the
+  watcher/cron engines) with D3 v7 as the drawing library. Multiple layout variants coexist behind a
+  switcher precisely because the right visual language is still an open question — expect churn, dead
+  ends, and byte-frozen "we liked this one" baselines (e.g. `orbits`) sitting beside their in-progress
+  successors (e.g. `engines`). Treat the plan doc (docs/plans/workflow-viz.md) as the running research
+  log, not a spec. It is intentionally OUTSIDE the `apps/*` bun-workspace glob (own package.json,
+  `bun install` inside it) so this experimentation never taxes the production build/lockfile machinery;
+  don't wire it into turbo, Dockerfiles, or CI as if it were a service. It renders the runtime as a
   live force-directed graph: instance circles colored by status (pulsing while RUNNING) and sized by
   cost, chain diamonds with ordered member edges, amber watch rings, cron clock-squares, per-agent
   satellite run dots, a details panel with lazy run output. `bun run dev` (port 5173) proxies
   `/svc/*`→workflow-svc:8003 and `/obs/*`→obs-mcp:8013, which serves the run ledger as plain JSON at
-  `GET /api/runs` / `GET /api/run/:id` beside its MCP surface (docs/plans/workflow-viz.md).
+  `GET /api/runs` / `GET /api/run/:id` beside its MCP surface. Read-only by design: the viz never
+  mutates runtime state — the CLI and MCP surfaces stay the only write paths.
 - **Query surface.** The repo's own Claude Code session wires three MCP servers via root `.mcp.json`:
   `dapr` (state/actors, `localhost:8011`), `workflows` (workflow state, `localhost:8005`), and `obs`
   (traces/logs/run-ledger, `localhost:8013`). `obs-mcp` is read-only with no Dapr sidecar. Slash
