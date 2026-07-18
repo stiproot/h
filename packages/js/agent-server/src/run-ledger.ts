@@ -38,6 +38,13 @@ export type RunOutcome = {
   tokens?: { input: number; output: number } | null;
   costUsd?: number | null;
   error?: string | null;
+  /**
+   * Why the run stopped (agent-cli's classify-stop; e.g. "usage-limited"). Orthogonal to `status` —
+   * a usage-limited run can be `completed` at the Dapr level yet carry stopReason "usage-limited",
+   * which the watcher's fallback reads off the `run:<id>` mirror. Loosely typed (string) to avoid an
+   * agent-server → agent-cli dependency; the union lives in agent-cli.
+   */
+  stopReason?: string | null;
 };
 
 export type RunSummary = {
@@ -58,6 +65,8 @@ export type RunSummary = {
   durationMs: number;
   inputPreview: string;
   error: string | null;
+  /** Why the run stopped (classify-stop); mirrored to `run:<id>` for the watcher's fallback read. */
+  stopReason: string | null;
 };
 
 /** Identity an activity route needs to write an activity record into the run ledger. */
@@ -147,6 +156,7 @@ function buildRunSummary(
     durationMs: Date.parse(endedAt) - startedAtMs,
     inputPreview: ctx.input.slice(0, 280),
     error: outcome.error ?? null,
+    stopReason: outcome.stopReason ?? null,
   };
 }
 

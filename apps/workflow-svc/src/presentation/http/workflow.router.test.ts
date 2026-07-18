@@ -8,6 +8,7 @@ import { type WatchRow, emptyLedger } from "../../domain/models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { emptyChainLedger } from "../../domain/models/chain.model.ts";
 import { type CronRow, emptyCronLedger } from "../../domain/models/cron.model.ts";
+import type { SchedRow } from "../../domain/models/schedule.model.ts";
 import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
@@ -53,6 +54,7 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
       bumpLedger: () => Effect.void,
       listRunKeys: () => Effect.succeed([]),
       getRunCost: () => Effect.succeed(null),
+      getRunStopReason: () => Effect.succeed(null),
     },
   };
 }
@@ -82,6 +84,10 @@ const stubCronStore: CronStoreService = {
   listDiscoverRows: () => Effect.succeed([]),
   saveDiscoverRow: () => Effect.void,
   deleteDiscoverRow: () => Effect.void,
+  getSchedRow: () => Effect.succeed(Option.none()),
+  listSchedRows: () => Effect.succeed([]),
+  saveSchedRow: () => Effect.void,
+  deleteSchedRow: () => Effect.void,
   getConfig: () => Effect.succeed(Option.none()),
   getHeartbeat: () => Effect.succeed(Option.none()),
   heartbeat: () => Effect.void,
@@ -436,6 +442,72 @@ describe("POST /workflow/run/:key", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("arms a cron:sched row instead of firing when `in` is given (one-shot schedule)", async () => {
+    const savedSched: SchedRow[] = [];
+    const recordingCron: CronStoreService = {
+      ...stubCronStore,
+      saveSchedRow: (row) => Effect.sync(() => void savedSched.push(row)),
+    };
+    const invokes: WorkflowRequest[] = [];
+    const app = await makeApp(
+      stubInvoker({ invoke: (req) => Effect.sync(() => (invokes.push(req), { instanceId: "x" })) }),
+      stubStore({
+        get: () =>
+          Effect.succeed(
+            Option.some({
+              steps: [{ activity: "run-claude" }],
+              params: { repo: "stiproot/h", slug: "pi-agent" },
+            }),
+          ),
+      }),
+      undefined,
+      recordingCron,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { in: "2h" },
+    });
+    expect(res.statusCode).toBe(202);
+    // It ARMED, not fired: no invoke, one armed sched row.
+    expect(invokes).toHaveLength(0);
+    expect(savedSched).toHaveLength(1);
+    expect(savedSched[0]!.status).toBe("armed");
+    expect(savedSched[0]!.origin).toBe("at");
+    expect(savedSched[0]!.source).toMatchObject({ mode: "saved", key: "feature" });
+    expect(savedSched[0]!.wf).toEqual({ repo: "stiproot/h", slug: "pi-agent", workflow: "feature" });
+    expect((res.json() as { scheduled: string }).scheduled).toBe(savedSched[0]!.id);
+  });
+
+  it("400s when both a schedule (at/in) and a cron cadence are given", async () => {
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({
+        get: () =>
+          Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }], params: { repo: "r", slug: "s" } })),
+      }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { in: "2h", cron: { cadence: "*/30 * * * *" } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400s a bad `in` duration on a scheduled run", async () => {
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({ get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })) }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/run/feature",
+      payload: { in: "banana" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("a stored watch policy on the saved workflow registers without any body field", async () => {
     const mem = memoryWatchStore();
     const stored: StoredWorkflow = {
@@ -485,6 +557,94 @@ describe("POST /workflow/terminate/:instanceId", () => {
     const res = await app.inject({ method: "POST", url: "/workflow/terminate/wf-9" });
     expect(res.statusCode).toBe(500);
     expect(res.json()).toMatchObject({ message: "terminate failed with 404" });
+  });
+});
+
+describe("POST /workflow/pause/:instanceId", () => {
+  it("terminates the instance and arms a cron:sched row reusing its workspace", async () => {
+    const terminated: string[] = [];
+    const savedSched: SchedRow[] = [];
+    const recordingCron: CronStoreService = {
+      ...stubCronStore,
+      saveSchedRow: (row) => Effect.sync(() => void savedSched.push(row)),
+    };
+    const app = await makeApp(
+      stubInvoker({
+        terminate: (id) => {
+          terminated.push(id);
+          return Effect.void;
+        },
+      }),
+      stubStore({
+        get: () =>
+          Effect.succeed(
+            Option.some({
+              steps: [{ activity: "run-claude" }],
+              params: { repo: "stiproot/h", slug: "pi-agent" },
+            }),
+          ),
+      }),
+      undefined,
+      recordingCron,
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/pause/wf-9",
+      payload: { key: "feature", in: "1h" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(terminated).toEqual(["wf-9"]);
+    expect(savedSched).toHaveLength(1);
+    expect(savedSched[0]!.origin).toBe("pause");
+    expect(savedSched[0]!.workspaceId).toBe("wf-9"); // reuse the paused run's workspace
+    expect(savedSched[0]!.id).toBe("wf-9--resume");
+    expect(savedSched[0]!.source).toMatchObject({ mode: "saved", key: "feature" });
+    expect(res.json()).toMatchObject({ paused: "wf-9", scheduled: "wf-9--resume" });
+  });
+
+  it("400s a bad `in` duration", async () => {
+    const app = await makeApp(
+      stubInvoker(),
+      stubStore({ get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })) }),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/workflow/pause/wf-9",
+      payload: { key: "feature", in: "banana" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("POST /workflow/resume/:schedId", () => {
+  it("advances an armed sched row to fire now (202)", async () => {
+    const armed: SchedRow = {
+      id: "wf-9--resume",
+      status: "armed",
+      fireAt: "2999-01-01T00:00:00Z",
+      source: { mode: "saved", key: "feature" },
+      instanceId: "wf-9--resume",
+      epoch: 1,
+      createdAt: "t",
+      updatedAt: "t",
+    };
+    const store = new Map<string, SchedRow>([["wf-9--resume", armed]]);
+    const recordingCron: CronStoreService = {
+      ...stubCronStore,
+      getSchedRow: (id) => Effect.succeed(Option.fromNullable(store.get(id))),
+      saveSchedRow: (row) => Effect.sync(() => void store.set(row.id, row)),
+    };
+    const app = await makeApp(stubInvoker(), stubStore(), undefined, recordingCron);
+    const res = await app.inject({ method: "POST", url: "/workflow/resume/wf-9--resume" });
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ resumed: "wf-9--resume", status: "armed" });
+    expect(Date.parse(store.get("wf-9--resume")!.fireAt)).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("404s an unknown paused schedule", async () => {
+    const app = await makeApp(stubInvoker(), stubStore());
+    const res = await app.inject({ method: "POST", url: "/workflow/resume/nope" });
+    expect(res.statusCode).toBe(404);
   });
 });
 

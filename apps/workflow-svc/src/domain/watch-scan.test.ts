@@ -3,9 +3,12 @@ import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { emptyCronLedger } from "./models/cron.model.ts";
+import type { SchedRow } from "./models/schedule.model.ts";
 import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "./models/watch.model.ts";
 import { emptyLedger } from "./models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "./models/workflow.model.ts";
+import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
@@ -21,6 +24,7 @@ type MemoryWatchStore = {
   ledgers: Map<string, WatchLedger>;
   heartbeats: WatchHeartbeat[];
   runRecords: Map<string, number | null>;
+  runStopReasons: Map<string, string>;
 };
 
 function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
@@ -28,6 +32,7 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
   const ledgers = new Map<string, WatchLedger>();
   const heartbeats: WatchHeartbeat[] = [];
   const runRecords = new Map<string, number | null>();
+  const runStopReasons = new Map<string, string>();
   const service: WatchStoreService = {
     getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
     listRows: () => Effect.succeed([...rows.values()]),
@@ -49,8 +54,9 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
       }),
     listRunKeys: () => Effect.succeed([...runRecords.keys()]),
     getRunCost: (key) => Effect.succeed(runRecords.get(key) ?? null),
+    getRunStopReason: (key) => Effect.succeed(runStopReasons.get(key) ?? null),
   };
-  return { service, rows, ledgers, heartbeats, runRecords };
+  return { service, rows, ledgers, heartbeats, runRecords, runStopReasons };
 }
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
@@ -81,17 +87,47 @@ function capturingPublisher(): { service: DaprPublisherService; events: unknown[
   };
 }
 
+// A cron store that records the sched rows the fallback arms; the rest is inert (fallback only
+// writes sched rows + reads nothing from cron).
+function memorySchedStore(): { service: CronStoreService; sched: Map<string, SchedRow> } {
+  const sched = new Map<string, SchedRow>();
+  return {
+    sched,
+    service: {
+      getRow: () => Effect.succeed(Option.none()),
+      listRows: () => Effect.succeed([]),
+      saveRow: () => Effect.void,
+      deleteRow: () => Effect.void,
+      getDiscoverRow: () => Effect.succeed(Option.none()),
+      listDiscoverRows: () => Effect.succeed([]),
+      saveDiscoverRow: () => Effect.void,
+      deleteDiscoverRow: () => Effect.void,
+      getSchedRow: (id) => Effect.succeed(Option.fromNullable(sched.get(id))),
+      listSchedRows: () => Effect.succeed([...sched.values()]),
+      saveSchedRow: (row) => Effect.sync(() => void sched.set(row.id, row)),
+      deleteSchedRow: (id) => Effect.sync(() => void sched.delete(id)),
+      getConfig: () => Effect.succeed(Option.none()),
+      getHeartbeat: () => Effect.succeed(Option.none()),
+      heartbeat: () => Effect.void,
+      getLedger: () => Effect.succeed(emptyCronLedger),
+      bumpLedger: () => Effect.void,
+    },
+  };
+}
+
 function env(
   ws: WatchStoreService,
   invoker: WorkflowInvokerService,
   wfStore: WorkflowStoreService = stubWorkflowStore(),
   publisher: DaprPublisherService = capturingPublisher().service,
+  cron: CronStoreService = memorySchedStore().service,
 ) {
   return Layer.mergeAll(
     Layer.succeed(WatchStore, ws),
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, wfStore),
     Layer.succeed(DaprPublisherTag, publisher),
+    Layer.succeed(CronStore, cron),
   );
 }
 
@@ -249,6 +285,59 @@ describe("scanWatchesEffect", () => {
     });
   });
 
+  it("refines a COMPLETED run to usage-limited when a run mirror reports stopReason usage-limited", async () => {
+    // The outcome inversion: a limited Claude run exits 0 → Dapr COMPLETED, but the mirror carries
+    // stopReason "usage-limited", so the finalized outcome is upgraded off the ledger.
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:claude-agent:123", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:123", "usage-limited");
+    const pub = capturingPublisher();
+    const report = await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            pub.service,
+          ),
+        ),
+      ),
+    );
+    expect(report.finalized).toEqual(["wf-1:usage-limited"]);
+    expect(mem.rows.get("wf-1")).toMatchObject({ status: "finalized", outcome: "usage-limited" });
+    expect(pub.events[0]).toMatchObject({ outcome: "usage-limited" });
+  });
+
+  it("does NOT refine a budget-terminated outcome even if a mirror says usage-limited", async () => {
+    // Only completed/failed are refined; a budget kill is not a usage limit.
+    const mem = memoryWatchStore();
+    mem.runStopReasons.set("run:wf-1:claude-agent:123", "usage-limited");
+    mem.runRecords.set("run:wf-1:claude-agent:123", 0.5);
+    // Deadline already passed → budget-terminate → finalize budget-terminated.
+    mem.rows.set(
+      "wf-1",
+      activeRow({ instanceId: "wf-1", startedAt: "2000-01-01T00:00:00Z" }),
+    );
+    await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "RUNNING" }),
+              terminate: () => Effect.void,
+            }),
+          ),
+        ),
+      ),
+    );
+    expect(mem.rows.get("wf-1")!.outcome).toBe("budget-terminated");
+  });
+
   it("flags a LEDGER GAP instead of a silent $0 when no run mirrors match", async () => {
     const mem = memoryWatchStore();
     mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
@@ -401,6 +490,93 @@ describe("scanWatchesEffect", () => {
     const row = mem.rows.get("wf-1")!;
     expect(row).toMatchObject({ epoch: 2, attempts: 2, status: "scheduling" });
     expect(mem.ledgers.get(today())).toMatchObject({ runsFired: 1, engineFires: 1 });
+  });
+
+  const usageLimitedFallbackRow = (overrides: Partial<import("./models/watch.model.ts").WatchPolicy> = {}) =>
+    activeRow({
+      instanceId: "wf-1",
+      policy: {
+        maxDurationMs: 60_000,
+        fallback: {
+          onOutcome: ["usage-limited"],
+          after: 600_000,
+          identity: { runActivity: "run-openhands", agentId: "openhands-agent" },
+          maxHandoffs: 2,
+        },
+        ...overrides,
+      },
+      resubmit: {
+        steps: [{ activity: "{{params.runActivity}}", input: { task: "t" } }],
+        params: { repo: "o/r" },
+        workspaceId: "ws-1",
+      },
+    });
+
+  const scanForFallback = (mem: MemoryWatchStore, cron: CronStoreService) =>
+    Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            cron,
+          ),
+        ),
+      ),
+    );
+
+  it("usage-limited fallback: arms a cron:sched row under a different agent, decrements the budget", async () => {
+    const mem = memoryWatchStore({ maxEngineFiresPerDay: 10 });
+    const cron = memorySchedStore();
+    mem.rows.set("wf-1", usageLimitedFallbackRow());
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:1", "usage-limited");
+    const report = await scanForFallback(mem, cron.service);
+
+    expect(report.fallbacks).toHaveLength(1);
+    const sched = [...cron.sched.values()][0]!;
+    expect(sched.origin).toBe("fallback:usage-limited");
+    expect(sched.status).toBe("armed");
+    expect(sched.workspaceId).toBe("ws-1"); // reuse the limited run's workspace
+    // The identity override wins over the resubmit params → a different agent re-enters the steps.
+    expect(sched.source).toMatchObject({
+      mode: "embedded",
+      params: { repo: "o/r", runActivity: "run-openhands", agentId: "openhands-agent" },
+    });
+    expect(sched.handoffsRemaining).toBe(1);
+    // The continuation is itself supervised with the decremented budget (can't ping-pong forever).
+    expect(sched.watch?.fallback?.maxHandoffs).toBe(1);
+    expect(mem.ledgers.get(today())).toMatchObject({ engineFires: 1 });
+  });
+
+  it("fallback is fail-closed without maxEngineFiresPerDay (never fires)", async () => {
+    const mem = memoryWatchStore(); // no config
+    const cron = memorySchedStore();
+    mem.rows.set("wf-1", usageLimitedFallbackRow());
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:1", "usage-limited");
+    const report = await scanForFallback(mem, cron.service);
+    expect(report.fallbacks).toHaveLength(0);
+    expect(cron.sched.size).toBe(0);
+  });
+
+  it("fallback stops when the handoff budget is exhausted (maxHandoffs 0)", async () => {
+    const mem = memoryWatchStore({ maxEngineFiresPerDay: 10 });
+    const cron = memorySchedStore();
+    mem.rows.set(
+      "wf-1",
+      usageLimitedFallbackRow({
+        fallback: { onOutcome: ["usage-limited"], identity: { agentId: "x" }, maxHandoffs: 0 },
+      }),
+    );
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:1", "usage-limited");
+    const report = await scanForFallback(mem, cron.service);
+    expect(report.fallbacks).toHaveLength(0);
   });
 
   it("a failed retry dispatch finalizes with the original outcome (no infinite retry loop)", async () => {

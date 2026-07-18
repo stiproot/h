@@ -35,6 +35,10 @@ function memoryCronStore(): {
       saveDiscoverRow: (row) =>
         Effect.sync(() => void discoverRows.set(`${row.repo}:${row.label}`, row)),
       deleteDiscoverRow: (id) => Effect.sync(() => void discoverRows.delete(id)),
+      getSchedRow: () => Effect.succeed(Option.none()),
+      listSchedRows: () => Effect.succeed([]),
+      saveSchedRow: () => Effect.void,
+      deleteSchedRow: () => Effect.void,
       getConfig: () => Effect.succeed(Option.none()),
       getHeartbeat: () => Effect.succeed(Option.none()),
       heartbeat: () => Effect.void,
@@ -124,6 +128,7 @@ const stubWatch: WatchStoreService = {
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
   getRunCost: () => Effect.succeed(null),
+  getRunStopReason: () => Effect.succeed(null),
 };
 
 function env(

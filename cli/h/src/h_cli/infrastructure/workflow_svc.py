@@ -61,13 +61,19 @@ def run_saved(
     fresh: bool = False,
     watch: dict[str, Any] | None = None,
     cron: dict[str, Any] | None = None,
+    at: str | None = None,
+    in_: str | None = None,
 ) -> Any:
     """Fire a saved workflow; fire-time params override the stored defaults key-by-key.
     An instance_id gives the run a readable, stable worktree/workspace key. fresh opts in
     to purging a finished instance under that id and re-running (default: attach). A watch
     policy ({maxDurationMs, retry?}) registers the run with the durable watcher engine; a cron
     policy ({cadence, budget?}) registers a cron:sub row so the run RECURS until its goal
-    resolves or the budget is spent (needs repo+slug params for the identity)."""
+    resolves or the budget is spent (needs repo+slug params for the identity).
+
+    `at` (absolute ISO) / `in_` (relative duration, e.g. "2h") instead ARM a one-shot cron:sched
+    row — the workflow fires ONCE at that time rather than now — and the response is
+    {scheduled, fireAt}. Mutually exclusive with cron (a schedule fires once, a cron recurs)."""
     body: dict[str, Any] = {}
     if params:
         body["params"] = params
@@ -79,6 +85,10 @@ def run_saved(
         body["watch"] = watch
     if cron:
         body["cron"] = cron
+    if at:
+        body["at"] = at
+    if in_:
+        body["in"] = in_
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()
@@ -116,6 +126,52 @@ def cron_disarm(repo: str, slug: str, workflow: str) -> Any:
     resp = httpx.post(
         f"{WORKFLOW_URL}/cron/disarm",
         json={"repo": repo, "slug": slug, "workflow": workflow},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def pause(
+    instance_id: str,
+    key: str,
+    params: dict[str, Any] | None = None,
+    at: str | None = None,
+    in_: str | None = None,
+    workspace_id: str | None = None,
+) -> Any:
+    """Pause a running workflow (stop-and-continue): terminate the instance NOW and arm a
+    cron:sched row that re-fires the saved `key` after the delay, reusing the paused run's
+    workspace. `at` (absolute ISO) or `in_` (duration) — exactly one. Returns {paused, scheduled,
+    fireAt}."""
+    body: dict[str, Any] = {"key": key}
+    if params:
+        body["params"] = params
+    if at:
+        body["at"] = at
+    if in_:
+        body["in"] = in_
+    if workspace_id:
+        body["workspaceId"] = workspace_id
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/pause/{instance_id}", json=body, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def resume(sched_id: str) -> Any:
+    """Resume a paused workflow NOW (before its scheduled time): advance the cron:sched row so the
+    next tick fires the continuation. Returns {resumed, status, fireAt}."""
+    resp = httpx.post(f"{WORKFLOW_URL}/workflow/resume/{sched_id}", timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def sched_disarm(sched_id: str) -> Any:
+    """Disarm a one-shot scheduled-fire row by id (set disarmed; keep for audit). Idempotent when
+    already terminal. Raises httpx.HTTPStatusError on 404 (unknown id)."""
+    resp = httpx.post(
+        f"{WORKFLOW_URL}/cron/sched/disarm",
+        json={"id": sched_id},
         timeout=10,
     )
     resp.raise_for_status()

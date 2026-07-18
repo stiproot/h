@@ -28,6 +28,9 @@ export interface WatchStoreService {
   readonly listRunKeys: () => Effect.Effect<readonly string[], WorkflowError>;
   /** costUsd off one `run:<runId>` mirror record; null when absent/non-numeric. */
   readonly getRunCost: (key: string) => Effect.Effect<number | null, WorkflowError>;
+  /** stopReason off one `run:<runId>` mirror record; null when absent. Feeds the usage-limit
+   *  outcome refinement (a limited run's mirror carries stopReason "usage-limited"). */
+  readonly getRunStopReason: (key: string) => Effect.Effect<string | null, WorkflowError>;
 }
 
 /** Service tag for the watch store. Yield it to call: `const ws = yield* WatchStore`. */

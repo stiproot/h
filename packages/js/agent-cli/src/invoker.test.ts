@@ -89,6 +89,7 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
 
     expect(result).toEqual({
       success: false,
+      stopReason: "timeout",
       stdout: "Task timed out after 500ms",
       stderr: "Task timed out",
       exitCode: 124,

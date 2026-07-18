@@ -13,4 +13,5 @@ export {
   LiteLlmModelUnavailableError,
   LiteLlmTimeoutError,
 } from "./agents/types.ts";
-export type { InvocationResult, LiteLlmError } from "./agents/types.ts";
+export type { InvocationResult, LiteLlmError, StopReason } from "./agents/types.ts";
+export { classifyStop } from "./agents/classify-stop.ts";

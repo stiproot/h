@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertValidCron, isDue } from "./scheduling.ts";
+import { assertValidCron, isDue, parseDurationMs, resolveFireAt } from "./scheduling.ts";
 import type { WorkflowSchedule } from "./models/workflow.model.ts";
 
 const at = (iso: string) => new Date(iso);
@@ -66,5 +66,45 @@ describe("assertValidCron", () => {
 
   it("throws on an invalid expression", () => {
     expect(() => assertValidCron("not a cron")).toThrow();
+  });
+});
+
+describe("parseDurationMs", () => {
+  it("parses each unit", () => {
+    expect(parseDurationMs("45s")).toBe(45_000);
+    expect(parseDurationMs("30m")).toBe(1_800_000);
+    expect(parseDurationMs("2h")).toBe(7_200_000);
+    expect(parseDurationMs("1d")).toBe(86_400_000);
+  });
+
+  it("throws on a missing/unknown unit or non-numeric value", () => {
+    expect(() => parseDurationMs("10")).toThrow();
+    expect(() => parseDurationMs("10x")).toThrow();
+    expect(() => parseDurationMs("2.5h")).toThrow();
+    expect(() => parseDurationMs("")).toThrow();
+  });
+});
+
+describe("resolveFireAt", () => {
+  const NOW = new Date("2026-07-18T12:00:00Z").getTime();
+
+  it("resolves a relative `in` to now + duration", () => {
+    expect(resolveFireAt({ in: "2h" }, NOW)).toBe("2026-07-18T14:00:00.000Z");
+  });
+
+  it("normalizes an absolute `at` instant to ISO", () => {
+    expect(resolveFireAt({ at: "2026-07-20T09:00:00Z" }, NOW)).toBe("2026-07-20T09:00:00.000Z");
+  });
+
+  it("throws when neither at nor in is given", () => {
+    expect(() => resolveFireAt({}, NOW)).toThrow();
+  });
+
+  it("throws when both at and in are given", () => {
+    expect(() => resolveFireAt({ at: "2026-07-20T09:00:00Z", in: "2h" }, NOW)).toThrow();
+  });
+
+  it("throws on an unparseable at instant", () => {
+    expect(() => resolveFireAt({ at: "not-a-date" }, NOW)).toThrow();
   });
 });

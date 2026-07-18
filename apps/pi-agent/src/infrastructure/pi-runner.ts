@@ -134,6 +134,7 @@ export const PiRunnerLive: Layer.Layer<
             status: "failed",
             output: result.stdout ?? "",
             error: msg,
+            stopReason: result.stopReason ?? null,
           });
           return yield* Effect.fail(new PiRunError({ cause: new Error(msg) }));
         }
@@ -146,6 +147,7 @@ export const PiRunnerLive: Layer.Layer<
           turns: result.numTurns ?? 1,
           tokens: result.tokenUsage ?? { input: 0, output: 0 },
           costUsd: result.costUsd ?? null,
+          stopReason: result.stopReason ?? null,
         });
 
         return {

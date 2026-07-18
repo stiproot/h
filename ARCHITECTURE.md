@@ -16,9 +16,15 @@ Small primitives; everything larger is a composition of them.
   with a fenced json block validated against it; the workflow's contract is "params in, declared
   output out", runnable standalone — docs/plans/structured-workflow-outputs.md). Registry `chain:*`; `h chain list`.
 - **Cron** — a registered policy + engine that *recurs* one workflow on the cron tick (re-fire until
-  its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. A **discovery** variant
-  fans out instead of re-firing: it reads a source (open issues on a label) and fires one workflow per
-  newly-seen item, deduped against `wf:*` — the h-builds-h issue loop.
+  its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. Two more variants share the
+  family (same tick, same store, same kill-switch/ledger, each its own row schema + pure decide +
+  scan): a **discovery** variant fans out instead of re-firing — it reads a source (open issues on a
+  label) and fires one workflow per newly-seen item, deduped against `wf:*` (the h-builds-h issue
+  loop); and a **scheduled-fire** variant (`cron:sched:*`; `h schedule list`) fires one workflow
+  exactly ONCE at an absolute time, then deactivates — no cadence, no budget, no goal handshake. The
+  one-shot is the spine for scheduling-at-a-time, pause/resume (fire a continuation after a delay,
+  reusing the workspace), and the usage-limit fallback (the watcher arms a deferred continuation under
+  a different agent) — docs/plans/schedule-and-fallback.md.
 
 Watcher, Chain, and Cron are the same shape — a policy row + a pure `decide` + a cron-tick scan,
 single-writer, epoch-fenced — differing only in the action (supervise / sequence / recur). The

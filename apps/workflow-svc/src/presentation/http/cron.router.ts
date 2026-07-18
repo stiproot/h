@@ -6,6 +6,7 @@ import { activeTraceparent, withServerSpan } from "telemetry";
 import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
 import { type CronScanReport, disarmCron, scanCronsEffect } from "../../domain/cron-scan.ts";
 import { type DiscoverScanReport, scanDiscoverEffect } from "../../domain/discover-scan.ts";
+import { type SchedScanReport, disarmSched, scanSchedEffect } from "../../domain/schedule-scan.ts";
 import { cronId } from "../../domain/models/cron.model.ts";
 import { toRequest } from "../../domain/models/workflow.model.ts";
 import { isDue } from "../../domain/scheduling.ts";
@@ -53,6 +54,7 @@ export const tickEffect = (
       chain: ChainScanReport | { error: string };
       cron: CronScanReport | { error: string };
       discover: DiscoverScanReport | { error: string };
+      sched: SchedScanReport | { error: string };
     }
   | { skipped: string },
   WorkflowError,
@@ -82,7 +84,12 @@ export const tickEffect = (
       const discover = yield* scanDiscoverEffect(traceparent).pipe(
         Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
       );
-      return { fired, watch, chain, cron, discover };
+      // The scheduled-fire scan (the one-shot variant) rides the same tick, the fifth sibling; its
+      // failure never fails the tick either.
+      const sched = yield* scanSchedEffect(traceparent).pipe(
+        Effect.catchAll((err) => Effect.succeed({ error: scanErrorMessage(err) })),
+      );
+      return { fired, watch, chain, cron, discover, sched };
     }).pipe(Effect.ensuring(Ref.set(ticking, false)));
   });
 
@@ -140,7 +147,10 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
         // The fan-out sibling (§9) shares the registry family, so one list surfaces both — a recur cron
         // and a discovery cron are both "crons" to `h cron list`.
         const discover = yield* cs.listDiscoverRows();
-        return { heartbeat: Option.getOrNull(heartbeat), crons, discover };
+        // The one-shot scheduled-fire variant (cron:sched:*) also shares the family — surfaced here so
+        // `h cron list` sees every time-driven fire, and `h schedule list` is a thin view over these.
+        const sched = yield* cs.listSchedRows();
+        return { heartbeat: Option.getOrNull(heartbeat), crons, discover, sched };
       }),
     ),
   );
@@ -156,6 +166,28 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
           Effect.mapError((e) =>
             "_tag" in e && e._tag === "NotFound"
               ? new NotFoundError({ message: `cron not found: ${id}` })
+              : (e as WorkflowError),
+          ),
+        );
+        return { disarmed: id, status: row.status, outcome: row.outcome };
+      }),
+    ),
+  );
+
+  // Disarm a one-shot scheduled-fire row by id (the `h schedule rm` target). Sibling of /cron/disarm
+  // but keyed by the row's own id (a sched row has no repo/slug/workflow coords).
+  fastify.post("/cron/sched/disarm", (request, reply) =>
+    runRoute(
+      runtime,
+      reply,
+      Effect.gen(function* () {
+        const { id } = yield* Schema.decodeUnknown(Schema.Struct({ id: Schema.String }))(
+          request.body,
+        );
+        const row = yield* disarmSched(id).pipe(
+          Effect.mapError((e) =>
+            "_tag" in e && e._tag === "NotFound"
+              ? new NotFoundError({ message: `schedule not found: ${id}` })
               : (e as WorkflowError),
           ),
         );

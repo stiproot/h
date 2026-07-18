@@ -3,9 +3,10 @@
   "packageManager": "bun@1.3.11",
   "workspaces": ["packages/js/*", "apps/*"],
   "scripts": {
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "test": "turbo test"
+    "build": "node scripts/check-tsc.mjs && turbo build",
+    "lint": "node scripts/check-tsc.mjs && turbo lint",
+    "test": "turbo test",
+    "check-tsc": "node scripts/check-tsc.mjs"
   },
   "devDependencies": {
     "@typescript/native-preview": "^7.0.0-dev.20260318.1",

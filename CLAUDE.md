@@ -70,7 +70,20 @@ stack, and the design principles; this section is the terse runtime-facing index
   row audits the registration). Inspect with `h cron list`; disarm with `h cron rm REPO SLUG WORKFLOW`
   (`POST /cron/disarm` — single-writer; sets inactive+disabled, keeps row for audit, epoch-fenced).
   Recur source modes: saved key + params, or
-  an embedded definition (mode 3 dynamic-params deferred).
+  an embedded definition (mode 3 dynamic-params deferred). A **scheduled-fire / one-shot** variant
+  (rows `cron:sched:<id>`, index `cron:sched-index`; `domain/schedule-*.ts`) is the THIRD cron-family
+  sibling: it fires one workflow exactly ONCE at an absolute `fireAt` (`decide` → wait | fire | expire;
+  an optional `notAfter` expires a missed window), then deactivates — no cadence, no budget, no goal
+  handshake, deliberately none of the recurring machinery. It is the shared spine for three consumers
+  (docs/plans/schedule-and-fallback.md): **schedule-at-a-time** (`h workflow run <key> --at <iso> | --in
+  <dur>` arms a row instead of firing now; `h schedule list|rm`), **pause/resume** (`h workflow pause
+  <id> <key> --in <dur>` terminates the run and arms a continuation reusing its `workspaceId`;
+  `h workflow resume <schedId>` fires it now — stop-and-continue, re-enters from step 1), and the
+  **usage-limit fallback** (the watcher, on a `usage-limited` outcome, arms a deferred continuation
+  under a different agent/model — `h workflow run … --fallback-agent openhands [--fallback-after 10m]
+  [--fallback-max N]`). Fired continuations go through `invokeWithWatch` (supervised). Inspected via
+  `h schedule list` (also surfaced in `h cron list`); disarmed with `h schedule rm <id>`
+  (`POST /cron/sched/disarm`).
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
 - **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
@@ -157,10 +170,11 @@ apps/workflow-svc/src/
 │   ├── models/discover.model.ts                      # the discovery/fan-out cron: DiscoverRow {repo,label,workflow,gates,source:github-issues,watch?}, discoverId, issueSlug/issueInstanceId
 │   ├── models/wf.model.ts                            # per-workflow status registry: WfRow (status + resolved goal flag), WfIdentity, wfKey, wfIdentityFrom
 │   ├── ports/{IWorkflowInvoker,IWorkflowStore}.ts    # outbound ports (invoker: invoke/getStatus/terminate)
-│   ├── ports/{IWatchStore,IChainStore,ICronStore,IWfStore}.ts  # the registry ports (cron store also serves discover rows: cron:discover:* + index)
+│   ├── ports/{IWatchStore,IChainStore,ICronStore,IWfStore}.ts  # the registry ports (cron store also serves discover rows: cron:discover:* + index, and one-shot sched rows: cron:sched:* + index)
 │   ├── ports/ISourceReader.ts                        # the discovery cron's enumeration seam (listOpenIssues, oldest-first) — keeps domain free of any GitHub type
 │   ├── {watch,chain,cron}-engine.ts                  # pure decide() per primitive — supervise | sequence | recur; unit-tested policy surfaces
 │   ├── discover-engine.ts                            # pure decide(row, runtimeStatus, todayFires, now) → wait | discover (in-flight serialize → cadence → daily-cap)
+│   ├── schedule-engine.ts / schedule-scan.ts         # the one-shot cron:sched variant: pure decide(row, now) → wait | fire | expire; arm/disarm/advance + per-tick fire-once-then-deactivate (fires via invokeWithWatch). Spine for --at/--in, pause/resume, usage-limit fallback
 │   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the WATCH fire choke point) + scanWatchesEffect (terminate/retry/escalate/cost-tally/publish)
 │   ├── chain-scan.ts / chain-workflows.ts            # chain registration + per-tick advance/finalize; STRUCTURED-ONLY threading (stepStructured/contractFor; declared captures/inputs/until replace their half of the kind contract; no marker parsing — retired 2026-07-15) (no actor)
 │   ├── structured-output.ts                          # the rung-2 seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract called by every run-* activity (docs/plans/structured-workflow-outputs.md)
@@ -175,7 +189,7 @@ apps/workflow-svc/src/
 ├── infrastructure/
 │   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper (+ raw-HTTP terminate/purge/status)
 │   ├── dapr-workflow-store.ts                        # saved-workflow store (Redis): save/get/list/listScheduled/markRun
-│   ├── dapr-{watch,chain,cron,wf}-store.ts           # the registry stores (Redis) — watch:*, chain:*, cron:* (recur + cron:discover:*), wf:* (exact-key, no index); only workflow-svc writes these
+│   ├── dapr-{watch,chain,cron,wf}-store.ts           # the registry stores (Redis) — watch:*, chain:*, cron:* (recur + cron:discover:* + cron:sched:*), wf:* (exact-key, no index); only workflow-svc writes these
 │   ├── github-source-reader.ts                       # ISourceReader adapter over git-core's GitHubClient (reads GH_TOKEN, maps to WorkflowError) — the discovery cron's GitHub read
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function

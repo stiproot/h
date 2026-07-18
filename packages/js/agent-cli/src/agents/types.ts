@@ -1,7 +1,10 @@
 import type { HttpClient } from "@effect/platform";
 import { Data, type Effect } from "effect";
 
+import type { StopReason } from "./classify-stop.ts";
 import type { Logger } from "../lib/logger.ts";
+
+export type { StopReason } from "./classify-stop.ts";
 
 /**
  * LLM API keys forwarded to agent CLI processes. Which key is required
@@ -52,6 +55,8 @@ export type AgentInvoker = (params: {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
+  /** Why the run stopped — orthogonal to success; drives the usage-limit fallback. */
+  stopReason?: StopReason;
   tokenUsage?: { input: number; output: number };
   model?: string;
   modelUsage?: Record<string, ModelUsage>;
@@ -104,6 +109,12 @@ export interface InvocationResult {
   stdout: string;
   stderr?: string;
   exitCode?: number;
+  /**
+   * Why the run stopped, classified from exit/signal/stderr/result-event (classify-stop.ts). A NEW,
+   * orthogonal field — `success` stays `exitCode === 0`. "usage-limited" is the signal the watcher's
+   * fallback reads to hand off to a different agent after a delay.
+   */
+  stopReason?: StopReason;
   tokenUsage?: {
     input: number;
     output: number;
@@ -137,6 +148,10 @@ export interface StreamEvent {
   thread_id?: string;
   model?: string;
   num_turns?: number;
+  // The terminal `result` event's fields (Claude CLI): `is_error` can be true while the process
+  // exits 0, and `result` carries the error/limit text — both read by the stop classifier.
+  is_error?: boolean;
+  result?: string;
   message?: {
     content?: Array<{
       type: string;

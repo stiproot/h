@@ -165,6 +165,15 @@ export const WatchStoreLive: Layer.Layer<WatchStore> = Layer.scoped(
         }),
       );
 
+    const getRunStopReason = (key: string): Effect.Effect<string | null, WorkflowError> =>
+      rawGet(key).pipe(
+        Effect.map((value) => {
+          if (Option.isNone(value)) return null;
+          const reason = (value.value as { stopReason?: unknown }).stopReason;
+          return typeof reason === "string" ? reason : null;
+        }),
+      );
+
     return {
       getRow,
       listRows,
@@ -177,6 +186,7 @@ export const WatchStoreLive: Layer.Layer<WatchStore> = Layer.scoped(
       bumpLedger,
       listRunKeys,
       getRunCost,
+      getRunStopReason,
     };
   }),
 );

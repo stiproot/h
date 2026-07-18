@@ -2,6 +2,8 @@ import type { WorkflowError } from "core";
 import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
+import type { StepDefinition } from "./models/workflow.model.ts";
+import type { SchedRow } from "./models/schedule.model.ts";
 import {
   type WatchOutcome,
   type WatchPolicy,
@@ -15,6 +17,7 @@ import {
   type WorkflowRequest,
   toRequest,
 } from "./models/workflow.model.ts";
+import { CronStore } from "./ports/ICronStore.ts";
 import { WatchStore } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "./ports/IWorkflowStore.ts";
@@ -35,7 +38,14 @@ const PUBSUB = "pubsub";
 const EVENTS_TOPIC = "workflow-events";
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
-export type WatchScanEnv = WatchStore | WorkflowInvoker | WorkflowStore | DaprPublisherTag;
+// CronStore is required because the usage-limit fallback arms a cron:sched row (a deferred
+// continuation under a different agent) — the watcher never sleeps; the schedule engine fires it.
+export type WatchScanEnv =
+  | WatchStore
+  | WorkflowInvoker
+  | WorkflowStore
+  | CronStore
+  | DaprPublisherTag;
 
 export type WatchScanReport = {
   scanned: number;
@@ -43,6 +53,7 @@ export type WatchScanReport = {
   retried: string[];
   terminated: string[];
   escalated: string[];
+  fallbacks: string[];
   errors: string[];
   disabled?: boolean;
 };
@@ -183,6 +194,7 @@ export const scanWatchesEffect = (
       retried: [],
       terminated: [],
       escalated: [],
+      fallbacks: [],
       errors: [],
     };
     if (!enabled) return { ...report, disabled: true };
@@ -285,7 +297,7 @@ const saveFenced = (
 
 const executeFinalize = (
   row: WatchRow,
-  outcome: WatchOutcome,
+  observedOutcome: WatchOutcome,
   nowMs: number,
   traceparent: string | undefined,
   report: WatchScanReport,
@@ -293,6 +305,9 @@ const executeFinalize = (
   Effect.gen(function* () {
     const ws = yield* WatchStore;
     const publisher = yield* DaprPublisherTag;
+    // The outcome inversion: upgrade completed/failed → usage-limited off the run: ledger before
+    // recording, so the row/event/escalate/fallback all see the refined outcome.
+    const outcome = yield* refineUsageLimited(row.instanceId, observedOutcome);
     const { costUsd, costGap } = yield* tallyCost(row.instanceId);
     const endedAt = new Date().toISOString();
     const final: WatchRow = {
@@ -326,6 +341,9 @@ const executeFinalize = (
       .pipe(Effect.ignore);
     if (row.policy.escalate?.onOutcome.includes(outcome)) {
       yield* executeEscalate(row, outcome, costUsd, nowMs, traceparent, report);
+    }
+    if (row.policy.fallback?.onOutcome.includes(outcome)) {
+      yield* executeFallback(row, outcome, nowMs, report);
     }
   });
 
@@ -470,6 +488,83 @@ const executeEscalate = (
       );
   });
 
+/**
+ * The usage-limit fallback: on a matching outcome (typically "usage-limited"), arm a cron:sched row
+ * that re-fires the SAME steps after `after` ms under a DIFFERENT agent/model, reusing the workspace.
+ * The watcher does NOT sleep or invoke — it hands off to the schedule engine (docs/plans/
+ * schedule-and-fallback.md). Fail-closed twice: no `maxEngineFiresPerDay` → no fallback (same gate as
+ * escalate), and `maxHandoffs <= 0` → the chain stops. The continuation's own watch policy carries a
+ * decremented `maxHandoffs`, so a fallback agent that ALSO limits eventually stops.
+ */
+const executeFallback = (
+  row: WatchRow,
+  outcome: WatchOutcome,
+  nowMs: number,
+  report: WatchScanReport,
+): Effect.Effect<void, WorkflowError, WatchScanEnv> =>
+  Effect.gen(function* () {
+    const ws = yield* WatchStore;
+    const cs = yield* CronStore;
+    const fb = row.policy.fallback;
+    if (!fb) return;
+    if (!row.resubmit?.steps) {
+      report.errors.push(`${row.instanceId}: fallback skipped — no stored steps to continue`);
+      return;
+    }
+    // Fail-closed handoff budget: at 0 the chain stops so two limited agents can't ping-pong.
+    if (fb.maxHandoffs <= 0) {
+      report.errors.push(`${row.instanceId}: fallback skipped — handoff budget exhausted`);
+      return;
+    }
+    // Fail-closed daily gate (same as escalate): no configured cap → fallbacks never fire.
+    const config = yield* ws.getConfig();
+    const cap = Option.isSome(config) ? config.value.maxEngineFiresPerDay : undefined;
+    const date = ledgerDate(nowMs);
+    if (cap === undefined) {
+      report.errors.push(
+        `${row.instanceId}: fallback skipped — no maxEngineFiresPerDay configured (fail-closed)`,
+      );
+      return;
+    }
+    if ((yield* ws.getLedger(date)).engineFires >= cap) {
+      report.errors.push(
+        `${row.instanceId}: fallback skipped — daily engine-fire cap ${cap} reached`,
+      );
+      return;
+    }
+
+    const schedRowId = `fb-${row.instanceId}-e${row.epoch}`;
+    const now = new Date(nowMs).toISOString();
+    // The continuation is supervised with a decremented handoff budget, so a fallback agent that
+    // also limits can fall back again until the budget runs out — never forever.
+    const childFallback = { ...fb, maxHandoffs: fb.maxHandoffs - 1 };
+    const childPolicy: WatchPolicy = { ...row.policy, fallback: childFallback };
+    const schedRow: SchedRow = {
+      id: schedRowId,
+      status: "armed",
+      fireAt: new Date(nowMs + (fb.after ?? 0)).toISOString(),
+      source: {
+        mode: "embedded",
+        // Identity override (runActivity/agentId/model*) wins over the resubmit's params → the
+        // continuation runs on a different agent while re-entering the SAME steps.
+        steps: (row.resubmit.steps ?? []) as readonly StepDefinition[],
+        params: { ...(row.resubmit.params ?? {}), ...fb.identity } as WorkflowParams,
+      },
+      instanceId: schedRowId,
+      ...(row.resubmit.workspaceId ? { workspaceId: row.resubmit.workspaceId } : {}),
+      epoch: 1,
+      watch: childPolicy,
+      origin: "fallback:usage-limited",
+      handoffsRemaining: childFallback.maxHandoffs,
+      note: `fallback from ${row.instanceId} after ${outcome}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    yield* cs.saveSchedRow(schedRow);
+    yield* ws.bumpLedger(date, { engineFires: 1 });
+    report.fallbacks.push(schedRowId);
+  });
+
 // ---------------------------------------------------------------------------
 // Cost tally (the sweep's prose, now code — issue #10's prefix-match included)
 // ---------------------------------------------------------------------------
@@ -493,6 +588,30 @@ export const tallyCost = (
       if (typeof usd === "number") cost += usd;
     }
     return { costUsd: Math.round(cost * 10_000) / 10_000, costGap: false };
+  });
+
+/**
+ * Refines a terminal outcome to "usage-limited" when a run mirror under this instance reports
+ * stopReason "usage-limited" (agent-cli classify-stop). THE OUTCOME INVERSION (docs/plans/
+ * schedule-and-fallback.md): a usage-limited run can be COMPLETED at the Dapr level (Claude exits 0),
+ * so this reads the run:<id> LEDGER, deliberately out of band of decide() — do NOT fold it back into
+ * decide(), whose axis is run status. Only completed/failed are refined; budget-terminated/
+ * terminated/orphaned are never usage limits.
+ */
+export const refineUsageLimited = (
+  instanceId: string,
+  outcome: WatchOutcome,
+): Effect.Effect<WatchOutcome, WorkflowError, WatchStore> =>
+  Effect.gen(function* () {
+    if (outcome !== "completed" && outcome !== "failed") return outcome;
+    const ws = yield* WatchStore;
+    const keys = yield* ws.listRunKeys();
+    const mine = keys.filter((key) => key.startsWith(`run:${instanceId}:`));
+    for (const key of mine) {
+      const reason = yield* ws.getRunStopReason(key);
+      if (reason === "usage-limited") return "usage-limited";
+    }
+    return outcome;
   });
 
 // ---------------------------------------------------------------------------
@@ -527,6 +646,10 @@ function runtimeStatusOf(outcome: WatchOutcome): string {
       return "TERMINATED";
     case "orphaned":
       return "UNKNOWN";
+    // A usage-limited run typically completed at the Dapr level (Claude exits 0); the distinction
+    // lives in the outcome, not the run status.
+    case "usage-limited":
+      return "COMPLETED";
   }
 }
 

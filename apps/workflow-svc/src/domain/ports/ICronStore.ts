@@ -3,6 +3,7 @@ import { Context, Effect, Option } from "effect";
 
 import type { CronConfig, CronHeartbeat, CronLedger, CronRow } from "../models/cron.model.ts";
 import type { DiscoverRow } from "../models/discover.model.ts";
+import type { SchedRow } from "../models/schedule.model.ts";
 
 /**
  * The cron registry store (docs/plans/workflow-watcher-registry.md §5) — the recur primitive's rows
@@ -23,6 +24,12 @@ export interface CronStoreService {
   readonly listDiscoverRows: () => Effect.Effect<readonly DiscoverRow[], WorkflowError>;
   readonly saveDiscoverRow: (row: DiscoverRow) => Effect.Effect<void, WorkflowError>;
   readonly deleteDiscoverRow: (id: string) => Effect.Effect<void, WorkflowError>;
+  // Scheduled-fire rows (`cron:sched:<id>`) — the one-shot sibling under the same registry family
+  // (fire ONCE at an absolute time); share the config/heartbeat/ledger below with the recur rows.
+  readonly getSchedRow: (id: string) => Effect.Effect<Option.Option<SchedRow>, WorkflowError>;
+  readonly listSchedRows: () => Effect.Effect<readonly SchedRow[], WorkflowError>;
+  readonly saveSchedRow: (row: SchedRow) => Effect.Effect<void, WorkflowError>;
+  readonly deleteSchedRow: (id: string) => Effect.Effect<void, WorkflowError>;
   readonly getConfig: () => Effect.Effect<Option.Option<CronConfig>, WorkflowError>;
   readonly getHeartbeat: () => Effect.Effect<Option.Option<CronHeartbeat>, WorkflowError>;
   readonly heartbeat: (beat: CronHeartbeat) => Effect.Effect<void, WorkflowError>;

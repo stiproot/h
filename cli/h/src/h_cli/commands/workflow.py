@@ -288,6 +288,54 @@ def run(
             help="Cron budget: deactivate after N fires (default 100). Implies --cron.",
         ),
     ] = None,
+    fallback_agent: Annotated[
+        str | None,
+        typer.Option(
+            "--fallback-agent",
+            help="On an LLM usage/rate limit, CONTINUE the run under this agent (claude|openhands|"
+            "pi). Arms a deferred cron:sched continuation reusing the workspace. Implies --watch.",
+        ),
+    ] = None,
+    fallback_model: Annotated[
+        str | None,
+        typer.Option(
+            "--fallback-model",
+            help="Model for the usage-limit fallback continuation (sets the identity model slots). "
+            "Implies --watch.",
+        ),
+    ] = None,
+    fallback_after: Annotated[
+        str | None,
+        typer.Option(
+            "--fallback-after",
+            help="Delay before the fallback continuation fires (ms, <n>m, or <n>h; e.g. 10m) — to "
+            "let the original provider's window refresh. Default 0.",
+        ),
+    ] = None,
+    fallback_max: Annotated[
+        int | None,
+        typer.Option(
+            "--fallback-max",
+            help="Max fallback handoffs (fail-closed budget; default 1). Implies --fallback-agent.",
+        ),
+    ] = None,
+    at: Annotated[
+        str | None,
+        typer.Option(
+            "--at",
+            help="Schedule this workflow to fire ONCE at an absolute time (ISO 8601, UTC, e.g. "
+            "2026-07-20T09:00:00Z) instead of now. Arms a cron:sched row; inspect with "
+            "`h schedule list`. Mutually exclusive with --in and --cron.",
+        ),
+    ] = None,
+    in_: Annotated[
+        str | None,
+        typer.Option(
+            "--in",
+            help="Schedule this workflow to fire ONCE after a relative delay (e.g. 45s, 30m, 2h, "
+            "1d) instead of now. Arms a cron:sched row. Mutually exclusive with --at and --cron.",
+        ),
+    ] = None,
     via: ViaOpt = None,
 ) -> None:
     """Fire a saved workflow (or, with --inline, a template rendered on the fly) with fire-time
@@ -315,6 +363,36 @@ def run(
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
         if retry is not None:
             watch_policy["retry"] = {"maxAttempts": retry, "fresh": True}
+    # Usage-limit fallback: on a rate limit, continue under a different agent/model after a delay.
+    fallback_wanted = (
+        fallback_agent is not None
+        or fallback_model is not None
+        or fallback_after is not None
+        or fallback_max is not None
+    )
+    if fallback_wanted:
+        if fallback_agent is None and fallback_model is None:
+            err_console.print(
+                "[red]--fallback needs --fallback-agent and/or --fallback-model[/red]"
+            )
+            raise typer.Exit(1)
+        identity: dict[str, str] = {}
+        if fallback_agent:
+            identity.update(_identity_params(key, fallback_agent))
+        if fallback_model:
+            for slot in MODEL_PARAM_SLOTS:
+                identity[slot] = fallback_model
+        fallback: dict[str, Any] = {
+            "onOutcome": ["usage-limited"],
+            "identity": identity,
+            "maxHandoffs": fallback_max if fallback_max is not None else 1,
+        }
+        if fallback_after:
+            fallback["after"] = _parse_budget(fallback_after)
+        # --fallback implies --watch (a fallback rides the watch policy).
+        if watch_policy is None:
+            watch_policy = {"maxDurationMs": DEFAULT_BUDGET_MS}
+        watch_policy["fallback"] = fallback
     cron_policy: dict[str, Any] | None = None
     if cron or max_fires is not None:
         if not cron:
@@ -323,6 +401,22 @@ def run(
         cron_policy = {"cadence": cron}
         if max_fires is not None:
             cron_policy["budget"] = {"maxFires": max_fires}
+    scheduled = at is not None or in_ is not None
+    if scheduled:
+        if at is not None and in_ is not None:
+            err_console.print("[red]--at and --in are mutually exclusive[/red]")
+            raise typer.Exit(1)
+        if cron_policy:
+            err_console.print(
+                "[red]--at/--in (one-shot) cannot combine with --cron (recurring)[/red]"
+            )
+            raise typer.Exit(1)
+        if inline or via:
+            err_console.print(
+                "[red]--at/--in schedule a SAVED workflow[/red] — drop --inline/--via "
+                "(a scheduled fire arms a cron:sched row on workflow-svc)."
+            )
+            raise typer.Exit(1)
     if inline:
         if via:
             err_console.print(
@@ -373,16 +467,28 @@ def run(
     else:
         result = _guarded(
             lambda: workflow_svc.run_saved(
-                key, params, instance_id, fresh, watch_policy, cron_policy
+                key, params, instance_id, fresh, watch_policy, cron_policy, at, in_
             )
         )
     console.print_json(data=result)
+    # A scheduled run ARMED a one-shot (no instance yet); a normal run has an instanceId.
+    if scheduled:
+        console.print(
+            f"    scheduled: fires at {result.get('fireAt')} — inspect with h schedule list"
+        )
+        console.print(f"    cancel it: h schedule rm {result.get('scheduled')}")
+        return
     console.print(f"    watch it: h workflow status {result['instanceId']}")
     if cron_policy:
         console.print(f"    recurring: {cron.strip()} — inspect with h cron list")
     if watch_policy:
         console.print(f"    watching: {result.get('watching')}")
         console.print(f"    watch row: h watch get {result['instanceId']}")
+        if watch_policy.get("fallback"):
+            console.print(
+                "    fallback: on usage-limit → continues under "
+                f"{fallback_agent or fallback_model} (see h schedule list when armed)"
+            )
 
 
 @app.command()
@@ -391,3 +497,62 @@ def terminate(
 ) -> None:
     """Terminate a running workflow instance (short-circuit a stuck or unwanted run)."""
     console.print_json(data=_guarded(lambda: workflow_svc.terminate(instance_id)))
+
+
+@app.command()
+def pause(
+    instance_id: Annotated[str, typer.Argument(help="Running workflow instance id to pause.")],
+    key: Annotated[str, typer.Argument(help="Saved workflow key to resume (the running one).")],
+    at: Annotated[
+        str | None,
+        typer.Option("--at", help="Resume at an absolute time (ISO 8601, UTC)."),
+    ] = None,
+    in_: Annotated[
+        str | None,
+        typer.Option("--in", help="Resume after a relative delay (e.g. 45s, 30m, 2h, 1d)."),
+    ] = None,
+    param: Annotated[
+        list[str] | None,
+        typer.Option("--param", "-p", help="Fire-time param key=value for the resumed run."),
+    ] = None,
+    workspace_id: Annotated[
+        str | None,
+        typer.Option(
+            "--workspace-id",
+            help="Workspace to reuse on resume (default: the paused instance's own id).",
+        ),
+    ] = None,
+) -> None:
+    """Pause a running workflow and resume it later (stop-and-continue): terminate the instance NOW
+    and arm a one-shot that re-fires the saved workflow after the delay, REUSING the paused run's
+    workspace (worktree/state carry over). Meant for waiting out a rate-limit refresh window.
+
+    The resumed run re-enters the workflow from the top — mid-step progress rides the persisted
+    worktree + the agent's own session resume, not a frozen fiber. Exactly one of --at/--in."""
+    if (at is None) == (in_ is None):
+        err_console.print("[red]pass exactly one of --at / --in[/red]")
+        raise typer.Exit(1)
+    params = parse_params(param or [])
+    result = _guarded(
+        lambda: workflow_svc.pause(instance_id, key, params or None, at, in_, workspace_id)
+    )
+    console.print_json(data=result)
+    console.print(
+        f"    paused {result.get('paused')} → resumes at {result.get('fireAt')} "
+        f"(reusing its workspace)"
+    )
+    console.print(f"    resume now:  h workflow resume {result.get('scheduled')}")
+    console.print(f"    cancel:      h schedule rm {result.get('scheduled')}")
+
+
+@app.command()
+def resume(
+    sched_id: Annotated[
+        str, typer.Argument(help="The paused schedule id (from `h workflow pause` / `h schedule`).")
+    ],
+) -> None:
+    """Resume a paused workflow NOW, before its scheduled time (advance the one-shot to fire on the
+    next tick, ≤60s)."""
+    result = _guarded(lambda: workflow_svc.resume(sched_id))
+    console.print_json(data=result)
+    console.print(f"    resuming {sched_id} — fires within a tick; watch with h schedule list")

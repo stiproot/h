@@ -165,6 +165,9 @@ const runClaude = (
     // Captures stdout from a partial result so the failed ledger entry preserves agent output
     // (the invoker result is not in scope of tapErrorCause below).
     let capturedOutput = "";
+    // Captured so BOTH ledger paths (completed + failed) record why the run stopped — a usage-limit
+    // may surface as exit 0 (completed) or non-zero (failed); either way the watcher reads it.
+    let capturedStopReason: string | undefined;
     return yield* Effect.gen(function* () {
       const invoker = yield* AgentInvoker;
       const model = modelOverride ?? cfg.model;
@@ -184,6 +187,7 @@ const runClaude = (
         .pipe(Effect.withSpan("claude cli", { attributes: { "claude.model": model } }));
 
       capturedOutput = result.stdout ?? "";
+      capturedStopReason = result.stopReason;
 
       // A resolved InvocationResult may carry a non-zero exit code (timeout → 124,
       // spawn failure → 1, or the agent itself exited with an error). Fail here so the
@@ -203,6 +207,8 @@ const runClaude = (
         turns: result.numTurns ?? 1,
         tokens: result.tokenUsage ?? { input: 0, output: 0 },
         costUsd: result.costUsd ?? null,
+        // Orthogonal to status: a usage-limited run can still be "completed" (Claude exits 0).
+        stopReason: result.stopReason ?? null,
       });
 
       return {
@@ -224,6 +230,9 @@ const runClaude = (
           status: "failed",
           output: capturedOutput,
           error: String(Cause.squash(cause)),
+          // A usage-limit that surfaced as a non-zero exit is still recorded, so the watcher's
+          // fallback can distinguish it from a generic failure on a FAILED instance.
+          stopReason: capturedStopReason ?? null,
         }),
       ),
     );

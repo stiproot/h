@@ -25,3 +25,39 @@ export function isDue(schedule: WorkflowSchedule, now: Date): boolean {
 export function assertValidCron(cron: string): void {
   parseExpression(cron, { tz: "UTC" });
 }
+
+/**
+ * Parses a relative duration like "45s", "30m", "2h", "1d" into milliseconds. Whole numbers only,
+ * one unit suffix (s/m/h/d). Throws on anything else — the one-shot scheduled-fire path fails fast on
+ * a bad `--in` before arming. This is the server-authoritative parser; the CLI forwards raw strings.
+ */
+export function parseDurationMs(duration: string): number {
+  const match = /^(\d+)(s|m|h|d)$/.exec(duration.trim());
+  if (!match) {
+    throw new Error(`invalid duration '${duration}' — expected e.g. 45s, 30m, 2h, 1d`);
+  }
+  const value = Number(match[1]);
+  const unitMs = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]!;
+  return value * unitMs;
+}
+
+/**
+ * Resolves a scheduled-fire time from EITHER an absolute ISO instant (`at`) OR a relative duration
+ * (`in`, from now), returning an absolute ISO string. Throws if neither or both are given, or if the
+ * value is unparseable — so the run route fails fast (400) before arming a `cron:sched:` row.
+ */
+export function resolveFireAt(opts: { at?: string; in?: string }, nowMs: number): string {
+  const hasAt = opts.at !== undefined;
+  const hasIn = opts.in !== undefined;
+  if (hasAt === hasIn) {
+    throw new Error("provide exactly one of `at` (absolute ISO) or `in` (relative duration)");
+  }
+  if (hasAt) {
+    const ms = Date.parse(opts.at!);
+    if (Number.isNaN(ms)) {
+      throw new Error(`invalid 'at' instant '${opts.at}' — expected an ISO 8601 timestamp`);
+    }
+    return new Date(ms).toISOString();
+  }
+  return new Date(nowMs + parseDurationMs(opts.in!)).toISOString();
+}

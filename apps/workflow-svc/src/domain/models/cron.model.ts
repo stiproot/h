@@ -126,13 +126,15 @@ export const CronHeartbeat = Schema.Struct({
 export type CronHeartbeat = Schema.Schema.Type<typeof CronHeartbeat>;
 
 // cron:ledger:<yyyy-mm-dd> — engine-written daily tallies (shared across the cron family: recur +
-// discovery). `discoveryFires` is the fan-out cron's daily count, the backstop the `maxFiresPerDay`
-// gate reads.
+// discovery + scheduled-fire). `discoveryFires` is the fan-out cron's daily count (the backstop the
+// `maxFiresPerDay` gate reads); `scheduledFires` is the one-shot `cron:sched:*` variant's daily count
+// (observability + the fail-closed budget the watcher's fallback reads via maxEngineFiresPerDay).
 export const CronLedger = Schema.Struct({
   cronsRegistered: Schema.Number,
   firesTriggered: Schema.Number,
   cronsDeactivated: Schema.Number,
   discoveryFires: Schema.optional(Schema.Number),
+  scheduledFires: Schema.optional(Schema.Number),
 });
 export type CronLedger = Schema.Schema.Type<typeof CronLedger>;
 
@@ -141,6 +143,7 @@ export const emptyCronLedger: CronLedger = {
   firesTriggered: 0,
   cronsDeactivated: 0,
   discoveryFires: 0,
+  scheduledFires: 0,
 };
 
 /** UTC day key for the ledger, e.g. "2026-07-11". */

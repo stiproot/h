@@ -1,3 +1,4 @@
+import { classifyStop } from "./classify-stop.ts";
 import type { AgentEventCallback, InvocationResult, StreamEvent } from "./types.ts";
 
 interface ParseStreamChunkOptions {
@@ -72,8 +73,19 @@ export function buildInvocationResult({
 
   const numTurns = events.filter((event) => event.type === "assistant").length;
 
+  // The terminal `result` event carries the limit text even when the process exits 0 (Claude CLI),
+  // so the classifier reads it alongside exit/signal/stderr.
+  const resultEvent = events.find((event) => event.type === "result");
+  const stopReason = classifyStop({
+    exitCode,
+    signal,
+    stderr,
+    resultEventText: resultEvent?.result,
+  });
+
   return {
     success: exitCode === 0,
+    stopReason,
     stdout: textOutput || exitDescription,
     stderr: stderr || undefined,
     exitCode: exitCode ?? undefined,

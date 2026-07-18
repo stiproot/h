@@ -7,7 +7,7 @@ demonstrably replaced them.
 
 import typer
 
-from h_cli.commands import agents, chain, cron, feature, template, watch, workflow
+from h_cli.commands import agents, chain, cron, feature, schedule, template, watch, workflow
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -19,4 +19,5 @@ app.add_typer(template.app, name="template")
 app.add_typer(chain.app, name="chain")
 app.add_typer(watch.app, name="watch")
 app.add_typer(cron.app, name="cron")
+app.add_typer(schedule.app, name="schedule")
 app.add_typer(workflow.app, name="workflow")

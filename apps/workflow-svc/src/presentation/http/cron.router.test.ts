@@ -53,6 +53,7 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
       bumpLedger: () => Effect.void,
       listRunKeys: () => Effect.succeed([]),
       getRunCost: () => Effect.succeed(null),
+      getRunStopReason: () => Effect.succeed(null),
     },
   };
 }
@@ -87,6 +88,10 @@ const emptyCronStore: CronStoreService = {
   listDiscoverRows: () => Effect.succeed([]),
   saveDiscoverRow: () => Effect.void,
   deleteDiscoverRow: () => Effect.void,
+  getSchedRow: () => Effect.succeed(Option.none()),
+  listSchedRows: () => Effect.succeed([]),
+  saveSchedRow: () => Effect.void,
+  deleteSchedRow: () => Effect.void,
   getConfig: () => Effect.succeed(Option.none()),
   getHeartbeat: () => Effect.succeed(Option.none()),
   heartbeat: () => Effect.void,

@@ -11,6 +11,7 @@ import {
   emptyCronLedger,
 } from "../domain/models/cron.model.ts";
 import { DiscoverRow } from "../domain/models/discover.model.ts";
+import { SchedRow } from "../domain/models/schedule.model.ts";
 import { CronStore } from "../domain/ports/ICronStore.ts";
 
 const STORE = "statestore";
@@ -22,12 +23,15 @@ const ROW_PREFIX = "cron:sub:";
 const INDEX_KEY = "cron:index";
 const DISCOVER_ROW_PREFIX = "cron:discover:";
 const DISCOVER_INDEX_KEY = "cron:discover-index";
+const SCHED_ROW_PREFIX = "cron:sched:";
+const SCHED_INDEX_KEY = "cron:sched-index";
 const CONFIG_KEY = "cron:config";
 const TICK_KEY = "cron:__tick__";
 const LEDGER_PREFIX = "cron:ledger:";
 
 const decodeRow = Schema.decodeUnknown(CronRow, { onExcessProperty: "preserve" });
 const decodeDiscoverRow = Schema.decodeUnknown(DiscoverRow, { onExcessProperty: "preserve" });
+const decodeSchedRow = Schema.decodeUnknown(SchedRow, { onExcessProperty: "preserve" });
 const decodeConfig = Schema.decodeUnknown(CronConfig, { onExcessProperty: "preserve" });
 const decodeHeartbeat = Schema.decodeUnknown(CronHeartbeat, { onExcessProperty: "preserve" });
 const decodeLedger = Schema.decodeUnknown(CronLedger, { onExcessProperty: "preserve" });
@@ -159,6 +163,35 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
         yield* removeFromIndex(DISCOVER_INDEX_KEY, id);
       });
 
+    // --- Scheduled-fire rows (cron:sched:*) — same index-maintained CRUD as the recur/discovery rows. ---
+    const getSchedRow = (id: string) =>
+      rawGet(SCHED_ROW_PREFIX + id).pipe(
+        Effect.flatMap((value) => decodeSome(SCHED_ROW_PREFIX + id, decodeSchedRow, value)),
+      );
+
+    const listSchedRows = (): Effect.Effect<readonly SchedRow[], WorkflowError> =>
+      Effect.gen(function* () {
+        const ids = yield* indexList(SCHED_INDEX_KEY);
+        const rows = yield* Effect.forEach(ids, getSchedRow, { concurrency: "unbounded" });
+        return rows.flatMap((row) => (Option.isSome(row) ? [row.value] : []));
+      });
+
+    const saveSchedRow = (row: SchedRow): Effect.Effect<void, WorkflowError> =>
+      Effect.gen(function* () {
+        yield* tryState(SCHED_ROW_PREFIX + row.id, () =>
+          client.state.save(STORE, [{ key: SCHED_ROW_PREFIX + row.id, value: row }]),
+        );
+        yield* addToIndex(SCHED_INDEX_KEY, row.id);
+      });
+
+    const deleteSchedRow = (id: string): Effect.Effect<void, WorkflowError> =>
+      Effect.gen(function* () {
+        yield* tryState(SCHED_ROW_PREFIX + id, () =>
+          client.state.delete(STORE, pathStateKey(SCHED_ROW_PREFIX + id)),
+        );
+        yield* removeFromIndex(SCHED_INDEX_KEY, id);
+      });
+
     const getConfig = () =>
       rawGet(CONFIG_KEY).pipe(
         Effect.flatMap((value) => decodeSome(CONFIG_KEY, decodeConfig, value)),
@@ -204,6 +237,10 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
       listDiscoverRows,
       saveDiscoverRow,
       deleteDiscoverRow,
+      getSchedRow,
+      listSchedRows,
+      saveSchedRow,
+      deleteSchedRow,
       getConfig,
       getHeartbeat,
       heartbeat,

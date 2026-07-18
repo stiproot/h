@@ -12,6 +12,7 @@ import {
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { activeTraceparent, withAmbientParent, withServerSpan } from "telemetry";
 
+import type { WorkflowError } from "core";
 import type { DaprPublisherTag } from "core-dapr";
 
 import { WatchPolicy } from "../../domain/models/watch.model.ts";
@@ -23,7 +24,8 @@ import {
 } from "../../domain/models/workflow.model.ts";
 import { CronPolicy } from "../../domain/models/cron.model.ts";
 import { wfIdentityFrom } from "../../domain/models/wf.model.ts";
-import { assertValidCron } from "../../domain/scheduling.ts";
+import { assertValidCron, resolveFireAt } from "../../domain/scheduling.ts";
+import { advanceSched, registerSchedForFire } from "../../domain/schedule-scan.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
 import { SourceReader } from "../../domain/ports/ISourceReader.ts";
@@ -72,7 +74,33 @@ const RunSavedBody = Schema.Struct({
   // spent. Registers a cron:sub row in this same handler (sibling of `watch`); needs the run to carry
   // a wf-identity (repo+slug) — the cron key mirrors the wf: coords.
   cron: Schema.optional(CronPolicy),
+  // One-shot schedule: fire this saved workflow ONCE at an absolute time (`at`, ISO) or after a
+  // relative delay (`in`, e.g. "2h"). When set, the handler ARMS a cron:sched row instead of
+  // invoking now, and returns { scheduled, fireAt }. Exactly one of at/in; mutually exclusive with a
+  // cron cadence (a schedule fires once, a cron recurs).
+  at: Schema.optional(Schema.String),
+  in: Schema.optional(Schema.String),
 });
+
+/**
+ * Body of POST /workflow/pause/:instanceId — the saved workflow to resume (key + fire-time params),
+ * when to resume (exactly one of at/in), and an optional workspace override (defaults to reusing the
+ * paused instance's own id as the workspace key).
+ */
+const PauseBody = Schema.Struct({
+  key: Schema.String,
+  params: Schema.optional(WorkflowParams),
+  at: Schema.optional(Schema.String),
+  in: Schema.optional(Schema.String),
+  workspaceId: Schema.optional(Schema.String),
+});
+
+/** A `--at`/`--in` given alongside a `--cron` cadence — one-shot and recurring are mutually exclusive. */
+class ScheduleConflictsCronError extends Data.TaggedError("ScheduleConflictsCronError") {}
+/** A bad `at` instant / `in` duration on a scheduled run — mapped to 400. */
+export class InvalidScheduleError extends Data.TaggedError("InvalidScheduleError")<{
+  readonly message: string;
+}> {}
 
 /** An unparseable cron expression on save — mapped to the legacy 400 body. */
 export class InvalidCronError extends Data.TaggedError("InvalidCronError")<{
@@ -136,6 +164,18 @@ function replyFor(cause: Cause.Cause<unknown>): { status: number; body: unknown 
       return {
         status: 400,
         body: { error: "cron requires a wf-identity — pass repo and slug params" },
+      };
+    }
+    if (Predicate.isTagged(error, "ScheduleConflictsCronError")) {
+      return {
+        status: 400,
+        body: { error: "at/in (one-shot schedule) cannot be combined with cron (recurring)" },
+      };
+    }
+    if (Predicate.isTagged(error, "InvalidScheduleError")) {
+      return {
+        status: 400,
+        body: { error: (error as unknown as InvalidScheduleError).message },
       };
     }
     if (ParseResult.isParseError(error)) {
@@ -236,8 +276,11 @@ export function registerWorkflowRoutes(
           // Optional body: fire-time params override the stored defaults key-by-key; a
           // fire-time instanceId/workspaceId overrides the projection (readable run keys).
           // An absent/empty body keeps the pre-params behaviour.
-          const { params, instanceId, workspaceId, fresh, watch, watchMeta, cron } =
+          const { params, instanceId, workspaceId, fresh, watch, watchMeta, cron, at, in: inDur } =
             yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
+          const scheduled = at !== undefined || inDur !== undefined;
+          // One-shot schedule and recurring cron are mutually exclusive.
+          if (scheduled && cron) return yield* new ScheduleConflictsCronError();
           // Fail fast on a bad cadence before firing anything.
           if (cron) {
             yield* Effect.try({
@@ -254,6 +297,30 @@ export function registerWorkflowRoutes(
           const wf = wfIdentityFrom(req.params, request.params.key);
           // A cron recurs the workflow — its key mirrors the wf: coords, so it needs the identity.
           if (cron && !wf) return yield* new CronNeedsIdentityError();
+          // ---- One-shot schedule: ARM a cron:sched row instead of invoking now. ----
+          if (scheduled) {
+            const fireAt = yield* Effect.try({
+              try: () => resolveFireAt({ at, in: inDur }, Date.now()),
+              catch: (e) => new InvalidScheduleError({ message: messageOf(e) }),
+            });
+            // A readable, stable id: the caller's instanceId, else key + fire instant.
+            const schedRowId = instanceId ?? `${request.params.key}--at-${Date.parse(fireAt)}`;
+            const armed = yield* registerSchedForFire({
+              id: schedRowId,
+              fireAt,
+              source: {
+                mode: "saved",
+                key: request.params.key,
+                ...(req.params ? { params: req.params } : {}),
+              },
+              ...(wf ? { wf } : {}),
+              ...((watch ?? workflow.value.watch)
+                ? { watch: watch ?? workflow.value.watch }
+                : {}),
+              origin: "at",
+            });
+            return { scheduled: armed.schedId, fireAt };
+          }
           // Watch stays handler-side (§10: before-work, mark-before-fire): persist-then-invoke via
           // invokeWithWatch. The --cron recurrence, by contrast, is armed by the RUN's own closing
           // bracket (register-cron activity) — the route passes it through as `armCron`; it does NOT
@@ -298,6 +365,77 @@ export function registerWorkflowRoutes(
           { successStatus: 202 },
         ),
       ),
+  );
+
+  // Pause a running workflow and resume it later (stop-and-continue, docs/plans/schedule-and-fallback):
+  // terminate the instance NOW, and arm a cron:sched row that re-fires the saved workflow after the
+  // delay, REUSING the paused run's workspace (worktree/state carry over). The continuation re-enters
+  // the workflow from the top; progress rides the persisted worktree + the agent's session resume.
+  fastify.post<{ Params: { instanceId: string } }>(
+    "/workflow/pause/:instanceId",
+    (request, reply) =>
+      withServerSpan("POST /workflow/pause/:instanceId", request.headers, () => {
+        const traceparent = activeTraceparent();
+        return runRoute(
+          runtime,
+          reply,
+          Effect.gen(function* () {
+            const { key, params, at, in: inDur, workspaceId } = yield* Schema.decodeUnknown(
+              PauseBody,
+            )(request.body ?? {});
+            const fireAt = yield* Effect.try({
+              try: () => resolveFireAt({ at, in: inDur }, Date.now()),
+              catch: (e) => new InvalidScheduleError({ message: messageOf(e) }),
+            });
+            const paused = request.params.instanceId;
+            // Terminate the running instance (best-effort: a terminal instance is fine to pause).
+            const invoker = yield* WorkflowInvoker;
+            yield* invoker.terminate(paused).pipe(Effect.ignore);
+            const store = yield* WorkflowStore;
+            const stored = yield* store.get(key);
+            if (Option.isNone(stored)) return yield* new WorkflowNotFoundError();
+            const merged = toRequest(stored.value, traceparent, params).params;
+            const wf = wfIdentityFrom(merged, key);
+            const armed = yield* registerSchedForFire({
+              // A distinct id so the resume runs under its own instance while reusing the workspace.
+              id: `${paused}--resume`,
+              fireAt,
+              source: { mode: "saved", key, ...(merged ? { params: merged } : {}) },
+              // Reuse the paused run's workspace (default: its own instance id was the workspace key).
+              workspaceId: workspaceId ?? paused,
+              ...(wf ? { wf } : {}),
+              ...(stored.value.watch ? { watch: stored.value.watch } : {}),
+              origin: "pause",
+            });
+            return { paused, scheduled: armed.schedId, fireAt };
+          }),
+          { successStatus: 202 },
+        );
+      }),
+  );
+
+  // Resume a paused workflow NOW (before its scheduled time): advance the cron:sched row's fireAt to
+  // now so the next tick fires the continuation.
+  fastify.post<{ Params: { schedId: string } }>("/workflow/resume/:schedId", (request, reply) =>
+    withServerSpan("POST /workflow/resume/:schedId", request.headers, () =>
+      runRoute(
+        runtime,
+        reply,
+        Effect.gen(function* () {
+          const row = yield* advanceSched(request.params.schedId).pipe(
+            Effect.mapError((e) =>
+              "_tag" in e && e._tag === "NotFound"
+                ? new NotFoundError({
+                    message: `paused schedule not found: ${request.params.schedId}`,
+                  })
+                : (e as WorkflowError),
+            ),
+          );
+          return { resumed: request.params.schedId, status: row.status, fireAt: row.fireAt };
+        }),
+        { successStatus: 202 },
+      ),
+    ),
   );
 
   fastify.get("/workflow/list", (_request, reply) =>

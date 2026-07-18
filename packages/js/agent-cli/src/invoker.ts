@@ -120,6 +120,7 @@ function invokeAgent(
       AgentTimeoutError: (error) =>
         Effect.succeed<InvocationResult>({
           success: false,
+          stopReason: "timeout",
           stdout: `Task timed out after ${error.timeoutMs}ms`,
           stderr: "Task timed out",
           exitCode: 124,
@@ -127,6 +128,7 @@ function invokeAgent(
       AgentSpawnError: (error) =>
         Effect.succeed<InvocationResult>({
           success: false,
+          stopReason: "failed",
           stdout: `Failed to spawn ${error.command}: ${describeCause(error.cause)}`,
           stderr: describeCause(error.cause),
           exitCode: 1,

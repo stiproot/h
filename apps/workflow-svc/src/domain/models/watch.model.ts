@@ -19,6 +19,11 @@ export const WatchOutcome = Schema.Literal(
   "terminated",
   "budget-terminated",
   "orphaned",
+  // A REFINEMENT of "completed"/"failed", not a run status: the engine reads the run:<id> mirror's
+  // stopReason at finalize and upgrades the outcome when a run hit an LLM usage/rate limit (a
+  // limited Claude run can even exit 0 → COMPLETED). Never produced by decide(); it is set only in
+  // executeFinalize and read by the fallback policy. See docs/plans/schedule-and-fallback.md.
+  "usage-limited",
 );
 export type WatchOutcome = Schema.Schema.Type<typeof WatchOutcome>;
 
@@ -42,6 +47,25 @@ export const WatchEscalatePolicy = Schema.Struct({
 });
 export type WatchEscalatePolicy = Schema.Schema.Type<typeof WatchEscalatePolicy>;
 
+// The usage-limit fallback (docs/plans/schedule-and-fallback.md): on a matching outcome
+// (typically ["usage-limited"]), arm a DEFERRED continuation — a cron:sched row that re-fires the
+// SAME steps after `after` ms under a DIFFERENT agent/model (the identity override), reusing the
+// workspace. Distinct from retry (same identity, immediate) and escalate (a different saved key,
+// immediate): fallback is "deferred retry with an identity swap". `maxHandoffs` is the fail-closed
+// budget — decremented each hop and threaded into the continuation's own fallback policy so a
+// fallback agent that ALSO limits can't ping-pong forever.
+export const WatchFallbackPolicy = Schema.Struct({
+  onOutcome: Schema.Array(WatchOutcome),
+  // Delay before the continuation fires (ms). Default 0 — a fresh agent isn't rate-limited, but a
+  // delay lets the ORIGINAL provider's window refresh if the fallback routes back to it.
+  after: Schema.optional(Schema.Number),
+  // Fire-time identity override for the continuation: {runActivity, agentId, modelPlan…}.
+  identity: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  // Remaining handoffs; at 0 the chain stops (fail-closed).
+  maxHandoffs: Schema.Number,
+});
+export type WatchFallbackPolicy = Schema.Schema.Type<typeof WatchFallbackPolicy>;
+
 export const WatchPolicy = Schema.Struct({
   // The only mandatory knob: wall-clock budget; on breach the instance is terminated.
   maxDurationMs: Schema.Number,
@@ -49,6 +73,7 @@ export const WatchPolicy = Schema.Struct({
   unknownStreakLimit: Schema.optional(Schema.Number),
   retry: Schema.optional(WatchRetryPolicy),
   escalate: Schema.optional(WatchEscalatePolicy),
+  fallback: Schema.optional(WatchFallbackPolicy),
 });
 export type WatchPolicy = Schema.Schema.Type<typeof WatchPolicy>;
 
