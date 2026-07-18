@@ -24,7 +24,7 @@ cli/
     └── src/h_cli/
         ├── main.py                 # composition root — Typer app, command groups
         ├── config.py               # env-derived settings, mirroring the scripts' defaults
-        ├── commands/               # h feature, h workflow, h template, h chain, h watch, h cron (list + discover add)
+        ├── commands/               # h feature, h workflow (run/pause/resume/…), h template, h chain, h watch, h cron (list + discover add), h schedule (one-shot cron:sched: list/rm)
         └── infrastructure/         # helm subprocess adapter, statestore/agent/svc HTTP clients
 ```
 

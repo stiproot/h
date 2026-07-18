@@ -1,6 +1,7 @@
-**Status:** IN PROGRESS (started 2026-07-18). Phase 1 (the `cron:sched` variant) building now;
-Features 3/2/1 phased behind it. **Living doc** — update the Decisions + Progress log as increments
-land.
+**Status:** SHIPPED (2026-07-18) — all five phases landed in one change set (commit `2d2eedf`);
+Features 2 & 3 + the `cron:sched` engine validated end-to-end against live Dapr+Redis. Outstanding:
+the usage-limit fallback (Feature 1) is unit-tested but not yet live-exercised (needs an agent to
+actually hit a limit), and 4b (active self-report) is deferred. **Living doc** — see the Progress log.
 
 # Schedule at a time, pause/resume, and usage-limit fallback — the `cron:sched` variant
 

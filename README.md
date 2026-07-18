@@ -350,6 +350,9 @@ uv run h feature render <spec>        # canonical YAML; --json for the wire form
 uv run h feature run <spec> --agent claude-agent   # render to RUN on that agent + submit (babysat, non-blocking)
 uv run h workflow publish feature     # save the chart template with open {{params.*}} slots
 uv run h workflow run feature -p slug=x -p spec=@f.md --agent claude --model <m>   # fire it — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing, --fresh, --instance-id)
+uv run h workflow run feature -p slug=x --in 2h   # SCHEDULE it once (--at <iso> | --in <dur>) — arms a cron:sched row instead of firing now; inspect with `h schedule list`
+uv run h workflow run feature -p slug=x --fallback-agent openhands --fallback-after 10m   # on a usage/rate limit, CONTINUE under a different agent after a delay (implies --watch)
+uv run h workflow pause <instanceId> feature --in 30m   # stop-and-continue: terminate + arm a resume reusing the workspace; `h workflow resume <schedId>` fires it now
 uv run --package h-cli pytest         # unit + golden-snapshot tests (requires helm for goldens)
 ```
 
