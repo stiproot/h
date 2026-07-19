@@ -189,6 +189,49 @@ describe("contractFor: declared mappings replace their half of the kind contract
   });
 });
 
+describe("contractFor: namespaced blackboard (D5)", () => {
+  it("namespace-implicit capture writes under the member's own id", () => {
+    const member = { kind: "feature-pr" as const, id: "research", captures: { findings: "summary" } };
+    const data: Blackboard = { slug: "x" };
+    contractFor(member).capture(result({ s: { structured: { summary: "the findings" } } }), data);
+    // Written under data.research, NOT flat — the seeded slug is untouched.
+    expect(data).toEqual({ slug: "x", research: { findings: "the findings" } });
+  });
+
+  it("concurrent members with distinct ids never clobber (both capture the same bbKey)", () => {
+    const a = { kind: "feature-pr" as const, id: "a", captures: { val: "n" } };
+    const b = { kind: "feature-pr" as const, id: "b", captures: { val: "n" } };
+    const data: Blackboard = {};
+    contractFor(a).capture(result({ s: { structured: { n: 1 } } }), data);
+    contractFor(b).capture(result({ s: { structured: { n: 2 } } }), data);
+    expect(data).toEqual({ a: { val: 1 }, b: { val: 2 } });
+  });
+
+  it("without an id, declared captures still thread FLAT (degenerate one-member-per-stage)", () => {
+    const member = { kind: "feature-pr" as const, captures: { findings: "summary" } };
+    const data: Blackboard = {};
+    contractFor(member).capture(result({ s: { structured: { summary: "flat" } } }), data);
+    expect(data).toEqual({ findings: "flat" });
+  });
+
+  it("namespace-explicit input reads a dotted member.field path", () => {
+    const reader = {
+      kind: "feature-pr" as const,
+      inputs: { slug: "slug", spec: "research.findings" },
+    };
+    const data: Blackboard = { slug: "x", research: { findings: "the findings" } };
+    // spec resolves the two-hop namespaced path; slug is a flat one-hop (chain seed).
+    expect(contractFor(reader).buildParams(data)).toEqual({ slug: "x", spec: "the findings" });
+  });
+
+  it("a dotted input fails loud when the referenced member.field is absent", () => {
+    const reader = { kind: "feature-pr" as const, inputs: { spec: "research.findings" } };
+    expect(() => contractFor(reader).buildParams({ research: {} })).toThrow(
+      /needs 'research.findings'/,
+    );
+  });
+});
+
 describe("loopIsClean", () => {
   const untilMember = {
     kind: "pr-review" as const,

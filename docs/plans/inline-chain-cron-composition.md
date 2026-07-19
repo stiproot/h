@@ -192,6 +192,19 @@ a CLI golden for the new `h chain run` grammar.
 
 ## Progress log
 
+- 2026-07-19 — **Phase 3 landed** (D5 namespaced two-level blackboard — concurrent members can't
+  clobber). `ChainWorkflow` gained optional `id` (the member's blackboard namespace). In
+  `chain-workflows.ts`: a declared `captures` mapping now writes under `data[id]` when the member has
+  an `id` (**namespace-implicit** — a member writes under its OWN id), and threads FLAT when it
+  doesn't (the degenerate one-member-per-stage case, so all pre-D5 chains and the coded kind-contracts
+  are untouched); a declared `inputs` mapping resolves each value as a **dot-PATH** into the two-level
+  blackboard (**namespace-explicit** — `id.field` reads a member's namespaced capture, a no-dot key is
+  a one-hop flat read of a chain seed / coded write), reusing `structuredField`'s walk so reads match
+  writes exactly. `chain.router` decodes `id` (wire ready). Green: workflow-svc 286 tests (+6: 5
+  namespaced-threading unit cases + 1 scan integration test proving `{a ∥ b} → c` joins, namespaces
+  both captures without clobber, and feeds `c`'s spec from the dotted `a.val`) + tsc + oxfmt +
+  depcruise. Deferred to Phase 4: a cron member's capture off the RESOLVED run; no CLI `--capture`/
+  `--input member.field` grammar yet (a later CLI phase). NOT yet live-validated (stack down).
 - 2026-07-19 — **Phase 2 landed** (D3 stage-based concurrency + D4-plain completion predicate — the
   chain-engine backbone the rest of the chain side builds on). `ChainWorkflow` gained optional `stage`;
   `cursor` reinterpreted from member index → **current stage index** (numerically identical for the

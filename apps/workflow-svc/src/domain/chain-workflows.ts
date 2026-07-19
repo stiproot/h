@@ -130,10 +130,26 @@ function withRepo(params: Record<string, unknown>, data: Blackboard): Record<str
 /** The declarative slice of a chain member the generic contract reads (chain.model's fields). */
 export type MemberMappings = {
   readonly kind: ChainWorkflowKind;
+  /** The member's blackboard namespace (D5): declared captures write under `data[id]` when present. */
+  readonly id?: string;
   readonly captures?: Readonly<Record<string, string>>;
   readonly inputs?: Readonly<Record<string, string>>;
   readonly until?: { readonly path: string; readonly equals: string };
 };
+
+/**
+ * The sub-object a member's declared captures write into (D5, namespace-implicit): `data[id]`,
+ * created as a plain object on first write. Reuses `structuredField`'s walk on the read side, so a
+ * downstream member's dotted input `id.field` resolves against exactly what was written here.
+ */
+function namespaceFor(data: Blackboard, id: string): Record<string, unknown> {
+  const existing = data[id];
+  if (typeof existing === "object" && existing !== null && !Array.isArray(existing))
+    return existing as Record<string, unknown>;
+  const ns: Record<string, unknown> = {};
+  data[id] = ns;
+  return ns;
+}
 
 /**
  * The effective contract for a chain member: a declared mapping replaces its HALF of the kind's
@@ -156,24 +172,32 @@ export function contractFor(member: MemberMappings): WorkflowContract {
               `'${member.kind}' declares captures but the completed workflow emitted no ` +
                 "structured output — does its template carry the outputContract step input?",
             );
+          // Namespace-implicit (D5): a member with an `id` writes under its own namespace `data[id]`,
+          // so concurrent members of a stage never clobber; without an id it threads flat (the
+          // degenerate one-member-per-stage case). A dotted `inputs` path (`id.field`) reads it back.
+          const target = member.id ? namespaceFor(data, member.id) : data;
           for (const [bbKey, field] of Object.entries(captures)) {
             const value = structuredField(structured, field);
             if (value === undefined || value === null)
               throw new ChainThreadError(
                 `structured output has no field '${field}' (capture → ${bbKey})`,
               );
-            data[bbKey] = value;
+            target[bbKey] = value;
           }
         },
     buildParams: !inputs
       ? kind.buildParams
       : (data) => {
           const params: Record<string, unknown> = {};
-          for (const [param, bbKey] of Object.entries(inputs)) {
-            const value = data[bbKey];
+          for (const [param, path] of Object.entries(inputs)) {
+            // Namespace-explicit (D5): the input value is a dot-PATH into the two-level blackboard —
+            // `id.field` reads a member's namespaced capture, a plain key reads a flat top-level value
+            // (a chain seed like slug/spec/repo, or a coded contract's flat write). Consistent with
+            // `until`'s `path`. A no-dot key is a one-hop walk, i.e. the pre-D5 flat read.
+            const value = structuredField(data, path);
             if (value === undefined || value === null || value === "")
               throw new ChainThreadError(
-                `'${member.kind}' needs '${bbKey}' on the blackboard (input → ${param})`,
+                `'${member.kind}' needs '${path}' on the blackboard (input → ${param})`,
               );
             params[param] = value;
           }

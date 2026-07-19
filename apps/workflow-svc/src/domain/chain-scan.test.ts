@@ -314,6 +314,51 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
   });
 });
 
+describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
+  it("joins two concurrent members, namespaces their captures, feeds a dotted input downstream", async () => {
+    const mem = memoryChainStore();
+    // {a ∥ b} → c: a and b share stage 0 and both capture `val` (would clobber if flat); c reads a's
+    // namespaced capture via the dotted input `a.val`.
+    const workflows = [
+      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "a", captures: { val: "n" } },
+      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "b", captures: { val: "n" } },
+      {
+        kind: "feature-pr",
+        key: "feature-pr",
+        stage: 1,
+        id: "c",
+        inputs: { slug: "slug", spec: "a.val" },
+      },
+    ] as const;
+    const structured = (n: string) => JSON.stringify({ s: { structured: { n } } });
+    const inv = recordingInvoker({
+      "x-w0": { instanceId: "x-w0", runtimeStatus: "COMPLETED", output: structured("AA") },
+      "x-w1": { instanceId: "x-w1", runtimeStatus: "COMPLETED", output: structured("BB") },
+    });
+    await Effect.runPromise(
+      registerChainForFire(
+        { slug: "x", workflows: [...workflows], data: { slug: "x", spec: "do it" } },
+        undefined,
+      ).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    // registration fired both stage-0 members (derived instances x-w0, x-w1).
+    expect(inv.invokes.map((i) => i.instanceId).sort()).toEqual(["x-w0", "x-w1"]);
+    inv.invokes.length = 0;
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    const row = mem.rows.get("x");
+    expect(row?.cursor).toBe(1);
+    // Namespaced captures — no clobber despite both writing `val`.
+    expect(row?.data.a).toEqual({ val: "AA" });
+    expect(row?.data.b).toEqual({ val: "BB" });
+    // Stage 1 fired once (member c), its spec resolved from the dotted a.val path.
+    expect(inv.invokes).toHaveLength(1);
+    expect(inv.invokes[0].instanceId).toBe("x-w2");
+    expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "AA" });
+  });
+});
+
 describe("scanChainsEffect: loop-until-clean", () => {
   // A loop chain parked on a given cursor/iteration, ready for one scan tick.
   function loopStore(over: Partial<ChainRow>): { mem: MemoryChainStore } {

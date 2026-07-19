@@ -59,6 +59,12 @@ export const ChainWorkflow = Schema.Struct({
   kind: ChainWorkflowKind,
   // Saved-workflow key this workflow fires (resolved via WorkflowStore.get + toRequest).
   key: Schema.String,
+  // The member's blackboard NAMESPACE (docs/plans/inline-chain-cron-composition.md D5): declared
+  // `captures` write under `data[id]` (namespace-implicit — a member writes under its own id, so
+  // concurrent members of a stage never clobber), and a downstream member's dotted `inputs`
+  // (`id.field`) read it back. Optional: absent ⇒ declared captures thread FLAT (the degenerate
+  // one-member-per-stage case where nothing can clobber). The CLI defaults it to the `-t`/`-w` name.
+  id: Schema.optional(Schema.String),
   // The concurrency STAGE this member runs in (docs/plans/inline-chain-cron-composition.md D3):
   // members sharing a stage run concurrently, and the chain advances stage-by-stage, joining on ALL
   // members of a stage completing before firing the next. `cursor` is the CURRENT stage index.
