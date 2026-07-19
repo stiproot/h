@@ -24,6 +24,9 @@ export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 export PATH="${HOME}/.local/bin:${PATH}"
 
 cd "${PROJECT_DIR}"
+# Toolchain guard: fail loud if turbo/native bins are hollow (cross-uid-poisoned bun cache)
+# instead of dying cryptically at `bunx turbo build`. See the `Toolchain guard` gotcha in CLAUDE.md.
+node "${PROJECT_DIR}/scripts/check-tsc.mjs" --native-only || exit 1
 bunx turbo build --filter=pi-agent
 
 cd "${APP_DIR}"
