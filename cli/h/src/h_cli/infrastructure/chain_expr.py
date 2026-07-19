@@ -4,9 +4,10 @@ Pure and dependency-free (sibling of overlay.py): tokens in, structure out, no T
 The grammar (docs/plans/chain-composition-surface.md §1.5):
 
     EXPR    := FLAG* STAGE STAGE*        # FLAGs before the first workflow = chain-wide defaults
-    STAGE   := WF ( "--parallel" WF )*    # infix --parallel joins workflows into one parallel group
+    STAGE   := WF ( "--parallel" WF )*    # infix --parallel joins workflows into one parallel stage
     WF      := ( "-w" KEY | "-t" ATOM ATOM* ) FLAG*
-    FLAG := "--agent" A | "--model" M | "--budget" DUR | "--fresh" | "--kind" K
+    FLAG := "--agent" A | "--model" M | "--budget" DUR | "--fresh" | "--inline" | "--kind" K
+           | "--stage" N | "--cron" CADENCE | "--max-fires" N | "--id" NAME
            | "--capture" DEST=SRC | "--input" DEST=SRC | "--until" PATH=VALUE
 
 Scope is position (never dash count): a FLAG binds to the workflow it follows; before any
@@ -26,14 +27,25 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 
-VALUE_FLAGS = ("--agent", "--model", "--budget", "--kind", "--until")
+VALUE_FLAGS = (
+    "--agent",
+    "--model",
+    "--budget",
+    "--kind",
+    "--until",
+    # Phase-6 per-member composition flags (docs/plans/inline-chain-cron-composition.md):
+    "--stage",  # explicit concurrency stage index (else positional, from --parallel grouping)
+    "--cron",  # cron cadence — the member self-arms a recurrence (forces --inline)
+    "--max-fires",  # cron budget (requires --cron)
+    "--id",  # the member's blackboard namespace (D5) — defaults to the -t/-w label
+)
 # Repeatable dest=source mapping flags — accumulate instead of the duplicate-flag rejection.
 MAP_FLAGS = ("--capture", "--input")
-BOOL_FLAGS = ("--fresh",)
+BOOL_FLAGS = ("--fresh", "--inline")
 CONNECTOR = "--parallel"
 WORKFLOW_INTRODUCERS = ("-w", "-t")
 # Per-workflow-only value flags: meaningless as chain-wide defaults (each is one member's contract).
-PER_WORKFLOW_FLAGS = ("--kind", "--until")
+PER_WORKFLOW_FLAGS = ("--kind", "--until", "--stage", "--cron", "--max-fires", "--id")
 
 # A watch/chain budget: <n>m, <n>h, or bare milliseconds — validated here so a typo fails at
 # parse time, not minutes later in the engine.
@@ -53,6 +65,15 @@ class WorkflowConfig:
     budget: str | None = None  # raw duration token, validated against _BUDGET_RE
     fresh: bool = False
     kind: str | None = None
+    # Phase-6 composition (docs/plans/inline-chain-cron-composition.md): stage = explicit stage idx
+    # (str; else positional); cron = cadence (member self-arms a recurrence, forces inline);
+    # max_fires = cron budget; id = the member's blackboard namespace (D5); inline = embed the
+    # composed steps in the chain row instead of publishing under <slug>-w<N>.
+    stage: str | None = None
+    cron: str | None = None
+    max_fires: str | None = None
+    id: str | None = None
+    inline: bool = False
     # Structured-output mappings (per-workflow only, assignment-ordered destination=source):
     # captures: blackboardKey=outputField pairs; inputs: param=blackboardKey pairs; until: the
     # raw PATH=VALUE token (chain.py shapes it for the engine).
@@ -94,6 +115,13 @@ def effective_config(defaults: WorkflowConfig, workflow: WorkflowConfig) -> Work
         budget=workflow.budget if workflow.budget is not None else defaults.budget,
         fresh=workflow.fresh or defaults.fresh,
         kind=workflow.kind,  # kind is per-workflow only; defaults never carry one (parser enforces)
+        # stage/cron/max_fires/id are per-workflow only (parser enforces) — no defaults to merge;
+        # inline may be a chain-wide default (like fresh — "compose everything inline").
+        stage=workflow.stage,
+        cron=workflow.cron,
+        max_fires=workflow.max_fires,
+        id=workflow.id,
+        inline=workflow.inline or defaults.inline,
         # Mappings are per-workflow only too (parser enforces) — no defaults to merge.
         captures=workflow.captures,
         inputs=workflow.inputs,
@@ -104,18 +132,22 @@ def effective_config(defaults: WorkflowConfig, workflow: WorkflowConfig) -> Work
 def _validated(flag: str, value: str) -> str:
     if flag == "--budget" and not _BUDGET_RE.match(value):
         raise ExprError(f"bad {flag} '{value}' — expected milliseconds, <n>m, or <n>h (e.g. 45m)")
+    if flag in ("--stage", "--max-fires") and not value.isdigit():
+        raise ExprError(f"bad {flag} '{value}' — expected a non-negative integer")
     if flag in (*MAP_FLAGS, "--until"):
         dest, sep, src = value.partition("=")
         if not sep or not dest or not src:
-            shape = "PATH=VALUE (e.g. verdict=CLEAN)" if flag == "--until" else (
-                "destination=source (e.g. prNumber=pr)"
+            shape = (
+                "PATH=VALUE (e.g. verdict=CLEAN)"
+                if flag == "--until"
+                else ("destination=source (e.g. prNumber=pr)")
             )
             raise ExprError(f"bad {flag} '{value}' — expected {shape}")
     return value
 
 
 def _set_flag(config: WorkflowConfig, flag: str, value: str | bool, where: str) -> WorkflowConfig:
-    name = flag.lstrip("-")
+    name = flag.lstrip("-").replace("-", "_")  # --max-fires → max_fires
     current = getattr(config, name)
     if current not in (None, False):
         raise ExprError(f"duplicate {flag} {where}")

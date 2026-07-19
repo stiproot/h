@@ -101,9 +101,7 @@ def test_chain_run_fresh_binds_to_its_hop(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_prefix_budget_is_the_chain_wall_clock(tmp_path: Path) -> None:
     route = _mock_run()
-    runner.invoke(
-        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "90m"]
-    )
+    runner.invoke(app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "90m"])
     assert json.loads(route.calls[0].request.content)["budgetMs"] == 90 * 60_000
 
 
@@ -251,6 +249,59 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
     assert body["workflows"][2]["instanceId"] == "feature-x"
 
 
+@respx.mock
+@needs_helm
+def test_chain_run_inline_embeds_steps_without_publishing(tmp_path: Path) -> None:
+    route = _mock_run()
+    # No /workflow/save mock: if the inline member tried to publish, the un-mocked call would fail
+    # the run (exit 1). Exit 0 proves it embedded instead.
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-t", "feature", "verify", "create-pr", "--inline", "-w", "pr-review",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    member = json.loads(route.calls[0].request.content)["workflows"][0]
+    assert "steps" in member and "key" not in member  # embedded, not published
+    assert "embedded inline" in result.output
+
+
+@respx.mock
+@needs_helm
+def test_chain_run_cron_member_arms_an_embedded_recurrence(tmp_path: Path) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
+            "-t", "feature", "create-pr", "--cron", "*/30 * * * *", "--max-fires", "20",
+            "--id", "gather",
+            "-w", "pr-review",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    member = json.loads(route.calls[0].request.content)["workflows"][0]
+    # --cron forces inline (embedded steps), arms {cadence, maxFires}, and takes the explicit id.
+    assert "steps" in member and "key" not in member
+    assert member["cron"] == {"cadence": "*/30 * * * *", "maxFires": 20}
+    assert member["id"] == "gather"
+
+
+@needs_helm
+def test_chain_run_cron_member_needs_a_repo(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-t", "feature", "create-pr", "--cron", "* * * * *",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "needs a repo" in _all_output(result)
+
+
 def test_chain_run_template_group_without_contract_needs_kind(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
@@ -260,7 +311,9 @@ def test_chain_run_template_group_without_contract_needs_kind(tmp_path: Path) ->
     assert "cannot infer the workflow kind" in _all_output(result)
 
 
-def test_chain_run_parallel_needs_the_phase5_engine(tmp_path: Path) -> None:
+@respx.mock
+def test_chain_run_parallel_emits_a_shared_stage(tmp_path: Path) -> None:
+    route = _mock_run()
     result = runner.invoke(
         app,
         [
@@ -268,14 +321,81 @@ def test_chain_run_parallel_needs_the_phase5_engine(tmp_path: Path) -> None:
             "-w", "feature-pr", "--parallel", "-w", "pr-review",
         ],
     )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    a, b = body["workflows"]
+    # Both members share stage 0 — one concurrent stage the engine joins before finalizing.
+    assert a["stage"] == 0 and b["stage"] == 0
+    # Parallel members get a unique engine-derived instance (no shared branch instanceId) + a
+    # blackboard namespace, so concurrent captures never collide.
+    assert "instanceId" not in a and "instanceId" not in b
+    assert a["id"] == "feature-pr" and b["id"] == "pr-review"
+
+
+@respx.mock
+def test_chain_run_explicit_stage_marks_members_parallel(tmp_path: Path) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "--stage", "0", "-w", "pr-review", "--stage", "0",
+            "-w", "revise", "--stage", "1",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    workflows = json.loads(route.calls[0].request.content)["workflows"]
+    assert [w["stage"] for w in workflows] == [0, 0, 1]
+    # --stage 0 on two members (no --parallel) still marks them parallel — computed from the FINAL
+    # stage, so they share a stage and drop their shared branch instance.
+    assert "instanceId" not in workflows[0] and "instanceId" not in workflows[1]
+    # revise is alone in stage 1 → keeps its branch instance.
+    assert workflows[2]["instanceId"] == "feature-x"
+
+
+@respx.mock
+def test_chain_run_dotted_input_flows_through(tmp_path: Path) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "-w", "pr-review", "--input", "pr=feature-pr.prNumber",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    # A dotted `id.field` input passes through verbatim; the engine resolves it as a path (D5).
+    assert body["workflows"][1]["inputs"] == {"pr": "feature-pr.prNumber"}
+
+
+def test_chain_run_max_fires_needs_cron(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "--max-fires", "5",
+        ],
+    )  # fmt: skip
     assert result.exit_code == 1
-    assert "Phase 5" in _all_output(result)
+    assert "--max-fires" in _all_output(result) and "--cron" in _all_output(result)
+
+
+def test_chain_run_cron_on_saved_key_is_rejected(tmp_path: Path) -> None:
+    # A cron member self-arms an EMBEDDED recurrence — it must be composed with -t, not a saved key.
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "feature-pr", "--cron", "* * * * *",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "must be composed with -t" in _all_output(result)
 
 
 def test_chain_run_bad_expression_surfaces_parse_error(tmp_path: Path) -> None:
-    result = runner.invoke(
-        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w"]
-    )
+    result = runner.invoke(app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w"])
     assert result.exit_code == 1
     assert "-w needs a saved-workflow key" in _all_output(result)
 

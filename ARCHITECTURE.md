@@ -10,11 +10,16 @@ Small primitives; everything larger is a composition of them.
 - **Registry** — durable rows under a single-writer prefix in the flat keyspace.
 - **Watcher** — a registered policy + engine that *supervises* one workflow on the cron tick
   (terminate / retry / escalate). Registry `watch:*`; `h watch list`.
-- **Chain** — a registered policy + engine that *sequences* workflows on the cron tick (fire the
-  next workflow when the last lands, threading state by reading each one's machine-validated
-  structured output — every chained template declares an `outputs:` schema and ends its agent step
-  with a fenced json block validated against it; the workflow's contract is "params in, declared
-  output out", runnable standalone — docs/plans/structured-workflow-outputs.md). Registry `chain:*`; `h chain list`.
+- **Chain** — a registered policy + engine that *sequences* workflows on the cron tick as ordered
+  STAGES, each stage a concurrent set the engine joins before advancing (fire the next stage when the
+  last lands, threading state by reading each one's machine-validated structured output into a
+  two-level namespaced blackboard — every chained template declares an `outputs:` schema and ends its
+  agent step with a fenced json block validated against it; the workflow's contract is "params in,
+  declared output out", runnable standalone — docs/plans/structured-workflow-outputs.md). A member may
+  be a saved key, embedded inline steps, or a cron member the chain only OBSERVES (it self-arms its own
+  recurrence via §10; the chain reads `wf:resolved`, never writes `cron:sub`); a chain fails as a unit
+  (terminate siblings + publish cron-disarm). docs/plans/inline-chain-cron-composition.md. Registry
+  `chain:*`; `h chain list`.
 - **Cron** — a registered policy + engine that *recurs* one workflow on the cron tick (re-fire until
   its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. Two more variants share the
   family (same tick, same store, same kill-switch/ledger, each its own row schema + pure decide +
@@ -52,7 +57,9 @@ must overlay, or you re-read context per chained workflow.
 
 The CLI projects the stack 1:1 — each noun's verb is the arrow: `h template compose` (overlay),
 `h workflow run` (execute), `h chain run` (chain — an ordered expression of `-w KEY` / `-t ATOM…`
-members with position-scoped per-workflow flags; a `-t` group overlays inline, composed-on-fire).
+members with position-scoped per-member flags; `--parallel`/`--stage` group a concurrent stage,
+`--inline`/`--cron` make a member embedded/recurring, `--id`/dotted `--input` namespace the threading;
+a `-t` group overlays inline, composed-on-fire).
 
 ## Principles
 

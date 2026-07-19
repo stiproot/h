@@ -155,8 +155,20 @@ def test_hops_property_flattens_stages_in_order() -> None:
 def test_capture_and_input_accumulate_per_workflow() -> None:
     expr = parse_expr(
         # fmt: off
-        ["-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prUrl=url",
-         "-w", "pr-review", "--input", "pr=prNumber", "--until", "verdict=CLEAN"]
+        [
+            "-w",
+            "feature-pr",
+            "--capture",
+            "prNumber=pr",
+            "--capture",
+            "prUrl=url",
+            "-w",
+            "pr-review",
+            "--input",
+            "pr=prNumber",
+            "--until",
+            "verdict=CLEAN",
+        ]
         # fmt: on
     )
     first, second = expr.workflows
@@ -182,3 +194,51 @@ def test_mapping_flags_validate_the_assignment_shape() -> None:
 def test_duplicate_capture_destination_is_rejected() -> None:
     with pytest.raises(ExprError, match="duplicate --capture destination 'prNumber'"):
         parse_expr(["-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prNumber=url"])
+
+
+# --- Phase-6 composition flags (docs/plans/inline-chain-cron-composition.md) -----------------
+
+
+def test_stage_cron_max_fires_id_bind_per_workflow() -> None:
+    expr = parse_expr(
+        # fmt: off
+        [
+            "-t",
+            "gather",
+            "--stage",
+            "0",
+            "--cron",
+            "*/30 * * * *",
+            "--max-fires",
+            "20",
+            "--id",
+            "metrics",
+            "--inline",
+        ]
+        # fmt: on
+    )
+    cfg = expr.workflows[0].config
+    assert cfg.stage == "0"
+    assert cfg.cron == "*/30 * * * *"
+    assert cfg.max_fires == "20"
+    assert cfg.id == "metrics"
+    assert cfg.inline is True
+
+
+def test_inline_may_be_a_chain_wide_default() -> None:
+    expr = parse_expr(["--inline", "-t", "a", "-t", "b"])
+    assert expr.defaults.inline is True
+    assert all(effective_config(expr.defaults, h.config).inline for h in expr.workflows)
+
+
+def test_stage_cron_max_fires_id_are_per_workflow_only() -> None:
+    for flag, value in (("--stage", "0"), ("--cron", "* * * * *"), ("--id", "x")):
+        with pytest.raises(ExprError, match="per-workflow only"):
+            parse_expr([flag, value, "-w", "feature-pr"])
+
+
+def test_stage_and_max_fires_reject_non_integers() -> None:
+    with pytest.raises(ExprError, match="bad --stage"):
+        parse_expr(["-w", "a", "--stage", "first"])
+    with pytest.raises(ExprError, match="bad --max-fires"):
+        parse_expr(["-w", "a", "--cron", "* * * * *", "--max-fires", "lots"])

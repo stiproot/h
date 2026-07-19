@@ -30,25 +30,37 @@ stack, and the design principles; this section is the terse runtime-facing index
   in-process babysitter loops (JS + Python) are deleted — `POST /workflow` forwards a `watch`
   field. Inspect with `h watch list` or `GET /watch/list`.
 - **Chain** — the sequencing sibling of the watcher: a durable registration `{workflows, strategy,
-  data}` plus a shared engine that, on the same cron tick, reads the current workflow's persisted
-  state and acts through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher
-  RE-fires one instance, a chain FIRES THE NEXT workflow. State threads workflow-to-workflow
-  through the row's `data`, filled by the engine parsing each one's output (no actor) —
-  STRUCTURED ONLY since docs/plans/structured-workflow-outputs.md (marker parsing retired
-  2026-07-15): every chained template declares an `outputs:` schema and ends its agent step with a
-  validated fenced json block (the `outputContract` step input → the run activities' rung-2 seam,
-  `domain/structured-output.ts`; envelope gains `structured`), which the kind contracts read —
-  chained workflows stay chain-agnostic. IMPLEMENTED: engine in workflow-svc
-  (`domain/chain-*.ts`, scan on the workflow-cron-tick beside the watch scan), rows
-  `chain:sub:<chainId>`; `h chain run` registers (fire-and-forget) via the chain EXPRESSION —
-  ordered `-w KEY` / `-t ATOM…` members with position-scoped `--agent/--model/--fresh/--kind`
-  flags plus declarative threading mappings `--capture BB=FIELD / --input PARAM=BB /
-  --until PATH=VALUE` (validated against the declared outputs schema at registration; each
-  declared half replaces its side of the kind contract) (suffix = that workflow, prefix =
-  chain-wide default); a `-t` group overlays inline and publishes under `<slug>-w<N>`
-  (compose-on-fire; at most ONE atom per composition declares `outputs`). `h chain list`
-  inspects. Strategies: `sequential`, `loop-until-clean` (`--parallel` grammar exists; engine
-  strategy deferred).
+  data}` plus a shared engine that, on the same cron tick, reads the current STAGE's persisted state
+  and acts through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher RE-fires
+  one instance, a chain FIRES THE NEXT stage. A chain is ordered STAGES, each stage a CONCURRENT set
+  (docs/plans/inline-chain-cron-composition.md D3): members carry a `stage` (absent ⇒ member index =
+  sequential), `cursor` is the current stage, and the engine joins on every member of a stage
+  completing before advancing. State threads workflow-to-workflow through the row's two-level `data`
+  (D5: a member's declared `captures` write under its own `id` namespace so concurrent members never
+  clobber; a downstream `inputs` reads back a dotted `id.field` — flat when no id, the degenerate
+  case), filled by the engine parsing each one's output (no actor) — STRUCTURED ONLY since
+  docs/plans/structured-workflow-outputs.md (marker parsing retired 2026-07-15): every chained
+  template declares an `outputs:` schema and ends its agent step with a validated fenced json block
+  (the `outputContract` step input → the run activities' rung-2 seam, `domain/structured-output.ts`;
+  envelope gains `structured`), which the kind contracts read — chained workflows stay chain-agnostic.
+  A member may be a saved `key`, an EMBEDDED `steps` blob (D1 inline storage, no publish), and/or a
+  `cron` member that self-arms its OWN recurrence via the §10 arm-* pattern (armCron injected into its
+  one fire); the chain never writes `cron:sub` and never re-fires it — it OBSERVES `wf:<member>.resolved`
+  (D2/D4) and captures off that resolved run's `wf.output`. On a non-cron member's terminal-failure the
+  chain fails as a UNIT (D6): it terminates the still-running siblings and PUBLISHES `cron-disarm` for
+  every member-armed cron (a loose pub/sub edge — the disarm handler stays cron:sub's single writer)
+  before finalizing. IMPLEMENTED: engine in workflow-svc (`domain/chain-*.ts`, scan on the
+  workflow-cron-tick beside the watch scan), rows `chain:sub:<chainId>`; `h chain run` registers
+  (fire-and-forget) via the chain EXPRESSION — ordered `-w KEY` / `-t ATOM…` members with
+  position-scoped `--agent/--model/--fresh/--kind/--inline` flags, stage flags `--parallel` (infix) or
+  `--stage N`, cron flags `--cron CADENCE`/`--max-fires N`, the namespace `--id NAME`, plus declarative
+  threading mappings `--capture BB=FIELD / --input PARAM=SRC (SRC = flat key or dotted id.field) /
+  --until PATH=VALUE` (validated against the declared outputs schema at registration; each declared
+  half replaces its side of the kind contract) (suffix = that workflow, prefix = chain-wide default);
+  a `-t` group overlays inline and publishes under `<slug>-w<N>` by default, or EMBEDS with `--inline`
+  (compose-on-fire; at most ONE atom per composition declares `outputs`). `h chain list` inspects.
+  Strategies: `sequential`, `loop-until-clean` (loop × stages reconciliation is deferred — see the plan
+  doc's open sub-questions).
 - **Cron** — the recurrence sibling: a durable registration `{cadence, source, budget}` plus the same
   shared engine that, on the same cron tick, reads the target `wf:` row + the live instance and acts
   through a closed vocabulary (fire-again, deactivate) — where a watcher RE-fires one instance on a
@@ -166,7 +178,7 @@ apps/workflow-svc/src/
 ├── domain/
 │   ├── models/workflow.model.ts                      # WorkflowRequest (+ watch/watchMeta, wf identity, armCron closing-bracket cron), StoredWorkflow (+ outputs — the declared output schema), WorkflowParams, WorkflowSchedule, toRequest; AgentResult (+ structured — the validated output block)
 │   ├── models/watch.model.ts                         # the watcher primitive's shapes: WatchPolicy (maxDurationMs, retry, escalate), WatchRow (epoch-fenced), WatchConfig, WatchLedger
-│   ├── models/chain.model.ts                         # the chain primitive: ChainRow {workflows, cursor, data, strategy}, ChainStrategy (sequential | loop-until-clean [stub]); per-member captures/inputs/until structured-threading mappings
+│   ├── models/chain.model.ts                         # the chain primitive: ChainRow {workflows, cursor=STAGE index, data (two-level, D5), strategy}, ChainWorkflow {kind, key? XOR steps? (inline), stage?, id? (namespace), cron?, captures/inputs/until}; stage helpers (stageOf/membersInStage/lastStage) + validateChain (contiguous stages, key/steps XOR, cron⟹inline); ChainStrategy (sequential | loop-until-clean); CRON_DISARM_TOPIC lives in cron.model
 │   ├── models/cron.model.ts                          # the recur cron: CronRow, CronSource (saved | embedded), CronBudget, cronId; config/heartbeat/ledger (shared with discovery)
 │   ├── models/discover.model.ts                      # the discovery/fan-out cron: DiscoverRow {repo,label,workflow,gates,source:github-issues,watch?}, discoverId, issueSlug/issueInstanceId
 │   ├── models/wf.model.ts                            # per-workflow status registry: WfRow (status + resolved goal flag), WfIdentity, wfKey, wfIdentityFrom
@@ -177,16 +189,16 @@ apps/workflow-svc/src/
 │   ├── discover-engine.ts                            # pure decide(row, runtimeStatus, todayFires, now) → wait | discover (in-flight serialize → cadence → daily-cap)
 │   ├── schedule-engine.ts / schedule-scan.ts         # the one-shot cron:sched variant: pure decide(row, now) → wait | fire | expire; arm/disarm/advance + per-tick fire-once-then-deactivate (fires via invokeWithWatch). Spine for --at/--in, pause/resume, usage-limit fallback
 │   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the WATCH fire choke point) + scanWatchesEffect (terminate/retry/escalate/cost-tally/publish)
-│   ├── chain-scan.ts / chain-workflows.ts            # chain registration + per-tick advance/finalize; STRUCTURED-ONLY threading (stepStructured/contractFor; declared captures/inputs/until replace their half of the kind contract; no marker parsing — retired 2026-07-15) (no actor)
+│   ├── chain-scan.ts / chain-workflows.ts            # chain registration + per-tick STAGE progression (observe every current-stage member → join → capture all → fire next stage); inline(steps)/saved(key) fire + armCron for cron members; observeMember cron branch reads wf:resolved; atomic-failure teardown (terminate siblings + publish cron-disarm); STRUCTURED-ONLY threading (stepStructured/contractFor; declared captures namespace under member id (D5), inputs resolve dotted paths; no marker parsing — retired 2026-07-15) (no actor)
 │   ├── structured-output.ts                          # the rung-2 seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract called by every run-* activity (docs/plans/structured-workflow-outputs.md)
 │   ├── cron-scan.ts                                  # registerCronForFire (IDEMPOTENT ensure-exists — §10) + scanCronsEffect (recur fire/deactivate, epoch-fenced)
 │   ├── discover-scan.ts                              # registerDiscover + scanDiscoverEffect (read source after gates=budget → dedup by exact-key wf: read → fire OLDEST eligible, supervised if watch set)
 │   └── scheduling.ts                                 # isDue / assertValidCron (cron-parser) – pure, unit-tested
 ├── presentation/http/
-│   ├── workflow.router.ts                            # POST /workflow/run, /save, /run/:key (fire-time params + instanceId/workspaceId/fresh/watch/cron overrides → threads wf identity + armCron; --cron armed by the RUN, not here; `at`/`in` instead ARM a cron:sched one-shot and return {scheduled,fireAt}), /pause/:instanceId (terminate + arm a resume continuation reusing workspaceId) + /resume/:schedId (advance the sched fireAt to now), /terminate/:instanceId; GET /list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger
+│   ├── workflow.router.ts                            # POST /workflow/run, /save, /run/:key (fire-time params + instanceId/workspaceId/fresh/watch/cron overrides → threads wf identity + armCron; --cron armed by the RUN, not here; `at`/`in` instead ARM a cron:sched one-shot and return {scheduled,fireAt}), /pause/:instanceId (terminate + arm a resume continuation reusing workspaceId) + /resume/:schedId (advance the sched fireAt to now), /terminate/:instanceId; GET /list, /get/:key, /status/:instanceId; /dapr/subscribe declares workflow-trigger + cron-disarm
 │   ├── {watch,chain}.router.ts                       # GET /watch/list, /chain/list (+ GET/DELETE /watch/:instanceId) — registry read surfaces
 │   ├── trigger.router.ts                             # POST /workflow-trigger (pub/sub target) – {key, params} events fire the named saved workflow; payload problems ack, infra failures 500 (redeliver)
-│   └── cron.router.ts                                # POST /workflow-cron-tick – fires due saved workflows then runs the watch+chain+cron+discover+sched scans (each's failure never fails the tick); GET /cron/list (recur + discover + one-shot cron:sched rows); POST /cron/sched/disarm (disarm a scheduled fire by id). NO POST /cron/discover (§10 — registration is an activity)
+│   └── cron.router.ts                                # POST /workflow-cron-tick – fires due saved workflows then runs the watch+chain+cron+discover+sched scans (each's failure never fails the tick); GET /cron/list (recur + discover + one-shot cron:sched rows); POST /cron/sched/disarm (disarm a scheduled fire by id); POST /cron-disarm (cloudevents pub/sub target — a finalizing chain's cron teardown, D6; single-writer disarmEventEffect reusing disarmCron). NO POST /cron/discover (§10 — registration is an activity)
 ├── infrastructure/
 │   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper (+ raw-HTTP terminate/purge/status)
 │   ├── dapr-workflow-store.ts                        # saved-workflow store (Redis): save/get/list/listScheduled/markRun
@@ -306,7 +318,7 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron,schedule}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline] [--cron/--max-fires] [--at <iso> | --in <dur>] [--fallback-agent/-model/-after/-max]|pause <id> <key> --in <dur>|resume <schedId>|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-workflow flags, hand-parsed via infrastructure/chain_expr.py)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover); h schedule list|rm <id> (the one-shot cron:sched surface — a thin view over cron:sched:* rows; also visible in `h cron list`)
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron,schedule}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline] [--cron/--max-fires] [--at <iso> | --in <dur>] [--fallback-agent/-model/-after/-max]|pause <id> <key> --in <dur>|resume <schedId>|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-member flags --agent/--model/--fresh/--inline/--kind/--stage/--cron/--max-fires/--id/--capture/--input/--until, --parallel connector, hand-parsed via infrastructure/chain_expr.py — parallel STAGES, inline+cron members, namespaced threading all live)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover); h schedule list|rm <id> (the one-shot cron:sched surface — a thin view over cron:sched:* rows; also visible in `h cron list`)
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```

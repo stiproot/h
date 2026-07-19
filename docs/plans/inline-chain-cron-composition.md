@@ -1,7 +1,7 @@
-**Status:** DESIGN — locked, not started. Workshopped 2026-07-19; all crux decisions settled (below).
-Next step is a phased build behind this spec. Depends on nothing shipped-but-unbuilt except the
-already-modeled-and-fireable embedded cron source (`CronSourceEmbedded`, whose only missing piece is a
-registration producer). **Living doc** — see the Progress log.
+**Status:** BUILT — all six phases landed 2026-07-19 (D1–D6 + CLI); green in workflow-svc (304 tests)
+and the `h` CLI (205 tests). NOT yet live-validated end-to-end (the issue-#51 run needs the agent
+fleet up — stack currently down). The only deferred item is loop-until-clean × stages (an open
+sub-question below). **Living doc** — see the Progress log.
 
 # Inline chain composition + independent workflow crons + concurrent stages
 
@@ -200,6 +200,23 @@ a CLI golden for the new `h chain run` grammar.
 
 ## Progress log
 
+- 2026-07-19 — **Phase 6 landed** (the `h chain run` CLI surface — everything built so far is now
+  reachable from the command line). `chain_expr.py` gained the per-member flags `--stage N`,
+  `--cron CADENCE`, `--max-fires N`, `--id NAME`, and `--inline` (bool, also a chain-wide default like
+  `--fresh`); `--max-fires`/`--stage` validate as integers; `_set_flag` maps `--max-fires`→`max_fires`.
+  `chain.py` now: computes each member's FINAL stage (explicit `--stage` wins, else the `--parallel`
+  positional group) and marks a member parallel when its final stage is SHARED (so `-t a --stage 0 -t
+  b --stage 0` and `-w a --parallel -w b` are equivalent); emits `stage` on every member once the chain
+  uses stages (else omits it — sequential goldens unchanged); embeds `steps` (no publish) for an
+  `--inline`/`--cron` member (D1) and emits `cron:{cadence,maxFires?}`; emits a member `id` (its
+  namespace) for parallel members or an explicit `--id`, so a lone sequential member still threads flat
+  (and its `--input` stays a flat key — while a dotted `--input PARAM=id.field` flows through verbatim
+  for the engine's D5 path-resolver); drops the shared-branch instanceId for inline/parallel members
+  (engine derives a unique `<chainId>-w<i>`); requires `-p repo=…` when any member is a cron;
+  **removed the Phase-5 parallel rejection** (stages are live). Fail-loud guards: `--cron` on a saved
+  `-w` key, `--max-fires` without `--cron`. Green: h CLI 205 tests (parser + command + goldens, incl.
+  new parallel/stage/inline/cron/dotted-input cases) + ruff. Steering refreshed (CLAUDE.md primitives +
+  app-layout + cli tree; ARCHITECTURE.md).
 - 2026-07-19 — **Phase 5 landed** (D6 atomic-failure teardown — a chain fails as a unit). The
   disarm-event contract is settled: topic **`cron-disarm`** (`CRON_DISARM_TOPIC` in cron.model),
   payload the recur cron identity `{repo, slug, workflow}`. `chain-scan` gained two teardown helpers —

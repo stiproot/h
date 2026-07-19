@@ -14,16 +14,23 @@ EXPR flag names). Chain-level flags (--slug/--strategy/--max-iterations) and val
 wherever they sit; everything workflow-scoped is positional in the expression:
 
     EXPR    := FLAG* STAGE STAGE*         # FLAGs before the first workflow = chain-wide defaults
-    STAGE   := WF ( --parallel WF )*      # infix; parallel groups need the Phase-5 engine
+    STAGE   := WF ( --parallel WF )*      # infix --parallel joins WFs into ONE concurrent stage
     WF      := ( -w KEY | -t ATOM ATOM... ) FLAG*
-    FLAG    := --agent A | --model M | --budget DUR | --fresh | --kind K
+    FLAG    := --agent A | --model M | --budget DUR | --fresh | --inline | --kind K
+             | --stage N | --cron CADENCE | --max-fires N | --id NAME
              | --capture DEST=SRC | --input DEST=SRC | --until PATH=VALUE
 
 A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
-chain-scoped key `<slug>-w<N>`. Identity flags become fire-time params (§1.9): --agent maps to
+chain-scoped key `<slug>-w<N>` by default, or EMBEDDED in the chain row with `--inline` (D1).
+Concurrency is stages (docs/plans/inline-chain-cron-composition.md D3): --parallel (or an explicit
+--stage N) groups members into one concurrent stage the engine joins before advancing. A `--cron`
+member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:resolved (D2/D4);
+`--id` gives a member a blackboard namespace so a downstream reads its capture via a dotted
+`--input PARAM=id.field` (D5). Identity flags become fire-time params (§1.9): --agent maps to
 {runActivity, agentId}, --model to the workflow kind's model params.
 """
 
+from collections import Counter
 from typing import Annotated, Any
 
 import httpx
@@ -182,9 +189,16 @@ def _check_output_mappings(
 
 
 def _resolve_workflow(
-    workflow: WorkflowRef, cfg: WorkflowConfig, slug: str, index: int
+    workflow: WorkflowRef,
+    cfg: WorkflowConfig,
+    slug: str,
+    index: int,
+    stage: int,
+    uses_stages: bool,
+    in_parallel: bool,
 ) -> dict[str, Any]:
-    """A parsed workflow → the engine's ChainWorkflow {kind, key, instanceId, fresh, params?}."""
+    """A parsed workflow → the engine's ChainWorkflow. Emits `key` (published) XOR `steps` (inline,
+    D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface."""
     if workflow.key:
         if workflow.key in WELL_KNOWN and not cfg.kind:
             kind, key = WELL_KNOWN[workflow.key]
@@ -212,21 +226,51 @@ def _resolve_workflow(
     if kind not in KNOWN_KINDS:
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
+    # A cron member self-arms an embedded recurrence (D1/D2), so it MUST be inline; --inline opts
+    # any composed member into embedded storage. Both need `-t` templates — a saved -w key can't
+    # be inlined.
+    inline = cfg.inline or bool(cfg.cron)
+    if cfg.max_fires and not cfg.cron:
+        _fail(f"--max-fires on '{workflow.label}' needs --cron (it's the cron's fire budget)")
+    if inline and workflow.key is not None:
+        _fail(
+            f"--inline/--cron member '{workflow.label}' must be composed with -t — an inline "
+            "member embeds its own steps (a saved -w key can't be embedded)"
+        )
+
     params = _identity_params(kind, cfg, workflow.label)
     declared_outputs: dict[str, Any] | None = None
+    steps: list[Any] | None = None
+    key_field: str | None = None
     if workflow.key is None:
-        # Compose-on-fire: overlay the group's templates into one definition and publish it under
-        # the chain-scoped key (idempotent — re-firing the chain republishes the same key).
         merged = compose_templates(list(workflow.templates))
         declared_outputs = merged.get("outputs")
-        _guarded(
-            lambda: workflow_svc.save(
-                key, merged["steps"], params=merged.get("params"), outputs=declared_outputs
+        merged_params = merged.get("params") or {}
+        if inline:
+            # Inline storage (D1): embed the composed steps in the chain row — nothing published.
+            # The template's param defaults ride the member's params (no saved def to merge from).
+            steps = merged["steps"]
+            params = {**merged_params, **params}
+            tag = " (cron)" if cfg.cron else ""
+            console.print(f"==> composed [{' ⊕ '.join(workflow.templates)}] embedded inline{tag}")
+        else:
+            # Publish-default: overlay + publish under the chain-scoped key (idempotent re-fire).
+            key_field = f"{slug}-w{index}"
+            _guarded(
+                lambda: workflow_svc.save(
+                    key_field,
+                    merged["steps"],
+                    params=merged_params or None,
+                    outputs=declared_outputs,
+                )
             )
-        )
-        console.print(f"==> composed [{' ⊕ '.join(workflow.templates)}] published as '{key}'")
-    elif params:
-        _check_identity_slots(key, cfg, kind)
+            console.print(
+                f"==> composed [{' ⊕ '.join(workflow.templates)}] published as '{key_field}'"
+            )
+    else:
+        key_field = key
+        if params:
+            _check_identity_slots(key, cfg, kind)
     if cfg.budget:
         _warn(
             f"per-workflow --budget on '{workflow.label}' is not yet enforced "
@@ -234,12 +278,31 @@ def _resolve_workflow(
         )
 
     prefix, fresh_default = KIND_FIRE[kind]
-    entry: dict[str, Any] = {
-        "kind": kind,
-        "key": key,
-        "instanceId": f"{prefix}-{slug}",
-        "fresh": cfg.fresh or fresh_default,
-    }
+    entry: dict[str, Any] = {"kind": kind}
+    if steps is not None:
+        entry["steps"] = steps
+    else:
+        entry["key"] = key_field
+    # instanceId: the well-known per-kind instance (feature/revise share the feature/<slug> branch)
+    # for a SEQUENTIAL saved member; an inline or parallel member gets a unique engine-derived
+    # instance (<chainId>-w<index>) so concurrent members never collide on the same branch worktree.
+    if not inline and not in_parallel:
+        entry["instanceId"] = f"{prefix}-{slug}"
+    entry["fresh"] = cfg.fresh or fresh_default
+    # stage: emitted on every member once the chain uses stages (a --parallel group or an explicit
+    # --stage); a purely sequential chain omits it (the engine defaults a member's stage to index).
+    if uses_stages:
+        entry["stage"] = stage
+    # id (D5): the member's blackboard namespace, needed where concurrent captures could clobber —
+    # a parallel member, or an explicit --id (a downstream reads it back via a dotted `id.field`
+    # --input). A lone sequential member threads flat (no namespace), so its inputs stay flat keys.
+    if cfg.id or in_parallel:
+        entry["id"] = cfg.id or workflow.label
+    if cfg.cron:
+        cron_obj: dict[str, Any] = {"cadence": cfg.cron}
+        if cfg.max_fires:
+            cron_obj["maxFires"] = int(cfg.max_fires)
+        entry["cron"] = cron_obj
     if params:
         entry["params"] = params
     # Structured-output mappings (structured-workflow-outputs §4): each declared half replaces its
@@ -300,25 +363,36 @@ def run(
 
       -t ATOM ATOM...   overlay these templates into ONE workflow (composed and published on fire)
 
-      --agent A --model M --budget DUR --fresh --kind K   bind to the workflow they FOLLOW;
-                        before the first workflow they set chain-wide defaults (a prefix --budget is
-                        the whole-chain wall clock: <n>m, <n>h, or milliseconds)
+      --agent A --model M --budget DUR --fresh --inline --kind K   bind to the workflow they
+                        FOLLOW; before the first workflow they set chain-wide defaults (a prefix
+                        --budget is the whole-chain wall clock: <n>m, <n>h, or milliseconds).
+                        --inline embeds the composed steps in the chain row instead of publishing.
 
-      --capture BB=FIELD --input PARAM=BB --until PATH=VALUE   structured-output threading for
+      --stage N         the member's concurrency STAGE (members sharing a stage run concurrently,
+                        joined before the next); the alternative to --parallel grouping
+
+      --cron CADENCE --max-fires N   the member self-arms a recurrence (forces --inline): it recurs
+                        on CADENCE until its goal resolves (wf:<repo>:<slug>:<kind>.resolved) or the
+                        fire budget trips; the chain OBSERVES it, never re-fires it. Needs -p repo=…
+
+      --id NAME         the member's blackboard namespace (D5) — a downstream reads its capture
+                        via a dotted `--input PARAM=NAME.field`; defaults to the -t/-w label
+
+      --capture BB=FIELD --input PARAM=SRC --until PATH=VALUE   structured-output threading for
                         the workflow they follow (per-workflow only): capture a declared output
-                        FIELD onto blackboard key BB; feed blackboard key BB in as PARAM; stop a
-                        loop when the structured field at PATH equals VALUE. Validated against the
-                        workflow's declared outputs schema at registration.
+                        FIELD onto blackboard key BB; feed SRC (a flat key OR a dotted `id.field`)
+                        in as PARAM; stop a loop when the structured field at PATH equals VALUE.
 
-      --parallel        joins adjacent workflows into a parallel group (needs the Phase-5 engine)
+      --parallel        joins adjacent workflows into one concurrent stage (joined before the next)
 
     Template VALUES ride `-p key=value` (hydrating inline, uniform with `h workflow run`);
     `-t` hydrates STRUCTURE, `-p` hydrates values, the rest is machinery.
 
     Default expression: -w feature-pr -w pr-review -w revise (a feature to a reviewed PR).
-    Example:  h chain run --slug dark-mode -p spec=@dark-mode.md \\
-                  -t feature verify create-pr --agent claude \\
-                  -w pr-review --model deepseek  -w revise --fresh
+    Example:  h chain run --slug demo -p spec=@spec.md -p repo=o/r \\
+                  -t research --capture findings=summary \\
+                  --parallel -t gather --cron '*/30 * * * *' --max-fires 20 --capture m=latest \\
+                  -t report --input spec=research.findings --input telemetry=gather.m
     """
     if strategy not in ("sequential", "loop-until-clean"):
         _fail(
@@ -337,21 +411,42 @@ def run(
     except ExprError as err:
         _fail(str(err))
         raise AssertionError("unreachable")
-    for stage in expr.stages:
-        if len(stage) > 1:
-            _fail(
-                "--parallel groups need the 'parallel' chain strategy, which is not in the "
-                "engine yet (workflow-composition Phase 5) — sequence the workflows for now."
-            )
+
+    # Flatten the stages, resolving each member's FINAL stage: an explicit --stage wins, else its
+    # positional index (from --parallel grouping). `in_parallel` is then whether that final stage is
+    # shared — so `-t a --stage 0 -t b --stage 0` and `-w a --parallel -w b` mark parallel alike.
+    # A chain "uses stages" (emits an explicit `stage` on every member) when a stage is shared OR
+    # any --stage is explicit; else it stays purely sequential (engine defaults stage to the index).
+    members: list[tuple[WorkflowRef, WorkflowConfig, int, int]] = []
+    flat = 0
+    for stage_index, stage_group in enumerate(expr.stages):
+        for workflow in stage_group:
+            cfg = effective_config(expr.defaults, workflow.config)
+            final_stage = int(cfg.stage) if cfg.stage is not None else stage_index
+            members.append((workflow, cfg, flat, final_stage))
+            flat += 1
+    stage_counts = Counter(final_stage for *_, final_stage in members)
+    uses_stages = any(count > 1 for count in stage_counts.values()) or any(
+        cfg.stage is not None for _, cfg, *_ in members
+    )
 
     workflows: list[dict[str, Any]] = []
-    for index, workflow in enumerate(expr.workflows):
-        cfg = effective_config(expr.defaults, workflow.config)
-        workflows.append(_resolve_workflow(workflow, cfg, slug, index))
+    for workflow, cfg, index, final_stage in members:
+        in_parallel = stage_counts[final_stage] > 1
+        workflows.append(
+            _resolve_workflow(workflow, cfg, slug, index, final_stage, uses_stages, in_parallel)
+        )
     # Chain-level -p values seed the shared data blackboard, threaded to every workflow. slug is the
     # chain's identity; the engine threads durable refs (e.g. the PR number) to revise, which reads
     # the review itself. Each workflow fires its own saved definition — no key rewriting.
     data: dict[str, Any] = {"slug": slug, **parse_params(param or [])}
+    # A cron member's recurrence + the chain's completion predicate both read wf:<repo>:<slug>:<wf>,
+    # so it needs a repo on the blackboard — fail loud here, not mid-fire in the engine.
+    if any(w.get("cron") for w in workflows) and not data.get("repo"):
+        _fail(
+            "a --cron member needs a repo — add -p repo=owner/name (its recurrence + completion "
+            "read wf:<repo>:<slug>:<workflow>)"
+        )
     body: dict[str, Any] = {
         "slug": slug,
         "workflows": workflows,
