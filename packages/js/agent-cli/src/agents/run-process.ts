@@ -57,6 +57,30 @@ export function runAgentProcessEffect(
 }
 
 /**
+ * Isolate a dropped-uid sub-agent's bun cache (docs/plans/agent-process-identity.md). When the
+ * untrusted CLI runs as `SUB_AGENT_UID` via sudo, its `bun install` (e.g. a verify step) must NOT
+ * write a bun cache SHARED with a different uid: under `fs.protected_hardlinks=1` the other uid
+ * (the agent-server, or the host user) then can't hardlink those entries, and bun silently leaves
+ * 0-byte stubs that break the whole native toolchain (this is exactly what poisoned the host
+ * `~/.bun` during the privilege-drop's own validation — see the `Toolchain guard` gotcha in
+ * CLAUDE.md). Point the cache at a per-uid dir the sub-agent OWNS, so it hardlinks from its own
+ * cache and can never poison a shared one. Pure so it is unit-tested without spawning.
+ *
+ * - Only applies when a uid drop is active (`SUB_AGENT_UID` set) — local/host mode is untouched.
+ * - An explicit `BUN_INSTALL_CACHE_DIR` (e.g. an ops-provisioned per-uid or group-writable cache)
+ *   is respected and wins.
+ * - `HOME` is deliberately left as-is: the CLI needs it to find its own config (`~/.claude`); only
+ *   bun's cache is redirected.
+ */
+export function isolatedSubAgentEnv(
+  env: Record<string, string>,
+  subAgentUid: string | undefined,
+): Record<string, string> {
+  if (!subAgentUid || env.BUN_INSTALL_CACHE_DIR) return env;
+  return { ...env, BUN_INSTALL_CACHE_DIR: `/tmp/bun-cache-uid-${subAgentUid}` };
+}
+
+/**
  * The subprocess run itself, split out so {@link runAgentProcessEffect} can wrap
  * it in a cleanup finalizer that fires regardless of how it terminates.
  */
@@ -116,7 +140,7 @@ function runPreparedInvocation(
     // Config-gated privilege drop (docs/plans/agent-process-identity.md): when SUB_AGENT_UID is set
     // (container mode) the untrusted CLI runs as that lower-trust non-root user via sudo — a non-root
     // agent-server can't setuid on its own. Unset (local/host mode) → spawn directly as the current
-    // user, the unchanged behaviour. --preserve-env carries childEnv to the CLI (the sudoers rule
+    // user, the unchanged behaviour. --preserve-env carries spawnEnv to the CLI (the sudoers rule
     // grants SETENV); the server's working directory is inherited so the CLI runs in the run's cwd.
     const subAgentUid = process.env.SUB_AGENT_UID;
     const execCommand = subAgentUid ? "sudo" : prepared.command;
@@ -124,9 +148,13 @@ function runPreparedInvocation(
       ? ["--preserve-env", "-u", `#${subAgentUid}`, "--", prepared.command, ...prepared.args]
       : prepared.args;
 
+    // Isolate the sub-agent's bun cache so its installs can't poison a cache shared with a different
+    // uid (the hollow-toolchain trap — see isolatedSubAgentEnv). No-op when no uid drop is active.
+    const spawnEnv = isolatedSubAgentEnv(childEnv, subAgentUid);
+
     const command = Command.make(execCommand, ...execArgs).pipe(
       Command.workingDirectory(request.cwd),
-      Command.env(childEnv),
+      Command.env(spawnEnv),
       Command.feed(prepared.stdinInput ?? ""),
     );
 
