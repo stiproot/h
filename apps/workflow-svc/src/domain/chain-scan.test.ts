@@ -5,8 +5,11 @@ import { describe, expect, it } from "vitest";
 import { registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
 import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "./models/chain.model.ts";
 import { emptyChainLedger } from "./models/chain.model.ts";
+import type { WfIdentity, WfRow } from "./models/wf.model.ts";
+import { wfKey } from "./models/wf.model.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
 import { ChainStore, type ChainStoreService } from "./ports/IChainStore.ts";
+import { WfStore, type WfStoreService } from "./ports/IWfStore.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
 
@@ -98,16 +101,28 @@ function capturingPublisher(): { service: DaprPublisherService; events: unknown[
   };
 }
 
+// The wf: registry the chain reads for a cron member's completion predicate (wf:<...>.resolved) and
+// its resolved-run output. Seeded per test by wfKey.
+function memoryWfStore(rows: Record<string, WfRow> = {}): WfStoreService {
+  const map = new Map<string, WfRow>(Object.entries(rows));
+  return {
+    getRow: (id: WfIdentity) => Effect.succeed(Option.fromNullable(map.get(wfKey(id)))),
+    saveRow: (row) => Effect.sync(() => void map.set(wfKey(row), row)),
+  };
+}
+
 function env(
   cs: ChainStoreService,
   invoker: WorkflowInvokerService,
   wfStore: WorkflowStoreService = stubWorkflowStore(),
   publisher: DaprPublisherService = capturingPublisher().service,
+  wfRegistry: WfStoreService = memoryWfStore(),
 ) {
   return Layer.mergeAll(
     Layer.succeed(ChainStore, cs),
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, wfStore),
+    Layer.succeed(WfStore, wfRegistry),
     Layer.succeed(DaprPublisherTag, publisher),
   );
 }
@@ -356,6 +371,123 @@ describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
     expect(inv.invokes).toHaveLength(1);
     expect(inv.invokes[0].instanceId).toBe("x-w2");
     expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "AA" });
+  });
+});
+
+describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fires)", () => {
+  // An inline cron member (gather-metrics) recurs on its own clock until its goal resolves; the chain
+  // fires it ONCE (arming its cron via §10) then observes wf:<member>.resolved. A downstream plain
+  // member reads the cron member's captured metrics via the dotted input.
+  const cronMember = {
+    kind: "feature-pr",
+    stage: 0,
+    id: "gather",
+    steps: [{ activity: "run-claude" }],
+    cron: { cadence: "*/30 * * * *", maxFires: 20 },
+    captures: { metrics: "latest" },
+  } as const;
+  const reportMember = {
+    kind: "feature-pr",
+    key: "feature-pr",
+    stage: 1,
+    id: "report",
+    inputs: { slug: "slug", spec: "gather.metrics" },
+  } as const;
+  const data = { slug: "x", repo: "o/r", spec: "seed" };
+  const WF_KEY = "wf:o/r:x:feature-pr";
+  const resolvedWfRow = {
+    repo: "o/r",
+    slug: "x",
+    workflow: "feature-pr",
+    status: "done" as const,
+    resolved: true,
+    instanceId: "x-w0",
+    output: JSON.stringify({ s: { structured: { latest: "42ms" } } }),
+    updatedAt: new Date().toISOString(),
+  };
+
+  async function register(wfRows: Record<string, WfRow> = {}) {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const wfReg = memoryWfStore(wfRows);
+    await Effect.runPromise(
+      registerChainForFire(
+        { slug: "x", workflows: [cronMember, reportMember], data },
+        undefined,
+      ).pipe(
+        Effect.provide(
+          env(mem.service, inv.service, stubWorkflowStore(), capturingPublisher().service, wfReg),
+        ),
+      ),
+    );
+    return { mem, inv, wfReg };
+  }
+
+  it("fires the cron member ONCE with armCron + wf identity + embedded steps (self-arm via §10)", async () => {
+    const { inv } = await register();
+    expect(inv.invokes).toHaveLength(1);
+    const fire = inv.invokes[0];
+    // Inline: the embedded steps fire verbatim (NOT resolved from the saved store).
+    expect(fire.steps).toEqual([{ activity: "run-claude" }]);
+    // The member arms its OWN recurrence — the chain never writes cron:sub.
+    expect(fire.armCron).toEqual({
+      cadence: "*/30 * * * *",
+      workflow: "feature-pr",
+      inline: true,
+      budget: { maxFires: 20 },
+    });
+    // wf identity is REQUIRED for a cron member (the cron goal + the chain predicate both read it).
+    expect(fire.wf).toEqual({ repo: "o/r", slug: "x", workflow: "feature-pr" });
+    expect(fire.instanceId).toBe("x-w0");
+  });
+
+  it("WAITS while wf:<member> is unresolved — the chain re-fires nothing (the cron engine owns re-fire)", async () => {
+    const { mem, inv, wfReg } = await register();
+    inv.invokes.length = 0;
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(
+        Effect.provide(
+          env(mem.service, inv.service, stubWorkflowStore(), capturingPublisher().service, wfReg),
+        ),
+      ),
+    );
+    expect(mem.rows.get("x")?.cursor).toBe(0); // still on stage 0
+    expect(inv.invokes).toHaveLength(0); // chain fires nothing — the cron engine re-fires, not the chain
+  });
+
+  it("advances once wf:resolved, capturing off the RESOLVED run's wf.output (namespaced)", async () => {
+    const { mem, inv, wfReg } = await register({ [WF_KEY]: resolvedWfRow });
+    inv.invokes.length = 0;
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(
+        Effect.provide(
+          env(mem.service, inv.service, stubWorkflowStore(), capturingPublisher().service, wfReg),
+        ),
+      ),
+    );
+    const row = mem.rows.get("x");
+    expect(row?.cursor).toBe(1);
+    // The cron member's capture threaded off wf.output (the resolved run), namespaced under its id.
+    expect(row?.data.gather).toEqual({ metrics: "42ms" });
+    // Stage 1 fired, its spec resolved from the dotted gather.metrics.
+    expect(inv.invokes).toHaveLength(1);
+    expect(inv.invokes[0].instanceId).toBe("x-w1");
+    expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "42ms", repo: "o/r" });
+  });
+
+  it("finalizes the chain failed when a cron member has no repo (can't observe wf:resolved)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    await Effect.runPromise(
+      registerChainForFire(
+        { slug: "x", workflows: [cronMember], data: { slug: "x", spec: "seed" } }, // no repo
+        undefined,
+      ).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    const row = mem.rows.get("x");
+    expect(row?.status).toBe("finalized");
+    expect(row?.outcome).toBe("failed");
+    expect(row?.note).toMatch(/dispatch failed/);
   });
 });
 

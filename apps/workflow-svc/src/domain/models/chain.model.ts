@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { WorkflowStep } from "./workflow.model.ts";
+
 /**
  * The chain primitive's data shapes (docs/plans/workflow-composition.md): a chain is a durable
  * registration — a `chain:sub:<chainId>` row — that the scan engine reads on the cron tick,
@@ -8,9 +10,10 @@ import { Schema } from "effect";
  * single-writer (workflow-svc). Where a watch RE-fires one instance (retry), a chain FIRES THE
  * NEXT workflow (advance) — that is the only structural difference.
  *
- * Import-free by design, like watch.model.ts: nothing here imports back from the request/store
- * schemas. The row IS the chain's durable blackboard (`data`) as well as its sequencing state,
- * replacing Phase 1's best-effort `chain:<slug>` mirror.
+ * Import-light by design, like watch.model.ts: the only import is `WorkflowStep` (an embedded
+ * inline member stores its own hydrated steps, D1 — the same exception cron.model makes), nothing
+ * else imports back from the request/store schemas. The row IS the chain's durable blackboard
+ * (`data`) as well as its sequencing state, replacing Phase 1's best-effort `chain:<slug>` mirror.
  */
 
 // Sequencing strategy. "sequential" runs the workflows once, front to back. "loop-until-clean" repeats a
@@ -57,8 +60,22 @@ export const ChainWorkflow = Schema.Struct({
   // Selects the buildParams/capture contract in chain-workflows.ts. Distinct from `key`: e.g. the
   // `revise` kind fires the `feature-pr` key but threads reviewFindings into its spec.
   kind: ChainWorkflowKind,
-  // Saved-workflow key this workflow fires (resolved via WorkflowStore.get + toRequest).
-  key: Schema.String,
+  // Saved-workflow key this member fires (resolved via WorkflowStore.get + toRequest). Optional —
+  // EXACTLY ONE of `key` / `steps` (validateChain enforces the XOR). A member is either a reference
+  // to a saved definition (publish-default) or carries its own embedded steps (`--inline`, D1).
+  key: Schema.optional(Schema.String),
+  // Embedded (inline) definition this member fires verbatim (D1 inline storage): the composed steps
+  // live IN the chain:sub row, nothing published to re-hydrate. The alternative to `key`. A cron
+  // member MUST be inline — its self-armed recurrence has no key to reference, so it recurs these
+  // very steps over an embedded source (validateChain enforces cron ⟹ steps).
+  steps: Schema.optional(Schema.Array(WorkflowStep)),
+  // Recur policy (D2): this member self-arms a recurrence via the §10 arm-* pattern — its own
+  // generic.workflow closing bracket runs register-cron (the chain injects `armCron` into the ONE
+  // fire, from this policy). The chain engine NEVER writes cron:sub and never re-fires; it only
+  // OBSERVES `wf:<member>.resolved` to know the member is done (D4). Cadence + optional maxFires budget.
+  cron: Schema.optional(
+    Schema.Struct({ cadence: Schema.String, maxFires: Schema.optional(Schema.Number) }),
+  ),
   // The member's blackboard NAMESPACE (docs/plans/inline-chain-cron-composition.md D5): declared
   // `captures` write under `data[id]` (namespace-implicit — a member writes under its own id, so
   // concurrent members of a stage never clobber), and a downstream member's dotted `inputs`
@@ -219,11 +236,16 @@ export function lastStage(workflows: readonly ChainWorkflow[]): number {
 }
 
 /**
+ * Registration-time validation of a whole chain (stages + member shape). Returns an error message,
+ * or null when valid. Called at registration so an unfireable chain fails loud, never arms.
+ *
  * Stages must be 0-based and contiguous (0,1,…,N), each non-empty, and declared all-or-none — else
  * the cursor+1 progression would skip a stage or stall, or the `?? index` default would collide
- * explicit and implicit stages. Returns an error message, or null when valid. Called at registration.
+ * explicit and implicit stages. Each member must carry EXACTLY ONE of `key` / `steps` (a reference
+ * to a saved def, or embedded inline steps — D1). A cron member MUST be inline (`steps`): its
+ * self-armed recurrence has no key to reference and recurs an embedded source (D1/D2).
  */
-export function validateStages(workflows: readonly ChainWorkflow[]): string | null {
+export function validateChain(workflows: readonly ChainWorkflow[]): string | null {
   if (workflows.length === 0) return "chain has no members";
   const declared = workflows.filter((w) => w.stage !== undefined).length;
   if (declared !== 0 && declared !== workflows.length)
@@ -231,5 +253,14 @@ export function validateStages(workflows: readonly ChainWorkflow[]): string | nu
   const stages = stagesOf(workflows);
   for (let s = 0; s < stages.length; s++)
     if (stages[s] !== s) return `stages must be contiguous from 0 (got ${stages.join(",")})`;
+  for (let i = 0; i < workflows.length; i++) {
+    const w = workflows[i];
+    const hasKey = w.key !== undefined && w.key !== "";
+    const hasSteps = w.steps !== undefined && w.steps.length > 0;
+    if (hasKey === hasSteps)
+      return `member ${i} (${w.kind}) must carry exactly one of key / steps`;
+    if (w.cron && !hasSteps)
+      return `cron member ${i} (${w.kind}) must be inline (steps) — its recurrence has no key to reference`;
+  }
   return null;
 }

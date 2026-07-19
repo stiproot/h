@@ -174,8 +174,11 @@ finalizing chain publishes disarm for its crons and, under publish-default, dele
 
 - **loop-until-clean × stages:** `startCursor`/`maxIterations` reinterpret against stage indices; a loop
   body is a stage range. Reconcile in the engine change.
-- **Cron member captured value:** confirm the engine captures off the specific run that flipped
-  `wf:resolved` (the resolved instance), not the last-fired instance, when they differ.
+- ~~**Cron member captured value:** confirm the engine captures off the specific run that flipped
+  `wf:resolved` (the resolved instance), not the last-fired instance, when they differ.~~ RESOLVED
+  (Phase 4): the chain captures off `wf.output`, which write-wf-row stamps on the SAME terminal write
+  that records `resolved` from the run's structured `goal: RESOLVED` — so the captured output and the
+  resolved flag are guaranteed to come from one run. The chain reads the wf row, never the instance.
 - **Disarm-event contract:** topic name + payload (chainId → member cron ids) for D6 step 2.
 
 ## Test plan
@@ -192,6 +195,24 @@ a CLI golden for the new `h chain run` grammar.
 
 ## Progress log
 
+- 2026-07-19 — **Phase 4 landed** (D1-chain + D2 + D4-cron — inline chain members + independent
+  workflow-cron members the chain only OBSERVES). `ChainWorkflow`: `key` is now optional with an
+  embedded `steps` alternative (D1 inline storage — the composed def lives IN the `chain:sub` row),
+  plus an optional `cron` policy `{cadence, maxFires?}`. `validateStages` → **`validateChain`** now
+  also enforces member shape: exactly one of `key`/`steps` (XOR), and a cron member MUST be inline
+  (`steps`) — its self-armed recurrence has no key to reference (D1). `chain-scan.fireWorkflow`
+  branches inline (fire the embedded steps verbatim) vs saved (resolve the key), and injects
+  **`armCron`** for a cron member so it self-arms its recurrence via the §10 arm-* pattern (its own
+  generic.workflow closing bracket runs register-cron over the embedded source built from Phase 1) —
+  **the chain engine never writes `cron:sub` and never re-fires** (D2). A cron member's fire REQUIRES a
+  wf identity (fail-loud without a repo) — both the cron engine's goal check and the chain's
+  completion predicate read `wf:<repo>:<slug>:<kind>.resolved`. The completion predicate (`observeMember`)
+  gains its cron branch: `done ⟺ wf:<member>.resolved` (read via `WfStore`, added to `ChainScanEnv`;
+  production already provisions it), a cron member's transient run failures NEVER fail the chain, and
+  its capture threads off the resolved run's `wf.output`. Green: workflow-svc 298 tests (+12: 8
+  validateChain unit cases + 4 cron-member scan integration tests — self-arm fire, wait-while-unresolved,
+  advance-on-resolved-with-namespaced-capture, no-repo-fails) + tsc + oxfmt + depcruise. NOT yet
+  live-validated (stack down).
 - 2026-07-19 — **Phase 3 landed** (D5 namespaced two-level blackboard — concurrent members can't
   clobber). `ChainWorkflow` gained optional `id` (the member's blackboard namespace). In
   `chain-workflows.ts`: a declared `captures` mapping now writes under `data[id]` when the member has

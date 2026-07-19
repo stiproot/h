@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChainRow, ChainWorkflow } from "./models/chain.model.ts";
-import { DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT } from "./models/chain.model.ts";
+import { DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT, validateChain } from "./models/chain.model.ts";
 import { decide, type MemberObservation } from "./chain-engine.ts";
 
 const T0 = Date.parse("2026-07-08T09:00:00Z");
@@ -202,5 +202,47 @@ describe("decide: finalized rows are inert", () => {
     const d = decide(row({ status: "finalized" }), stage("COMPLETED"), T0 + 1000);
     expect(d.kind).toBe("wait");
     if (d.kind === "wait") expect(d.changed).toBe(false);
+  });
+});
+
+describe("validateChain (registration-time member + stage shape)", () => {
+  const m = (over: Partial<ChainWorkflow> = {}): ChainWorkflow => ({
+    kind: "feature-pr",
+    key: "feature-pr",
+    ...over,
+  });
+
+  it("accepts a plain sequential chain", () => {
+    expect(validateChain([m(), m()])).toBeNull();
+  });
+
+  it("rejects a member carrying BOTH key and steps (must be exactly one)", () => {
+    expect(validateChain([m({ steps: [{ activity: "x" }] })])).toMatch(/exactly one of key/);
+  });
+
+  it("rejects a member carrying NEITHER key nor steps", () => {
+    expect(validateChain([m({ key: undefined })])).toMatch(/exactly one of key/);
+  });
+
+  it("rejects a cron member that is not inline (has a key, no steps)", () => {
+    expect(validateChain([m({ cron: { cadence: "* * * * *" } })])).toMatch(/must be inline/);
+  });
+
+  it("accepts an inline cron member (steps + cron, no key)", () => {
+    expect(
+      validateChain([{ kind: "feature-pr", steps: [{ activity: "x" }], cron: { cadence: "* * * * *" } }]),
+    ).toBeNull();
+  });
+
+  it("rejects a non-contiguous stage set", () => {
+    expect(validateChain([m({ stage: 0 }), m({ stage: 2 })])).toMatch(/contiguous/);
+  });
+
+  it("rejects mixed declared/undeclared stages", () => {
+    expect(validateChain([m({ stage: 0 }), m()])).toMatch(/all members declare a stage or none/);
+  });
+
+  it("rejects an empty chain", () => {
+    expect(validateChain([])).toMatch(/no members/);
   });
 });

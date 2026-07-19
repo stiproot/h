@@ -12,11 +12,12 @@ import {
   chainLedgerDate,
   membersInStage,
   stageOf,
-  validateStages,
+  validateChain,
 } from "./models/chain.model.ts";
 import { wfIdentityFrom } from "./models/wf.model.ts";
-import { toRequest } from "./models/workflow.model.ts";
+import { toRequest, type WorkflowRequest } from "./models/workflow.model.ts";
 import { ChainStore } from "./ports/IChainStore.ts";
+import { WfStore } from "./ports/IWfStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 
@@ -37,7 +38,12 @@ const PUBSUB = "pubsub";
 const EVENTS_TOPIC = "workflow-events";
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
-export type ChainScanEnv = ChainStore | WorkflowInvoker | WorkflowStore | DaprPublisherTag;
+export type ChainScanEnv =
+  | ChainStore
+  | WorkflowInvoker
+  | WorkflowStore
+  | WfStore
+  | DaprPublisherTag;
 
 export type ChainScanReport = {
   scanned: number;
@@ -97,7 +103,7 @@ export const registerChainForFire = (
 ): Effect.Effect<{ chainId: string; firing: boolean }, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
     const cs = yield* ChainStore;
-    const invalid = validateStages(reg.workflows);
+    const invalid = validateChain(reg.workflows);
     if (invalid !== null)
       return yield* Effect.fail(
         new WorkflowError({ cause: `invalid chain stages: ${invalid}`, instanceId: reg.slug }),
@@ -161,21 +167,51 @@ const fireWorkflow = (
       }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),
     });
-    const stored = yield* wfStore.get(workflow.key);
-    if (Option.isNone(stored) || stored.value.disabled) {
+    // wf-registry identity: workflow name = the member's kind; slug = the chain's slug (authoritative);
+    // repo = the chain-level target (blackboard `repo`). Opt-in — absent repo ⇒ no row (§3c).
+    const wf = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, workflow.kind);
+    // A cron member self-arms its recurrence via §10 (its generic.workflow closing bracket runs
+    // register-cron over an embedded source built from these very steps); the chain NEVER writes
+    // cron:sub. It MUST carry a wf identity — both the cron engine's goal check and the chain's
+    // completion predicate read `wf:<repo>:<slug>:<kind>.resolved` — so fail loud without one.
+    if (workflow.cron && !wf) {
       return yield* Effect.fail(
         new WorkflowError({
-          cause: `chain workflow '${workflow.kind}' key '${workflow.key}' missing or disabled`,
+          cause: `cron chain member '${workflow.kind}' needs a repo on the blackboard (its recurrence + completion read wf:<repo>:<slug>:<${workflow.kind}>)`,
           instanceId: row.chainId,
         }),
       );
     }
+    const armCron = workflow.cron
+      ? {
+          cadence: workflow.cron.cadence,
+          workflow: workflow.kind,
+          inline: true,
+          ...(workflow.cron.maxFires !== undefined
+            ? { budget: { maxFires: workflow.cron.maxFires } }
+            : {}),
+        }
+      : undefined;
+    // The base request: embedded steps (D1 inline storage) fired verbatim, or the saved key resolved
+    // from the store. validateChain guarantees exactly one of the two.
+    let base: WorkflowRequest;
+    if (workflow.steps !== undefined) {
+      base = { steps: workflow.steps, traceparent, params };
+    } else {
+      const stored = yield* wfStore.get(workflow.key ?? "");
+      if (Option.isNone(stored) || stored.value.disabled) {
+        return yield* Effect.fail(
+          new WorkflowError({
+            cause: `chain workflow '${workflow.kind}' key '${workflow.key}' missing or disabled`,
+            instanceId: row.chainId,
+          }),
+        );
+      }
+      base = toRequest(stored.value, traceparent, params);
+    }
     const instanceId = instanceIdAt(row.chainId, row.workflows, memberIndex);
-    // wf-registry identity: workflow name = the member's kind; slug = the chain's slug (authoritative);
-    // repo = the chain-level target (blackboard `repo`). Opt-in — absent repo ⇒ no row (§3c).
-    const wf = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, workflow.kind);
     yield* invoker.invoke({
-      ...toRequest(stored.value, traceparent, params),
+      ...base,
       instanceId,
       // Chain members are sequential work on ONE branch/PR, so they SHARE a workspace keyed by the
       // chain id (the reusable-workspace pattern): every member's worktree/workspace dir resolves to
@@ -187,6 +223,9 @@ const fireWorkflow = (
       // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
       fresh: forceFresh || (workflow.fresh ?? false),
       ...(wf ? { wf } : {}),
+      // A cron member arms its OWN recurrence in its closing bracket (register-cron reads input.steps
+      // for the embedded source); the chain only observes it thereafter.
+      ...(armCron ? { armCron } : {}),
     });
     yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { workflowsFired: 1 });
   });
@@ -247,20 +286,43 @@ export const scanChainsEffect = (
 const observeMember = (
   row: ChainRow,
   index: number,
-): Effect.Effect<MemberRead, WorkflowError, WorkflowInvoker> =>
+): Effect.Effect<MemberRead, WorkflowError, WorkflowInvoker | WfStore> =>
   Effect.gen(function* () {
-    const invoker = yield* WorkflowInvoker;
     const instanceId = instanceIdAt(row.chainId, row.workflows, index);
-    // Transport failures read as UNKNOWN so the streak machinery owns them — sequencing must outlive
-    // infra hiccups, exactly like the watch scan.
+    const workflow = row.workflows[index];
+    // Cron member (D2/D4): the chain OBSERVES `wf:<repo>:<slug>:<kind>` — it never fired the
+    // recurrence (the member self-armed cron:sub via §10) and never reads the flaky instance status.
+    // `done` ⟺ the goal handshake `resolved` flag is set (the cron engine reads the same flag to
+    // deactivate); `output` is the resolved run's serialized output (stamped by write-wf-row on the
+    // same terminal write, so capture threads off the RESOLVED run). Transient run failures NEVER
+    // fail the chain — that is why it is a cron, it retries on its own clock.
+    if (workflow?.cron) {
+      const wfStore = yield* WfStore;
+      const identity = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, workflow.kind);
+      const wfRow = identity
+        ? yield* wfStore
+            .getRow(identity)
+            .pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
+        : Option.none();
+      const resolved = Option.isSome(wfRow) && wfRow.value.resolved === true;
+      return {
+        index,
+        instanceId,
+        runtimeStatus: resolved ? "COMPLETED" : "RUNNING",
+        output: Option.isSome(wfRow) ? wfRow.value.output : undefined,
+        done: resolved,
+        failed: false,
+      };
+    }
+    // Plain member: read the instance. Transport failures read as UNKNOWN so the streak machinery
+    // owns them — sequencing must outlive infra hiccups, exactly like the watch scan. `done` at
+    // terminal-success, `failed` at terminal-failure.
+    const invoker = yield* WorkflowInvoker;
     const status = yield* invoker
       .getStatus(instanceId)
       .pipe(Effect.catchAll(() => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" })));
     const runtimeStatus = status.runtimeStatus;
     const output = (status as { output?: string }).output;
-    // Phase 2 completion predicate (D4): a plain member is `done` at terminal-success and `failed` at
-    // terminal-failure. (A cron member reads `wf:resolved`; an `until` member reads its predicate —
-    // later phases.)
     return {
       index,
       instanceId,
