@@ -444,17 +444,19 @@ describe("scanChainsEffect: finalize", () => {
 describe("scanChainsEffect: isolation and kill switch", () => {
   it("one chain's failure never starves another", async () => {
     const mem = memoryChainStore();
-    // Two active chains in one store; the invoker throws only for chain 'boom'.
+    // Two active chains in one store; the invoker throws only for chain 'boom' (its stage-0 member
+    // derives to `boom-w0` — no explicit instanceId, so per-member reads key off the chain id).
     const inv: WorkflowInvokerService = {
       invoke: () => Effect.succeed({ instanceId: "i" }),
       getStatus: (instanceId) =>
-        instanceId === "feature-boom"
+        instanceId === "boom-w0"
           ? Effect.fail(new Error("kaboom") as never)
           : Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
       terminate: () => Effect.void,
     };
     const base = {
-      workflows: [...DEFAULT_WORKFLOWS],
+      // A single stage-0 member with no explicit instanceId, so each chain reads its own `<id>-w0`.
+      workflows: [{ kind: "feature-pr" as const, key: "feature-pr" }],
       strategy: "sequential" as const,
       data: {},
       unknownStreak: 0,
@@ -464,20 +466,8 @@ describe("scanChainsEffect: isolation and kill switch", () => {
       status: "running" as const,
       cursor: 0,
     };
-    mem.rows.set("ok", {
-      ...base,
-      chainId: "ok",
-      slug: "ok",
-      epoch: 1,
-      currentInstanceId: "feature-ok",
-    });
-    mem.rows.set("boom", {
-      ...base,
-      chainId: "boom",
-      slug: "boom",
-      epoch: 1,
-      currentInstanceId: "feature-boom",
-    });
+    mem.rows.set("ok", { ...base, chainId: "ok", slug: "ok", epoch: 1 });
+    mem.rows.set("boom", { ...base, chainId: "boom", slug: "boom", epoch: 1 });
     const report = await Effect.runPromise(
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv))),
     );

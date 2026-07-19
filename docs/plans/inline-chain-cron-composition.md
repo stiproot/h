@@ -192,6 +192,24 @@ a CLI golden for the new `h chain run` grammar.
 
 ## Progress log
 
+- 2026-07-19 — **Phase 2 landed** (D3 stage-based concurrency + D4-plain completion predicate — the
+  chain-engine backbone the rest of the chain side builds on). `ChainWorkflow` gained optional `stage`;
+  `cursor` reinterpreted from member index → **current stage index** (numerically identical for the
+  one-member-per-stage back-compat case, so existing sequential + loop-until-clean chains are
+  unchanged). New pure stage helpers in `chain.model.ts` (`stageOf`/`stagesOf`/`membersInStage`/
+  `lastStage`/`validateStages` — absent stage ⇒ member index; all-or-none + 0-based-contiguous
+  validated at registration, fail-loud). The pure engine `decide` now takes a **stage of
+  `MemberObservation`s** (index/runtimeStatus/`done`/`failed`) and decides at the stage level: any
+  member `failed` → finalize; all `done` → advance to `nextStage` (or finalize completed on the last
+  stage); any UNKNOWN → conservative streak. The scan observes every current-stage member
+  (`observeMember`, per-member instance via `instanceIdAt` — dropped the `currentInstanceId` read
+  preference), fires a stage as a set (`fireStage`), captures every completed member on advance,
+  terminates the whole stage on budget breach; `tallyChainCost` sums members with `stage ≤ cursor`.
+  D4 completion predicate is plain-member-only (terminal-success) this phase — the cron (`wf:resolved`)
+  and `until` predicates have their seam in `observeMember` for Phase 3/4. `chain.router` decodes the
+  new `stage` field (wire ready); no CLI `--stage` grammar yet (a later CLI phase). Green:
+  workflow-svc 280 tests (+5 parallel-stage engine cases) + tsc + oxfmt + depcruise. NOT yet
+  live-validated (stack down).
 - 2026-07-19 — **Phase 1 landed** (embedded cron-source producer + `h workflow run --inline --cron`).
   `CronSourceEmbedded.steps` widened to the `WorkflowStep` union (parallel-group-ready); `armCron`
   gained `inline`; `planCron`/`register-cron` build a `{mode:"embedded"}` source from the run's own

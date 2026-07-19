@@ -59,6 +59,14 @@ export const ChainWorkflow = Schema.Struct({
   kind: ChainWorkflowKind,
   // Saved-workflow key this workflow fires (resolved via WorkflowStore.get + toRequest).
   key: Schema.String,
+  // The concurrency STAGE this member runs in (docs/plans/inline-chain-cron-composition.md D3):
+  // members sharing a stage run concurrently, and the chain advances stage-by-stage, joining on ALL
+  // members of a stage completing before firing the next. `cursor` is the CURRENT stage index.
+  // Optional for back-compat: absent ⇒ the member's own index, i.e. pure sequential, one member per
+  // stage — the degenerate case where cursor stayed member-index-compatible ({A}→{B}→{C} = stages
+  // 0,1,2). {A ∥ B} → C = stages [A:0, B:0, C:1]. Registration normalizes (all-or-none) + validates
+  // contiguity via validateStages, so the cursor+1 progression never skips or stalls on a gap.
+  stage: Schema.optional(Schema.Number),
   // Re-fire semantics: purge a terminal instance and re-run (a revise workflow re-runs its feature-pr
   // instance fresh). Default false — attach to a RUNNING/PENDING instance, no-op a terminal one.
   fresh: Schema.optional(Schema.Boolean),
@@ -93,14 +101,18 @@ export type ChainStatus = Schema.Schema.Type<typeof ChainStatus>;
  *
  * `epoch` is the fence: bumped on every (re)schedule — registration and each workflow advance — so an
  * engine action computed against an older incarnation re-reads the row and no-ops when its in-hand
- * epoch is stale. `cursor` indexes the workflow currently running (its instance is `currentInstanceId`).
+ * epoch is stale. `cursor` indexes the current STAGE (D3): the engine fires every member of the stage,
+ * joins on all of them completing, then advances the cursor. For a one-member-per-stage chain this is
+ * numerically the member index (back-compat); `currentInstanceId` tracks the stage's primary (first)
+ * member — the engine derives each member's instance from chain+index.
  */
 export const ChainRow = Schema.Struct({
   chainId: Schema.String,
   epoch: Schema.Number,
   // The branch token and blackboard identity (Phase 1's slug); workflows key their run off it.
   slug: Schema.String,
-  // The sequence to run, in order. `cursor` points into it.
+  // The members, in order. Grouped into STAGES by each member's `stage` (D3); `cursor` points at a
+  // stage, not a single member. captures/inputs/until keep indexing this flat array.
   workflows: Schema.Array(ChainWorkflow),
   strategy: ChainStrategy,
   // Present iff strategy is "loop-until-clean" — the loop body + iteration budget/counter.
@@ -108,7 +120,8 @@ export const ChainRow = Schema.Struct({
   // Optional wall-clock budget for the whole chain; on breach the current workflow is terminated and the
   // chain finalizes budget-terminated. Absent → no chain-level budget (each workflow may carry its own watch).
   budgetMs: Schema.optional(Schema.Number),
-  // Index of the workflow currently running / just fired. Starts at 0 when registration fires workflow 0.
+  // Index of the STAGE currently running / just fired (D3). Starts at 0 when registration fires every
+  // member of stage 0. For one-member-per-stage chains this equals the running member's index.
   cursor: Schema.Number,
   currentInstanceId: Schema.optional(Schema.String),
   // The shared-context blackboard threaded across workflows (Phase 1's {slug, data}.data). Each workflow reads
@@ -168,3 +181,49 @@ export function chainLedgerDate(nowMs: number): string {
 }
 
 export const DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT = 6;
+
+// ---------------------------------------------------------------------------
+// Stage helpers (D3) — pure functions the engine + scan share to map the flat
+// `workflows` array onto its concurrency stages. Kept here beside the model so
+// the "absent stage ⇒ member index" back-compat rule has ONE home.
+// ---------------------------------------------------------------------------
+
+/** A member's stage: explicit, else its index (back-compat — one member per stage = sequential). */
+export function stageOf(workflows: readonly ChainWorkflow[], index: number): number {
+  return workflows[index]?.stage ?? index;
+}
+
+/** The distinct stage indices present, ascending. */
+export function stagesOf(workflows: readonly ChainWorkflow[]): number[] {
+  const set = new Set<number>();
+  for (let i = 0; i < workflows.length; i++) set.add(stageOf(workflows, i));
+  return [...set].sort((a, b) => a - b);
+}
+
+/** The member indices in a stage, in workflow order. */
+export function membersInStage(workflows: readonly ChainWorkflow[], stage: number): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < workflows.length; i++) if (stageOf(workflows, i) === stage) out.push(i);
+  return out;
+}
+
+/** The highest stage index (the last stage the chain finalizes on). */
+export function lastStage(workflows: readonly ChainWorkflow[]): number {
+  return stagesOf(workflows).at(-1) ?? 0;
+}
+
+/**
+ * Stages must be 0-based and contiguous (0,1,…,N), each non-empty, and declared all-or-none — else
+ * the cursor+1 progression would skip a stage or stall, or the `?? index` default would collide
+ * explicit and implicit stages. Returns an error message, or null when valid. Called at registration.
+ */
+export function validateStages(workflows: readonly ChainWorkflow[]): string | null {
+  if (workflows.length === 0) return "chain has no members";
+  const declared = workflows.filter((w) => w.stage !== undefined).length;
+  if (declared !== 0 && declared !== workflows.length)
+    return "either all members declare a stage or none do";
+  const stages = stagesOf(workflows);
+  for (let s = 0; s < stages.length; s++)
+    if (stages[s] !== s) return `stages must be contiguous from 0 (got ${stages.join(",")})`;
+  return null;
+}
