@@ -1,7 +1,12 @@
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { disarmCron, registerCronForFire, scanCronsEffect } from "./cron-scan.ts";
+import {
+  disarmCron,
+  disarmEventEffect,
+  registerCronForFire,
+  scanCronsEffect,
+} from "./cron-scan.ts";
 import { type CronLedger, type CronRow, emptyCronLedger } from "./models/cron.model.ts";
 import type { DiscoverRow } from "./models/discover.model.ts";
 import type { WfRow } from "./models/wf.model.ts";
@@ -350,5 +355,36 @@ describe("disarmCron", () => {
     const cs = memoryCronStore();
     const err = await disarmFail(cs.service, "no-such:cron:id");
     expect((err as { _tag: string })._tag).toBe("NotFound");
+  });
+});
+
+describe("disarmEventEffect (cron-disarm pub/sub — D6 chain teardown)", () => {
+  const runEvent = (cs: CronStoreService, body: unknown) =>
+    Effect.runPromise(disarmEventEffect(body).pipe(Effect.provide(Layer.succeed(CronStore, cs))));
+
+  it("disarms the named cron from a CloudEvents-wrapped identity payload", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ epoch: 2 }));
+    const res = await runEvent(cs.service, { data: identity });
+    expect(res).toEqual({ disarmed: "stiproot/h:pi-agent:revise" });
+    expect(cs.rows.get("stiproot/h:pi-agent:revise")?.status).toBe("inactive");
+  });
+
+  it("acks {skipped} for a missing cron — idempotent, no redelivery (disarm of a gone cron is a no-op)", async () => {
+    const cs = memoryCronStore();
+    const res = await runEvent(cs.service, { data: identity });
+    expect(res).toEqual({ skipped: "no cron 'stiproot/h:pi-agent:revise'" });
+  });
+
+  it("acks {skipped} for a payload lacking a cron identity", async () => {
+    const cs = memoryCronStore();
+    const res = await runEvent(cs.service, { data: { nope: 1 } });
+    expect(res).toMatchObject({ skipped: expect.stringContaining("identity") });
+  });
+
+  it("tolerates a raw (un-enveloped) payload", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    expect(await runEvent(cs.service, identity)).toEqual({ disarmed: "stiproot/h:pi-agent:revise" });
   });
 });

@@ -111,6 +111,12 @@ export type CronRow = Schema.Schema.Type<typeof CronRow>;
 export const cronId = (id: { repo: string; slug: string; workflow: string }): string =>
   `${id.repo}:${id.slug}:${id.workflow}`;
 
+// The pub/sub topic a finalizing chain publishes disarm requests to (docs/plans/
+// inline-chain-cron-composition.md D6): payload is the recur cron's identity `{repo, slug, workflow}`.
+// A LOOSE edge — the chain never writes cron:sub (D2); the subscriber (cron-scan's disarmEventEffect,
+// wired in cron.router) stays the single writer, exactly like POST /cron/disarm.
+export const CRON_DISARM_TOPIC = "cron-disarm";
+
 // cron:config — the kill switch, same semantics as chain:config/watch:config: absent means ENABLED
 // (arming must not require a seed key). `maxEngineFiresPerDay` caps the engine's fires fail-closed.
 export const CronConfig = Schema.Struct({

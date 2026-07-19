@@ -101,6 +101,19 @@ function capturingPublisher(): { service: DaprPublisherService; events: unknown[
   };
 }
 
+// Records the topic too — the D6 teardown asserts on cron-disarm publishes distinctly from the
+// workflow-events finalize publish.
+function recordingPublisher(): {
+  service: DaprPublisherService;
+  events: { topic: string; data: unknown }[];
+} {
+  const events: { topic: string; data: unknown }[] = [];
+  return {
+    events,
+    service: { publish: (_p, topic, data) => Effect.sync(() => void events.push({ topic, data })) },
+  };
+}
+
 // The wf: registry the chain reads for a cron member's completion predicate (wf:<...>.resolved) and
 // its resolved-run output. Seeded per test by wfKey.
 function memoryWfStore(rows: Record<string, WfRow> = {}): WfStoreService {
@@ -578,6 +591,80 @@ describe("scanChainsEffect: loop-until-clean", () => {
     expect(report.finalized).toEqual(["x:completed"]);
     expect(mem.rows.get("x")?.note).toContain("stopped after 3 iterations");
     expect(inv.invokes).toHaveLength(0);
+  });
+});
+
+describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
+  it("terminates running siblings and publishes cron-disarm before finalizing failed", async () => {
+    const mem = memoryChainStore();
+    // stage 0 = { failer(FAILED) ∥ runner(RUNNING) ∥ watcher(inline cron, unresolved) }.
+    const workflows = [
+      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "failer" },
+      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "runner" },
+      {
+        kind: "pr-review",
+        stage: 0,
+        id: "watcher",
+        steps: [{ activity: "run-claude" }],
+        cron: { cadence: "*/30 * * * *" },
+        // Declared inputs replace the kind's buildParams, so the inline member fires off the seeded
+        // blackboard (a pr-review's coded contract would demand a prNumber the seed lacks).
+        inputs: { slug: "slug", spec: "spec" },
+      },
+    ] as const;
+    const inv = recordingInvoker({
+      "x-w0": { instanceId: "x-w0", runtimeStatus: "FAILED" },
+      "x-w1": { instanceId: "x-w1", runtimeStatus: "RUNNING" },
+      // x-w2 is a cron member — read via wf (absent ⇒ unresolved ⇒ RUNNING), never getStatus.
+    });
+    const pub = recordingPublisher();
+    const provide = env(mem.service, inv.service, stubWorkflowStore(), pub.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        { slug: "x", workflows: [...workflows], data: { slug: "x", repo: "o/r", spec: "seed" } },
+        undefined,
+      ).pipe(Effect.provide(provide)),
+    );
+    pub.events.length = 0;
+    const report = await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(provide)));
+
+    // The chain fails as a unit.
+    expect(report.finalized).toEqual(["x:failed"]);
+    expect(mem.rows.get("x")?.outcome).toBe("failed");
+    // The running siblings are terminated (the FAILED member is already terminal — skipped).
+    expect(report.terminated.sort()).toEqual(["x-w1", "x-w2"]);
+    // The cron member's cron is disarmed via pub/sub — the chain NEVER writes cron:sub itself.
+    const disarms = pub.events.filter((e) => e.topic === "cron-disarm");
+    expect(disarms).toHaveLength(1);
+    expect(disarms[0].data).toEqual({ repo: "o/r", slug: "x", workflow: "pr-review" });
+  });
+
+  it("does NOT terminate or disarm on a clean completed finalize (nothing to reap)", async () => {
+    const { mem } = await seedAt(2, {
+      "feature-x": { instanceId: "feature-x", runtimeStatus: "COMPLETED", output: pr("no-url") },
+    });
+    const pub = recordingPublisher();
+    const report = await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            recordingInvoker({
+              "feature-x": {
+                instanceId: "feature-x",
+                runtimeStatus: "COMPLETED",
+                output: pr("no-url"),
+              },
+            }).service,
+            stubWorkflowStore(),
+            pub.service,
+          ),
+        ),
+      ),
+    );
+    expect(report.finalized).toEqual(["x:completed"]);
+    expect(report.terminated).toEqual([]);
+    expect(pub.events.filter((e) => e.topic === "cron-disarm")).toHaveLength(0);
   });
 });
 

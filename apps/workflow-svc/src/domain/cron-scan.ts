@@ -1,5 +1,5 @@
 import { WorkflowError } from "core";
-import { Effect, Option } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import { decide } from "./cron-engine.ts";
 import {
@@ -142,6 +142,51 @@ export const disarmCron = (
     }
     yield* cs.bumpLedger(cronLedgerDate(nowMs), { cronsDeactivated: 1 });
     return disarmed;
+  });
+
+// ---------------------------------------------------------------------------
+// Pub/sub disarm (the cron-disarm topic — a finalizing chain's teardown, D6)
+// ---------------------------------------------------------------------------
+
+/** The disarm-event payload a finalizing chain publishes (D6): the recur cron's identity tuple. */
+const DisarmEvent = Schema.Struct({
+  repo: Schema.String,
+  slug: Schema.String,
+  workflow: Schema.String,
+});
+
+/**
+ * One cron-disarm delivery — the pub/sub sibling of POST /cron/disarm. A chain publishes these on
+ * atomic failure (D6) so it never writes cron:sub itself (D2); THIS handler stays the single writer,
+ * reusing `disarmCron`. Payload problems and a missing cron ack as `{ skipped }` (redelivery cannot
+ * fix a bad payload, and disarming an already-gone cron is a no-op); infra failures stay in the error
+ * channel → 500 → Dapr redelivers. Mirrors trigger.router's `triggerEffect` envelope handling.
+ */
+export const disarmEventEffect = (
+  rawBody: unknown,
+): Effect.Effect<{ disarmed: string } | { skipped: string }, WorkflowError, CronStore> =>
+  Effect.gen(function* () {
+    const envelope = rawBody as Record<string, unknown> | null;
+    let data: unknown =
+      envelope && typeof envelope === "object" && "data" in envelope ? envelope.data : envelope;
+    if (typeof data === "string") {
+      try {
+        data = JSON.parse(data);
+      } catch {
+        return { skipped: "event data is not JSON" };
+      }
+    }
+    const decoded = yield* Schema.decodeUnknown(DisarmEvent)(data).pipe(Effect.option);
+    if (Option.isNone(decoded)) return { skipped: "event lacks a cron identity" };
+    const id = cronId(decoded.value);
+    return yield* disarmCron(id).pipe(
+      Effect.as({ disarmed: id }),
+      Effect.catchAll((e) =>
+        "_tag" in e && e._tag === "NotFound"
+          ? Effect.succeed({ skipped: `no cron '${id}'` })
+          : Effect.fail(e as WorkflowError),
+      ),
+    );
   });
 
 // ---------------------------------------------------------------------------

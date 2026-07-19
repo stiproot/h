@@ -179,7 +179,12 @@ finalizing chain publishes disarm for its crons and, under publish-default, dele
   (Phase 4): the chain captures off `wf.output`, which write-wf-row stamps on the SAME terminal write
   that records `resolved` from the run's structured `goal: RESOLVED` — so the captured output and the
   resolved flag are guaranteed to come from one run. The chain reads the wf row, never the instance.
-- **Disarm-event contract:** topic name + payload (chainId → member cron ids) for D6 step 2.
+- ~~**Disarm-event contract:** topic name + payload (chainId → member cron ids) for D6 step 2.~~
+  RESOLVED (Phase 5): topic **`cron-disarm`** (constant in cron.model), payload the recur cron's
+  identity tuple `{repo, slug, workflow}` (the same coords `cronId` builds / POST /cron/disarm takes).
+  The chain publishes one per active cron member of the finalizing stage; workflow-svc subscribes
+  (cron.router cloudevents route → `disarmEventEffect` → the single-writer `disarmCron`). Idempotent:
+  a missing / already-deactivated cron acks `{skipped}`.
 
 ## Test plan
 
@@ -195,6 +200,22 @@ a CLI golden for the new `h chain run` grammar.
 
 ## Progress log
 
+- 2026-07-19 — **Phase 5 landed** (D6 atomic-failure teardown — a chain fails as a unit). The
+  disarm-event contract is settled: topic **`cron-disarm`** (`CRON_DISARM_TOPIC` in cron.model),
+  payload the recur cron identity `{repo, slug, workflow}`. `chain-scan` gained two teardown helpers —
+  `terminateRunningMembers` (kill the live siblings of the failing stage; the failed member is already
+  terminal, a `done` member has nothing to reap; best-effort so teardown never itself fails the
+  finalize) and `disarmStageCrons` (publish a `cron-disarm` per cron member of the stage — a LOOSE
+  pub/sub edge, so the chain NEVER writes cron:sub per D2). Wired into every non-completed finalize:
+  `finalize failed|terminated` terminates siblings + disarms; `orphaned` disarms only (member status
+  unreadable); `budget-terminate` disarms after its existing terminate-all; registration's
+  `finalizeFailed` disarms a cron armed before a dispatch failure. A completed chain reaps nothing
+  (every member done, crons already resolved→deactivated). The single-writer side: `cron-scan`'s
+  **`disarmEventEffect`** (the pub/sub sibling of POST /cron/disarm) reuses `disarmCron`; cron.router
+  serves it on a cloudevents `POST /cron-disarm` route; workflow.router's `/dapr/subscribe` declares
+  the topic. Green: workflow-svc 304 tests (+6: 2 chain-teardown scan tests — terminate-siblings+publish-disarm-on-failure,
+  no-reap-on-completed — + 4 disarmEventEffect unit tests) + tsc + oxfmt + depcruise. NOT yet
+  live-validated (stack down).
 - 2026-07-19 — **Phase 4 landed** (D1-chain + D2 + D4-cron — inline chain members + independent
   workflow-cron members the chain only OBSERVES). `ChainWorkflow`: `key` is now optional with an
   embedded `steps` alternative (D1 inline storage — the composed def lives IN the `chain:sub` row),

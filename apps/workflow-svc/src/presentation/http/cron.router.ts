@@ -4,7 +4,12 @@ import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { type ChainScanReport, scanChainsEffect } from "../../domain/chain-scan.ts";
-import { type CronScanReport, disarmCron, scanCronsEffect } from "../../domain/cron-scan.ts";
+import {
+  type CronScanReport,
+  disarmCron,
+  disarmEventEffect,
+  scanCronsEffect,
+} from "../../domain/cron-scan.ts";
 import { type DiscoverScanReport, scanDiscoverEffect } from "../../domain/discover-scan.ts";
 import { type SchedScanReport, disarmSched, scanSchedEffect } from "../../domain/schedule-scan.ts";
 import { cronId } from "../../domain/models/cron.model.ts";
@@ -195,6 +200,31 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
       }),
     ),
   );
+
+  // The cron-disarm pub/sub target (docs/plans/inline-chain-cron-composition.md D6): a finalizing
+  // chain publishes `{repo, slug, workflow}` here to deactivate a member-armed cron WITHOUT writing
+  // cron:sub itself (D2) — this handler is the single writer, reusing disarmCron. Dapr delivers
+  // pub/sub events as `application/cloudevents+json`, which Fastify's default JSON parser does not
+  // handle, so the route lives in an encapsulated scope that adds a parser for that content type
+  // (mirrors trigger.router). A missing cron / bad payload acks as {skipped}; infra failure → 500.
+  fastify.register(async (scope) => {
+    scope.addContentTypeParser(
+      "application/cloudevents+json",
+      { parseAs: "string" },
+      (_req, body, done) => {
+        try {
+          done(null, JSON.parse(body as string));
+        } catch (err) {
+          done(err as Error, undefined);
+        }
+      },
+    );
+    scope.post("/cron-disarm", (request, reply) =>
+      withServerSpan("POST /cron-disarm", request.headers, () =>
+        runRoute(runtime, reply, disarmEventEffect(request.body)),
+      ),
+    );
+  });
 
   // NOTE: a discovery cron is registered by the `register-discover` ACTIVITY inside a one-step
   // provision workflow (`h cron discover add` fires it), NOT by a handler here (§10 — crons via

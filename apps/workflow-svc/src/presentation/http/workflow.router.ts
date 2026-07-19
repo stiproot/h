@@ -22,7 +22,7 @@ import {
   WorkflowRequest,
   toRequest,
 } from "../../domain/models/workflow.model.ts";
-import { CronPolicy } from "../../domain/models/cron.model.ts";
+import { CRON_DISARM_TOPIC, CronPolicy } from "../../domain/models/cron.model.ts";
 import { wfIdentityFrom } from "../../domain/models/wf.model.ts";
 import { assertValidCron, resolveFireAt } from "../../domain/scheduling.ts";
 import { advanceSched, registerSchedForFire } from "../../domain/schedule-scan.ts";
@@ -479,10 +479,12 @@ export function registerWorkflowRoutes(
   );
 
   fastify.get("/dapr/subscribe", async (_request, reply) => {
-    // The single well-known trigger topic (see trigger.router.ts): events carrying
-    // { key, params } fire the named saved workflow — the pub/sub sibling of /workflow/run/:key.
+    // Two well-known topics: workflow-trigger (trigger.router — events carrying { key, params } fire
+    // the named saved workflow, the pub/sub sibling of /workflow/run/:key) and cron-disarm
+    // (cron.router — a finalizing chain deactivates a member-armed cron without writing cron:sub, D6).
     return reply.send([
       { pubsubname: "pubsub", topic: "workflow-trigger", route: "workflow-trigger" },
+      { pubsubname: "pubsub", topic: CRON_DISARM_TOPIC, route: "cron-disarm" },
     ]);
   });
 }

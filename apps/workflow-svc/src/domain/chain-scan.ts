@@ -14,6 +14,7 @@ import {
   stageOf,
   validateChain,
 } from "./models/chain.model.ts";
+import { CRON_DISARM_TOPIC } from "./models/cron.model.ts";
 import { wfIdentityFrom } from "./models/wf.model.ts";
 import { toRequest, type WorkflowRequest } from "./models/workflow.model.ts";
 import { ChainStore } from "./ports/IChainStore.ts";
@@ -398,6 +399,18 @@ const processRow = (
           const note = `stopped after ${loop.maxIterations} iterations (findings may remain)`;
           return yield* executeFinalize({ ...decision.row, note }, "completed", nowMs, report);
         }
+        // D6 atomic teardown: a non-completed finalize reaps what the live stage minted before the
+        // chain records failed/terminated/orphaned. A completed chain has nothing to reap (every
+        // member done, crons already resolved→deactivated). A failure/terminate also TERMINATES the
+        // still-running siblings (a chain fails as a unit); orphaned only disarms (its members' status
+        // is unreadable, so termination is left to the instance's own budget/watch).
+        if (decision.outcome !== "completed") {
+          if (decision.outcome === "failed" || decision.outcome === "terminated") {
+            const killed = yield* terminateRunningMembers(reads);
+            for (const id of killed) report.terminated.push(id);
+          }
+          yield* disarmStageCrons(row, row.cursor);
+        }
         return yield* executeFinalize(decision.row, decision.outcome, nowMs, report);
       }
       case "budget-terminate": {
@@ -492,6 +505,54 @@ const executeAdvance = (
     );
   });
 
+// ---------------------------------------------------------------------------
+// Atomic-failure teardown (D6) — a chain fails as a unit
+// ---------------------------------------------------------------------------
+
+/**
+ * Publish a disarm for every cron member of a stage (D6 step 2). A LOOSE pub/sub edge: the
+ * cron-disarm subscriber (cron-scan's disarmEventEffect) stays the single writer of cron:sub — the
+ * chain NEVER writes it (D2). Fire-and-forget; disarming a cron that already resolved→deactivated is
+ * a no-op. Needs a repo (the cron identity's leaf) — without one no cron member could have armed.
+ */
+const disarmStageCrons = (
+  row: ChainRow,
+  stage: number,
+): Effect.Effect<void, never, DaprPublisherTag> =>
+  Effect.gen(function* () {
+    const publisher = yield* DaprPublisherTag;
+    const repo = typeof row.data.repo === "string" ? row.data.repo : undefined;
+    if (!repo) return;
+    for (const i of membersInStage(row.workflows, stage)) {
+      const w = row.workflows[i];
+      if (!w.cron) continue;
+      yield* publisher
+        .publish(PUBSUB, CRON_DISARM_TOPIC, { repo, slug: row.slug, workflow: w.kind })
+        .pipe(Effect.ignore);
+    }
+  });
+
+/**
+ * Terminate every still-running member of a stage (D6 step 1) — the failed member is already terminal
+ * (skipped), a `done` member has nothing to reap. Best-effort (a terminate that errors is dropped):
+ * teardown must never itself fail the finalize. Returns the instanceIds it brought down for the report.
+ */
+const terminateRunningMembers = (
+  reads: readonly MemberRead[],
+): Effect.Effect<string[], never, WorkflowInvoker> =>
+  Effect.gen(function* () {
+    const invoker = yield* WorkflowInvoker;
+    const killed: string[] = [];
+    for (const r of reads) {
+      if (r.done || r.failed) continue;
+      const down = yield* invoker
+        .terminate(r.instanceId)
+        .pipe(Effect.as(true), Effect.catchAll(() => Effect.succeed(false)));
+      if (down) killed.push(r.instanceId);
+    }
+    return killed;
+  });
+
 /**
  * Budget breach: terminate every still-running member of the live stage, then finalize
  * budget-terminated. The loser of a terminate race re-checks and treats an already-terminal instance
@@ -526,6 +587,8 @@ const terminateStageAndFinalize = (
       );
       return;
     }
+    // The stage's members are down; disarm any member-armed cron before finalizing (D6).
+    yield* disarmStageCrons(row, row.cursor);
     return yield* executeFinalize(row, "budget-terminated", nowMs, report);
   });
 
@@ -570,20 +633,24 @@ const executeFinalize = (
       .pipe(Effect.ignore);
   });
 
-/** Finalize a chain as failed with a note, fenced on the current epoch (registration/advance path). */
+/** Finalize a chain as failed with a note, fenced on the current epoch (registration/advance path).
+ *  Disarms any cron a member armed before the dispatch failed (D6) — the same reap the scan path does. */
 const finalizeFailed = (
   row: ChainRow,
   note: string,
-): Effect.Effect<void, WorkflowError, ChainStore> =>
-  saveFenced(row.epoch, {
-    ...row,
-    status: "finalized",
-    outcome: "failed",
-    lastStatus: "FAILED",
-    note,
-    endedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }).pipe(Effect.asVoid);
+): Effect.Effect<void, WorkflowError, ChainStore | DaprPublisherTag> =>
+  Effect.gen(function* () {
+    const saved = yield* saveFenced(row.epoch, {
+      ...row,
+      status: "finalized",
+      outcome: "failed",
+      lastStatus: "FAILED",
+      note,
+      endedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (saved) yield* disarmStageCrons(row, row.cursor);
+  });
 
 // ---------------------------------------------------------------------------
 // Cost tally — sum over the run mirrors of every workflow instance the chain ran

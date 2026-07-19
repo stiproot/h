@@ -684,12 +684,13 @@ describe("GET routes", () => {
     expect(res.json()).toEqual({ instanceId: "wf-9", runtimeStatus: "UNKNOWN" });
   });
 
-  it("GET /dapr/subscribe declares the workflow-trigger subscription", async () => {
+  it("GET /dapr/subscribe declares the workflow-trigger + cron-disarm subscriptions", async () => {
     const app = await makeApp(stubInvoker(), stubStore());
     const res = await app.inject({ method: "GET", url: "/dapr/subscribe" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual([
       { pubsubname: "pubsub", topic: "workflow-trigger", route: "workflow-trigger" },
+      { pubsubname: "pubsub", topic: "cron-disarm", route: "cron-disarm" },
     ]);
   });
 });
