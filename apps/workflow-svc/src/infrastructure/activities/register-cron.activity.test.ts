@@ -66,4 +66,44 @@ describe("planCron (the arm-* decision)", () => {
     if (!plan.armed) throw new Error("unreachable");
     expect(plan.registration.budget).toBeUndefined();
   });
+
+  it("builds an EMBEDDED source from the run's own steps when inline (no saved key)", () => {
+    const steps = [{ activity: "run-claude", input: { task: "do it" } }];
+    const plan = planCron({
+      ...base,
+      inline: true,
+      steps,
+      workspaceId: "ws-1",
+    });
+    expect(plan.armed).toBe(true);
+    if (!plan.armed) throw new Error("unreachable");
+    expect(plan.registration.source).toEqual({
+      mode: "embedded",
+      steps,
+      params: { repo: "stiproot/h", slug: "issue-42" },
+      workspaceId: "ws-1",
+    });
+    // Identity + instance still derive from the wf coords, exactly like the saved path.
+    expect(plan.registration.identity.workflow).toBe("revise");
+    expect(plan.registration.instanceId).toBe("revise-issue-42");
+  });
+
+  it("threads the PR guard into embedded-source params too", () => {
+    const plan = planCron({
+      ...base,
+      inline: true,
+      steps: [{ activity: "run-claude" }],
+      requirePrFrom: '```json\n{"pr": 57}\n```',
+    });
+    expect(plan.armed).toBe(true);
+    if (!plan.armed) throw new Error("unreachable");
+    expect((plan.registration.source as { params?: Record<string, unknown> }).params).toMatchObject({
+      pr: "57",
+    });
+  });
+
+  it("fails closed (armed:false) when inline is set but there are no steps to recur", () => {
+    const plan = planCron({ ...base, inline: true, steps: [] });
+    expect(plan).toEqual({ armed: false, reason: "inline cron has no steps to recur" });
+  });
 });

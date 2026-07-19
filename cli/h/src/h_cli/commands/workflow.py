@@ -424,12 +424,6 @@ def run(
                 "an inline definition through an agent babysitter is a separate path)."
             )
             raise typer.Exit(1)
-        if cron_policy:
-            err_console.print(
-                "[red]--cron on an inline run is not wired yet[/red] — publish the template and "
-                "`--cron` the saved key (the embedded-source cron pairs with a later item)."
-            )
-            raise typer.Exit(1)
         try:
             rendered = helm.render_workflow(key, values={"publish": "true"})
         except helm.HelmError as err:
@@ -445,8 +439,27 @@ def run(
         # definition to merge against server-side, so the CLI does it — same result as a saved
         # fire).
         merged = {**(definition.get("params") or {}), **params}
+        # --inline --cron: recur these very steps over an EMBEDDED source (nothing published to
+        # re-hydrate). The cron key mirrors the wf: coords, so it needs repo+slug params + the
+        # wf-identity, exactly like a saved --cron (docs/plans/inline-chain-cron-composition.md D1).
+        arm_cron: dict[str, Any] | None = None
+        wf: dict[str, Any] | None = None
+        if cron_policy:
+            repo, slug = merged.get("repo"), merged.get("slug")
+            if not repo or not slug:
+                err_console.print(
+                    "[red]--inline --cron needs repo and slug params[/red] "
+                    "(-p repo=owner/name -p slug=…) — the cron key mirrors the wf: coords."
+                )
+                raise typer.Exit(1)
+            wf = {"repo": repo, "slug": slug, "workflow": key}
+            arm_cron = {"cadence": cron_policy["cadence"], "workflow": key, "inline": True}
+            if "budget" in cron_policy:
+                arm_cron["budget"] = cron_policy["budget"]
         result = _guarded(
-            lambda: workflow_svc.run_steps(steps, merged, instance_id, fresh, watch_policy)
+            lambda: workflow_svc.run_steps(
+                steps, merged, instance_id, fresh, watch_policy, arm_cron, wf
+            )
         )
     elif via:
         if watch_policy or cron_policy:

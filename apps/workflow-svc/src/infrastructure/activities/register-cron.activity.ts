@@ -1,6 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
 import { type CronRegistration, registerCronForFire } from "../../domain/cron-scan.ts";
+import type { WorkflowStep } from "../../domain/models/workflow.model.ts";
 import { lastFencedJson } from "../../domain/structured-output.ts";
 import { runActivity } from "../activity-runtime.ts";
 
@@ -23,7 +24,8 @@ import { runActivity } from "../activity-runtime.ts";
  * workflow's params.
  */
 export type RegisterCronInput = {
-  /** The saved key to recur (e.g. "revise"). */
+  /** The saved key to recur (e.g. "revise"). With `inline`, this is only the wf-identity workflow
+   *  name (the cron key coord), not a store key. */
   workflow: string;
   repo: string;
   slug: string;
@@ -35,6 +37,13 @@ export type RegisterCronInput = {
   requirePrFrom?: string;
   /** The fixed instance the recur cron fires under; defaults to `<workflow>-<slug>`. */
   instanceId?: string;
+  /** Inline (embedded) recurrence: recur these steps verbatim instead of the saved `workflow` key
+   *  (docs/plans/inline-chain-cron-composition.md D1). When set, the plan builds a `{mode:"embedded"}`
+   *  source. Forwarded by generic.workflow from the run's OWN steps. */
+  inline?: boolean;
+  steps?: ReadonlyArray<WorkflowStep>;
+  /** The reusable workspace the embedded recurrence targets (carried into the embedded source). */
+  workspaceId?: string;
   traceparent?: string;
 };
 
@@ -81,12 +90,26 @@ export function planCron(input: RegisterCronInput): CronPlan {
     if (pr === undefined) return { armed: false, reason: "no PR opened — revise loop not armed" };
     fireParams.pr = pr;
   }
+  // Inline (embedded) recurrence: recur the run's own steps verbatim — nothing to re-hydrate by key.
+  // A missing/empty `steps` under `inline` is a defect (an embedded source with no steps can never
+  // fire), so fail closed rather than silently arm an empty cron.
+  const source: CronRegistration["source"] = input.inline
+    ? {
+        mode: "embedded",
+        steps: input.steps ?? [],
+        params: fireParams,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+      }
+    : { mode: "saved", key: input.workflow, params: fireParams };
+  if (source.mode === "embedded" && source.steps.length === 0) {
+    return { armed: false, reason: "inline cron has no steps to recur" };
+  }
   return {
     armed: true,
     registration: {
       identity: { repo: input.repo, slug: input.slug, workflow: input.workflow },
       cadence: input.cadence,
-      source: { mode: "saved", key: input.workflow, params: fireParams },
+      source,
       ...(input.maxFires !== undefined ? { budget: { maxFires: input.maxFires } } : {}),
       instanceId: input.instanceId ?? `${input.workflow}-${input.slug}`,
     },

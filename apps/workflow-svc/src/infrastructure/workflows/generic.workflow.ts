@@ -94,6 +94,8 @@ export async function* genericWorkflow(
     // instance so the cron reuses the workspace and the in-flight guard tracks it.
     if (input.armCron) {
       const params = (input.params ?? {}) as Record<string, unknown>;
+      // Inline (embedded) recurrence recurs THIS run's own steps verbatim — nothing published to
+      // re-hydrate by key (docs/plans/inline-chain-cron-composition.md D1).
       yield ctx.callActivity(getActivity("register-cron"), {
         workflow: input.armCron.workflow,
         repo: params.repo,
@@ -102,6 +104,9 @@ export async function* genericWorkflow(
         ...(input.armCron.budget ? { maxFires: input.armCron.budget.maxFires } : {}),
         params: input.params,
         instanceId: workflowInstanceId,
+        ...(input.armCron.inline
+          ? { inline: true, steps: input.steps, workspaceId: input.workspaceId }
+          : {}),
         traceparent: input.traceparent,
       });
     }

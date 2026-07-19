@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { StepDefinition, WorkflowParams } from "./workflow.model.ts";
+import { WorkflowParams, WorkflowStep } from "./workflow.model.ts";
 
 /**
  * The cron primitive's data shapes (docs/plans/workflow-watcher-registry.md §5) — the THIRD sibling
@@ -36,10 +36,12 @@ export const CronSourceSaved = Schema.Struct({
 export type CronSourceSaved = Schema.Schema.Type<typeof CronSourceSaved>;
 
 // Source mode 2 (§5): recur an EMBEDDED hydrated definition as-is — no publish, no re-hydration. This is
-// what lets an inline run (`h workflow run <template> -p … --cron …`) recur with nothing saved separately.
+// what lets an inline run (`h workflow run <template> -p … --inline --cron …`) recur with nothing saved
+// separately (docs/plans/inline-chain-cron-composition.md D1). `steps` is the full WorkflowStep union
+// (plain steps + parallel groups) so an inline-composed definition recurs verbatim.
 export const CronSourceEmbedded = Schema.Struct({
   mode: Schema.Literal("embedded"),
-  steps: Schema.Array(StepDefinition),
+  steps: Schema.Array(WorkflowStep),
   params: Schema.optional(WorkflowParams),
   workspaceId: Schema.optional(Schema.String),
 });

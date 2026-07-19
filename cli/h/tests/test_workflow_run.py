@@ -46,6 +46,48 @@ def test_inline_renders_a_template_and_fires_its_steps() -> None:
     assert body["instanceId"] == "revise-pi-agent"
 
 
+@needs_helm
+@respx.mock
+def test_inline_cron_arms_an_embedded_recurrence() -> None:
+    """--inline --cron posts armCron{inline:true} + wf identity so the run recurs over an
+    EMBEDDED source built from its own steps (docs/plans/inline-chain-cron-composition.md D1)."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "revise-pi-agent", "watching": False})
+    )
+    result = runner.invoke(
+        app,
+        [
+            "workflow", "run", "revise", "--inline",
+            "-p", "repo=stiproot/h", "-p", "slug=pi-agent", "-p", "pr=30",
+            "--cron", "*/30 * * * *", "--max-fires", "20",
+            "--instance-id", "revise-pi-agent",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls[0].request.content)
+    assert body["armCron"] == {
+        "cadence": "*/30 * * * *",
+        "workflow": "revise",
+        "inline": True,
+        "budget": {"maxFires": 20},
+    }
+    # The wf-identity the cron key mirrors + the goal-handshake row the run writes.
+    assert body["wf"] == {"repo": "stiproot/h", "slug": "pi-agent", "workflow": "revise"}
+    # The embedded source recurs THESE steps — they still ride the initial run body.
+    assert isinstance(body["steps"], list) and body["steps"]
+
+
+@needs_helm
+def test_inline_cron_requires_repo_and_slug() -> None:
+    """The cron key mirrors the wf: coords, so --inline --cron without repo/slug is a clear error
+    (fail closed rather than arm a malformed cron row)."""
+    result = runner.invoke(
+        app, ["workflow", "run", "revise", "--inline", "--cron", "*/30 * * * *"]
+    )
+    assert result.exit_code == 1
+    assert "repo and slug" in result.output
+
+
 @respx.mock
 def test_cron_flag_registers_a_recurrence_on_the_saved_run() -> None:
     """--cron/--max-fires ride the run as a cron policy on /workflow/run/:key (the 4d field)."""

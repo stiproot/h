@@ -226,6 +226,9 @@ export function registerWorkflowRoutes(
           const body = yield* Schema.decodeUnknown(WorkflowRequest, {
             onExcessProperty: "preserve",
           })(request.body);
+          // A cron recurs under the wf: coords, so an armCron (inline embedded recurrence, D1) needs
+          // the identity — same rule the saved run route enforces via CronNeedsIdentityError.
+          if (body.armCron && !body.wf) return yield* new CronNeedsIdentityError();
           // Registration and invocation share one handler (ruling W6); a `watch` field on the
           // body writes the durable watch:sub:<instanceId> row.
           return yield* invokeWithWatch({ ...body, traceparent });

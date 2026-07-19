@@ -75,11 +75,18 @@ export const WorkflowRequest = Schema.Struct({
   // idempotently, instead of the fire handler doing it. `workflow` is the saved key to re-fire; repo/
   // slug/params/instanceId come from the run's own input at arm time. (ArmCron's `budget` is inlined
   // rather than reusing cron.model's CronBudget to avoid a cron.model↔workflow.model import cycle.)
+  //
+  // `inline` (docs/plans/inline-chain-cron-composition.md D1): recur an EMBEDDED source built from the
+  // run's OWN steps instead of the saved `workflow` key — for an inline-composed run with nothing
+  // published to re-hydrate. generic.workflow forwards `input.steps` + `workspaceId` to register-cron,
+  // which builds a `{mode:"embedded"}` source. `workflow` stays the wf-identity workflow name (the cron
+  // key coord), it is just not used as a store key.
   armCron: Schema.optional(
     Schema.Struct({
       cadence: Schema.String,
       workflow: Schema.String,
       budget: Schema.optional(Schema.Struct({ maxFires: Schema.Number })),
+      inline: Schema.optional(Schema.Boolean),
     }),
   ),
 });

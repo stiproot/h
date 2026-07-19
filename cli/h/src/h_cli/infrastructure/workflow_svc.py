@@ -100,12 +100,20 @@ def run_steps(
     instance_id: str | None = None,
     fresh: bool = False,
     watch: dict[str, Any] | None = None,
+    arm_cron: dict[str, Any] | None = None,
+    wf: dict[str, Any] | None = None,
 ) -> Any:
     """Fire a hydrated definition (raw steps) directly — no saved key, no publish. The inline
     compose-on-fire path: the CLI renders a template and posts its steps + params here, so a
     run leaves only its wf: status row (POST /workflow/run). params resolve {{params.*}} tokens
     in the steps exactly as a saved run does; the merge with the template's value-defaults happens
-    caller-side (there is no stored definition to merge against server-side)."""
+    caller-side (there is no stored definition to merge against server-side).
+
+    `arm_cron` ({cadence, workflow, budget?, inline:true}) makes the run register its OWN recurrence
+    over an EMBEDDED source built from these very steps — the inline sibling of `run_saved`'s cron,
+    for a definition that was never published (docs/plans/inline-chain-cron-composition.md D1). It
+    needs `wf` ({repo, slug, workflow}) so the recurring runs write the goal-handshake status row
+    the cron engine reads to stop."""
     body: dict[str, Any] = {"steps": steps}
     if params:
         body["params"] = params
@@ -115,6 +123,10 @@ def run_steps(
         body["fresh"] = True
     if watch:
         body["watch"] = watch
+    if wf:
+        body["wf"] = wf
+    if arm_cron:
+        body["armCron"] = arm_cron
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()
