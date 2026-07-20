@@ -30,18 +30,24 @@ GitHub (on the target repo):
 
 Local:
 
-4. Pre-clone the target repo into the shared workspace root (`cli/scripts/clone.sh`).
+4. Pre-clone the target repo into the shared workspace root (`cli/scripts/clone.sh`). It lands at
+   `<WORKSPACE_ROOT>/repo` by default — the SAME location the agent's /worktree route resolves as
+   `<sharedRoot>/repo` (from AGENT_BASE_DIR). **This is mode-agnostic:** host `…/h-workspace/repo`
+   and compose `/workspace/repo` are the same dir (../h-workspace is bind-mounted at /workspace), so
+   the pre-clone + worktrees work in either mode without changing config. Do NOT bake a `clonePath`.
 5. `cli/charts/workflows/values.local.yaml` (gitignored) — feature/verify/create-pr config only;
-   the discovery cron's repo/label/cadence are CLI args at arm time, not baked values:
+   the discovery cron's repo/label/cadence are CLI args at arm time, not baked values. Leave
+   `clonePath` UNSET so host ⇄ compose stay interchangeable (only set it to point at a repo
+   pre-cloned to a non-default path):
 
    ```yaml
    feature:
-     clonePath: /workspace/repo            # the pre-clone (agent-visible path)
-     gitAuth: ssh                           # or omit for the GH_TOKEN pat path
+     # clonePath: intentionally unset — the agent defaults to <sharedRoot>/repo (mode-agnostic).
+     gitAuth: pat                           # or ssh; pat uses the ambient GH_TOKEN
    verify:
      cmd: "bun install --frozen-lockfile && bun run build && bun run test"  # pure build+unit ONLY
    createPr:
-     gitAuth: ssh                           # match feature.gitAuth
+     gitAuth: pat                           # match feature.gitAuth
    ```
 
 Acceptance: a push to `main` with the loop's credential is rejected (branch protection), so the

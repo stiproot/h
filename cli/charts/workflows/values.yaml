@@ -33,7 +33,11 @@ feature:
   # Identity only; does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in);
   # supply per fire with -p repo=owner/name, or set an org default in values.local.yaml.
   repo: ""
-  # Local path of the pre-cloned target repo (NOT a GitHub owner/name); empty = the agent's default shared clone.
+  # Local path of the pre-cloned target repo (NOT a GitHub owner/name). LEAVE EMPTY (the default) —
+  # the agent's /worktree route then uses <sharedRoot>/repo, resolved from AGENT_BASE_DIR per mode,
+  # so the same workflow runs in host AND compose without a mode-specific value (host
+  # …/h-workspace/repo ≡ compose /workspace/repo via the bind mount). Set ONLY for a repo pre-cloned
+  # to a non-default path. Baking a mode-specific path here breaks host⇄compose interchangeability.
   clonePath: ""
   # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
   remoteBase: ""
