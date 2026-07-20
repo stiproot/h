@@ -1,5 +1,5 @@
 import type { CommandExecutor, HttpClient } from "@effect/platform";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Logger, LogLevel } from "effect";
 
 import type {
   AgentEnv,
@@ -16,7 +16,6 @@ import { codexStrategy } from "./agents/codex.ts";
 import { openhandsStrategy } from "./agents/openhands.ts";
 import { piStrategy } from "./agents/pi.ts";
 import { runAgentProcessEffect } from "./agents/run-process.ts";
-import { createLogger } from "./lib/logger.ts";
 
 /** Input for one agent CLI invocation via the {@link AgentInvoker} service. */
 export interface AgentInvokeParams {
@@ -100,7 +99,7 @@ function invokeAgent(
   LiteLlmError,
   CommandExecutor.CommandExecutor | HttpClient.HttpClient
 > {
-  return Effect.suspend(() => {
+  const baseEffect = Effect.suspend(() => {
     const mergedEnv = mergeProcessEnv(params.env);
     const request: AgentInvocationRequest = {
       systemPrompt: params.systemPrompt,
@@ -116,13 +115,12 @@ function invokeAgent(
       llmConfig: params.llmConfig,
       permissionMode: params.permissionMode,
     };
-    const log = createLogger(params.verbose ?? false);
 
-    return runAgentProcessEffect(strategy, request, log);
+    return runAgentProcessEffect(strategy, request);
   }).pipe(
     // Behaviour flag: a timeout must not fail the call — it resolves
     // the legacy exit-124 structured result. Spawn failures likewise resolved
-    // as exit-1 results.
+    // as exit-1 results (exit-127 when the command is not found).
     Effect.catchTags({
       AgentTimeoutError: (error) =>
         Effect.succeed<InvocationResult>({
@@ -132,16 +130,32 @@ function invokeAgent(
           stderr: "Task timed out",
           exitCode: 124,
         }),
-      AgentSpawnError: (error) =>
-        Effect.succeed<InvocationResult>({
+      AgentSpawnError: (error) => {
+        const notFound = isPlatformNotFoundError(error.cause);
+        return Effect.succeed<InvocationResult>({
           success: false,
           stopReason: "failed",
-          stdout: `Failed to spawn ${error.command}: ${describeCause(error.cause)}`,
-          stderr: describeCause(error.cause),
-          exitCode: 1,
-        }),
+          stdout: notFound
+            ? `Command not found: ${error.command}. Ensure the CLI is installed and in PATH.`
+            : `Failed to spawn ${error.command}: ${describeCause(error.cause)}`,
+          stderr: notFound
+            ? `Command '${error.command}' not found`
+            : describeCause(error.cause),
+          exitCode: notFound ? 127 : 1,
+        });
+      },
     }),
   );
+
+  return params.verbose
+    ? baseEffect.pipe(Logger.withMinimumLogLevel(LogLevel.Debug))
+    : baseEffect;
+}
+
+function isPlatformNotFoundError(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null) return false;
+  const c = cause as Record<string, unknown>;
+  return c._tag === "SystemError" && c.reason === "NotFound";
 }
 
 function mergeProcessEnv(env: Record<string, string>): Record<string, string> {

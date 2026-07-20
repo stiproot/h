@@ -1,5 +1,3 @@
-import { execSync } from "child_process";
-
 import type {
   AgentInvocationRequest,
   InvocationResult,
@@ -15,18 +13,6 @@ interface BuildCliInvocationOptions {
   stdinSupport: boolean;
   supportsResume: boolean;
   expectPromptLast?: boolean;
-}
-
-export function commandExists(command: string): boolean {
-  return resolveCommand(command) !== undefined;
-}
-
-export function resolveCommand(command: string): string | undefined {
-  try {
-    return execSync(`which ${command}`, { encoding: "utf-8" }).trim() || undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export function createMissingEnvResult(agentName: string, envKey: string): InvocationResult {

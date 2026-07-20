@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { FetchHttpClient } from "@effect/platform";
@@ -119,6 +123,35 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
     expect(result.success).toBe(false);
     expect(result.exitCode).toBe(127);
     expect(result.stdout).toContain("Command not found");
+  });
+
+  it("resolves exit 127 on the sudo path when the inner command does not exist", async () => {
+    // Real sudo requires a password in most test environments; use a fake sudo script that exits 127
+    // to simulate the OS-level "command not found" outcome without needing real auth.
+    const tmpDir = await mkdtemp(join(tmpdir(), "agent-cli-test-"));
+    const fakeSudo = join(tmpDir, "sudo");
+    await writeFile(fakeSudo, "#!/bin/sh\nexit 127\n", { mode: 0o755 });
+
+    const origPath = process.env.PATH;
+    const origUid = process.env.SUB_AGENT_UID;
+    process.env.PATH = `${tmpDir}:${origPath ?? ""}`;
+    process.env.SUB_AGENT_UID = "0";
+
+    try {
+      const strategy = nodeStrategy("", {
+        buildInvocation: async () => ({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
+      });
+      const result = await invoke(strategy, baseParams());
+      expect(result.success).toBe(false);
+      expect(result.exitCode).toBe(127);
+      expect(result.stdout).toContain("Command not found");
+    } finally {
+      if (origPath !== undefined) process.env.PATH = origPath;
+      else delete process.env.PATH;
+      if (origUid === undefined) delete process.env.SUB_AGENT_UID;
+      else process.env.SUB_AGENT_UID = origUid;
+      await rm(tmpDir, { recursive: true }).catch(() => {});
+    }
   });
 
   it("feeds stdinInput to the child and closes stdin", async () => {

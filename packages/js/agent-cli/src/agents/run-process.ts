@@ -1,9 +1,7 @@
 import { Command, type CommandExecutor, type HttpClient } from "@effect/platform";
 import { Duration, Effect, Stream } from "effect";
 
-import type { Logger } from "../lib/logger.ts";
 import { buildInvocationResult, parseStreamLine } from "./parse-stream.ts";
-import { commandExists } from "./shared.ts";
 import type {
   AgentInvocationRequest,
   AgentStrategy,
@@ -23,7 +21,6 @@ import { AgentSpawnError, AgentTimeoutError } from "./types.ts";
 export function runAgentProcessEffect(
   strategy: AgentStrategy,
   request: AgentInvocationRequest,
-  log: Logger,
 ): Effect.Effect<
   InvocationResult,
   AgentSpawnError | AgentTimeoutError | LiteLlmError,
@@ -44,7 +41,7 @@ export function runAgentProcessEffect(
 
     // Guarantee the strategy's cleanup runs on every exit path — success, failure,
     // timeout, interruption, or early command-not-found return.
-    const runInvocation = runPreparedInvocation(strategy, request, prepared, envOverrides, log);
+    const runInvocation = runPreparedInvocation(strategy, request, prepared, envOverrides);
     return yield* prepared.cleanup
       ? runInvocation.pipe(
           Effect.ensuring(
@@ -88,30 +85,18 @@ function runPreparedInvocation(
   request: AgentInvocationRequest,
   prepared: PreparedAgentInvocation,
   envOverrides: Record<string, string> | undefined,
-  log: Logger,
 ): Effect.Effect<
   InvocationResult,
   AgentSpawnError | AgentTimeoutError,
   CommandExecutor.CommandExecutor
 > {
   return Effect.gen(function* () {
-    const found = yield* Effect.sync(() => commandExists(prepared.command));
-    if (!found) {
-      log.error(`Command not found: ${prepared.command}`);
-      return {
-        success: false,
-        stdout: `Command not found: ${prepared.command}. Ensure the CLI is installed and in PATH.`,
-        stderr: `Command '${prepared.command}' not found`,
-        exitCode: 127,
-      };
-    }
-
     const childEnv = envOverrides ? { ...request.env, ...envOverrides } : request.env;
 
     const streamEvents: StreamEvent[] = [];
 
-    log.debug(`Spawning ${strategy.name} in: ${request.cwd}`);
-    log.debug(`Command: ${prepared.command} ${prepared.args.join(" ")}`);
+    yield* Effect.logDebug(`Spawning ${strategy.name} in: ${request.cwd}`);
+    yield* Effect.logDebug(`Command: ${prepared.command} ${prepared.args.join(" ")}`);
 
     // `Stream.splitLines` (below) delivers one complete line at a time, so the
     // parser never needs to buffer — it just consumes each line.
@@ -187,9 +172,21 @@ function runPreparedInvocation(
 
     const [duration, { exitCode, signal, stderrText }] = yield* Effect.timed(timedProcess);
 
-    log.debug(
+    yield* Effect.logDebug(
       `${strategy.name} exited (code=${exitCode}, signal=${signal}, ms=${Duration.toMillis(duration)})`,
     );
+
+    // Under the sudo privilege-drop path, a missing inner command surfaces as sudo's own exit 127
+    // (not a parent ENOENT). Detect it by the combination of the sudo path being active, exit 127,
+    // and no JSONL events (a real agent exiting 127 would have emitted events before stopping).
+    if (subAgentUid !== undefined && exitCode === 127 && streamEvents.length === 0) {
+      return {
+        success: false,
+        stdout: `Command not found: ${prepared.command}. Ensure the CLI is installed and in PATH.`,
+        stderr: `Command '${prepared.command}' not found`,
+        exitCode: 127,
+      };
+    }
 
     return buildInvocationResult({
       events: streamEvents,
