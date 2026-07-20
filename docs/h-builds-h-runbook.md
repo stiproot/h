@@ -53,6 +53,24 @@ Local:
 Acceptance: a push to `main` with the loop's credential is rejected (branch protection), so the
 loop can only land work through a PR.
 
+### Shared workspace (host ⇄ compose interchangeable) — one-time
+
+The workspace root (`../h-workspace`) is shared by both modes: host run-scripts write it as your uid,
+compose agents write it as `agent-svc` (uid/gid **10001**). Whichever ran first would own the
+pre-clone + worktrees and lock the other out (the cross-uid problem — same family as the poisoned bun
+cache). Make it a shared, group-owned workspace ONCE (before `clone.sh`, and re-run after if new files
+land root-owned):
+
+```sh
+sudo cli/scripts/setup-agent-workspace.sh   # group-owns ../h-workspace by AGENT_GID (10001), setgid
+                                            # + group-writable, and adds you to the group
+newgrp agent                                # (or re-login) so your group membership applies
+```
+
+The host run-scripts set `umask 002` (via `_lib.sh`) and compose runs as gid 10001, so files either
+mode creates in the workspace stay group-writable — both modes then share it, and the identical
+mode-agnostic workflow config (`clonePath` unset → `<sharedRoot>/repo`) runs in either.
+
 ## Bring-up order
 
 ```sh

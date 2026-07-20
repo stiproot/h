@@ -1,6 +1,12 @@
 #!/bin/bash
 # Shared helpers for run-*.sh scripts. Sourced, not executed.
 
+# Group-writable by default: files a host agent creates in the SHARED workspace (worktrees, runs,
+# caches) inherit group rw, so the compose agents (same AGENT_GID) can also use them — host ⇄ compose
+# interchangeability (docs/plans/agent-process-identity.md; paired with cli/scripts/setup-agent-workspace.sh
+# which group-owns + setgids the workspace root). Sourced before `exec dapr run`, so the agent inherits it.
+umask 002
+
 # stop_stale <app-id> <port>...
 #
 # Make a run script idempotent: stop any prior instance of the dapr app and free the TCP ports it
