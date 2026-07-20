@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@effect/platform": "^0.96.2",
-    "chalk": "^5.3.0",
     "effect": "^3.21.4"
   },
   "devDependencies": {
