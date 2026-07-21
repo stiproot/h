@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   type Blackboard,
+  capturePanel,
   capturePr,
   captureReview,
   ChainThreadError,
@@ -261,5 +262,50 @@ describe("loopIsClean", () => {
         result({ review: { structured: { verdict: "FINDINGS" } } }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("agent-panel kind (multi-agent panel as a chain member)", () => {
+  it("buildParams reads a task off the blackboard", () => {
+    expect(WORKFLOW_KINDS["agent-panel"].buildParams({ task: "design the codex integration" })).toEqual({
+      task: "design the codex integration",
+    });
+  });
+
+  it("buildParams fails loud when no task is on the blackboard", () => {
+    expect(() => WORKFLOW_KINDS["agent-panel"].buildParams({})).toThrow(ChainThreadError);
+  });
+
+  it("capturePanel threads consensus + best onto the blackboard", () => {
+    const data: Blackboard = {};
+    capturePanel(
+      result({
+        synthesize: { structured: { consensus: "use exec --json", best: "claude", disagreements: "" } },
+      }),
+      data,
+    );
+    expect(data.consensus).toBe("use exec --json");
+    expect(data.best).toBe("claude");
+  });
+
+  it("capturePanel fails loud when the synthesis emitted no consensus", () => {
+    expect(() =>
+      capturePanel(result({ synthesize: { structured: { best: "merged" } } }), {}),
+    ).toThrow(ChainThreadError);
+  });
+
+  it("a parallel panel's explicit captures + id namespace under data[id] (no clobber of the flat consensus)", () => {
+    const data: Blackboard = { consensus: "flat-from-a-lone-member" };
+    const contract = contractFor({
+      kind: "agent-panel",
+      id: "design",
+      captures: { consensus: "consensus", best: "best" },
+    });
+    contract.capture(
+      result({ synthesize: { structured: { consensus: "namespaced answer", best: "pi" } } }),
+      data,
+    );
+    expect(data.design).toEqual({ consensus: "namespaced answer", best: "pi" });
+    expect(data.consensus).toBe("flat-from-a-lone-member"); // untouched
   });
 });

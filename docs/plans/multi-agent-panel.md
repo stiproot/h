@@ -86,6 +86,30 @@ Semantics:
 5. **Live validation** — publish, bring up the three agent profiles in compose, fire one
    panel run, verify three concurrent run ledgers + one synthesis.
 
+## Update (2026-07-21): agent-panel is now a first-class CHAIN kind
+
+The panel began as a standalone publish-native workflow (`h workflow run agent-panel`). It is
+now also a first-class **chain** kind, so the whole panel composes as a *concurrent chain
+member* — the panel's in-process parallel step (claude ∥ openhands ∥ pi) running concurrently
+with another workflow in a chain stage. A novel chain kind is added on BOTH sides (the standing
+rule from `chain.model.ts`):
+
+- **Engine** (`apps/workflow-svc/src/domain/`): `agent-panel` added to the `ChainWorkflowKind`
+  literal (`models/chain.model.ts`) + a `capturePanel` contract in `WORKFLOW_KINDS`
+  (`chain-workflows.ts`) — coded `buildParams` reads a `task` off the blackboard; `capture`
+  threads the synthesis's `consensus` (+ `best`) back. Identity is pinned per-branch in the
+  template, so there are no fire-time identity params to thread. A *parallel* panel member
+  declares explicit `--capture` + an `--id`, which namespaces the captures under `data[id]` (D5)
+  so concurrent panels never clobber the flat `consensus`.
+- **CLI** (`cli/h/.../chain.py`): `agent-panel` added to `KNOWN_KINDS` / `WELL_KNOWN`
+  (so `-w agent-panel` resolves with no `--kind`) / `KIND_FIRE` (prefix `panel`, fresh) /
+  `KIND_MODEL_PARAMS` (empty — models bake at publish time, not fire-time).
+
+Live-validated the same day: a `sequential` chain ran two panels concurrently in one stage
+(`-w agent-panel --id design --parallel -w agent-panel --id testplan`), each capturing its
+namespaced `design.consensus` / `testplan.consensus`, which then fed an inline
+`feature ⊕ verify ⊕ create-pr` build stage that opened PR #53.
+
 ## Non-goals
 
 - No agent-to-agent chat inside a step (that is the agents' own subagent machinery).

@@ -102,6 +102,23 @@ export function captureReview(output: string | undefined, data: Blackboard): voi
 }
 
 /**
+ * Capture a multi-agent panel's synthesis from its validated structured output: `consensus` (the
+ * merged answer the panel agreed on) plus `best` (which panelist — or "merged" — to prefer). A
+ * downstream member threads `consensus` in as its spec. `disagreements` stays reachable via an
+ * explicit `--capture`. This flat write is the lone-member default; a PARALLEL panel member (two
+ * panels in one stage) declares explicit `captures` + an `id`, which namespaces them under `data[id]`
+ * so concurrent panels never clobber this flat `consensus`. A missing consensus is a broken panel
+ * contract — fail loud, never fire the next member on a guess.
+ */
+export function capturePanel(output: string | undefined, data: Blackboard): void {
+  const s = requireStructured(output, "capturePanel");
+  if (typeof s.consensus !== "string" || s.consensus === "")
+    throw new ChainThreadError("capturePanel: structured output has no 'consensus'");
+  data.consensus = s.consensus;
+  if (typeof s.best === "string" && s.best) data.best = s.best;
+}
+
+/**
  * The loop-until-clean predicate: is a review workflow's validated verdict CLEAN? Anything else —
  * FINDINGS, a missing verdict, no structured output — is NOT clean, and the iteration budget is
  * the backstop. (The marker era treated an ABSENT ===REVIEW=== as clean; with a declared contract
@@ -265,5 +282,16 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
         data,
       ),
     capture: capturePr,
+  },
+  // A multi-agent panel (claude ∥ openhands ∥ pi, one in-process parallel step, then a synthesis):
+  // reads a `task` from the blackboard; captures the synthesis's `consensus`/`best` so a downstream
+  // member can consume the chosen design as its spec. Identity is PINNED per-branch in the template
+  // (run-claude/run-openhands/run-pi), so there are no fire-time identity params to thread. Two panels
+  // in one stage override this coded contract with explicit `--input task=…` + namespaced `--capture`.
+  "agent-panel": {
+    buildParams: (data) => ({
+      task: requireStr(data, "task", "agent-panel needs a task on the blackboard"),
+    }),
+    capture: capturePanel,
   },
 };

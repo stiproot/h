@@ -572,3 +572,88 @@ def test_chain_run_capture_of_undeclared_field_fails_at_registration(tmp_path: P
     )  # fmt: skip
     assert result.exit_code == 1
     assert "no field(s) prNum" in _all_output(result)
+
+
+@respx.mock
+def test_chain_run_agent_panel_is_a_first_class_kind(tmp_path: Path) -> None:
+    """`-w agent-panel` resolves its kind with no --kind (it's WELL_KNOWN): the multi-agent panel
+    is a chain member. A lone sequential panel keeps its own `panel-<slug>` instance and re-runs
+    fresh (each chain gets a fresh design)."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "x", "-p", "task=design the codex integration", "-w", "agent-panel"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    panel = json.loads(route.calls[0].request.content)["workflows"][0]
+    assert panel["kind"] == "agent-panel"
+    assert panel["key"] == "agent-panel"
+    assert panel["instanceId"] == "panel-x"
+    assert panel["fresh"] is True
+
+
+@respx.mock
+def test_chain_run_agent_panel_parallel_member_namespaces_its_captures(tmp_path: Path) -> None:
+    """The panel's in-process parallel step runs concurrently with another workflow in a stage: a
+    `--parallel` panel drops its shared branch instance, gets a blackboard namespace, and its
+    --capture fields validate against agent-panel's declared outputs schema (consensus/best)."""
+    route = _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/agent-panel").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "agent-panel",
+                "steps": [],
+                "outputs": {
+                    "type": "object",
+                    "properties": {
+                        "consensus": {"type": "string"},
+                        "best": {"type": "string"},
+                        "disagreements": {"type": "string"},
+                    },
+                },
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "agent-panel", "--id", "design", "--input", "task=task",
+            "--capture", "consensus=consensus", "--capture", "best=best",
+            "--parallel", "-w", "feature-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    panel = json.loads(route.calls[0].request.content)["workflows"][0]
+    assert panel["kind"] == "agent-panel"
+    assert panel["stage"] == 0
+    assert "instanceId" not in panel  # parallel → engine-derived instance, no branch collision
+    assert panel["id"] == "design"
+    assert panel["captures"] == {"consensus": "consensus", "best": "best"}
+    assert panel["inputs"] == {"task": "task"}
+
+
+@respx.mock
+def test_chain_run_agent_panel_bad_capture_field_fails_loud(tmp_path: Path) -> None:
+    """A --capture field that isn't in agent-panel's declared outputs schema fails at registration."""
+    _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/agent-panel").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "agent-panel",
+                "steps": [],
+                "outputs": {"type": "object", "properties": {"consensus": {"type": "string"}}},
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "agent-panel", "--capture", "nope=notafield",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "no field(s) notafield" in _all_output(result)
