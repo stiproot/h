@@ -70,19 +70,19 @@ describe("codexStrategy.extractMetrics", () => {
     const events: StreamEvent[] = [
       { type: "result", usage: { input_tokens: 100, output_tokens: 50, cached_input_tokens: 20 } },
     ];
-    const metrics = codexStrategy.extractMetrics(events, baseRequest());
+    const metrics = codexStrategy.extractMetrics(events);
     expect(metrics.tokenUsage).toEqual({ input: 120, output: 50 });
   });
 
   it("returns empty when no result event is present", () => {
-    expect(codexStrategy.extractMetrics([], baseRequest())).toEqual({});
+    expect(codexStrategy.extractMetrics([])).toEqual({});
   });
 
   it("never includes costUsd (Codex does not report it)", () => {
     const events: StreamEvent[] = [
       { type: "result", usage: { input_tokens: 10, output_tokens: 5 } },
     ];
-    const metrics = codexStrategy.extractMetrics(events, baseRequest());
+    const metrics = codexStrategy.extractMetrics(events);
     expect(metrics.costUsd).toBeUndefined();
   });
 });
