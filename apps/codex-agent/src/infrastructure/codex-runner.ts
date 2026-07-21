@@ -1,0 +1,151 @@
+import { join } from "path";
+
+import { FileSystem } from "@effect/platform";
+import { AgentInvoker } from "agent-cli";
+import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
+import { AgentRunError } from "core";
+import type { AgentRequest, AgentResponse } from "core";
+import { Config, type ConfigError, Data, Effect, Layer, Option } from "effect";
+import { LoggerTag } from "logger";
+
+/** Default workspace root. */
+export const DEFAULT_AGENT_BASE_DIR = "/workspace/codex-agent";
+
+const AGENT_ID = "codex-agent";
+
+export class CodexRunError extends Data.TaggedError("CodexRunError")<{
+  readonly cause: unknown;
+}> {
+  override get message(): string {
+    return this.cause instanceof Error ? this.cause.message : String(this.cause);
+  }
+}
+
+const codexConfig = Effect.gen(function* () {
+  const apiKey = yield* Config.withDefault(Config.string("OPENAI_API_KEY"), "");
+  const model = yield* Config.withDefault(Config.string("AGENT_MODEL"), "o4-mini");
+  const baseDir = yield* Config.withDefault(
+    Config.string("AGENT_BASE_DIR"),
+    DEFAULT_AGENT_BASE_DIR,
+  );
+  const runsDir = yield* Config.withDefault(
+    Config.string("AGENT_RUNS_DIR"),
+    join(baseDir, "..", ".runs"),
+  );
+  const daprHttpPort = yield* Config.option(Config.string("DAPR_HTTP_PORT"));
+  const runTimeoutMs = yield* Config.withDefault(Config.number("AGENT_RUN_TIMEOUT_MS"), 1_800_000);
+  return { apiKey, model, baseDir, runsDir, daprHttpPort, runTimeoutMs };
+});
+
+export const CodexRunnerLive: Layer.Layer<
+  AgentRunner,
+  ConfigError.ConfigError,
+  AgentInvoker | RunLedger | LoggerTag | FileSystem.FileSystem
+> = Layer.effect(
+  AgentRunner,
+  Effect.gen(function* () {
+    const cfg = yield* codexConfig;
+    const invoker = yield* AgentInvoker;
+    const ledger = yield* RunLedger;
+    const logger = yield* LoggerTag;
+    const fs = yield* FileSystem.FileSystem;
+
+    const run = (request: AgentRequest): Effect.Effect<AgentResponse, CodexRunError> =>
+      Effect.gen(function* () {
+        const {
+          input,
+          workflowInstanceId,
+          workspaceId,
+          cwd: cwdOverride,
+          model: modelOverride,
+        } = request;
+        const workspaceKey = workspaceId ?? workflowInstanceId;
+        const cwd = cwdOverride ?? (workspaceKey ? join(cfg.baseDir, workspaceKey) : cfg.baseDir);
+        const model = modelOverride ?? cfg.model;
+
+        if (workspaceKey) {
+          yield* fs
+            .makeDirectory(cwd, { recursive: true })
+            .pipe(Effect.mapError((cause) => new CodexRunError({ cause })));
+        }
+
+        const log = yield* logger.child({ workflowInstanceId, workspaceId, agent: "codex" });
+
+        const handle = yield* startRunLedgerEffect({
+          agentId: AGENT_ID,
+          runsDir: cfg.runsDir,
+          workflowInstanceId,
+          workspaceId,
+          workspacePath: cwd,
+          input,
+          daprHttpPort: Option.getOrUndefined(cfg.daprHttpPort),
+        }).pipe(Effect.provideService(RunLedger, ledger));
+
+        const result = yield* invoker
+          .invoke({
+            systemPrompt: "",
+            taskPrompt: input,
+            cwd,
+            env: {
+              ...(cfg.apiKey ? { OPENAI_API_KEY: cfg.apiKey } : {}),
+              ...(workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {}),
+            },
+            timeout: cfg.runTimeoutMs,
+            model,
+            onEvent: (event) => {
+              Effect.runSync(log.info(event, "agent output"));
+              handle.onEvent(event);
+            },
+          })
+          .pipe(
+            Effect.withSpan("codex cli", { attributes: { "codex.model": model } }),
+            Effect.mapError((cause) => new CodexRunError({ cause })),
+            Effect.catchAllDefect((cause) => Effect.fail(new CodexRunError({ cause }))),
+            Effect.tapError((err) =>
+              handle.finish({ status: "failed", output: "", error: String(err.cause) }),
+            ),
+          );
+
+        if (result.exitCode !== undefined && result.exitCode !== 0) {
+          const msg = result.stderr ?? `Agent exited with code ${result.exitCode}`;
+          yield* handle.finish({
+            status: "failed",
+            output: result.stdout ?? "",
+            error: msg,
+            stopReason: result.stopReason ?? null,
+          });
+          return yield* Effect.fail(new CodexRunError({ cause: new Error(msg) }));
+        }
+
+        const summary = yield* handle.finish({
+          status: "completed",
+          output: result.stdout,
+          sessionId: result.sessionId ?? null,
+          model: result.model ?? model,
+          turns: result.numTurns ?? 1,
+          tokens: result.tokenUsage ?? { input: 0, output: 0 },
+          costUsd: result.costUsd ?? null,
+          stopReason: result.stopReason ?? null,
+        });
+
+        return {
+          output: result.stdout,
+          sessionId: result.sessionId ?? null,
+          usage: result.tokenUsage ?? { input: 0, output: 0 },
+          model: result.model ?? model,
+          turns: result.numTurns ?? 1,
+          workspacePath: cwd,
+          costUsd: result.costUsd,
+          toolCalls: summary.toolCalls,
+          runId: summary.runId,
+        };
+      });
+
+    return {
+      run: (request) =>
+        run(request).pipe(
+          Effect.mapError((cause) => new AgentRunError({ cause, agentId: AGENT_ID })),
+        ),
+    };
+  }),
+);

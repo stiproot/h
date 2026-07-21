@@ -32,6 +32,9 @@ spec:
       pi-agent:
         outbound:
           timeout: agentTimeout
+      codex-agent:
+        outbound:
+          timeout: agentTimeout
       workflow-svc:
         outbound:
           timeout: agentTimeout

@@ -33,6 +33,26 @@
         "tsx": "^4.19.0",
       },
     },
+    "apps/codex-agent": {
+      "name": "codex-agent",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/platform": "^0.96.2",
+        "@effect/platform-node": "^0.107.0",
+        "agent-cli": "workspace:*",
+        "agent-server": "workspace:*",
+        "core": "workspace:*",
+        "effect": "^3.21.4",
+        "fastify": "^5.0.0",
+        "logger": "workspace:*",
+        "telemetry": "workspace:*",
+      },
+      "devDependencies": {
+        "@effect/vitest": "^0.29.0",
+        "@types/node": "^24",
+        "tsx": "^4.19.0",
+      },
+    },
     "apps/dapr-mcp": {
       "name": "dapr-mcp",
       "version": "0.1.0",
@@ -718,6 +738,8 @@
     "claude-agent": ["claude-agent@workspace:apps/claude-agent"],
 
     "cliui": ["cliui@8.0.1", "", { "dependencies": { "string-width": "^4.2.0", "strip-ansi": "^6.0.1", "wrap-ansi": "^7.0.0" } }, "sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ=="],
+
+    "codex-agent": ["codex-agent@workspace:apps/codex-agent"],
 
     "color-convert": ["color-convert@2.0.1", "", { "dependencies": { "color-name": "~1.1.4" } }, "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ=="],
 

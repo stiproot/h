@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "workflows": {
+      "type": "sse",
+      "url": "http://localhost:8005/sse"
+    },
+    "dapr": {
+      "type": "sse",
+      "url": "http://localhost:8011/sse"
+    },
+    "obs": {
+      "type": "sse",
+      "url": "http://localhost:8013/sse"
+    }
+  }
+}
