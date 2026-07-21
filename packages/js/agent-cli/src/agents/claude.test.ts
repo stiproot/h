@@ -21,10 +21,10 @@ function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvo
 
 const buildInvocation = (request: AgentInvocationRequest): Promise<PreparedAgentInvocation> =>
   Effect.runPromise(
-    claudeStrategy.buildInvocationEffect!(request).pipe(Effect.provide(FetchHttpClient.layer)),
+    claudeStrategy.buildInvocation(request).pipe(Effect.provide(FetchHttpClient.layer)),
   );
 
-describe("claudeStrategy.buildInvocationEffect permission mode", () => {
+describe("claudeStrategy.buildInvocation permission mode", () => {
   it("uses --permission-mode plan and omits skip-permissions when permissionMode is 'plan'", async () => {
     const { args } = await buildInvocation(baseRequest({ permissionMode: "plan" }));
 

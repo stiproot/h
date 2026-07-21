@@ -51,7 +51,7 @@ export const claudeStrategy: AgentStrategy = {
     return env;
   },
 
-  buildInvocationEffect(request) {
+  buildInvocation(request) {
     return adaptToLiteLlmEffect(request, request.model ?? DEFAULT_CLAUDE_MODEL).pipe(
       Effect.map((effectiveModel) => buildClaudeInvocation(request, effectiveModel)),
     );

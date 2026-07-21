@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { extractAgentMessageText, openhandsStrategy } from "./openhands.ts";
@@ -47,7 +48,7 @@ describe("openhandsStrategy.prepareEnvironment LLM_MODEL routing", () => {
 
 describe("openhandsStrategy.buildInvocation", () => {
   it("writes the task to a temp file and exposes a cleanup that removes it", async () => {
-    const invocation = await openhandsStrategy.buildInvocation!(baseRequest());
+    const invocation = await Effect.runPromise(openhandsStrategy.buildInvocation(baseRequest()));
     const taskFile = invocation.args[invocation.args.indexOf("--file") + 1]!;
 
     expect(existsSync(taskFile)).toBe(true);

@@ -1,21 +1,6 @@
 import { classifyStop } from "./classify-stop.ts";
 import type { AgentEventCallback, InvocationResult, StreamEvent } from "./types.ts";
 
-interface ParseStreamChunkOptions {
-  buffer: string;
-  chunk: string;
-  events: StreamEvent[];
-  onEvent?: AgentEventCallback;
-  shouldFilterEvent?: (event: StreamEvent) => boolean;
-}
-
-interface FlushStreamBufferOptions {
-  buffer: string;
-  events: StreamEvent[];
-  onEvent?: AgentEventCallback;
-  shouldFilterEvent?: (event: StreamEvent) => boolean;
-}
-
 interface BuildInvocationResultOptions {
   events: StreamEvent[];
   stderr: string;
@@ -25,31 +10,32 @@ interface BuildInvocationResultOptions {
   metrics?: Partial<InvocationResult>;
 }
 
-export function appendStreamEventsFromChunk({
-  buffer,
-  chunk,
-  events,
-  onEvent,
-  shouldFilterEvent,
-}: ParseStreamChunkOptions): string {
-  const nextBuffer = buffer + chunk;
-  const lines = nextBuffer.split("\n");
-  const remainder = lines.pop() ?? "";
-
-  for (const line of lines) {
-    appendStreamEventFromLine(line, events, onEvent, shouldFilterEvent);
+/**
+ * Default per-line parser: JSON.parse one complete stdout line into a
+ * `StreamEvent`, drop it if `shouldFilterEvent` rejects it, else record it and
+ * fire `onEvent`. Blank and non-JSON lines are ignored. Used by strategies that
+ * emit the standard stream-json shape (Claude); others supply their own
+ * {@link AgentStreamParser}.
+ */
+export function parseStreamLine(
+  line: string,
+  events: StreamEvent[],
+  onEvent?: AgentEventCallback,
+  shouldFilterEvent?: (event: StreamEvent) => boolean,
+): void {
+  if (!line.trim()) {
+    return;
   }
 
-  return remainder;
-}
+  try {
+    const event = JSON.parse(line) as StreamEvent;
+    if (shouldFilterEvent?.(event)) {
+      return;
+    }
 
-export function flushStreamEventBuffer({
-  buffer,
-  events,
-  onEvent,
-  shouldFilterEvent,
-}: FlushStreamBufferOptions): void {
-  appendStreamEventFromLine(buffer, events, onEvent, shouldFilterEvent);
+    events.push(event);
+    onEvent?.(event as unknown as Record<string, unknown>);
+  } catch {}
 }
 
 export function buildInvocationResult({
@@ -96,25 +82,4 @@ export function buildInvocationResult({
     numTurns: metrics?.numTurns ?? (numTurns > 0 ? numTurns : undefined),
     sessionId,
   };
-}
-
-function appendStreamEventFromLine(
-  line: string,
-  events: StreamEvent[],
-  onEvent?: AgentEventCallback,
-  shouldFilterEvent?: (event: StreamEvent) => boolean,
-): void {
-  if (!line.trim()) {
-    return;
-  }
-
-  try {
-    const event = JSON.parse(line) as StreamEvent;
-    if (shouldFilterEvent?.(event)) {
-      return;
-    }
-
-    events.push(event);
-    onEvent?.(event as unknown as Record<string, unknown>);
-  } catch {}
 }

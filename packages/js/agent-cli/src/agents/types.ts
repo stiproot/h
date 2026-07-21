@@ -2,7 +2,6 @@ import type { HttpClient } from "@effect/platform";
 import { Data, type Effect } from "effect";
 
 import type { StopReason } from "./classify-stop.ts";
-import type { Logger } from "../lib/logger.ts";
 
 export type { StopReason } from "./classify-stop.ts";
 
@@ -33,37 +32,6 @@ export interface ModelUsage {
 
 /** Called for each JSON event emitted by the agent CLI stream. */
 export type AgentEventCallback = (event: Record<string, unknown>) => void;
-
-/** Invokes an agent CLI subprocess and resolves with its run result. */
-export type AgentInvoker = (params: {
-  systemPrompt: string;
-  taskPrompt: string;
-  cwd: string;
-  env: Record<string, string>;
-  timeout: number;
-  model?: string;
-  /** default: 'claude' */
-  agent?: string;
-  resumeSessionId?: string;
-  onEvent?: AgentEventCallback;
-  verbose?: boolean;
-  llmConfig?: LlmConfig;
-  /** "plan" → read-only mode; omit for skip-permissions */
-  permissionMode?: "plan";
-}) => Promise<{
-  success: boolean;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-  /** Why the run stopped — orthogonal to success; drives the usage-limit fallback. */
-  stopReason?: StopReason;
-  tokenUsage?: { input: number; output: number };
-  model?: string;
-  modelUsage?: Record<string, ModelUsage>;
-  costUsd?: number;
-  numTurns?: number;
-  sessionId?: string;
-}>;
 
 export type AgentType = "claude" | "openhands" | "pi";
 
@@ -200,13 +168,12 @@ export interface AgentInvocationRequest {
 }
 
 export interface AgentStreamParser {
-  parseChunk(
-    buffer: string,
-    chunk: string,
-    events: StreamEvent[],
-    onEvent?: AgentEventCallback,
-  ): string;
-  flushBuffer(buffer: string, events: StreamEvent[], onEvent?: AgentEventCallback): void;
+  /**
+   * Consume ONE complete stdout line. The process runner drives parsing off
+   * `Stream.splitLines`, so a parser never sees partial lines and needs no
+   * internal buffering — it appends any derived events and fires `onEvent`.
+   */
+  parseLine(line: string, events: StreamEvent[], onEvent?: AgentEventCallback): void;
 }
 
 export interface PreparedAgentInvocation {
@@ -234,20 +201,13 @@ export interface AgentStrategy {
 
   prepareEnvironment?(request: AgentInvocationRequest): Record<string, string>;
 
-  ensureReady?(request: AgentInvocationRequest, log: Logger): Promise<InvocationResult | void>;
-
   /**
-   * Promise-based invocation builder. A strategy must provide this or
-   * {@link buildInvocationEffect} (the invoker prefers the Effect variant).
+   * Build the CLI invocation. Effect-native so a strategy can surface tagged
+   * errors (e.g. the LiteLLM model check) in the error channel instead of
+   * throwing, and thread `HttpClient` when it needs one. A pure strategy just
+   * returns `Effect.succeed(...)`.
    */
-  buildInvocation?(request: AgentInvocationRequest): Promise<PreparedAgentInvocation>;
-
-  /**
-   * Effect-native sibling of {@link buildInvocation}, preferred by the
-   * invoker. Lets a strategy surface tagged errors (e.g. the LiteLLM
-   * model check) in the error channel instead of throwing.
-   */
-  buildInvocationEffect?(
+  buildInvocation(
     request: AgentInvocationRequest,
   ): Effect.Effect<PreparedAgentInvocation, LiteLlmError, HttpClient.HttpClient>;
 

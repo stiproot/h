@@ -2,7 +2,7 @@ import { Command, type CommandExecutor, type HttpClient } from "@effect/platform
 import { Duration, Effect, Stream } from "effect";
 
 import type { Logger } from "../lib/logger.ts";
-import { appendStreamEventsFromChunk, buildInvocationResult } from "./parse-stream.ts";
+import { buildInvocationResult, parseStreamLine } from "./parse-stream.ts";
 import { commandExists } from "./shared.ts";
 import type {
   AgentInvocationRequest,
@@ -40,17 +40,16 @@ export function runAgentProcessEffect(
       return envError;
     }
 
-    const prepared = strategy.buildInvocationEffect
-      ? yield* strategy.buildInvocationEffect(request)
-      : // The strategy contract requires at least one of the two build methods.
-        yield* Effect.promise(() => strategy.buildInvocation!(request));
+    const prepared = yield* strategy.buildInvocation(request);
 
     // Guarantee the strategy's cleanup runs on every exit path — success, failure,
     // timeout, interruption, or early command-not-found return.
     const runInvocation = runPreparedInvocation(strategy, request, prepared, envOverrides, log);
     return yield* prepared.cleanup
       ? runInvocation.pipe(
-          Effect.ensuring(Effect.promise(async () => prepared.cleanup!()).pipe(Effect.ignore)),
+          Effect.ensuring(
+            Effect.promise(() => Promise.resolve(prepared.cleanup!())).pipe(Effect.ignore),
+          ),
         )
       : runInvocation;
   });
@@ -107,33 +106,20 @@ function runPreparedInvocation(
       };
     }
 
-    if (strategy.ensureReady) {
-      const setupResult = yield* Effect.promise(() => strategy.ensureReady!(request, log));
-      if (setupResult) {
-        return setupResult;
-      }
-    }
-
     const childEnv = envOverrides ? { ...request.env, ...envOverrides } : request.env;
 
     const streamEvents: StreamEvent[] = [];
-    let stderrText = "";
-    const startTime = Date.now();
 
     log.debug(`Spawning ${strategy.name} in: ${request.cwd}`);
     log.debug(`Command: ${prepared.command} ${prepared.args.join(" ")}`);
 
+    // `Stream.splitLines` (below) delivers one complete line at a time, so the
+    // parser never needs to buffer — it just consumes each line.
     const handleLine = (line: string): void => {
       if (prepared.streamParser) {
-        prepared.streamParser.parseChunk("", `${line}\n`, streamEvents, request.onEvent);
+        prepared.streamParser.parseLine(line, streamEvents, request.onEvent);
       } else {
-        appendStreamEventsFromChunk({
-          buffer: "",
-          chunk: `${line}\n`,
-          events: streamEvents,
-          onEvent: request.onEvent,
-          shouldFilterEvent: prepared.shouldFilterEvent,
-        });
+        parseStreamLine(line, streamEvents, request.onEvent, prepared.shouldFilterEvent);
       }
     };
 
@@ -179,17 +165,13 @@ function runPreparedInvocation(
         const drainStderr = proc.stderr.pipe(
           Stream.tap((bytes) => Effect.sync(() => process.stderr.write(bytes))),
           Stream.decodeText("utf-8"),
-          Stream.runForEach((chunk) =>
-            Effect.sync(() => {
-              stderrText += chunk;
-            }),
-          ),
+          Stream.mkString,
         );
 
-        const [exit] = yield* Effect.all([awaitExit, drainStdout, drainStderr], {
+        const [exit, , stderrText] = yield* Effect.all([awaitExit, drainStdout, drainStderr], {
           concurrency: 3,
         });
-        return exit;
+        return { ...exit, stderrText };
       }),
     ).pipe(Effect.mapError((cause) => new AgentSpawnError({ command: prepared.command, cause })));
 
@@ -203,10 +185,11 @@ function runPreparedInvocation(
           )
         : runProcess;
 
-    const { exitCode, signal } = yield* timedProcess;
+    const [duration, { exitCode, signal, stderrText }] = yield* Effect.timed(timedProcess);
 
-    const durationMs = Date.now() - startTime;
-    log.debug(`${strategy.name} exited (code=${exitCode}, signal=${signal}, ms=${durationMs})`);
+    log.debug(
+      `${strategy.name} exited (code=${exitCode}, signal=${signal}, ms=${Duration.toMillis(duration)})`,
+    );
 
     return buildInvocationResult({
       events: streamEvents,

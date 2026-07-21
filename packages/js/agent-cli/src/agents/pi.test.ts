@@ -1,7 +1,11 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { extractPiText, piStrategy } from "./pi.ts";
 import type { AgentInvocationRequest } from "./types.ts";
+
+const buildInvocation = (request: AgentInvocationRequest) =>
+  Effect.runPromise(piStrategy.buildInvocation(request));
 
 function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvocationRequest {
   return {
@@ -58,7 +62,7 @@ describe("piStrategy.prepareEnvironment model routing", () => {
 
 describe("piStrategy.buildInvocation", () => {
   it("runs pi non-interactively (-p) in json mode with --provider and --model", async () => {
-    const invocation = await piStrategy.buildInvocation!(
+    const invocation = await buildInvocation(
       baseRequest({ model: "anthropic/claude-sonnet-4-6" }),
     );
 
@@ -73,7 +77,7 @@ describe("piStrategy.buildInvocation", () => {
   });
 
   it("resolves a bare deepseek model to --provider deepseek --model <id>", async () => {
-    const invocation = await piStrategy.buildInvocation!(
+    const invocation = await buildInvocation(
       baseRequest({ model: "deepseek-v4-flash" }),
     );
 
@@ -82,14 +86,14 @@ describe("piStrategy.buildInvocation", () => {
   });
 
   it("defaults an absent model to the deepseek provider", async () => {
-    const invocation = await piStrategy.buildInvocation!(baseRequest());
+    const invocation = await buildInvocation(baseRequest());
 
     expect(invocation.args[invocation.args.indexOf("--provider") + 1]).toBe("deepseek");
     expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("deepseek-v4-flash");
   });
 
   it("passes the task via stdin (E2BIG-safe), not a temp file", async () => {
-    const invocation = await piStrategy.buildInvocation!(
+    const invocation = await buildInvocation(
       baseRequest({ taskPrompt: "implement X" }),
     );
 

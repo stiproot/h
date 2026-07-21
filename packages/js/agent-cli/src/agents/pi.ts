@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
 
@@ -43,36 +45,22 @@ function resolvePiModel(model?: string): { provider: PiProvider; modelId: string
 }
 
 const piJsonlParser: AgentStreamParser = {
-  parseChunk(buffer, chunk, events, onEvent) {
-    const combined = buffer + chunk;
-    const lines = combined.split("\n");
-    const remainder = lines.pop() ?? "";
+  parseLine(line, events, onEvent) {
+    if (!line.trim()) return;
+    onEvent?.({ type: "output", text: line });
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      onEvent?.({ type: "output", text: line });
-
-      try {
-        const ev = JSON.parse(line) as { type?: string; id?: string };
-        if (ev.type === "session") {
-          events.push({ type: "session_start", session_id: ev.id });
-        } else if (ev.type?.startsWith("tool_execution_")) {
-          events.push({ type: "tool_use" });
-        } else {
-          const text = extractPiText(line);
-          if (text)
-            events.push({ type: "assistant", message: { content: [{ type: "text", text }] } });
-        }
-      } catch {}
-    }
-
-    return remainder;
-  },
-  flushBuffer(buffer, events, onEvent) {
-    if (!buffer.trim()) return;
-    onEvent?.({ type: "output", text: buffer });
-    const text = extractPiText(buffer);
-    if (text) events.push({ type: "assistant", message: { content: [{ type: "text", text }] } });
+    try {
+      const ev = JSON.parse(line) as { type?: string; id?: string };
+      if (ev.type === "session") {
+        events.push({ type: "session_start", session_id: ev.id });
+      } else if (ev.type?.startsWith("tool_execution_")) {
+        events.push({ type: "tool_use" });
+      } else {
+        const text = extractPiText(line);
+        if (text)
+          events.push({ type: "assistant", message: { content: [{ type: "text", text }] } });
+      }
+    } catch {}
   },
 };
 
@@ -121,7 +109,7 @@ export const piStrategy: AgentStrategy = {
     // pi 0.80 CLI: `-p` is non-interactive (process the prompt and exit) and reads the prompt from
     // STDIN — E2BIG-safe, so no temp task file. `--approve` trusts the worktree's project-local pi
     // files for this run; `--mode json` streams the JSONL the parser below consumes.
-    return Promise.resolve({
+    return Effect.succeed({
       command: "pi",
       args: ["-p", "--mode", "json", "--approve", "--provider", provider, "--model", modelId],
       stdinInput: request.taskPrompt,

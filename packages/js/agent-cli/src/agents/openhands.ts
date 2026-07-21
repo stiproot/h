@@ -3,6 +3,8 @@ import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Effect } from "effect";
+
 import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
 
@@ -28,24 +30,10 @@ export function extractAgentMessageText(line: string): string | null {
 }
 
 const openhandsJsonlParser: AgentStreamParser = {
-  parseChunk(buffer, chunk, events, onEvent) {
-    const combined = buffer + chunk;
-    const lines = combined.split("\n");
-    const remainder = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      onEvent?.({ type: "output", text: line });
-      const text = extractAgentMessageText(line);
-      if (text) events.push({ type: "assistant", message: { content: [{ type: "text", text }] } });
-    }
-
-    return remainder;
-  },
-  flushBuffer(buffer, events, onEvent) {
-    if (!buffer.trim()) return;
-    onEvent?.({ type: "output", text: buffer });
-    const text = extractAgentMessageText(buffer);
+  parseLine(line, events, onEvent) {
+    if (!line.trim()) return;
+    onEvent?.({ type: "output", text: line });
+    const text = extractAgentMessageText(line);
     if (text) events.push({ type: "assistant", message: { content: [{ type: "text", text }] } });
   },
 };
@@ -78,23 +66,24 @@ export const openhandsStrategy: AgentStrategy = {
     return env;
   },
 
-  async buildInvocation(request) {
+  buildInvocation(request) {
     // Use --file to avoid the OS single-argument limit (E2BIG on posix_spawn).
     const taskFile = join(tmpdir(), `openhands-task-${randomUUID()}.md`);
-    await writeFile(taskFile, request.taskPrompt, "utf-8");
-    return {
-      command: "openhands",
-      args: [
-        "--file",
-        taskFile,
-        "--headless",
-        "--json",
-        "--always-approve",
-        "--override-with-envs",
-      ],
-      streamParser: openhandsJsonlParser,
-      cleanup: () => rm(taskFile, { force: true }),
-    };
+    return Effect.promise(() => writeFile(taskFile, request.taskPrompt, "utf-8")).pipe(
+      Effect.as({
+        command: "openhands",
+        args: [
+          "--file",
+          taskFile,
+          "--headless",
+          "--json",
+          "--always-approve",
+          "--override-with-envs",
+        ],
+        streamParser: openhandsJsonlParser,
+        cleanup: () => rm(taskFile, { force: true }),
+      }),
+    );
   },
 
   extractSessionId(_events: StreamEvent[]) {

@@ -17,7 +17,7 @@ function nodeStrategy(script: string, overrides: Partial<AgentStrategy> = {}): A
     type: "claude",
     name: "TestAgent",
     validateEnvironment: () => null,
-    buildInvocation: async () => ({ command: "node", args: ["-e", script] }),
+    buildInvocation: () => Effect.succeed({ command: "node", args: ["-e", script] }),
     extractSessionId: (events: StreamEvent[]) =>
       events.find((event) => event.session_id)?.session_id,
     extractMetrics: () => ({}),
@@ -111,7 +111,7 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
 
   it("resolves exit 127 when the command does not exist", async () => {
     const strategy = nodeStrategy("", {
-      buildInvocation: async () => ({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
+      buildInvocation: () => Effect.succeed({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
     });
 
     const result = await invoke(strategy, baseParams());
@@ -130,11 +130,12 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
       });
     `;
     const strategy = nodeStrategy(script, {
-      buildInvocation: async () => ({
-        command: "node",
-        args: ["-e", script],
-        stdinInput: "ping",
-      }),
+      buildInvocation: () =>
+        Effect.succeed({
+          command: "node",
+          args: ["-e", script],
+          stdinInput: "ping",
+        }),
     });
 
     const result = await invoke(strategy, baseParams());
@@ -146,34 +147,21 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
   it("routes lines through a strategy streamParser, including the trailing partial line", async () => {
     const script = `process.stdout.write("alpha\\nbeta");`;
     const strategy = nodeStrategy(script, {
-      buildInvocation: async () => ({
-        command: "node",
-        args: ["-e", script],
-        streamParser: {
-          parseChunk(buffer, chunk, events, onEvent) {
-            const combined = buffer + chunk;
-            const lines = combined.split("\n");
-            const remainder = lines.pop() ?? "";
-            for (const line of lines) {
-              if (!line.trim()) continue;
+      buildInvocation: () =>
+        Effect.succeed({
+          command: "node",
+          args: ["-e", script],
+          streamParser: {
+            parseLine(line, events, onEvent) {
+              if (!line.trim()) return;
               onEvent?.({ type: "output", text: line });
               events.push({
                 type: "assistant",
                 message: { content: [{ type: "text", text: line }] },
               });
-            }
-            return remainder;
+            },
           },
-          flushBuffer(buffer, events, onEvent) {
-            if (!buffer.trim()) return;
-            onEvent?.({ type: "output", text: buffer });
-            events.push({
-              type: "assistant",
-              message: { content: [{ type: "text", text: buffer }] },
-            });
-          },
-        },
-      }),
+        }),
     });
 
     const seen: string[] = [];
