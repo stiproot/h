@@ -3,6 +3,7 @@ import { copySessionActivity } from "./activities/copy-session.activity.ts";
 import { createWorktreeActivity } from "./activities/create-worktree.activity.ts";
 import { runClaudeActivity } from "./activities/run-claude.activity.ts";
 import { runClaudeManagedActivity } from "./activities/run-claude-managed.activity.ts";
+import { runCodexActivity } from "./activities/run-codex.activity.ts";
 import { runDaprAgentActivity } from "./activities/run-dapr-agent.activity.ts";
 import { runDaprClaudeLoopActivity } from "./activities/run-dapr-claude-loop.activity.ts";
 import { runLanggraphActivity } from "./activities/run-langgraph.activity.ts";
@@ -19,6 +20,7 @@ export const activities = [
   createWorktreeActivity,
   runClaudeActivity,
   runClaudeManagedActivity,
+  runCodexActivity,
   runDaprClaudeLoopActivity,
   runLanggraphActivity,
   runOpenhandsActivity,
@@ -42,6 +44,8 @@ export function getActivity(name: string) {
       return runClaudeActivity;
     case "run-claude-managed":
       return runClaudeManagedActivity;
+    case "run-codex":
+      return runCodexActivity;
     case "run-dapr-claude-loop":
       return runDaprClaudeLoopActivity;
     case "run-langgraph":

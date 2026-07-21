@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: codex-agent-mcp-config
+data:
+  .mcp.json: |
+    {
+      "mcpServers": {
+        "workflows": {
+          "type": "sse",
+          "url": "http://workflow-mcp:8000/sse"
+        },
+        "dapr": {
+          "type": "sse",
+          "url": "http://dapr-mcp:8000/sse"
+        },
+        "obs": {
+          "type": "sse",
+          "url": "http://obs-mcp:8000/sse"
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: codex-agent
+  labels:
+    app: codex-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: codex-agent
+  template:
+    metadata:
+      labels:
+        app: codex-agent
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "codex-agent"
+        dapr.io/app-port: "8000"
+        dapr.io/config: "appconfig"
+        dapr.io/log-level: "info"
+    spec:
+      containers:
+        - name: codex-agent
+          image: codex-agent:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: OPENAI_API_KEY
+            - name: AGENT_MODEL
+              value: "o4-mini"
+            - name: AGENT_BASE_DIR
+              value: /workspace/codex-agent
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: mcp-config
+              mountPath: /workspace/codex-agent/.mcp.json
+              subPath: .mcp.json
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: workspace-pvc
+        - name: mcp-config
+          configMap:
+            name: codex-agent-mcp-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: codex-agent
+spec:
+  selector:
+    app: codex-agent
+  ports:
+    - port: 8000
+      targetPort: 8000

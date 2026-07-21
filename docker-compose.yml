@@ -399,6 +399,52 @@ services:
     depends_on:
       - pi-agent
 
+  # --- Codex agent ---
+  codex-agent:
+    container_name: codex-agent
+    profiles: [all, codex-agent]
+    build:
+      context: .
+      dockerfile: apps/codex-agent/Dockerfile
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - AGENT_MODEL=${CODEX_MODEL:-o4-mini}
+      - AGENT_BASE_DIR=/workspace/codex-agent
+    volumes:
+      - ../h-workspace:/workspace
+    ports:
+      - "8016:8000"
+      - "3516:3500"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "which codex"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  codex-agent-dapr:
+    container_name: codex-agent-dapr
+    profiles: [all, codex-agent]
+    image: daprio/daprd:edge
+    user: "0:0"
+    command:
+      - "./daprd"
+      - "--app-id=codex-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+      - dapr-nr:/nr
+    network_mode: "service:codex-agent"
+    depends_on:
+      - codex-agent
+
   # --- Dapr Agents SDK agent ---
   dapr-agent:
     container_name: dapr-agent

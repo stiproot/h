@@ -33,7 +33,7 @@ export interface ModelUsage {
 /** Called for each JSON event emitted by the agent CLI stream. */
 export type AgentEventCallback = (event: Record<string, unknown>) => void;
 
-export type AgentType = "claude" | "openhands" | "pi";
+export type AgentType = "claude" | "codex" | "openhands" | "pi";
 
 /** The agent CLI subprocess could not be spawned or its stdio streams failed. */
 export class AgentSpawnError extends Data.TaggedError("AgentSpawnError")<{

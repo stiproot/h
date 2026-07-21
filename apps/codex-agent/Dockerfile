@@ -1,10 +1,17 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1-alpine AS base
+FROM h-agent-base-bun
 
-RUN apk add --no-cache nodejs
+# Codex CLI requires Node.js. Install Node 22.x from NodeSource (Debian's nodejs is 20.x,
+# which lacks some APIs Codex depends on) then install the Codex CLI globally.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    node --version && \
+    npm install -g --ignore-scripts @openai/codex
 
 WORKDIR /app
 
+# Workspace manifests for layer caching
 COPY package.json bun.lock turbo.json ./
 COPY packages/js/core/package.json ./packages/js/core/
 COPY packages/js/core-dapr/package.json ./packages/js/core-dapr/
@@ -26,14 +33,15 @@ COPY apps/obs-mcp/package.json ./apps/obs-mcp/
 RUN --mount=type=cache,id=bun-store,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
-COPY packages/js/core/ ./packages/js/core/
-COPY packages/js/telemetry/ ./packages/js/telemetry/
-COPY apps/workflow-mcp/ ./apps/workflow-mcp/
+# Source
+COPY packages/js/ ./packages/js/
+COPY apps/codex-agent/ ./apps/codex-agent/
 
 RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
-    bunx turbo build --filter=workflow-mcp...
+    bunx turbo build --filter=codex-agent...
 
-WORKDIR /app/apps/workflow-mcp
+WORKDIR /app/apps/codex-agent
+RUN chown -R agent-svc:agent /app
 
 EXPOSE 8000
 
