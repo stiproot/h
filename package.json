@@ -4,9 +4,10 @@
   "workspaces": ["packages/js/*", "apps/*"],
   "scripts": {
     "build": "node scripts/check-tsc.mjs && turbo build",
-    "lint": "node scripts/check-tsc.mjs && turbo lint",
+    "lint": "node scripts/check-tsc.mjs && node scripts/check-templates.mjs && turbo lint",
     "test": "turbo test",
-    "check-tsc": "node scripts/check-tsc.mjs"
+    "check-tsc": "node scripts/check-tsc.mjs",
+    "check-templates": "node scripts/check-templates.mjs"
   },
   "devDependencies": {
     "@typescript/native-preview": "^7.0.0-dev.20260318.1",
