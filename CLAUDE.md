@@ -9,6 +9,18 @@ h CLI: the run/invoke shell scripts (`cli/scripts/`), the helm-templated workflo
 (`cli/charts/`), and the `h` command itself (`cli/h/`, Typer + rich, a uv workspace member — `uv
 run h --help`). The two construction strategies co-exist deliberately.
 
+## Plans
+
+Non-trivial work is scoped and tracked in a plan doc — a living tracking log, not a
+frozen spec. **Follow the `plan-management` skill** (`.claude/skills/plan-management/`).
+In short: core/architecture plans are source-controlled (`docs/plans/<name>.md`
+active → `docs/plans/impl/<name>.md` archived); domain-specific, local-only plans go
+under the gitignored `docs/plans/domain/`. Never leave a plan in the harness scratch
+location (`~/.claude/plans/`). Before archiving a core plan, **lift every piece of
+lasting context to its one long-lived home** (ARCHITECTURE.md, a skill, a lint rule +
+CLAUDE.md, an auto-memory, or a code comment) — plans are transient, so knowledge left
+inside one is lost when it's filed away.
+
 ## h primitives (vocabulary)
 
 The standard vocabulary for composing components.
