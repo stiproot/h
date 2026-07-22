@@ -1,7 +1,16 @@
 # Broaden `revise` to rebase a stale PR branch onto main
 
-Status: Planning — teach `revise` to rebase a stale PR branch onto main + resolve conflicts
+Status: Complete — `revise` now refreshes a stale PR branch; validated live on PR #52 (dirty → blocked)
 Established: 2026-07-22
+
+Lifted to:
+- The capability → `cli/charts/workflows/templates/revise.yaml` (the `revise` step task prose;
+  header comment describes the broadened job). Committed `2d66a32`.
+- Golden → `cli/h/tests/__snapshots__/test_render.ambr` (`test_revise_golden`, re-blessed).
+- Force-push convention (first in the codebase: `--force-with-lease` only, never bare `--force`;
+  explicit lease on token-URL pushes) → documented in the revise template prose + auto-memory
+  `force-with-lease-convention`. Follow-up candidate: a lint rule forbidding bare `--force` in
+  chart templates (Harden by encoding).
 
 ## Context
 
@@ -95,3 +104,16 @@ Requires the h stack running (host or compose).
 - **All-or-nothing per run.** A run with an unresolvable rebase conflict (or a failing verify)
   pushes nothing and reports `skipped`; the next loop iteration retries. A genuinely un-rebaseable
   PR stays conflicted until a human steps in — acceptable for v1, surfaced via `skipped`.
+
+## Run trail (2026-07-22)
+
+- Full compose app stack brought up (images pre-existed; the change is chart-side, no rebuild).
+  Hit a scheduler-mode mismatch — infra was in local mode (`--override-broadcast-host-port=localhost:50007`,
+  for host-side daprd) while app sidecars ran in Docker; recreated the scheduler from plain
+  `docker-compose.yml` so it advertises a Docker-reachable address. See CLAUDE.md "SQLite name
+  resolver in COMPOSE" / scheduler notes.
+- Fired `revise -p pr=52 -p slug=issue-51-e2e --agent claude`. The agent (haiku default) synced to
+  the origin tip, rebased onto main, resolved the agent-cli conflicts by intent (drop commandExists,
+  add sudo-127 guard, log.debug→Effect.logDebug), ran the verify gate, and force-pushed with the
+  explicit lease (904311e → 589e7a6).
+- Outcome: PR #52 `mergeable_state` dirty → blocked (conflict cleared; base now the current main tip).
