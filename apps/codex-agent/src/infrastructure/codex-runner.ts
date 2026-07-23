@@ -26,6 +26,10 @@ export class CodexRunError extends Data.TaggedError("CodexRunError")<{
 const codexConfig = Effect.gen(function* () {
   const apiKey = yield* Config.withDefault(Config.string("OPENAI_API_KEY"), "");
   const model = yield* Config.withDefault(Config.string("AGENT_MODEL"), "o4-mini");
+  // Auth mode gates model handling: a ChatGPT-account plan REJECTS every explicit model id
+  // (o4-mini, gpt-5-codex, claude-sonnet-4-6, …), so in chatgpt mode we drop ANY model — including
+  // a per-step modelOverride the workflow passes — and let codex use the account default.
+  const authMode = yield* Config.withDefault(Config.string("CODEX_AUTH_MODE"), "");
   const baseDir = yield* Config.withDefault(
     Config.string("AGENT_BASE_DIR"),
     DEFAULT_AGENT_BASE_DIR,
@@ -34,6 +38,7 @@ const codexConfig = Effect.gen(function* () {
     Config.string("AGENT_RUNS_DIR"),
     join(baseDir, "..", ".runs"),
   );
+  const chatgptAuth = authMode.toLowerCase() === "chatgpt";
   const daprHttpPort = yield* Config.option(Config.string("DAPR_HTTP_PORT"));
   const runTimeoutMs = yield* Config.withDefault(Config.number("AGENT_RUN_TIMEOUT_MS"), 1_800_000);
   // MCP parity: h's .mcp.json source (same one claude-agent provisions) + the dedicated CODEX_HOME
@@ -41,7 +46,17 @@ const codexConfig = Effect.gen(function* () {
   // (logged) when either is unset, so codex still runs (just without h's MCP tools).
   const mcpConfigSrc = yield* Config.option(Config.string("MCP_CONFIG_SRC"));
   const codexHome = yield* Config.option(Config.string("CODEX_HOME"));
-  return { apiKey, model, baseDir, runsDir, daprHttpPort, runTimeoutMs, mcpConfigSrc, codexHome };
+  return {
+    apiKey,
+    model,
+    chatgptAuth,
+    baseDir,
+    runsDir,
+    daprHttpPort,
+    runTimeoutMs,
+    mcpConfigSrc,
+    codexHome,
+  };
 });
 
 export const CodexRunnerLive: Layer.Layer<
@@ -68,7 +83,9 @@ export const CodexRunnerLive: Layer.Layer<
         } = request;
         const workspaceKey = workspaceId ?? workflowInstanceId;
         const cwd = cwdOverride ?? (workspaceKey ? join(cfg.baseDir, workspaceKey) : cfg.baseDir);
-        const model = modelOverride ?? cfg.model;
+        // chatgpt mode: drop any model (workflow slots pass claude-sonnet-4-6 etc., all rejected by
+        // a ChatGPT account) so codex uses the account default. api-key mode honours the override.
+        const model = cfg.chatgptAuth ? "" : (modelOverride ?? cfg.model);
 
         if (workspaceKey) {
           yield* fs
