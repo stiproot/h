@@ -10,7 +10,20 @@ if [[ -f "${PROJECT_DIR}/.env" ]]; then
 fi
 
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
-export AGENT_MODEL="${CODEX_MODEL:-o4-mini}"
+# Auth: leave OPENAI_API_KEY empty and set CODEX_AUTH_MODE=chatgpt to run on a ChatGPT
+# (Plus/Pro/Team) subscription — the codex CLI uses account creds in $CODEX_HOME/auth.json
+# (run `codex login` once on this host). CODEX_HOME defaults to ~/.codex; exported so it is
+# explicit and inherited by the codex subprocess. See docs/plans/codex-chatgpt-auth.md.
+export CODEX_AUTH_MODE="${CODEX_AUTH_MODE:-}"
+export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+# Model: a ChatGPT-account plan rejects explicit API model ids, so in chatgpt mode default to
+# empty (codex uses the account's own default model); API-key mode keeps o4-mini. An explicit
+# CODEX_MODEL always wins in either mode.
+if [ "${CODEX_AUTH_MODE}" = "chatgpt" ]; then
+  export AGENT_MODEL="${CODEX_MODEL:-}"
+else
+  export AGENT_MODEL="${CODEX_MODEL:-o4-mini}"
+fi
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/codex-agent}"
 export AGENT_APP_DIR="${APP_DIR}"
 export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"

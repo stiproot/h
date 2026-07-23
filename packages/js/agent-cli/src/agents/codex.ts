@@ -69,10 +69,18 @@ export const codexStrategy: AgentStrategy = {
 
   validateEnvironment(effectiveEnv, processEnv) {
     const hasKey =
-      resolveEnvValue(effectiveEnv, "OPENAI_API_KEY") ??
-      resolveEnvValue(processEnv as Record<string, string | undefined>, "OPENAI_API_KEY");
-    if (!hasKey) {
-      return createMissingEnvResult("Codex", "OPENAI_API_KEY");
+      resolveEnvValue(effectiveEnv, "OPENAI_API_KEY") ||
+      resolveEnvValue(processEnv, "OPENAI_API_KEY");
+    // A ChatGPT (Plus/Pro/Team) subscription authenticates the Codex CLI via account credentials in
+    // $CODEX_HOME/auth.json (`codex login`), inherited by the `codex` subprocess through HOME/CODEX_HOME
+    // (invoker mergeProcessEnv passes the process env through) — not an API key. Opt in EXPLICITLY with
+    // CODEX_AUTH_MODE=chatgpt so we never silently assume a mode and never sniff $HOME from here. The
+    // Enterprise CODEX_ACCESS_TOKEN path (codex login --with-access-token) also satisfies the gate.
+    const chatgptAuth =
+      resolveEnvValue(processEnv, "CODEX_AUTH_MODE")?.toLowerCase() === "chatgpt" ||
+      Boolean(resolveEnvValue(processEnv, "CODEX_ACCESS_TOKEN"));
+    if (!hasKey && !chatgptAuth) {
+      return createMissingEnvResult("Codex", "OPENAI_API_KEY or CODEX_AUTH_MODE=chatgpt");
     }
     return null;
   },
@@ -82,20 +90,23 @@ export const codexStrategy: AgentStrategy = {
   },
 
   buildInvocation(request) {
-    const model = request.model ?? "o4-mini";
+    const args = [
+      "exec",
+      "--json",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--skip-git-repo-check",
+      "--cd",
+      request.cwd,
+    ];
+    // Only pin a model when one is explicitly set. A ChatGPT-account (Plus/Pro/Team) plan REJECTS
+    // explicit API model ids (`o4-mini`, `gpt-5-codex`, …) with a 400 — omitting --model lets the
+    // codex CLI use the account's own default. In API-key mode the runner supplies AGENT_MODEL
+    // (e.g. o4-mini); in chatgpt mode it leaves it empty. See docs/plans/codex-chatgpt-auth.md.
+    if (request.model) args.push("--model", request.model);
+    args.push(request.taskPrompt);
     return Effect.succeed({
       command: "codex",
-      args: [
-        "exec",
-        "--json",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "--skip-git-repo-check",
-        "--cd",
-        request.cwd,
-        "--model",
-        model,
-        request.taskPrompt,
-      ],
+      args,
       streamParser: codexJsonlParser,
     });
   },

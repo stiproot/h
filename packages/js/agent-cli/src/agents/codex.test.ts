@@ -38,9 +38,16 @@ describe("codexStrategy.buildInvocation", () => {
     expect(inv.args[inv.args.length - 1]).toBe("write tests");
   });
 
-  it("defaults model to o4-mini when not specified", async () => {
+  it("passes an explicit model through as --model", async () => {
+    const inv = await buildInvocation(baseRequest({ model: "gpt-5" }));
+    expect(inv.args[inv.args.indexOf("--model") + 1]).toBe("gpt-5");
+  });
+
+  it("OMITS --model when none is set (ChatGPT-account plan uses its own default)", async () => {
     const inv = await buildInvocation(baseRequest());
-    expect(inv.args[inv.args.indexOf("--model") + 1]).toBe("o4-mini");
+    expect(inv.args).not.toContain("--model");
+    // prompt is still the last positional arg
+    expect(inv.args[inv.args.length - 1]).toBe("do the thing");
   });
 
   it("uses the cwd from the request for --cd", async () => {
@@ -51,6 +58,47 @@ describe("codexStrategy.buildInvocation", () => {
   it("does not use stdin (prompt is a positional arg)", async () => {
     const inv = await buildInvocation(baseRequest());
     expect(inv.stdinInput).toBeUndefined();
+  });
+});
+
+describe("codexStrategy.validateEnvironment", () => {
+  const ok = (r: ReturnType<typeof codexStrategy.validateEnvironment>) => expect(r).toBeNull();
+
+  it("passes with OPENAI_API_KEY in effectiveEnv (API-key mode, unchanged)", () => {
+    ok(codexStrategy.validateEnvironment({ OPENAI_API_KEY: "sk-x" }, {}));
+  });
+
+  it("passes with OPENAI_API_KEY in processEnv", () => {
+    ok(codexStrategy.validateEnvironment({}, { OPENAI_API_KEY: "sk-x" }));
+  });
+
+  it("passes with CODEX_AUTH_MODE=chatgpt and NO api key (ChatGPT-plan auth via auth.json)", () => {
+    ok(codexStrategy.validateEnvironment({}, { CODEX_AUTH_MODE: "chatgpt" }));
+  });
+
+  it("CODEX_AUTH_MODE is case-insensitive", () => {
+    ok(codexStrategy.validateEnvironment({}, { CODEX_AUTH_MODE: "ChatGPT" }));
+  });
+
+  it("passes with a CODEX_ACCESS_TOKEN (Enterprise non-interactive path)", () => {
+    ok(codexStrategy.validateEnvironment({}, { CODEX_ACCESS_TOKEN: "tok" }));
+  });
+
+  it("fails when no key and no chatgpt auth, naming both options", () => {
+    const r = codexStrategy.validateEnvironment({}, {});
+    expect(r).not.toBeNull();
+    expect(r!.success).toBe(false);
+    expect(r!.stderr).toContain("OPENAI_API_KEY or CODEX_AUTH_MODE=chatgpt");
+  });
+
+  it("does NOT accept an unrelated CODEX_AUTH_MODE value", () => {
+    const r = codexStrategy.validateEnvironment({}, { CODEX_AUTH_MODE: "apikey" });
+    expect(r).not.toBeNull();
+  });
+
+  it("treats an empty OPENAI_API_KEY as missing", () => {
+    const r = codexStrategy.validateEnvironment({ OPENAI_API_KEY: "" }, {});
+    expect(r).not.toBeNull();
   });
 });
 

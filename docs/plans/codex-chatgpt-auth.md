@@ -1,6 +1,6 @@
 # Codex on a ChatGPT subscription — host + container auth
 
-Status: Active — let `codex-agent` authenticate via a ChatGPT (Plus) plan through `~/.codex/auth.json`, in both host and container mode, not only via `OPENAI_API_KEY`
+Status: Active — Phase 1 (host mode) DONE + validated live on a ChatGPT Plus plan; Phase 2 (container mode) pending
 Established: 2026-07-23
 
 ## Goal
@@ -70,3 +70,8 @@ Give the container the same account creds, honoring the one-file-per-runner rule
 ## Log
 
 - 2026-07-23 — Plan created. Research on Codex auth done (host `mergeProcessEnv` passthrough is the key enabler; Enterprise access-token path unavailable on Plus). Host-mode change scoped to relaxing the `codex.ts` `OPENAI_API_KEY` gate; container mode scoped to a writable `CODEX_HOME` mount + a concurrency decision.
+- 2026-07-23 — **Phase 1 built + validated live on ChatGPT Plus.** Changes: (1) `agent-cli/src/agents/codex.ts` `validateEnvironment` now passes when `CODEX_AUTH_MODE=chatgpt` (or `CODEX_ACCESS_TOKEN`) is set, not only `OPENAI_API_KEY` — explicit opt-in, no `$HOME` sniffing (open question #1 resolved: explicit env). (2) `run-codex-agent.sh` exports `CODEX_AUTH_MODE`/`CODEX_HOME` and, **crucially, defaults `AGENT_MODEL` to empty in chatgpt mode**. (3) `codex.ts buildInvocation` now **omits `--model` when none is set** (was hardcoded `o4-mini`). 8 new + updated unit tests (27 pass). **Validated:** clean codex-agent host-mode run on `~/.codex/auth.json` with `OPENAI_API_KEY` empty — direct `codex exec` emitted `agent_message: CODEX-PLUS-OK` + `turn.completed`; the full `POST /run` path returned `turns:1, output:10 tokens, exit 0, model:""`.
+  - **KEY FINDING (the non-obvious blocker): a ChatGPT-account plan REJECTS explicit API model ids** — `o4-mini` AND `gpt-5-codex` both returned `400 "not supported when using Codex with a ChatGPT account"` (and "model metadata not found"). The account default model is only used when `--model` is OMITTED. Hence the two model changes above. In API-key mode the runner still supplies `o4-mini`; an explicit `CODEX_MODEL` always wins.
+  - Env-passthrough confirmed working: `invoker.ts mergeProcessEnv` = `{...process.env, ...env}` carried `HOME`/`CODEX_HOME`/`CODEX_AUTH_MODE` to the `codex` subprocess, so no runner plumbing beyond the config was needed.
+  - Incidental: `bun install` had never populated a fresh install in this env (isolated `.bun` layout OK once checked); a transient codex-agent turbo build failure cleared after a direct `bun run build`. Not code issues.
+- **Remaining:** Phase 2 (container mode: writable `CODEX_HOME` mount in compose/k8s + the concurrency decision) and open questions 2–4. To fire codex via `h ... --agent codex`, still needs the `AGENT_IDENTITY`/`AGENT_URLS` CLI wiring ([[hardening-audit]] Phase 1 A1/A18/A28).
