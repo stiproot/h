@@ -1,12 +1,12 @@
 # Phase 5 — Test-coverage gaps
 
-Status: Active — 6 item(s), none started
+Status: Complete — 6 item(s)
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
 Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integration tests needing a live stack.
 
-## [ ] A8. No test enumerates cli/charts/workflows/templates/ — a new template gets zero render/golden/identity coverage by default
+## [x] A8. No test enumerates cli/charts/workflows/templates/ — a new template gets zero render/golden/identity coverage by default
 
 *Severity: medium · effort: medium*
 
@@ -16,7 +16,7 @@ Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integr
 
 **Do:** Add a directory-driven sweep test to /home/stiproot/code/h/cli/h/tests/test_render.py: parametrize over sorted(p.stem for p in (helm.CHARTS_DIR / 'workflows' / 'templates').glob('*.yaml')) (skips _helpers.tpl automatically). For each name: (a) render hermetically with helm.render_workflow(name, values={'publish': 'true', **MINIMAL_VALUES.get(name, {})}, include_local=False) and assert it succeeds and yields non-empty steps — helm's own 'could not find template' error catches a typo'd/missing `{{- if eq .Values.template "<name>" }}` gate, and a missing MINIMAL_VALUES entry for a new required-value template fails with helm's required-value error, forcing the author to register the template in the fixture map (add an explicit pytest.fail message pointing at MINIMAL_VALUES when the name is unknown); MINIMAL_VALUES today needs only {'verify': {'verify.cmd': 'true'}} and plugin-improvement's template config (copy the values from test_plugin_improvement_golden at test_render.py:154). (b) assert '{{params.runActivity}}' in the render unless name is in PINNED_OR_OVERLAY_IDENTITY = {'pr-review', 'agent-panel', 'plugin-setup-test', 'plugin-improvement', 'verify', 'create-pr', 'arm-revise'} (grep-verified current split: only feature/revise/bootstrap-repo carry the slot), with a comment that a NEW full-workflow template must open identity slots (CLAUDE.md fire-time-identity invariant) or be deliberately added to the allowlist. This makes a new template file fail CI by default instead of relying on the prose recipe in skills/author-workflow-template/SKILL.md; it does not replace per-template goldens, which remain the content contract.
 
-## [ ] A12. Python run_ledger has zero tests while its JS sibling is thoroughly tested (parity gap)
+## [x] A12. Python run_ledger has zero tests while its JS sibling is thoroughly tested (parity gap)
 
 *Severity: medium · effort: small*
 
@@ -26,7 +26,7 @@ Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integr
 
 **Do:** Add /home/stiproot/code/h/packages/py/agent-server/tests/test_run_ledger.py (runnable via `uv run --package agent-server pytest` — pytest infra already configured in pyproject.toml). Using tmp_path and monkeypatch on agent_server.run_ledger._post_json/_get_json (pass dapr_http_port="3500" so _mirror_to_statestore does not short-circuit), pin: (1) group fallback workflow_instance_id → workspace_id → "adhoc" and the run_id format "<group>:<agent_id>:<ts>" — assert the mirror key is f"run:{run_id}" and starts with f"run:{instance_id}:", matching workflow-svc's watch-scan.ts:583 prefix filter (the load-bearing contract for the watcher cost tally); (2) _runs_dir explicit-arg vs sibling resolution (workspace.parent.parent.parent/".runs"); (3) summary.json/output.txt/events.jsonl written with the CLI-compatible shape (summary keys runId/agentId/workflowInstanceId/costUsd/toolCalls; events.jsonl one result line); (4) fs failure swallowed but mirror still fires — monkeypatch Path.mkdir (or pass an unwritable runs_dir) to raise and assert _post_json was still called with dir + outputPreview in the record; (5) mirror is skipped entirely when neither dapr_http_port nor DAPR_HTTP_PORT is set; (6) runs:index append dedupes (key already present → no second index write).
 
-## [ ] A13. git-core GitHubClient token-scrubbing and PR-filtering are untested (git-client is, github-client is not)
+## [x] A13. git-core GitHubClient token-scrubbing and PR-filtering are untested (git-client is, github-client is not)
 
 *Severity: medium · effort: small*
 
@@ -36,7 +36,7 @@ Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integr
 
 **Do:** Add /home/stiproot/code/h/packages/js/git-core/src/github-client.test.ts (vitest is already wired: git-core package.json "test": "vitest run"). Stub global fetch with vi.stubGlobal("fetch", ...) and exercise HttpGitHubClient's listOpenIssues via Effect.runPromise / Effect.flip, pinning: (1) PR filtering — a response mixing plain issues and items with a pull_request field returns only the issues, mapped to {number, title, createdAt} (github-client.ts:90-92); (2) request shape — the fetched URL carries state=open, the encoded label, sort=created&direction=asc, per_page=100, and the headers include `Authorization: Bearer <token>` when token is set and NO Authorization key when absent (lines 68-76); (3) non-2xx — a 403 response with a body maps to GitHubApiError carrying repo, with the status and truncated body in the message (lines 80-82); (4) token scrubbing — a rejected fetch (and a non-ok body) whose error text embeds the token yields a GitHubApiError whose message and cause contain '<redacted>' and never the raw token (lines 61-62, 96), mirroring git-client.test.ts's 'never leaks the token' test. Optionally also pin that a non-Error thrown cause passes through the catch branch un-wrapped (line 96's ternary).
 
-## [ ] A14. The /setup spec-hash idempotency sentinel is untested in BOTH stacks
+## [x] A14. The /setup spec-hash idempotency sentinel is untested in BOTH stacks
 
 *Severity: medium · effort: small*
 
@@ -46,7 +46,7 @@ Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integr
 
 **Do:** Add a setup-idempotency spec in each stack against the same four scenarios. JS: packages/js/agent-server/src/agent-routes.test.ts (vitest, beside the existing three test files) — exercise the /setup route via Fastify inject with a stubbed command runner and a tmp workspace resolver (or test the setup Effect directly with a mocked FileSystem layer, matching how run-handler.test.ts isolates effects). Python: packages/py/agent-server/tests/test_setup_route.py — FastAPI TestClient with resolve_workspace_dir pointed at tmp_path and subprocess.run monkeypatched to count invocations. Scenarios in both: (1) second call with an identical spec runs zero commands and returns/records skipped; (2) a changed spec re-runs the commands and rewrites the sentinel to the new hash; (3) a failing step (nonzero returncode / SetupError) leaves no sentinel so the next call retries; (4) pin each stack's actual hash normalization — Python asserts key-order-insensitivity (routes.py:104 sort_keys=True), JS asserts whatever JSON.stringify(setup) currently yields (agent-routes.ts:179, order-sensitive) — and add a comment cross-referencing the sibling test so the deliberate (or accidental) asymmetry can only change loudly. Optionally align JS to a sorted-keys stringify in the same change to close the parity drift.
 
-## [ ] A15. worktree-route path-defaulting (repoPath/worktreePath/key) is untested despite a live incident
+## [x] A15. worktree-route path-defaulting (repoPath/worktreePath/key) is untested despite a live incident
 
 *Severity: medium · effort: small*
 
@@ -56,7 +56,7 @@ Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integr
 
 **Do:** Add packages/js/agent-server/src/worktree-route.test.ts. Note the route is Effect-based (registerWorktreeRouteEffect takes a ManagedRuntime providing GitClient | RunLedger | FileSystem.FileSystem), so do NOT copy workflow-babysitter.test.ts's plain-fetch injection — instead build a test ManagedRuntime with a stub GitClient layer whose addWorktree captures its arguments, a FileSystem stub (exists → false/true), and a no-op RunLedger, then drive the route via fastify.inject POST /worktree. Pin: (1) absent clonePath resolves repoPath to join(sharedRoot,'repo') — the mode-agnostic invariant from the 2026-07-20 incident; (2) key preference workspaceId ?? workflowInstanceId and the resulting agent-neutral worktreePath join(sharedRoot,'worktrees',key); (3) remoteBase defaulting: omitted → 'main', explicit '' → undefined (opt-out), and baseRef present → remoteBase undefined regardless (worktree-route.ts:76); (4) idempotency: FileSystem.exists true → 200 {worktreePath} with addWorktree never called; (5) malformed body → 400.
 
-## [ ] A17. langgraph-agent has zero tests; PresetStore key sanitization and config round-trip are cheap unpinned pure logic
+## [x] A17. langgraph-agent has zero tests; PresetStore key sanitization and config round-trip are cheap unpinned pure logic
 
 *Severity: low · effort: small*
 
@@ -69,3 +69,5 @@ Cheap pure-unit tests for untested pure logic, ranked by blast radius. No integr
 ## Log
 
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
+- 2026-07-23 — Completed A8/A12/A13/A14/A15/A17 with hermetic directory, filesystem,
+  HTTP-stub, and Effect-route unit coverage; wired langgraph-agent into test-py.

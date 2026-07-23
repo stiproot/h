@@ -14,7 +14,11 @@ dependencies = [
 agent-server = { workspace = true }
 
 [dependency-groups]
-dev = ["ruff>=0.9", "import-linter>=2.1"]
+dev = ["ruff>=0.9", "import-linter>=2.1", "pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 # Hexagonal-architecture boundary contracts (enforced by `import-linter` — see `make lint-py`).
 # The layout is the contract: `domain` is the pure core, `infrastructure` holds outbound
