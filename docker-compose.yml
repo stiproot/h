@@ -408,7 +408,13 @@ services:
       dockerfile: apps/codex-agent/Dockerfile
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - AGENT_MODEL=${CODEX_MODEL:-o4-mini}
+      # Defaults to ChatGPT-plan auth: run `cli/scripts/seed-codex-auth.sh` once to place the host's
+      # ~/.codex/auth.json at /workspace/codex-home (CODEX_HOME below). Empty AGENT_MODEL ⇒ codex uses
+      # the account's default model (a ChatGPT plan rejects explicit API model ids). For API-key mode
+      # set CODEX_AUTH_MODE=apikey + OPENAI_API_KEY + CODEX_MODEL in .env. See docs/plans/codex-chatgpt-auth.md.
+      - CODEX_AUTH_MODE=${CODEX_AUTH_MODE:-chatgpt}
+      - CODEX_HOME=${CODEX_HOME:-/workspace/codex-home}
+      - AGENT_MODEL=${CODEX_MODEL:-}
       - AGENT_BASE_DIR=/workspace/codex-agent
     volumes:
       - ../h-workspace:/workspace
