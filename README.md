@@ -177,6 +177,7 @@ profile silently shadow an edited `.env` on recreate — compose gives the proce
 ./cli/scripts/run-claude-agent.sh
 ./cli/scripts/run-openhands-agent.sh
 ./cli/scripts/run-pi-agent.sh
+./cli/scripts/run-codex-agent.sh
 ./cli/scripts/run-dapr-agent.sh
 ./cli/scripts/run-dapr-claude-loop-agent.sh
 ./cli/scripts/run-claude-managed-agent.sh
@@ -278,6 +279,7 @@ cli/scripts/compose.sh --profile all down -v
 | `claude-agent` | local build | `8002` (app), `3502` (sidecar) | Claude Code CLI agent |
 | `openhands-agent` | local build | `8004` (app), `3504` (sidecar) | OpenHands CLI agent |
 | `pi-agent` | local build | `8015` (app), `3515` (sidecar) | pi CLI coding agent |
+| `codex-agent` | local build | `8016` (app), `3516` (sidecar) | OpenAI Codex CLI agent |
 | `dapr-agent` | local build | `8006` (app), `3506` (sidecar) | Dapr Agents SDK ReAct loop |
 | `dapr-claude-loop-agent` | local build | `8007` (app), `3507` (sidecar) | Anthropic SDK agentic loop |
 | `claude-managed-agent` | local build | `8008` (app), `3508` (sidecar) | Claude Managed Agents |
@@ -300,6 +302,7 @@ cli/scripts/compose.sh --profile all down -v
 | `langgraph-agent` | 8009 | 3509 | 36009 | 61011 |
 | `workflow-agent` | 8010 | 3510 | 36010 | 61012 |
 | `pi-agent` | 8015 | 3515 | 36015 | 61016 |
+| `codex-agent` | 8016 | 3516 | 36016 | 61017 |
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 
