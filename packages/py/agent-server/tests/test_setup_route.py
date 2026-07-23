@@ -75,7 +75,11 @@ def test_failed_step_leaves_no_sentinel_and_retries(
 def test_python_hash_is_key_order_insensitive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Unlike the JS sibling test, Python deliberately hashes sorted JSON object keys."""
+    """Unlike agent-routes.test.ts, Python deliberately hashes sorted JSON object keys.
+
+    The JS sibling intentionally pins insertion-order JSON.stringify hashing; keep both
+    cross-references loud if the implementations are ever aligned.
+    """
     calls: list[str] = []
     monkeypatch.setattr(
         subprocess,

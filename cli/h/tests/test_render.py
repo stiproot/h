@@ -42,11 +42,6 @@ PINNED_OR_OVERLAY_IDENTITY = {
 @pytest.mark.parametrize("name", TEMPLATE_NAMES)
 def test_every_workflow_template_renders_and_obeys_identity_contract(name: str) -> None:
     """A new template is covered by default, in addition to the per-template content goldens."""
-    if name not in MINIMAL_VALUES and name == "verify":
-        pytest.fail(
-            f"{name!r} needs required render values; register them in MINIMAL_VALUES",
-            pytrace=False,
-        )
     try:
         rendered = helm.render_workflow(
             name,

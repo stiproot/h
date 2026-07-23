@@ -64,6 +64,7 @@ describe("POST /worktree defaults", () => {
     [{}, "main"],
     [{ remoteBase: "" }, undefined],
     [{ remoteBase: "develop" }, "develop"],
+    // An explicit baseRef always suppresses remoteBase, even when remoteBase is provided.
     [{ baseRef: "abc", remoteBase: "develop" }, undefined],
   ] as const)("resolves remoteBase from %o to %s", async (extra, expected) => {
     const { app, calls, runtime } = await harness();
