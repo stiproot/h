@@ -111,7 +111,13 @@ export const CodexRunnerLive: Layer.Layer<
           }
           const { toml, included, skipped } = mcpJsonToCodexToml(yield* fs.readFileString(src));
           yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.ignore);
-          yield* fs.writeFileString(join(home, "config.toml"), toml);
+          const configPath = join(home, "config.toml");
+          yield* fs.writeFileString(configPath, toml);
+          // The codex CLI runs as the DROPPED sub-agent uid (container process-identity model), which
+          // differs from this runner's uid — so config.toml must be group-readable/writable (like the
+          // seeded auth.json at 0660) or codex fails with "config.toml: Permission denied". Host mode
+          // (same uid) is unaffected; the chmod is harmless there.
+          yield* fs.chmod(configPath, 0o660).pipe(Effect.ignore);
           yield* log.info({ included, skipped, home }, "codex mcp: provisioned config.toml");
         }).pipe(
           Effect.catchAll((cause) =>
