@@ -186,6 +186,27 @@ profile silently shadow an edited `.env` on recreate — compose gives the proce
 
 Not all services need to run simultaneously — start only what a given test requires.
 
+Each `run-*.sh` runs in the **foreground** and blocks. For an interactive dev view use the
+zellij layouts (`make dev` / `make dev-tab`) — one pane per service, for visualization.
+
+#### Headless / agent-driven bring-up (no TTY, no zellij)
+
+For an agent (or CI) that needs to stand the stack up **unattended** and know when it is ready,
+use the detached launcher — the non-interactive sibling of `make dev`, reusing the same run
+scripts, `stop_stale` idempotency, and `_supervise.sh` restart logic:
+
+```sh
+make up-local-wait            # infra-up → launch all services detached → block until every one is UP
+make down-local               # stop them (leaves infra up; `make infra-down` stops infra)
+# MODE=h-builds-h selects the supervised loop set instead of the full dev set
+```
+
+`make up-local` returns immediately (services run under `cli/scripts/_supervise.sh` in detached
+process groups, logs → `.local-logs/<service>.log`); `make wait-local` gates readiness by
+TCP-probing each service's app port. Service membership per mode lives in `cli/scripts/_services.sh`
+(the single source of truth the launcher and the zellij layouts share — kept in step by
+`scripts/check-services.mjs` at lint time). See docs/plans/agent-local-mode-bringup.md.
+
 ### 5. Run a test
 
 | Script | What it tests |

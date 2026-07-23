@@ -46,3 +46,6 @@ __pycache__/
 
 # Domain-specific plans (h-change context with domain details) stay local; core-architecture plans are source-controlled.
 docs/plans/domain/
+
+# Headless host-mode launcher logs + pidfiles (cli/scripts/up-local.sh)
+.local-logs/

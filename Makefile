@@ -41,6 +41,9 @@ DEV_LAYOUT          ?= .zellij/dev.kdl
 H_BUILDS_H_LAYOUT   ?= .zellij/h-builds-h.kdl
 H_BUILDS_H_SESSION  ?= h-builds-h
 
+# Headless host-mode launcher (up-local/wait-local/down-local) — MODE selects the service set.
+MODE                ?= dev
+
 WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
 # Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
 TARGET_REPO_DIR ?= repo
@@ -222,3 +225,24 @@ h-builds-h: ## Launch the supervised h-builds-h stack in a dedicated zellij sess
 
 h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the current zellij session (needs infra-up)
 	zellij action new-tab --cwd "$(CURDIR)" --name $(H_BUILDS_H_SESSION) --layout $(H_BUILDS_H_LAYOUT)
+
+# ── Headless host-mode launcher (no zellij/TTY) ────────────────────────────────
+#
+# The non-interactive sibling of dev/h-builds-h: an agent (or CI) can stand up the
+# stack and know when it is ready, using detached, RETURNING commands. Reuses the
+# same run scripts, stop_stale idempotency, and _supervise.sh restart logic — only
+# the orchestration layer differs (detached process groups + log files, not zellij
+# panes). MODE=dev (default) or MODE=h-builds-h. See docs/plans/agent-local-mode-bringup.md.
+
+.PHONY: up-local wait-local up-local-wait down-local
+up-local: infra-up ## Start all host-mode services detached (MODE=dev|h-builds-h); returns immediately
+	cli/scripts/up-local.sh $(MODE)
+
+wait-local: ## Block until every host-mode service is listening, or timeout (MODE=dev|h-builds-h)
+	cli/scripts/wait-local.sh $(MODE)
+
+up-local-wait: up-local ## Start the stack detached, then block until it is ready (MODE=dev|h-builds-h)
+	cli/scripts/wait-local.sh $(MODE)
+
+down-local: ## Stop all host-mode services for MODE (leaves infra up; use infra-down for that)
+	cli/scripts/down-local.sh $(MODE)
