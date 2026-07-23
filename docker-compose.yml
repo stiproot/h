@@ -416,8 +416,11 @@ services:
       - CODEX_HOME=${CODEX_HOME:-/workspace/codex-home}
       - AGENT_MODEL=${CODEX_MODEL:-}
       - AGENT_BASE_DIR=/workspace/codex-agent
+      # h's canonical MCP set (mounted below); the runner translates it into codex config.toml.
+      - MCP_CONFIG_SRC=/workspace/codex-agent/.mcp.json
     volumes:
       - ../h-workspace:/workspace
+      - ./apps/claude-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro
     ports:
       - "8016:8000"
       - "3516:3500"

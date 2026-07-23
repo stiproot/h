@@ -11,11 +11,13 @@ fi
 
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 # Auth: leave OPENAI_API_KEY empty and set CODEX_AUTH_MODE=chatgpt to run on a ChatGPT
-# (Plus/Pro/Team) subscription — the codex CLI uses account creds in $CODEX_HOME/auth.json
-# (run `codex login` once on this host). CODEX_HOME defaults to ~/.codex; exported so it is
-# explicit and inherited by the codex subprocess. See docs/plans/codex-chatgpt-auth.md.
+# (Plus/Pro/Team) subscription. CODEX_HOME is a DEDICATED h-managed dir (NOT the user's ~/.codex):
+# seed it once with `cli/scripts/seed-codex-auth.sh` (copies ~/.codex/auth.json in), and the
+# codex-runner writes config.toml (h's MCP servers) here each run. Keeping it separate from
+# ~/.codex means h runs never pollute the user's personal codex config. See docs/plans/codex-chatgpt-auth.md.
 export CODEX_AUTH_MODE="${CODEX_AUTH_MODE:-}"
-export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+# h's canonical MCP set (same servers claude-agent provisions); the runner translates it to codex TOML.
+export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/claude-agent/.mcp.local.json}"
 # Model: a ChatGPT-account plan rejects explicit API model ids, so in chatgpt mode default to
 # empty (codex uses the account's own default model); API-key mode keeps o4-mini. An explicit
 # CODEX_MODEL always wins in either mode.
@@ -25,6 +27,10 @@ else
   export AGENT_MODEL="${CODEX_MODEL:-o4-mini}"
 fi
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/codex-agent}"
+# CODEX_HOME is a DEDICATED h-managed dir (sibling of AGENT_BASE_DIR — the shared workspace's
+# codex-home), so it must resolve AFTER AGENT_BASE_DIR is set. Host: <workspace>/codex-home;
+# compose sets it explicitly to /workspace/codex-home.
+export CODEX_HOME="${CODEX_HOME:-$(dirname "${AGENT_BASE_DIR}")/codex-home}"
 export AGENT_APP_DIR="${APP_DIR}"
 export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
 

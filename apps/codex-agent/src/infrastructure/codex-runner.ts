@@ -8,6 +8,8 @@ import type { AgentRequest, AgentResponse } from "core";
 import { Config, type ConfigError, Data, Effect, Layer, Option } from "effect";
 import { LoggerTag } from "logger";
 
+import { mcpJsonToCodexToml } from "./codex-mcp-config.ts";
+
 /** Default workspace root. */
 export const DEFAULT_AGENT_BASE_DIR = "/workspace/codex-agent";
 
@@ -34,7 +36,12 @@ const codexConfig = Effect.gen(function* () {
   );
   const daprHttpPort = yield* Config.option(Config.string("DAPR_HTTP_PORT"));
   const runTimeoutMs = yield* Config.withDefault(Config.number("AGENT_RUN_TIMEOUT_MS"), 1_800_000);
-  return { apiKey, model, baseDir, runsDir, daprHttpPort, runTimeoutMs };
+  // MCP parity: h's .mcp.json source (same one claude-agent provisions) + the dedicated CODEX_HOME
+  // the runner writes the translated config.toml into. Both optional — provisioning is skipped
+  // (logged) when either is unset, so codex still runs (just without h's MCP tools).
+  const mcpConfigSrc = yield* Config.option(Config.string("MCP_CONFIG_SRC"));
+  const codexHome = yield* Config.option(Config.string("CODEX_HOME"));
+  return { apiKey, model, baseDir, runsDir, daprHttpPort, runTimeoutMs, mcpConfigSrc, codexHome };
 });
 
 export const CodexRunnerLive: Layer.Layer<
@@ -70,6 +77,30 @@ export const CodexRunnerLive: Layer.Layer<
         }
 
         const log = yield* logger.child({ workflowInstanceId, workspaceId, agent: "codex" });
+
+        // MCP parity: write h's servers (translated from .mcp.json) into $CODEX_HOME/config.toml so
+        // the codex CLI has the github (+ other supported) MCP tools — the PR workflows depend on
+        // them. Non-fatal: a failure here just leaves codex without h's MCP, it doesn't kill the run.
+        const src = Option.getOrNull(cfg.mcpConfigSrc);
+        const home = Option.getOrNull(cfg.codexHome);
+        yield* Effect.gen(function* () {
+          if (!src || !home) {
+            yield* log.info({ src, home }, "codex mcp: not provisioning (MCP_CONFIG_SRC/CODEX_HOME unset)");
+            return;
+          }
+          if (!(yield* fs.exists(src))) {
+            yield* log.info({ src }, "codex mcp: MCP_CONFIG_SRC missing — skipping provisioning");
+            return;
+          }
+          const { toml, included, skipped } = mcpJsonToCodexToml(yield* fs.readFileString(src));
+          yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.ignore);
+          yield* fs.writeFileString(join(home, "config.toml"), toml);
+          yield* log.info({ included, skipped, home }, "codex mcp: provisioned config.toml");
+        }).pipe(
+          Effect.catchAll((cause) =>
+            log.info({ cause: String(cause) }, "codex mcp: provisioning failed (non-fatal)"),
+          ),
+        );
 
         const handle = yield* startRunLedgerEffect({
           agentId: AGENT_ID,

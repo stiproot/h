@@ -27,7 +27,8 @@ fi
 
 mkdir -p "${DEST}"
 cp "${SRC}/auth.json" "${DEST}/auth.json"
-[ -f "${SRC}/config.toml" ] && cp "${SRC}/config.toml" "${DEST}/config.toml" || true
+# NB: config.toml is NOT copied — the codex-runner GENERATES it here each run (h's MCP servers),
+# so the user's personal config.toml never leaks into h runs.
 
 # Group-owned + group-rw so the container's non-root agent user (gid AGENT_GID) can read AND refresh
 # it. The shared workspace is setgid AGENT_GID (setup-agent-workspace.sh), so files created here
