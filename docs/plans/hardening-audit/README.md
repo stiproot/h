@@ -1,6 +1,6 @@
 # Hardening audit — encode the unguarded invariants
 
-Status: Active — 29 verified hardening findings, split per-area into this directory's phase docs
+Status: Active — 29 verified hardening findings, split per-area into this directory's phase docs. Phase 3 done (PR #55, 2026-07-23); phases 1, 2, 4, 5 open.
 Established: 2026-07-23
 
 ## Phase docs
@@ -12,7 +12,7 @@ status line — this index + those status lines are the plan's state.
 | --- | --- | --- |
 | [01-drift-fixes.md](./01-drift-fixes.md) | Live drift & bug fixes (quick wins, no new machinery) | A16, A1, A18, A28, A22, A23, A20, A21, A24, A29, A30 |
 | [02-guards-fire.md](./02-guards-fire.md) | Make the guards fire (pre-push hook + CI — the high-severity meta-gap) | A0 |
-| [03-sync-guards.md](./03-sync-guards.md) | Cross-stack sync guards (dual-maintained surfaces) | A2, A19 |
+| [03-sync-guards.md](./03-sync-guards.md) ✅ **Complete** (PR #55) | Cross-stack sync guards (dual-maintained surfaces) | A2, A19 |
 | [04-content-guards.md](./04-content-guards.md) | Content-invariant `check-*.mjs` guard scripts | A3, A4, A5, A6, A7, A9, A10, A11, A26 |
 | [05-test-gaps.md](./05-test-gaps.md) | Test-coverage gaps (pure logic, ranked by blast radius) | A8, A12, A13, A14, A15, A17 |
 

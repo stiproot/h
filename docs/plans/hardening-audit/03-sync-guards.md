@@ -1,12 +1,12 @@
 # Phase 3 — Cross-stack sync guards
 
-Status: Active — 2 item(s), none started
+Status: Complete — both guards landed in PR #55 (squash 940f5dc, closes #54)
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
 Tests that pin surfaces maintained in two places (TS engine ↔ Python CLI ↔ steering docs). Each would have caught drift this audit found live.
 
-## [ ] A2. WORKFLOW_KINDS closed literal is dual-maintained across engine (TS) and CLI (Python) with no sync guard
+## [x] A2. WORKFLOW_KINDS closed literal is dual-maintained across engine (TS) and CLI (Python) with no sync guard
 
 *Severity: medium · effort: small*
 
@@ -16,7 +16,7 @@ Tests that pin surfaces maintained in two places (TS engine ↔ Python CLI ↔ s
 
 **Do:** Add cli/h/tests/test_kind_sync.py (runs in the existing `uv run --package h-cli pytest` suite; repo-relative file access is established practice via the chart goldens): (a) regex-extract the ChainWorkflowKind Schema.Literal list from apps/workflow-svc/src/domain/models/chain.model.ts (resolve via Path(__file__).parents[4] / 'apps/workflow-svc/src/domain/models/chain.model.ts', skip-with-failure-message if absent) and assert set-equality with h_cli.commands.chain.KNOWN_KINDS; (b) assert WELL_KNOWN.keys() == KIND_FIRE.keys() == KIND_MODEL_PARAMS.keys() == set(KNOWN_KINDS), and set(TERMINAL_ATOM_KIND.values()) | FROZEN_EXECUTOR_KINDS ⊆ set(KNOWN_KINDS) (TERMINAL_ATOM_KIND maps atom→kind, so its VALUES not keys are checked); (c) assert set(h_cli.config.MODEL_PARAM_SLOTS) == union(KIND_MODEL_PARAMS.values()). In the same change, fix the live drift the new test exposes: add "modelRevise" to MODEL_PARAM_SLOTS in cli/h/src/h_cli/config.py:60 so `h workflow run revise --model` / `--fallback-model` actually set the revise template's model slot.
 
-## [ ] A19. No machine guard checks steering docs against repo reality (the drift that produced every other finding)
+## [x] A19. No machine guard checks steering docs against repo reality (the drift that produced every other finding)
 
 *Severity: medium · effort: medium*
 
@@ -29,3 +29,4 @@ Tests that pin surfaces maintained in two places (TS engine ↔ Python CLI ↔ s
 ## Log
 
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
+- 2026-07-23 — Carried out by h: issue #54 → chain `hardening-sync-guards` (feature-pr → pr-review CLEAN, 0 revise iterations) → PR #55, squash-merged (940f5dc). A2: `cli/h/tests/test_kind_sync.py` + `modelRevise` slot fix. A19: `scripts/check-steering.mjs` wired into root lint (enforcing) + codex-agent/telemetry documented in CLAUDE.md/README + `run-codex` in the orchestrator skill. Bonus: fixed a pre-existing-broken `agent-cli/invoker.test.ts` mock (Promise → `Effect.succeed`). Reviewer's two "verify" findings assessed as non-issues (run-* scope is per-spec; SKILL.md has all 8 activities). Both guards enforce on `bun run lint` / `uv run --package h-cli pytest` going forward.
