@@ -18,6 +18,55 @@ pytestmark = pytest.mark.skipif(
     shutil.which("helm") is None, reason="helm not on PATH (renders cli/charts)"
 )
 
+TEMPLATE_NAMES = sorted(
+    path.stem for path in (helm.CHARTS_DIR / "workflows" / "templates").glob("*.yaml")
+)
+MINIMAL_VALUES = {
+    "verify": {"verify.cmd": "echo ok"},
+    "plugin-improvement": {
+        "pluginImprovement.tile": "plugins/linear",
+        "pluginImprovement.clonePath": "/workspace/plugins-repo",
+    },
+}
+PINNED_OR_OVERLAY_IDENTITY = {
+    "pr-review",
+    "agent-panel",
+    "plugin-setup-test",
+    "plugin-improvement",
+    "verify",
+    "create-pr",
+    "arm-revise",
+}
+
+
+@pytest.mark.parametrize("name", TEMPLATE_NAMES)
+def test_every_workflow_template_renders_and_obeys_identity_contract(name: str) -> None:
+    """A new template is covered by default, in addition to the per-template content goldens."""
+    if name not in MINIMAL_VALUES and name == "verify":
+        pytest.fail(
+            f"{name!r} needs required render values; register them in MINIMAL_VALUES",
+            pytrace=False,
+        )
+    try:
+        rendered = helm.render_workflow(
+            name,
+            values={"publish": "true", **MINIMAL_VALUES.get(name, {})},
+            include_local=False,
+        )
+    except helm.HelmError as exc:
+        if name not in MINIMAL_VALUES and "required" in str(exc).lower():
+            pytest.fail(
+                f"{name!r} needs required render values; register them in MINIMAL_VALUES: {exc}",
+                pytrace=False,
+            )
+        raise
+    definition = json.loads(helm.to_wire_json(rendered))
+    assert definition["steps"], f"{name!r} rendered no steps (check its .Values.template gate)"
+    # CLAUDE.md's fire-time-identity invariant: a NEW full workflow must open identity slots,
+    # or be deliberately classified as a pinned-identity/overlay atom here.
+    if name not in PINNED_OR_OVERLAY_IDENTITY:
+        assert "{{params.runActivity}}" in rendered
+
 
 def _render_hostile(hostile_spec: Path) -> str:
     return helm.render_workflow(
