@@ -19,6 +19,7 @@ composition stack, and the design principles.
 | `claude-managed-agent` | Claude Managed Agents | Anthropic-native agent orchestration + Dapr Workflow |
 | `langgraph-agent` | LangChain / LangGraph | Config-driven ReAct graph (`create_react_agent`) via `ChatAnthropic` → LiteLLM proxy; no Dapr Agents SDK |
 | `workflow-agent` | Dapr Agents SDK | Cron-triggered orchestrator; builds/tests/persists/runs workflows via the workflows MCP |
+| `codex-agent` | OpenAI Codex CLI | Lean coding agent; same Fastify + Dapr sidecar contract as claude-agent |
 
 ## Workspace layout
 
@@ -36,7 +37,8 @@ h/
 │   ├── workflow-svc/           # workflow-svc — Dapr Workflow orchestrator
 │   ├── workflow-mcp/           # workflow-mcp — MCP server exposing workflow tools to agents
 │   ├── dapr-mcp/               # dapr-mcp — MCP server for Dapr state-store inspection
-│   └── obs-mcp/                # obs-mcp — read-only observability MCP (traces, logs, run ledger)
+│   ├── obs-mcp/                # obs-mcp — read-only observability MCP (traces, logs, run ledger)
+│   └── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
 ├── packages/            # shared libs, partitioned by language ecosystem
 │   ├── js/              # TypeScript (npm workspace — root package.json)
 │   │   ├── agent-cli/        # Shared agent invocation logic (CLI strategies, stream parsing)
@@ -44,7 +46,8 @@ h/
 │   │   ├── core/             # Shared types (AgentRequest, AgentResponse)
 │   │   ├── core-dapr/        # Dapr-specific shared types and helpers
 │   │   ├── core-vercel/      # Vercel AI SDK client wrapper (ILlmClient → LiteLLM)
-│   │   └── logger/           # Pino logger wrapper
+│   │   ├── logger/           # Pino logger wrapper
+│   │   └── telemetry/        # OTel/Zipkin tracing — makeTracingLive layer + W3C propagation helpers
 │   └── py/              # Python (uv workspace — root pyproject.toml)
 │       ├── agent-server/     # Shared FastAPI agent routes (run/setup/dapr-subscribe) + run ledger
 │       └── agent-core/       # Shared agent machinery (ReAct loop, LLM adapters, workflow-mcp toolset)

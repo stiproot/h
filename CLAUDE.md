@@ -154,6 +154,10 @@ apps/pi-agent/src/                        # pi-agent — pi CLI coding agent
 ├── index.ts                              # composition root – registers shared agent-server routes, starts Fastify
 └── infrastructure/pi-runner.ts           # IAgentRunner impl using PiInvokerLive; no MCP provisioning (pi has no MCP)
 
+apps/codex-agent/src/                    # codex-agent — OpenAI Codex CLI coding agent (Fastify + Dapr sidecar)
+├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("codex-agent")
+└── infrastructure/codex-runner.ts        # IAgentRunner impl using CodexInvokerLive (agent-cli); honours optional cwd/model; /run, /setup, /dapr/subscribe come from agent-server
+
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
 ├── main.py                               # composition root – registers shared agent-server routes + /workflow (babysitter); opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
 ├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – delegates to agent_core's ReAct loop (OpenAIChatAdapter); merges the workflow-mcp toolset when enabled
@@ -219,7 +223,7 @@ apps/workflow-svc/src/
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
-│       ├── setup / clone-repo / create-worktree / run-{claude,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
+│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
 │       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + structured goal: RESOLVED); BEST-EFFORT (§3/§10)
 │       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: the structured block's `pr` for arm-revise); LOUD, idempotent
 │       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD
@@ -310,6 +314,13 @@ packages/js/logger/src/
 ├── index.ts    # Logger interface, re-exports
 ├── service.ts  # initLogger (Pino), flushLogger
 └── simple.ts   # singleCallbackLogger – lightweight stub for tests
+
+packages/js/telemetry/src/
+├── index.ts      # re-exports (makeTracingLive, TracingLive, getTracer, contextFromTraceparent, activeTraceparent)
+├── tracing.ts    # makeTracingLive(serviceName?) → Effect Layer; acquires a NodeTracerProvider (ZipkinExporter → ZIPKIN_ENDPOINT), registers the W3C propagator, installs @effect/opentelemetry — the OTel SDK spine every JS service uses (see initTracing prose in Observability above)
+├── context.ts    # contextFromTraceparent / activeTraceparent — re-attach or capture a W3C traceparent header so cron/activity spans share one trace tree
+├── spans.ts      # withSpan helper — thin Effect.withSpan wrapper
+└── bridge.ts     # plain-function helpers (getTracer) for code outside the Effect runtime
 
 packages/py/agent-server/src/agent_server/   # Python sibling of js/agent-server (uv workspace member)
 ├── __init__.py    # re-exports
