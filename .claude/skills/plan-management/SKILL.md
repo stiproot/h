@@ -46,6 +46,18 @@ There is no separate index file in h — the `docs/plans/` directory listing plu
 each plan's status line IS the index. (Plans predating this convention, 2026-07-22,
 don't yet carry status lines; that's fine — retrofit only when you touch one.)
 
+**Large plans split into a subdirectory.** If a plan is too large for one readable
+doc (rule of thumb: it has several independent areas/phases, or a single file would
+run past ~1000 lines), make it a directory instead of a monolith:
+`docs/plans/<name>/README.md` (the index — carries the plan-level status line,
+shared context, and a table linking the parts) plus one doc per area/phase
+(`01-<area>.md`, `02-<area>.md`, …), each with its OWN status line so the index
+table + part statuses show at a glance where the work stands. Shared context
+(background, cross-cutting instructions, refuted alternatives) lives ONLY in the
+README — parts link back to it, never restate it. Archive the whole directory as a
+unit: `docs/plans/<name>/` → `docs/plans/impl/<name>/`, gated on every part being
+`Complete`. (First instance: `docs/plans/hardening-audit/`.)
+
 Every plan starts with a status line and a one-line summary, e.g.:
 
 ```markdown
@@ -114,7 +126,8 @@ When the work is done and context is lifted:
 
 1. Set `Status: Complete — <one-line outcome>`, and add a short "Lifted to:" list
    linking where the durable context now lives.
-2. Move the file: `docs/plans/<name>.md` → `docs/plans/impl/<name>.md`.
+2. Move the file: `docs/plans/<name>.md` → `docs/plans/impl/<name>.md` (a split
+   plan moves as a whole directory: `docs/plans/<name>/` → `docs/plans/impl/<name>/`).
 
 Domain-specific plans (`docs/plans/domain/`) have no archive step — delete or keep
 locally once the work lands.
