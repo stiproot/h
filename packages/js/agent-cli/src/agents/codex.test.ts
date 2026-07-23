@@ -166,11 +166,44 @@ describe("codex JSONL parser", () => {
     });
   });
 
+  it("parses item.completed agent_message (flat text) into an assistant event", async () => {
+    // The REAL codex shape — a flat `text` field, not a content[] array. This is the final message
+    // that carries the structured-output json block; if it isn't captured, the contract fails.
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "agent_message", text: '```json\n{"pr": 58}\n```' },
+      }),
+      events,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "assistant",
+      message: { content: [{ type: "text", text: '```json\n{"pr": 58}\n```' }] },
+    });
+  });
+
   it("parses item.completed function_call into tool_use", async () => {
     const parser = await getParser();
     const events: StreamEvent[] = [];
     parser.parseLine(
       JSON.stringify({ type: "item.completed", item: { type: "function_call" } }),
+      events,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "tool_use" });
+  });
+
+  it("parses item.completed mcp_tool_call into tool_use", async () => {
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "mcp_tool_call", server: "github", tool: "create_pull_request" },
+      }),
       events,
     );
     expect(events).toHaveLength(1);

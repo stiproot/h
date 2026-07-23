@@ -16,6 +16,7 @@ const codexJsonlParser: AgentStreamParser = {
         item?: {
           type?: string;
           role?: string;
+          text?: string;
           content?: Array<{ type?: string; text?: string }>;
         };
         usage?: {
@@ -30,21 +31,25 @@ const codexJsonlParser: AgentStreamParser = {
         case "thread.started":
           events.push({ type: "session_start", session_id: ev.thread_id });
           break;
-        case "item.completed":
-          if (ev.item?.type === "message") {
-            events.push({
-              type: "assistant",
-              message: {
-                content: (ev.item.content ?? []).map((c) => ({
-                  type: c.type ?? "text",
-                  text: c.text,
-                })),
-              },
-            });
-          } else if (ev.item?.type === "function_call") {
+        case "item.completed": {
+          const item = ev.item;
+          // Codex emits assistant text as `agent_message` (flat `text` field — the common case,
+          // including the final structured-output json block) OR `message` (a `content[]` array).
+          // Both must become `assistant` events, or buildInvocationResult's textOutput is empty and
+          // stdout falls back to "Process exited with code N" — losing the run's real output (and
+          // the fenced json block the structured-output contract parses). Bit the codex e2e live.
+          if (item?.type === "agent_message" || item?.type === "message") {
+            const content = item.content
+              ? item.content.map((c) => ({ type: c.type ?? "text", text: c.text }))
+              : item.text !== undefined
+                ? [{ type: "text", text: item.text }]
+                : [];
+            events.push({ type: "assistant", message: { content } });
+          } else if (item?.type === "function_call" || item?.type === "mcp_tool_call") {
             events.push({ type: "tool_use" });
           }
           break;
+        }
         case "turn.completed":
           events.push({
             type: "result",
