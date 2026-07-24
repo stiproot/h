@@ -24,43 +24,96 @@ const templatesDir = resolve(root, "cli/charts/workflows/templates");
 const bareForce = /--force(?!-with-lease)/;
 const shortForce = /(?:^|\s)-f(?:\s|$)/;
 
-const violations = [];
-const gateViolations = [];
-for (const file of readdirSync(templatesDir).filter((f) => f.endsWith(".yaml"))) {
-  const path = join(templatesDir, file);
-  const content = readFileSync(path, "utf8");
-  const lines = content.split("\n");
-  lines.forEach((line, i) => {
-    if (!/git\s+push/.test(line)) return;
-    if (bareForce.test(line) || shortForce.test(line)) {
-      violations.push({ file: relative(root, path), line: i + 1, text: line.trim() });
-    }
-  });
-
-  const templateName = basename(file, ".yaml");
+export function hasCompleteTemplateGate(content, templateName) {
   const escapedName = templateName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const gatePattern = new RegExp(
-    `^\\s*\\{\\{-?\\s*if\\s+eq\\s+\\(\\s*\\.Values\\.template\\s*\\|\\s*default\\s+(?:""|'')\\s*\\)\\s+(?:"${escapedName}"|'${escapedName}')\\s*-?\\}\\}\\s*$`,
-    "m",
+    `^if\\s+eq\\s+\\(\\s*\\.Values\\.template\\s*\\|\\s*default\\s+(?:""|'')\\s*\\)\\s+(?:"${escapedName}"|'${escapedName}')$`,
   );
-  if (!gatePattern.test(content)) {
-    gateViolations.push(
-      `${relative(root, path)}: missing or mismatched chart template gate for "${templateName}"; expected {{- if eq (.Values.template | default "") "${templateName}" }}. See CLAUDE.md Chart template gate gotcha and author-workflow-template skill.`,
-    );
+  const actionPattern = /\{\{-?\s*\/\*[\s\S]*?\*\/\s*-?\}\}|\{\{-?([\s\S]*?)-?\}\}/g;
+  const stack = [];
+  let gateDepth = -1;
+  let gateSeen = false;
+  let cursor = 0;
+
+  for (const match of content.matchAll(actionPattern)) {
+    const inDefinition = stack.some((entry) => entry === "define");
+    if (content.slice(cursor, match.index).trim() && gateDepth === -1 && !inDefinition) return false;
+
+    const isComment = match[1] === undefined;
+    const action = isComment ? "" : match[1].trim();
+    const control = action.match(/^(if|range|with|define|block)\b/);
+
+    if (
+      gateDepth === -1 &&
+      !inDefinition &&
+      !isComment &&
+      !gatePattern.test(action) &&
+      control?.[1] !== "define"
+    ) {
+      return false;
+    }
+
+    if (control) {
+      const entry = gatePattern.test(action) ? "gate" : control[1];
+      stack.push(entry);
+      if (entry === "gate") {
+        if (gateSeen) return false;
+        gateSeen = true;
+        gateDepth = stack.length;
+      }
+    } else if (/^end(?:\s|$)/.test(action)) {
+      if (stack.length === 0) return false;
+      if (stack.length === gateDepth) gateDepth = -1;
+      stack.pop();
+    } else if (/^else(?:\s|$)/.test(action)) {
+      if (stack.length === 0 || stack.length === gateDepth) return false;
+    }
+
+    cursor = match.index + match[0].length;
   }
+
+  return gateSeen && stack.length === 0 && !content.slice(cursor).trim();
 }
 
-if (violations.length > 0 || gateViolations.length > 0) {
-  for (const violation of gateViolations) console.error(violation);
+export function checkTemplates() {
+  const violations = [];
+  const gateViolations = [];
+  for (const file of readdirSync(templatesDir).filter((f) => f.endsWith(".yaml"))) {
+    const path = join(templatesDir, file);
+    const content = readFileSync(path, "utf8");
+    const lines = content.split("\n");
+    lines.forEach((line, i) => {
+      if (!/git\s+push/.test(line)) return;
+      if (bareForce.test(line) || shortForce.test(line)) {
+        violations.push({ file: relative(root, path), line: i + 1, text: line.trim() });
+      }
+    });
 
-  if (violations.length === 0) process.exit(1);
+    const templateName = basename(file, ".yaml");
+    if (!hasCompleteTemplateGate(content, templateName)) {
+      gateViolations.push(
+        `${relative(root, path)}: missing or mismatched chart template gate for "${templateName}"; expected {{- if eq (.Values.template | default "") "${templateName}" }}. See CLAUDE.md Chart template gate gotcha and author-workflow-template skill.`,
+      );
+    }
+  }
 
-  console.error("✗ check-templates: bare force-push found in a chart template.\n");
-  console.error("  Use `git push --force-with-lease` (never a bare `--force` / `-f`) — the lease");
-  console.error("  protects commits pushed since the last fetch. On a token-URL push (not a named");
-  console.error('  remote) use the explicit form: --force-with-lease="<branch>:<expected-sha>".\n');
-  for (const v of violations) console.error(`  ${v.file}:${v.line}  ${v.text}`);
-  process.exit(1);
+  if (violations.length > 0 || gateViolations.length > 0) {
+    for (const violation of gateViolations) console.error(violation);
+
+    if (violations.length === 0) return 1;
+
+    console.error("✗ check-templates: bare force-push found in a chart template.\n");
+    console.error("  Use `git push --force-with-lease` (never a bare `--force` / `-f`) — the lease");
+    console.error("  protects commits pushed since the last fetch. On a token-URL push (not a named");
+    console.error('  remote) use the explicit form: --force-with-lease="<branch>:<expected-sha>".\n');
+    for (const v of violations) console.error(`  ${v.file}:${v.line}  ${v.text}`);
+    return 1;
+  }
+
+  console.log("✓ check-templates: no unsafe force-push or incomplete template gates");
+  return 0;
 }
 
-console.log("✓ check-templates: no unsafe force-push in chart templates");
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exit(checkTemplates());
+}
