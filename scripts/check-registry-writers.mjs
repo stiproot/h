@@ -102,7 +102,6 @@ function hasWriteCall(code) {
   return (
     /\.\s*state\s*\.\s*(?:save|delete)\s*\(/.test(code) ||
     /\bstate_(?:save|delete)\s*\(/.test(code) ||
-    /\.\s*(?:save|delete|post)\s*\(/.test(code) ||
     (/\/v1\.0\/state/.test(code) && /\b(?:POST|DELETE)\b/.test(code))
   );
 }
