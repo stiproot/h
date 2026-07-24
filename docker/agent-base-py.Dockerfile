@@ -13,6 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf 
 ARG AGENT_UID=10001
 ARG AGENT_GID=10001
 ENV AGENT_UID=$AGENT_UID AGENT_GID=$AGENT_GID HOME=/home/agent-svc
+
+# Concurrent image builds (compose --profile all builds ~10 images at once) saturate the network,
+# and uv's 30s default HTTP timeout is then exceeded downloading a large wheel → "Failed to download
+# distribution due to network timeout" aborts the whole stack build. Raise it so slow concurrent
+# downloads wait instead of failing. Applies to every FROM-this-base Python agent's `uv sync`.
+ENV UV_HTTP_TIMEOUT=180
 RUN groupadd -g "$AGENT_GID" agent && \
     useradd -u "$AGENT_UID" -g "$AGENT_GID" -m -d /home/agent-svc agent-svc
 COPY docker/agent-entrypoint.sh /agent-entrypoint.sh
