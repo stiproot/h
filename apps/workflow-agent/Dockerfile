@@ -9,14 +9,14 @@ COPY pyproject.toml uv.lock ./
 COPY packages/py/agent-core/pyproject.toml ./packages/py/agent-core/
 COPY apps/workflow-agent/pyproject.toml ./apps/workflow-agent/
 
-RUN --mount=type=cache,id=uv-store,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-store,sharing=locked,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package workflow-agent
 
 # Workspace package + app source, then install the editable workspace packages
 COPY packages/py/agent-core/ ./packages/py/agent-core/
 COPY apps/workflow-agent/src/ ./apps/workflow-agent/src/
 
-RUN --mount=type=cache,id=uv-store,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-store,sharing=locked,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package workflow-agent
 
 ENV PATH="/app/.venv/bin:$PATH"

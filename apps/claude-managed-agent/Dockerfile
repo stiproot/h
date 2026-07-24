@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY apps/claude-managed-agent/pyproject.toml apps/claude-managed-agent/uv.lock ./
 
-RUN --mount=type=cache,id=uv-store,target=/root/.cache/uv \
+RUN --mount=type=cache,id=uv-store,sharing=locked,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 COPY apps/claude-managed-agent/src/ ./src/
