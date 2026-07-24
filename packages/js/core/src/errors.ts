@@ -1,7 +1,7 @@
 import { Data } from "effect";
 
 /**
- * The cross-service tagged-error family (see the Effect refactor map, section 3).
+ * The cross-service tagged-error category (see the Effect refactor map, section 3).
  * These are the tags that cross a TS-to-TS Dapr-invoke boundary; adapters
  * `mapError` raw SDK failures into them, and inbound handlers map the tags to
  * HTTP statuses. Fields are deliberately lean — `cause` carries the raw failure,

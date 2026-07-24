@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  type Blackboard,
+  type ChainData,
   captureAnswer,
   capturePr,
   captureReview,
@@ -10,8 +10,8 @@ import {
   loopIsClean,
   reviewIsClean,
   stepStructured,
-  WORKFLOW_KINDS,
-} from "./chain-workflows.ts";
+  MEMBER_KINDS,
+} from "./chain-members.ts";
 
 // A workflow result as the generic workflow returns it: { <stepId>: { output, structured? } }.
 // Structured values are the rung-2 seam's code-validated blocks (structured-workflow-outputs).
@@ -49,8 +49,8 @@ describe("stepStructured: merges validated structured envelopes", () => {
 });
 
 describe("capturePr (structured only)", () => {
-  it("threads pr + url onto the blackboard; prNumber lands as a string", () => {
-    const data: Blackboard = {};
+  it("threads pr + url onto the chain data; prNumber lands as a string", () => {
+    const data: ChainData = {};
     capturePr(
       result({ "create-pr": { structured: { pr: 22, url: "https://github.com/o/r/pull/22" } } }),
       data,
@@ -60,11 +60,11 @@ describe("capturePr (structured only)", () => {
   });
 
   it("a structured skip sets nothing — the next workflow's buildParams fails loud instead", () => {
-    const data: Blackboard = {};
+    const data: ChainData = {};
     capturePr(result({ "create-pr": { structured: { skipped: "GH_TOKEN unset" } } }), data);
     expect(data.prNumber).toBeUndefined();
     expect(data.prUrl).toBeUndefined();
-    expect(() => WORKFLOW_KINDS["pr-review"].buildParams(data)).toThrow(ChainThreadError);
+    expect(() => MEMBER_KINDS["pr-review"].buildParams(data)).toThrow(ChainThreadError);
   });
 
   it("fails loud when the run emitted NO structured output (undeclared template)", () => {
@@ -76,10 +76,10 @@ describe("capturePr (structured only)", () => {
 
 describe("captureReview (structured only)", () => {
   it("CLEAN means empty findings; FINDINGS threads the summary", () => {
-    const clean: Blackboard = {};
+    const clean: ChainData = {};
     captureReview(result({ review: { structured: { verdict: "CLEAN" } } }), clean);
     expect(clean.reviewFindings).toBe("");
-    const findings: Blackboard = {};
+    const findings: ChainData = {};
     captureReview(
       result({ review: { structured: { verdict: "FINDINGS", summary: "a.ts:1 — bug" } } }),
       findings,
@@ -110,25 +110,25 @@ describe("reviewIsClean (structured only)", () => {
   });
 });
 
-describe("WORKFLOW_KINDS buildParams (blackboard → fire params)", () => {
+describe("MEMBER_KINDS buildParams (chain data → fire params)", () => {
   it("feature-pr needs slug + spec, threads optional issueNumber and repo", () => {
-    const params = WORKFLOW_KINDS["feature-pr"].buildParams({
+    const params = MEMBER_KINDS["feature-pr"].buildParams({
       slug: "dark-mode",
       spec: "the spec",
       issueNumber: "7",
       repo: "o/r",
     });
     expect(params).toEqual({ slug: "dark-mode", spec: "the spec", issueNumber: "7", repo: "o/r" });
-    expect(() => WORKFLOW_KINDS["feature-pr"].buildParams({ slug: "s" })).toThrow(ChainThreadError);
+    expect(() => MEMBER_KINDS["feature-pr"].buildParams({ slug: "s" })).toThrow(ChainThreadError);
   });
 
   it("pr-review needs the captured prNumber", () => {
-    expect(WORKFLOW_KINDS["pr-review"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
-    expect(() => WORKFLOW_KINDS["pr-review"].buildParams({})).toThrow(/structured output/);
+    expect(MEMBER_KINDS["pr-review"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
+    expect(() => MEMBER_KINDS["pr-review"].buildParams({})).toThrow(/structured output/);
   });
 
   it("revise needs prNumber + slug", () => {
-    expect(WORKFLOW_KINDS.revise.buildParams({ prNumber: "22", slug: "s" })).toEqual({
+    expect(MEMBER_KINDS.revise.buildParams({ prNumber: "22", slug: "s" })).toEqual({
       pr: "22",
       slug: "s",
     });
@@ -142,8 +142,8 @@ describe("contractFor: declared mappings replace their half of the kind contract
     inputs: { slug: "slug", spec: "spec" },
   };
 
-  it("generic capture threads mapped structured fields onto the blackboard", () => {
-    const data: Blackboard = {};
+  it("generic capture threads mapped structured fields onto the chain data", () => {
+    const data: ChainData = {};
     contractFor(member).capture(
       result({ "create-pr": { structured: { pr: 42, url: "https://x/pull/42" } } }),
       data,
@@ -166,7 +166,7 @@ describe("contractFor: declared mappings replace their half of the kind contract
     ).toThrow(/no field 'pr'/);
   });
 
-  it("generic buildParams maps blackboard keys to params and threads repo", () => {
+  it("generic buildParams maps chain data keys to params and threads repo", () => {
     const params = contractFor(member).buildParams({
       slug: "dark-mode",
       spec: "the spec",
@@ -175,25 +175,29 @@ describe("contractFor: declared mappings replace their half of the kind contract
     expect(params).toEqual({ slug: "dark-mode", spec: "the spec", repo: "o/r" });
   });
 
-  it("generic buildParams fails loud on a missing blackboard key", () => {
+  it("generic buildParams fails loud on a missing chain data key", () => {
     expect(() => contractFor(member).buildParams({ slug: "s" })).toThrow(
-      /needs 'spec' on the blackboard/,
+      /needs 'spec' on the chain data/,
     );
   });
 
   it("an undeclared half falls back to the kind's coded contract", () => {
     const half = contractFor({ kind: "pr-review", inputs: { pr: "prNumber" } });
-    const data: Blackboard = {};
+    const data: ChainData = {};
     half.capture(result({ review: { structured: { verdict: "FINDINGS", summary: "f" } } }), data);
     expect(data.reviewFindings).toBe("f");
     expect(half.buildParams({ prNumber: "7" })).toEqual({ pr: "7" });
   });
 });
 
-describe("contractFor: namespaced blackboard (D5)", () => {
+describe("contractFor: namespaced chain data (D5)", () => {
   it("namespace-implicit capture writes under the member's own id", () => {
-    const member = { kind: "feature-pr" as const, id: "research", captures: { findings: "summary" } };
-    const data: Blackboard = { slug: "x" };
+    const member = {
+      kind: "feature-pr" as const,
+      id: "research",
+      captures: { findings: "summary" },
+    };
+    const data: ChainData = { slug: "x" };
     contractFor(member).capture(result({ s: { structured: { summary: "the findings" } } }), data);
     // Written under data.research, NOT flat — the seeded slug is untouched.
     expect(data).toEqual({ slug: "x", research: { findings: "the findings" } });
@@ -202,7 +206,7 @@ describe("contractFor: namespaced blackboard (D5)", () => {
   it("concurrent members with distinct ids never clobber (both capture the same bbKey)", () => {
     const a = { kind: "feature-pr" as const, id: "a", captures: { val: "n" } };
     const b = { kind: "feature-pr" as const, id: "b", captures: { val: "n" } };
-    const data: Blackboard = {};
+    const data: ChainData = {};
     contractFor(a).capture(result({ s: { structured: { n: 1 } } }), data);
     contractFor(b).capture(result({ s: { structured: { n: 2 } } }), data);
     expect(data).toEqual({ a: { val: 1 }, b: { val: 2 } });
@@ -210,7 +214,7 @@ describe("contractFor: namespaced blackboard (D5)", () => {
 
   it("without an id, declared captures still thread FLAT (degenerate one-member-per-stage)", () => {
     const member = { kind: "feature-pr" as const, captures: { findings: "summary" } };
-    const data: Blackboard = {};
+    const data: ChainData = {};
     contractFor(member).capture(result({ s: { structured: { summary: "flat" } } }), data);
     expect(data).toEqual({ findings: "flat" });
   });
@@ -220,8 +224,8 @@ describe("contractFor: namespaced blackboard (D5)", () => {
       kind: "feature-pr" as const,
       inputs: { slug: "slug", spec: "research.findings" },
     };
-    const data: Blackboard = { slug: "x", research: { findings: "the findings" } };
-    // spec resolves the two-hop namespaced path; slug is a flat one-hop (chain seed).
+    const data: ChainData = { slug: "x", research: { findings: "the findings" } };
+    // spec resolves the two-step namespaced path; slug is a flat one-step (chain seed).
     expect(contractFor(reader).buildParams(data)).toEqual({ slug: "x", spec: "the findings" });
   });
 
@@ -266,18 +270,18 @@ describe("loopIsClean", () => {
 });
 
 describe("answer kind (the panelizable bare-task member)", () => {
-  it("buildParams reads a task off the blackboard", () => {
-    expect(WORKFLOW_KINDS["answer"].buildParams({ task: "design the codex integration" })).toEqual({
+  it("buildParams reads a task off the chain data", () => {
+    expect(MEMBER_KINDS["answer"].buildParams({ task: "design the codex integration" })).toEqual({
       task: "design the codex integration",
     });
   });
 
-  it("buildParams fails loud when no task is on the blackboard", () => {
-    expect(() => WORKFLOW_KINDS["answer"].buildParams({})).toThrow(ChainThreadError);
+  it("buildParams fails loud when no task is on the chain data", () => {
+    expect(() => MEMBER_KINDS["answer"].buildParams({})).toThrow(ChainThreadError);
   });
 
-  it("captureAnswer threads the answer onto the blackboard", () => {
-    const data: Blackboard = {};
+  it("captureAnswer threads the answer onto the chain data", () => {
+    const data: ChainData = {};
     captureAnswer(
       result({
         answer: { structured: { answer: "use exec --json", disagreements: "" } },
@@ -294,7 +298,7 @@ describe("answer kind (the panelizable bare-task member)", () => {
   });
 
   it("a parallel member's explicit captures + id namespace under data[id] (no clobber of the flat answer)", () => {
-    const data: Blackboard = { answer: "flat-from-a-lone-member" };
+    const data: ChainData = { answer: "flat-from-a-lone-member" };
     const contract = contractFor({
       kind: "answer",
       id: "design",

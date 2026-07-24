@@ -15,7 +15,7 @@ repository, follow that repo's own contributing/agent context; do not apply this
 ## When to file
 
 File an issue when you hit, observe, or think of something in h that is worth changing and
-you are NOT going to fix it in your current run: a bug, a rough edge in a workflow family, a
+you are NOT going to fix it in your current run: a bug, a rough edge in a workflow group, a
 missing guardrail, a docs gap, an observability blind spot, a flaky script. The loop's fuel
 is a steady stream of small, well-scoped issues — capturing them beats remembering them.
 

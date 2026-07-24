@@ -12,11 +12,11 @@ return the result. All the tools come from the **workflows MCP**: `list_workflow
 `terminate_workflow` (short-circuit a running instance that is stuck, spinning, or no longer
 needed).
 
-## Prefer a published family over building from scratch
+## Prefer a published group over building from scratch
 
 Saved workflows can be parameterized **families**: their steps carry `{{params.x}}` slots, with
 optional stored defaults, filled at fire time. Before constructing steps, `list_workflows` and
-`get_workflow` — if a family fits the task (e.g. `feature`), fire it with
+`get_workflow` — if a group fits the task (e.g. `feature`), fire it with
 `run_saved_workflow(key, params, instanceId)` instead of composing raw steps: params like
 `{ slug, spec }` fill the slots (fire-time params override stored defaults key-by-key), and a
 stable readable `instanceId` names the run's worktree. Freeform `run_workflow` is the escape

@@ -133,7 +133,7 @@ export const CronHeartbeat = Schema.Struct({
 });
 export type CronHeartbeat = Schema.Schema.Type<typeof CronHeartbeat>;
 
-// cron:ledger:<yyyy-mm-dd> — engine-written daily tallies (shared across the cron family: recur +
+// cron:ledger:<yyyy-mm-dd> — engine-written daily tallies (shared across the cron siblings: recur +
 // discovery + scheduled-fire). `discoveryFires` is the fan-out cron's daily count (the backstop the
 // `maxFiresPerDay` gate reads); `scheduledFires` is the one-shot `cron:sched:*` variant's daily count
 // (observability + the fail-closed budget the watcher's fallback reads via maxEngineFiresPerDay).

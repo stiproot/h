@@ -12,7 +12,7 @@ import { WorkflowStep } from "./workflow.model.ts";
  *
  * Import-light by design, like watch.model.ts: the only import is `WorkflowStep` (an embedded
  * inline member stores its own hydrated steps, D1 — the same exception cron.model makes), nothing
- * else imports back from the request/store schemas. The row IS the chain's durable blackboard
+ * else imports back from the request/store schemas. The row IS the chain's durable chain data
  * (`data`) as well as its sequencing state, replacing Phase 1's best-effort `chain:<slug>` mirror.
  */
 
@@ -43,12 +43,12 @@ export const ChainOutcome = Schema.Literal(
 );
 export type ChainOutcome = Schema.Schema.Type<typeof ChainOutcome>;
 
-// The workflow KIND selects the engine-coded port contract (chain-workflows.ts): how the workflow builds its
-// fire-params from the blackboard and captures its output back into it. Threading is engine code,
+// The workflow KIND selects the engine-coded port contract (chain-members.ts): how the workflow builds its
+// fire-params from the chain data and captures its output back into it. Threading is engine code,
 // not a config DSL (mirrors the watcher's ruling W3) — a novel chain adds a kind here + in
-// chain-workflows.ts. Closed literal so an unknown kind fails validation at registration.
-export const ChainWorkflowKind = Schema.Literal("feature-pr", "pr-review", "revise", "answer");
-export type ChainWorkflowKind = Schema.Schema.Type<typeof ChainWorkflowKind>;
+// chain-members.ts. Closed literal so an unknown kind fails validation at registration.
+export const ChainMemberKind = Schema.Literal("feature-pr", "pr-review", "revise", "answer");
+export type ChainMemberKind = Schema.Schema.Type<typeof ChainMemberKind>;
 
 /**
  * One workflow in the sequence: its kind (selecting the engine-coded threading logic) and which saved
@@ -56,10 +56,10 @@ export type ChainWorkflowKind = Schema.Schema.Type<typeof ChainWorkflowKind>;
  * and reads none of these; the scan (chain-scan.ts) uses `kind` to pick the buildParams/capture
  * contract and `key`/`fresh`/`instanceId` to fire.
  */
-export const ChainWorkflow = Schema.Struct({
-  // Selects the buildParams/capture contract in chain-workflows.ts. Distinct from `key`: e.g. the
+export const ChainMember = Schema.Struct({
+  // Selects the buildParams/capture contract in chain-members.ts. Distinct from `key`: e.g. the
   // `revise` kind fires the `feature-pr` key but threads reviewFindings into its spec.
-  kind: ChainWorkflowKind,
+  kind: ChainMemberKind,
   // Saved-workflow key this member fires (resolved via WorkflowStore.get + toRequest). Optional —
   // EXACTLY ONE of `key` / `steps` (validateChain enforces the XOR). A member is either a reference
   // to a saved definition (publish-default) or carries its own embedded steps (`--inline`, D1).
@@ -76,7 +76,7 @@ export const ChainWorkflow = Schema.Struct({
   cron: Schema.optional(
     Schema.Struct({ cadence: Schema.String, maxFires: Schema.optional(Schema.Number) }),
   ),
-  // The member's blackboard NAMESPACE (docs/plans/inline-chain-cron-composition.md D5): declared
+  // The member's chain data NAMESPACE (docs/plans/inline-chain-cron-composition.md D5): declared
   // `captures` write under `data[id]` (namespace-implicit — a member writes under its own id, so
   // concurrent members of a stage never clobber), and a downstream member's dotted `inputs`
   // (`id.field`) read it back. Optional: absent ⇒ declared captures thread FLAT (the degenerate
@@ -104,15 +104,15 @@ export const ChainWorkflow = Schema.Struct({
   // Each field, when present, replaces its half of the kind's coded contract; the DSL is
   // deliberately tiny (rename / require / equals) — anything needing a transform or a conditional
   // earns a coded kind instead. Assignment-ordered: destination ← source.
-  // captures: blackboardKey ← structured-output field of THIS workflow's completed run.
+  // captures: chain dataKey ← structured-output field of THIS workflow's completed run.
   captures: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  // inputs: fire param ← blackboard key, built when THIS workflow fires.
+  // inputs: fire param ← chain data key, built when THIS workflow fires.
   inputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   // until: loop-until-clean predicate on THIS workflow's structured output (replaces the coded
   // reviewIsClean marker sniff when declared): satisfied when String(field at path) === equals.
   until: Schema.optional(Schema.Struct({ path: Schema.String, equals: Schema.String })),
 });
-export type ChainWorkflow = Schema.Schema.Type<typeof ChainWorkflow>;
+export type ChainMember = Schema.Schema.Type<typeof ChainMember>;
 
 export const ChainStatus = Schema.Literal("scheduling", "running", "finalized");
 export type ChainStatus = Schema.Schema.Type<typeof ChainStatus>;
@@ -132,11 +132,11 @@ export type ChainStatus = Schema.Schema.Type<typeof ChainStatus>;
 export const ChainRow = Schema.Struct({
   chainId: Schema.String,
   epoch: Schema.Number,
-  // The branch token and blackboard identity (Phase 1's slug); workflows key their run off it.
+  // The branch token and chain data identity (Phase 1's slug); workflows key their run off it.
   slug: Schema.String,
   // The members, in order. Grouped into STAGES by each member's `stage` (D3); `cursor` points at a
   // stage, not a single member. captures/inputs/until keep indexing this flat array.
-  workflows: Schema.Array(ChainWorkflow),
+  workflows: Schema.Array(ChainMember),
   strategy: ChainStrategy,
   // Present iff strategy is "loop-until-clean" — the loop body + iteration budget/counter.
   loop: Schema.optional(ChainLoop),
@@ -147,7 +147,7 @@ export const ChainRow = Schema.Struct({
   // member of stage 0. For one-member-per-stage chains this equals the running member's index.
   cursor: Schema.Number,
   currentInstanceId: Schema.optional(Schema.String),
-  // The shared-context blackboard threaded across workflows (Phase 1's {slug, data}.data). Each workflow reads
+  // The shared-context chain data threaded across workflows (Phase 1's {slug, data}.data). Each workflow reads
   // what it needs and writes what it produces; the engine captures workflow outputs into it on advance.
   data: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
   status: ChainStatus,
@@ -212,26 +212,26 @@ export const DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT = 6;
 // ---------------------------------------------------------------------------
 
 /** A member's stage: explicit, else its index (back-compat — one member per stage = sequential). */
-export function stageOf(workflows: readonly ChainWorkflow[], index: number): number {
+export function stageOf(workflows: readonly ChainMember[], index: number): number {
   return workflows[index]?.stage ?? index;
 }
 
 /** The distinct stage indices present, ascending. */
-export function stagesOf(workflows: readonly ChainWorkflow[]): number[] {
+export function stagesOf(workflows: readonly ChainMember[]): number[] {
   const set = new Set<number>();
   for (let i = 0; i < workflows.length; i++) set.add(stageOf(workflows, i));
   return [...set].sort((a, b) => a - b);
 }
 
 /** The member indices in a stage, in workflow order. */
-export function membersInStage(workflows: readonly ChainWorkflow[], stage: number): number[] {
+export function membersInStage(workflows: readonly ChainMember[], stage: number): number[] {
   const out: number[] = [];
   for (let i = 0; i < workflows.length; i++) if (stageOf(workflows, i) === stage) out.push(i);
   return out;
 }
 
 /** The highest stage index (the last stage the chain finalizes on). */
-export function lastStage(workflows: readonly ChainWorkflow[]): number {
+export function lastStage(workflows: readonly ChainMember[]): number {
   return stagesOf(workflows).at(-1) ?? 0;
 }
 
@@ -245,7 +245,7 @@ export function lastStage(workflows: readonly ChainWorkflow[]): number {
  * to a saved def, or embedded inline steps — D1). A cron member MUST be inline (`steps`): its
  * self-armed recurrence has no key to reference and recurs an embedded source (D1/D2).
  */
-export function validateChain(workflows: readonly ChainWorkflow[]): string | null {
+export function validateChain(workflows: readonly ChainMember[]): string | null {
   if (workflows.length === 0) return "chain has no members";
   const declared = workflows.filter((w) => w.stage !== undefined).length;
   if (declared !== 0 && declared !== workflows.length)
@@ -257,8 +257,7 @@ export function validateChain(workflows: readonly ChainWorkflow[]): string | nul
     const w = workflows[i];
     const hasKey = w.key !== undefined && w.key !== "";
     const hasSteps = w.steps !== undefined && w.steps.length > 0;
-    if (hasKey === hasSteps)
-      return `member ${i} (${w.kind}) must carry exactly one of key / steps`;
+    if (hasKey === hasSteps) return `member ${i} (${w.kind}) must carry exactly one of key / steps`;
     if (w.cron && !hasSteps)
       return `cron member ${i} (${w.kind}) must be inline (steps) — its recurrence has no key to reference`;
   }

@@ -1,4 +1,4 @@
-"""Guard: ChainWorkflowKind (TS engine) stays in sync with KNOWN_KINDS + the parallel dicts (CLI).
+"""Guard: ChainMemberKind (TS engine) stays in sync with KNOWN_KINDS + the parallel dicts (CLI).
 
 Catches the failure mode described in the hardening-audit: a novel kind added to chain.model.ts
 without updating chain.py (or vice-versa) is silently unreachable from `h chain run`.
@@ -21,26 +21,22 @@ from h_cli.config import MODEL_PARAM_SLOTS
 
 # cli/h/tests/ → cli/h/ → cli/ → repo root
 _REPO_ROOT = Path(__file__).parents[3]
-_CHAIN_MODEL = (
-    _REPO_ROOT / "apps/workflow-svc/src/domain/models/chain.model.ts"
-)
+_CHAIN_MODEL = _REPO_ROOT / "apps/workflow-svc/src/domain/models/chain.model.ts"
 
 
 def test_known_kinds_matches_engine_literal() -> None:
-    """KNOWN_KINDS must equal the ChainWorkflowKind Schema.Literal in the TS engine."""
+    """KNOWN_KINDS must equal the ChainMemberKind Schema.Literal in the TS engine."""
     if not _CHAIN_MODEL.exists():
         pytest.skip(f"TS source not found at {_CHAIN_MODEL} — skipping in Python-only checkout")
 
     text = _CHAIN_MODEL.read_text()
-    m = re.search(r"ChainWorkflowKind\s*=\s*Schema\.Literal\(([^)]+)\)", text)
-    assert m, f"Could not find ChainWorkflowKind = Schema.Literal(...) in {_CHAIN_MODEL}"
+    m = re.search(r"ChainMemberKind\s*=\s*Schema\.Literal\(([^)]+)\)", text)
+    assert m, f"Could not find ChainMemberKind = Schema.Literal(...) in {_CHAIN_MODEL}"
 
     engine_kinds = set(re.findall(r'"([^"]+)"', m.group(1)))
-    assert engine_kinds == set(
-        KNOWN_KINDS
-    ), (
+    assert engine_kinds == set(KNOWN_KINDS), (
         f"KNOWN_KINDS in chain.py ({sorted(KNOWN_KINDS)}) does not match "
-        f"ChainWorkflowKind in chain.model.ts ({sorted(engine_kinds)}). "
+        f"ChainMemberKind in chain.model.ts ({sorted(engine_kinds)}). "
         "Add the missing kind to BOTH sides."
     )
 
@@ -61,13 +57,9 @@ def test_kind_dicts_are_complete() -> None:
     )
     # TERMINAL_ATOM_KIND maps atom→kind; values are kind names, not dict keys
     stray_values = set(TERMINAL_ATOM_KIND.values()) - kinds
-    assert not stray_values, (
-        f"TERMINAL_ATOM_KIND has values not in KNOWN_KINDS: {stray_values}"
-    )
+    assert not stray_values, f"TERMINAL_ATOM_KIND has values not in KNOWN_KINDS: {stray_values}"
     stray_frozen = FROZEN_EXECUTOR_KINDS - kinds
-    assert not stray_frozen, (
-        f"FROZEN_EXECUTOR_KINDS has entries not in KNOWN_KINDS: {stray_frozen}"
-    )
+    assert not stray_frozen, f"FROZEN_EXECUTOR_KINDS has entries not in KNOWN_KINDS: {stray_frozen}"
 
 
 def test_model_param_slots_is_union_of_kind_model_params() -> None:

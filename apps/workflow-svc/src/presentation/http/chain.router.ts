@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { registerChainForFire } from "../../domain/chain-scan.ts";
-import { ChainWorkflow, ChainStrategy } from "../../domain/models/chain.model.ts";
+import { ChainMember, ChainStrategy } from "../../domain/models/chain.model.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
@@ -11,7 +11,7 @@ import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.
 // engine marks a row and fires workflow 0, then the cron-tick scan sequences the rest — no blocking poll.
 const ChainRunRequest = Schema.Struct({
   slug: Schema.String,
-  workflows: Schema.Array(ChainWorkflow),
+  workflows: Schema.Array(ChainMember),
   data: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
   strategy: Schema.optional(ChainStrategy),
   loop: Schema.optional(

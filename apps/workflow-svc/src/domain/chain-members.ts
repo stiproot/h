@@ -1,10 +1,10 @@
-import type { ChainWorkflowKind } from "./models/chain.model.ts";
+import type { ChainMemberKind } from "./models/chain.model.ts";
 
 /**
  * The engine-coded workflow port contracts — how each workflow KIND threads state through the chain's
- * blackboard (the row's `data`). This is the durable, machine-code home of what Phase 1 proved live
+ * chain data (the row's `data`). This is the durable, machine-code home of what Phase 1 proved live
  * as the CLI's `CHAIN_TEMPLATES` closures (cli/h/src/h_cli/commands/chain.py): `buildParams(data)`
- * reads the blackboard for a workflow's fire-params, `capture(output, data)` reads the workflow's
+ * reads the chain data for a workflow's fire-params, `capture(output, data)` reads the workflow's
  * validated STRUCTURED output back into it (docs/plans/structured-workflow-outputs.md — the marker
  * parsing this file once did was retired 2026-07-15; every chained template declares an outputs
  * contract). Threading is engine code, never a config DSL (mirrors the watcher's ruling W3), and it
@@ -16,15 +16,15 @@ import type { ChainWorkflowKind } from "./models/chain.model.ts";
  * a failed-chain finalize with the message as the note.
  */
 
-export type Blackboard = Record<string, unknown>;
+export type ChainData = Record<string, unknown>;
 
 export class ChainThreadError extends Error {}
 
 export interface WorkflowContract {
-  /** Blackboard → the workflow's fire-time params. Throws ChainThreadError if a required input is absent. */
-  readonly buildParams: (data: Blackboard) => Record<string, unknown>;
-  /** Parse the workflow's workflow output and write what it produced back into the blackboard (in place). */
-  readonly capture: (output: string | undefined, data: Blackboard) => void;
+  /** ChainData → the workflow's fire-time params. Throws ChainThreadError if a required input is absent. */
+  readonly buildParams: (data: ChainData) => Record<string, unknown>;
+  /** Parse the workflow's workflow output and write what it produced back into the chain data (in place). */
+  readonly capture: (output: string | undefined, data: ChainData) => void;
 }
 
 /**
@@ -57,7 +57,7 @@ export function stepStructured(
   return merged;
 }
 
-/** Walk a dot-path ("pr" or "review.verdict") into a structured value; undefined when any hop misses. */
+/** Walk a dot-path ("pr" or "review.verdict") into a structured value; undefined when any step misses. */
 function structuredField(value: Record<string, unknown>, path: string): unknown {
   let current: unknown = value;
   for (const segment of path.split(".")) {
@@ -84,7 +84,7 @@ function requireStructured(output: string | undefined, what: string): Record<str
  * `skipped` when no PR exists. A skip sets nothing, so the next workflow's buildParams fails loud
  * with its own hint — a chain must never fire a review of a PR that was never opened.
  */
-export function capturePr(output: string | undefined, data: Blackboard): void {
+export function capturePr(output: string | undefined, data: ChainData): void {
   const s = requireStructured(output, "capturePr");
   if (s.pr !== undefined && s.pr !== null) data.prNumber = String(s.pr);
   if (typeof s.url === "string" && s.url) data.prUrl = s.url;
@@ -94,7 +94,7 @@ export function capturePr(output: string | undefined, data: Blackboard): void {
  * Capture a review's findings from its validated structured output: `verdict` + `summary`
  * (CLEAN ⇒ empty findings). A missing verdict is a broken review contract — fail loud.
  */
-export function captureReview(output: string | undefined, data: Blackboard): void {
+export function captureReview(output: string | undefined, data: ChainData): void {
   const s = requireStructured(output, "captureReview");
   if (typeof s.verdict !== "string")
     throw new ChainThreadError("captureReview: structured output has no 'verdict'");
@@ -110,7 +110,7 @@ export function captureReview(output: string | undefined, data: Blackboard): voi
  * so concurrent members never clobber this flat `answer`. A missing answer is a broken contract —
  * fail loud, never fire the next member on a guess.
  */
-export function captureAnswer(output: string | undefined, data: Blackboard): void {
+export function captureAnswer(output: string | undefined, data: ChainData): void {
   const s = requireStructured(output, "captureAnswer");
   if (typeof s.answer !== "string" || s.answer === "")
     throw new ChainThreadError("captureAnswer: structured output has no 'answer'");
@@ -128,7 +128,7 @@ export function reviewIsClean(output: string | undefined): boolean {
   return stepStructured(output)?.verdict === "CLEAN";
 }
 
-function requireStr(data: Blackboard, key: string, hint: string): string {
+function requireStr(data: ChainData, key: string, hint: string): string {
   const v = data[key];
   if (typeof v !== "string" || v === "") throw new ChainThreadError(hint);
   return v;
@@ -137,16 +137,16 @@ function requireStr(data: Blackboard, key: string, hint: string): string {
 /**
  * Thread the chain-level target repo (owner/name) into a member's params when present — it is the
  * wf-identity segment for every member AND pr-review's review target. Opt-in: an absent repo leaves
- * the params unchanged (seeded chain-level via `-p repo=owner/name`, which lands in the blackboard).
+ * the params unchanged (seeded chain-level via `-p repo=owner/name`, which lands in the chain data).
  */
-function withRepo(params: Record<string, unknown>, data: Blackboard): Record<string, unknown> {
+function withRepo(params: Record<string, unknown>, data: ChainData): Record<string, unknown> {
   return typeof data.repo === "string" && data.repo ? { ...params, repo: data.repo } : params;
 }
 
 /** The declarative slice of a chain member the generic contract reads (chain.model's fields). */
 export type MemberMappings = {
-  readonly kind: ChainWorkflowKind;
-  /** The member's blackboard namespace (D5): declared captures write under `data[id]` when present. */
+  readonly kind: ChainMemberKind;
+  /** The member's chain data namespace (D5): declared captures write under `data[id]` when present. */
   readonly id?: string;
   readonly captures?: Readonly<Record<string, string>>;
   readonly inputs?: Readonly<Record<string, string>>;
@@ -158,7 +158,7 @@ export type MemberMappings = {
  * created as a plain object on first write. Reuses `structuredField`'s walk on the read side, so a
  * downstream member's dotted input `id.field` resolves against exactly what was written here.
  */
-function namespaceFor(data: Blackboard, id: string): Record<string, unknown> {
+function namespaceFor(data: ChainData, id: string): Record<string, unknown> {
   const existing = data[id];
   if (typeof existing === "object" && existing !== null && !Array.isArray(existing))
     return existing as Record<string, unknown>;
@@ -175,7 +175,7 @@ function namespaceFor(data: Blackboard, id: string): Record<string, unknown> {
  * the scan turns into a failed-chain finalize — never fire-on-a-guess.
  */
 export function contractFor(member: MemberMappings): WorkflowContract {
-  const kind = WORKFLOW_KINDS[member.kind];
+  const kind = MEMBER_KINDS[member.kind];
   const captures = member.captures;
   const inputs = member.inputs;
   return {
@@ -206,14 +206,14 @@ export function contractFor(member: MemberMappings): WorkflowContract {
       : (data) => {
           const params: Record<string, unknown> = {};
           for (const [param, path] of Object.entries(inputs)) {
-            // Namespace-explicit (D5): the input value is a dot-PATH into the two-level blackboard —
+            // Namespace-explicit (D5): the input value is a dot-PATH into the two-level chain data —
             // `id.field` reads a member's namespaced capture, a plain key reads a flat top-level value
             // (a chain seed like slug/spec/repo, or a coded contract's flat write). Consistent with
-            // `until`'s `path`. A no-dot key is a one-hop walk, i.e. the pre-D5 flat read.
+            // `until`'s `path`. A no-dot key is a one-step walk, i.e. the pre-D5 flat read.
             const value = structuredField(data, path);
             if (value === undefined || value === null || value === "")
               throw new ChainThreadError(
-                `'${member.kind}' needs '${path}' on the blackboard (input → ${param})`,
+                `'${member.kind}' needs '${path}' on the chain data (input → ${param})`,
               );
             params[param] = value;
           }
@@ -235,13 +235,13 @@ export function loopIsClean(member: MemberMappings, workflowOutput: string | und
   return String(value) === member.until.equals;
 }
 
-export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
+export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
   // Implements the issue and opens/updates its PR. Reads the feature spec; captures the PR it opened.
   "feature-pr": {
     buildParams: (data) => {
       const params: Record<string, unknown> = {
-        slug: requireStr(data, "slug", "feature-pr needs a slug on the blackboard"),
-        spec: requireStr(data, "spec", "feature-pr needs a spec on the blackboard"),
+        slug: requireStr(data, "slug", "feature-pr needs a slug on the chain data"),
+        spec: requireStr(data, "spec", "feature-pr needs a spec on the chain data"),
       };
       if (typeof data.issueNumber === "string" && data.issueNumber)
         params.issueNumber = data.issueNumber;
@@ -274,9 +274,9 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
           pr: requireStr(
             data,
             "prNumber",
-            "revise needs a PR number on the blackboard (create-pr's structured `pr`)",
+            "revise needs a PR number on the chain data (create-pr's structured `pr`)",
           ),
-          slug: requireStr(data, "slug", "revise needs a slug on the blackboard"),
+          slug: requireStr(data, "slug", "revise needs a slug on the chain data"),
         },
         data,
       ),
@@ -286,12 +286,12 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
   // (docs/plans/panels-as-a-modifier.md): identity is ordinary fire-time params, and an --agent
   // ROSTER turns the one answer step into a multi-agent panel (parallel panelists + a judge
   // synthesis under this same contract) — the retired hand-built `agent-panel` template/kind,
-  // subsumed 2026-07-24. Reads a `task` from the blackboard; captures the structured `answer` so
+  // subsumed 2026-07-24. Reads a `task` from the chain data; captures the structured `answer` so
   // a downstream member can consume it (e.g. as its spec). Two answer members in one stage
   // override this coded contract with explicit `--input task=…` + namespaced `--capture`.
   answer: {
     buildParams: (data) => ({
-      task: requireStr(data, "task", "answer needs a task on the blackboard"),
+      task: requireStr(data, "task", "answer needs a task on the chain data"),
     }),
     capture: captureAnswer,
   },

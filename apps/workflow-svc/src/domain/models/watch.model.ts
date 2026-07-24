@@ -52,7 +52,7 @@ export type WatchEscalatePolicy = Schema.Schema.Type<typeof WatchEscalatePolicy>
 // SAME steps after `after` ms under a DIFFERENT agent/model (the identity override), reusing the
 // workspace. Distinct from retry (same identity, immediate) and escalate (a different saved key,
 // immediate): fallback is "deferred retry with an identity swap". `maxHandoffs` is the fail-closed
-// budget — decremented each hop and threaded into the continuation's own fallback policy so a
+// budget — decremented each step and threaded into the continuation's own fallback policy so a
 // fallback agent that ALSO limits can't ping-pong forever.
 export const WatchFallbackPolicy = Schema.Struct({
   onOutcome: Schema.Array(WatchOutcome),

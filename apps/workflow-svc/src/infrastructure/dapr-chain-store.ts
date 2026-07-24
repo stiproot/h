@@ -15,7 +15,7 @@ import { ChainStore } from "../domain/ports/IChainStore.ts";
 const STORE = "statestore";
 // The chain registry's claimed prefix in the flat keyspace, sibling of `watch:` — rows, index,
 // config, heartbeat, and daily ledgers all under `chain:`. Only workflow-svc writes these keys.
-// (Supersedes Phase 1's best-effort `chain:<slug>` mirror; the row IS the durable blackboard now.)
+// (Supersedes Phase 1's best-effort `chain:<slug>` mirror; the row IS the durable chain data now.)
 const ROW_PREFIX = "chain:sub:";
 const INDEX_KEY = "chain:index";
 const CONFIG_KEY = "chain:config";

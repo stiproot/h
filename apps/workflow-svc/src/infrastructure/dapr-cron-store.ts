@@ -17,7 +17,7 @@ import { CronStore } from "../domain/ports/ICronStore.ts";
 const STORE = "statestore";
 // The cron registry's claimed prefix in the flat keyspace, sibling of `watch:`/`chain:` — rows, index,
 // config, heartbeat, and daily ledgers all under `cron:`. Only workflow-svc writes these keys. The
-// discovery cron (§9) is the fan-out sibling: its own row prefix + index under the same family, sharing
+// discovery cron (§9) is the fan-out sibling: its own row prefix + index under the same class, sharing
 // config/heartbeat/ledger with the recur rows.
 const ROW_PREFIX = "cron:sub:";
 const INDEX_KEY = "cron:index";

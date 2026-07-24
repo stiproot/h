@@ -3,9 +3,9 @@ import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
 import { decide, type MemberObservation } from "./chain-engine.ts";
-import { type Blackboard, ChainThreadError, contractFor, loopIsClean } from "./chain-workflows.ts";
+import { type ChainData, ChainThreadError, contractFor, loopIsClean } from "./chain-members.ts";
 import {
-  type ChainWorkflow,
+  type ChainMember,
   type ChainOutcome,
   type ChainRow,
   type ChainStrategy,
@@ -27,7 +27,7 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
  * and the per-tick scan that reads each active chain row, observes every member of the CURRENT STAGE
  * (docs/plans/inline-chain-cron-composition.md D3), asks the pure engine (chain-engine.ts) what to
  * do, and executes the closed vocabulary — wait, ADVANCE (capture every completed member's output
- * into the blackboard, then fire the next stage's members), finalize (record + publish + cost tally),
+ * into the chain data, then fire the next stage's members), finalize (record + publish + cost tally),
  * budget-terminate. Where the watch engine RE-fires one instance, the chain FIRES THE NEXT STAGE (a
  * concurrent set of members, joined on all of them completing).
  *
@@ -58,7 +58,7 @@ export type ChainScanReport = {
 /** The instanceId a member runs under: explicit on the member, else derived from the chain + index. */
 export function instanceIdAt(
   chainId: string,
-  workflows: readonly ChainWorkflow[],
+  workflows: readonly ChainMember[],
   index: number,
 ): string {
   return workflows[index]?.instanceId ?? `${chainId}-w${index}`;
@@ -80,14 +80,14 @@ type MemberRead = {
 
 export type ChainRegistration = {
   readonly slug: string;
-  readonly workflows: readonly ChainWorkflow[];
-  /** Initial blackboard — the inputs the first stage reads (slug, spec, issueNumber?). */
-  readonly data: Blackboard;
+  readonly workflows: readonly ChainMember[];
+  /** Initial chain data — the inputs the first stage reads (slug, spec, issueNumber?). */
+  readonly data: ChainData;
   readonly strategy?: ChainStrategy;
   /** For strategy "loop-until-clean": where the loop body starts (the review stage) + the cap. */
   readonly loop?: { readonly startCursor: number; readonly maxIterations: number };
   readonly budgetMs?: number;
-  readonly meta?: Blackboard;
+  readonly meta?: ChainData;
 };
 
 /**
@@ -112,7 +112,7 @@ export const registerChainForFire = (
     const existing = yield* cs.getRow(reg.slug);
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
-    const data: Blackboard = { ...reg.data };
+    const data: ChainData = { ...reg.data };
     const stage0 = membersInStage(reg.workflows, 0);
     const primary = instanceIdAt(reg.slug, reg.workflows, stage0[0] ?? 0);
     const row: ChainRow = {
@@ -142,7 +142,7 @@ export const registerChainForFire = (
   });
 
 /**
- * Fires the member at `memberIndex`: build its params from the blackboard (the engine-coded
+ * Fires the member at `memberIndex`: build its params from the chain data (the engine-coded
  * contract), resolve its saved workflow, invoke under the member's instanceId, and bump the ledger.
  * Fails with a WorkflowError the caller turns into a failed-chain finalize. Assumes the row already
  * reflects the member's stage (registration and advance both mark-before-fire).
@@ -156,54 +156,54 @@ const fireWorkflow = (
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
     const wfStore = yield* WorkflowStore;
-    const workflow = row.workflows[memberIndex];
-    if (!workflow) return;
-    // A missing blackboard input (ChainThreadError) or any other build failure surfaces as a
+    const member = row.workflows[memberIndex];
+    if (!member) return;
+    // A missing chain data input (ChainThreadError) or any other build failure surfaces as a
     // WorkflowError the caller turns into a failed-chain finalize. The workflow's own params (fire-time
     // identity from the CLI) merge OVER the threading params — disjoint by convention, workflow wins.
     const params = yield* Effect.try({
       try: () => ({
-        ...contractFor(workflow).buildParams(row.data),
-        ...(workflow.params ?? {}),
+        ...contractFor(member).buildParams(row.data),
+        ...(member.params ?? {}),
       }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),
     });
     // wf-registry identity: workflow name = the member's kind; slug = the chain's slug (authoritative);
-    // repo = the chain-level target (blackboard `repo`). Opt-in — absent repo ⇒ no row (§3c).
-    const wf = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, workflow.kind);
+    // repo = the chain-level target (chain data `repo`). Opt-in — absent repo ⇒ no row (§3c).
+    const wf = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, member.kind);
     // A cron member self-arms its recurrence via §10 (its generic.workflow closing bracket runs
     // register-cron over an embedded source built from these very steps); the chain NEVER writes
     // cron:sub. It MUST carry a wf identity — both the cron engine's goal check and the chain's
     // completion predicate read `wf:<repo>:<slug>:<kind>.resolved` — so fail loud without one.
-    if (workflow.cron && !wf) {
+    if (member.cron && !wf) {
       return yield* Effect.fail(
         new WorkflowError({
-          cause: `cron chain member '${workflow.kind}' needs a repo on the blackboard (its recurrence + completion read wf:<repo>:<slug>:<${workflow.kind}>)`,
+          cause: `cron chain member '${member.kind}' needs a repo on the chain data (its recurrence + completion read wf:<repo>:<slug>:<${member.kind}>)`,
           instanceId: row.chainId,
         }),
       );
     }
-    const armCron = workflow.cron
+    const armCron = member.cron
       ? {
-          cadence: workflow.cron.cadence,
-          workflow: workflow.kind,
+          cadence: member.cron.cadence,
+          workflow: member.kind,
           inline: true,
-          ...(workflow.cron.maxFires !== undefined
-            ? { budget: { maxFires: workflow.cron.maxFires } }
+          ...(member.cron.maxFires !== undefined
+            ? { budget: { maxFires: member.cron.maxFires } }
             : {}),
         }
       : undefined;
     // The base request: embedded steps (D1 inline storage) fired verbatim, or the saved key resolved
     // from the store. validateChain guarantees exactly one of the two.
     let base: WorkflowRequest;
-    if (workflow.steps !== undefined) {
-      base = { steps: workflow.steps, traceparent, params };
+    if (member.steps !== undefined) {
+      base = { steps: member.steps, traceparent, params };
     } else {
-      const stored = yield* wfStore.get(workflow.key ?? "");
+      const stored = yield* wfStore.get(member.key ?? "");
       if (Option.isNone(stored) || stored.value.disabled) {
         return yield* Effect.fail(
           new WorkflowError({
-            cause: `chain workflow '${workflow.kind}' key '${workflow.key}' missing or disabled`,
+            cause: `chain member '${member.kind}' key '${member.key}' missing or disabled`,
             instanceId: row.chainId,
           }),
         );
@@ -222,7 +222,7 @@ const fireWorkflow = (
       // the worktree, later members reuse it.
       workspaceId: row.chainId,
       // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
-      fresh: forceFresh || (workflow.fresh ?? false),
+      fresh: forceFresh || (member.fresh ?? false),
       ...(wf ? { wf } : {}),
       // A cron member arms its OWN recurrence in its closing bracket (register-cron reads input.steps
       // for the embedded source); the chain only observes it thereafter.
@@ -290,20 +290,18 @@ const observeMember = (
 ): Effect.Effect<MemberRead, WorkflowError, WorkflowInvoker | WfStore> =>
   Effect.gen(function* () {
     const instanceId = instanceIdAt(row.chainId, row.workflows, index);
-    const workflow = row.workflows[index];
+    const member = row.workflows[index];
     // Cron member (D2/D4): the chain OBSERVES `wf:<repo>:<slug>:<kind>` — it never fired the
     // recurrence (the member self-armed cron:sub via §10) and never reads the flaky instance status.
     // `done` ⟺ the goal handshake `resolved` flag is set (the cron engine reads the same flag to
     // deactivate); `output` is the resolved run's serialized output (stamped by write-wf-row on the
     // same terminal write, so capture threads off the RESOLVED run). Transient run failures NEVER
     // fail the chain — that is why it is a cron, it retries on its own clock.
-    if (workflow?.cron) {
+    if (member?.cron) {
       const wfStore = yield* WfStore;
-      const identity = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, workflow.kind);
+      const identity = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, member.kind);
       const wfRow = identity
-        ? yield* wfStore
-            .getRow(identity)
-            .pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
+        ? yield* wfStore.getRow(identity).pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
         : Option.none();
       const resolved = Option.isSome(wfRow) && wfRow.value.resolved === true;
       return {
@@ -438,7 +436,7 @@ const saveFenced = (
 
 /**
  * The current stage's members all completed and a next stage remains: capture EACH completed member's
- * OUTPUT into the blackboard (engine code, not an actor), then fire every member of the next stage.
+ * OUTPUT into the chain data (engine code, not an actor), then fire every member of the next stage.
  * Mark-before-fire fenced on the OLD epoch; a build/dispatch failure finalizes the chain failed so it
  * never loops.
  */
@@ -452,9 +450,9 @@ const executeAdvance = (
   report: ChainScanReport,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
-    // Capture what every member of the just-completed stage produced into a fresh blackboard — its
+    // Capture what every member of the just-completed stage produced into a fresh chain data — its
     // validated structured output (explicit captures mapping, else the kind contract).
-    const data: Blackboard = { ...row.data };
+    const data: ChainData = { ...row.data };
     for (const r of completed) contractFor(row.workflows[r.index]).capture(r.output, data);
 
     const now = new Date(nowMs).toISOString();
@@ -545,9 +543,10 @@ const terminateRunningMembers = (
     const killed: string[] = [];
     for (const r of reads) {
       if (r.done || r.failed) continue;
-      const down = yield* invoker
-        .terminate(r.instanceId)
-        .pipe(Effect.as(true), Effect.catchAll(() => Effect.succeed(false)));
+      const down = yield* invoker.terminate(r.instanceId).pipe(
+        Effect.as(true),
+        Effect.catchAll(() => Effect.succeed(false)),
+      );
       if (down) killed.push(r.instanceId);
     }
     return killed;

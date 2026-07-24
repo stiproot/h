@@ -1,8 +1,9 @@
 """h schedule — the one-shot scheduled-fire registry (workflow-svc's cron:sched:* rows).
 
-A thin view over the cron family's third variant: fire a workflow ONCE at an absolute time. The rows
-ride the same `cron:__tick__` heartbeat as the recur/discovery crons, so a stale heartbeat means the
-scan is not running and the rows are not truth (docs/plans/schedule-and-fallback.md). Schedules are
+A thin view over the cron system's third sibling: fire a workflow ONCE at an absolute time. The
+rows ride the same `cron:__tick__` heartbeat as the recur/discovery crons, so a stale heartbeat
+means the scan is not running and the rows are not truth (docs/plans/schedule-and-fallback.md).
+Schedules are
 ARMED by `h workflow run <key> --at <iso>` / `--in <dur>` (and by pause/resume + the usage-limit
 fallback); workflow-svc is the sole writer. This surface inspects and cancels them.
 """

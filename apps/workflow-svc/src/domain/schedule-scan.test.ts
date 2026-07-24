@@ -16,7 +16,7 @@ import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
 
-// A cron store with a map-backed sched-row family; the recur/discover surfaces are stubs (unused here).
+// A cron store with a map-backed sched-row group; the recur/discover surfaces are stubs (unused here).
 function memoryCronStore(): {
   service: CronStoreService;
   sched: Map<string, SchedRow>;

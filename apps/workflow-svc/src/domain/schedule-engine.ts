@@ -2,7 +2,7 @@ import { type SchedRow } from "./models/schedule.model.ts";
 
 /**
  * The pure half of the SCHEDULED-FIRE cron (docs/plans/schedule-and-fallback.md) — the third variant
- * of the cron family, sibling of cron-engine.ts (recur) and discover-engine.ts (fan-out). Given one
+ * of the cron siblings, sibling of cron-engine.ts (recur) and discover-engine.ts (fan-out). Given one
  * scheduled-fire row and the clock, decide whether this tick fires it once, expires it, or waits. No
  * I/O — the scan (schedule-scan.ts) executes the decision (fire the source through invokeWithWatch,
  * or deactivate) and stamps the row. Pure so the gating is unit-testable without layers.

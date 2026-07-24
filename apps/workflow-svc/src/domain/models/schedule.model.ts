@@ -6,7 +6,7 @@ import { WfIdentity } from "./wf.model.ts";
 
 /**
  * The SCHEDULED-FIRE cron's data shapes (docs/plans/schedule-and-fallback.md) — the THIRD variant of
- * the cron family, sibling of the recur cron (cron.model.ts) and the discovery cron
+ * the cron siblings, sibling of the recur cron (cron.model.ts) and the discovery cron
  * (discover.model.ts). Where a recur cron RE-FIRES one workflow on a cadence until its goal resolves,
  * and a discovery cron FANS OUT one fire per newly-seen source item, a scheduled-fire row fires ONE
  * workflow exactly ONCE at an absolute time (`fireAt`), then it is done. It has no cadence, no
@@ -14,7 +14,7 @@ import { WfIdentity } from "./wf.model.ts";
  * recurring row's machinery; the one essence is "fire this source under this instance once, when the
  * clock reaches fireAt."
  *
- * Same registry family (`cron:*`), same tick, same config/heartbeat/ledger; a DISTINCT row shape under
+ * Same registry group (`cron:*`), same tick, same config/heartbeat/ledger; a DISTINCT row shape under
  * `cron:sched:<id>`. Single-writer: workflow-svc. It is the shared spine for three consumers —
  * schedule-at-a-time (Feature 3, `origin:"at"`), pause/resume (Feature 2, `origin:"pause"`), and the
  * usage-limit fallback (Feature 1, `origin:"fallback:usage-limited"`).

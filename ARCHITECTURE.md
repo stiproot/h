@@ -13,7 +13,7 @@ Small primitives; everything larger is a composition of them.
 - **Chain** — a registered policy + engine that *sequences* workflows on the cron tick as ordered
   STAGES, each stage a concurrent set the engine joins before advancing (fire the next stage when the
   last lands, threading state by reading each one's machine-validated structured output into a
-  two-level namespaced blackboard — every chained template declares an `outputs:` schema and ends its
+  two-level namespaced chain data — every chained template declares an `outputs:` schema and ends its
   agent step with a fenced json block validated against it; the workflow's contract is "params in,
   declared output out", runnable standalone — docs/plans/structured-workflow-outputs.md). A member may
   be a saved key, embedded inline steps, or a cron member the chain only OBSERVES (it self-arms its own
@@ -22,7 +22,7 @@ Small primitives; everything larger is a composition of them.
   `chain:*`; `h chain list`.
 - **Cron** — a registered policy + engine that *recurs* one workflow on the cron tick (re-fire until
   its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. Two more variants share the
-  family (same tick, same store, same kill-switch/ledger, each its own row schema + pure decide +
+  group (same tick, same store, same kill-switch/ledger, each its own row schema + pure decide +
   scan): a **discovery** variant fans out instead of re-firing — it reads a source (open issues on a
   label) and fires one workflow per newly-seen item, deduped against `wf:*` (the h-builds-h issue
   loop); and a **scheduled-fire** variant (`cron:sched:*`; `h schedule list`) fires one workflow
@@ -36,6 +36,40 @@ single-writer, epoch-fenced — differing only in the action (supervise / sequen
 invariant: **a workflow never supervises, sequences, or recurs itself; those live in engines outside
 it.** A workflow may *register* an engine for another workflow (arm a cron), acting as a client of the
 primitive — that is not the same as being the engine.
+
+## Glossary
+
+The same authored-slot/target pattern appears at two levels:
+
+| Level | Container | Slot (authored, positioned) | Target (invoked) |
+| --- | --- | --- | --- |
+| Inside a workflow | workflow definition | **step** `{id, activity, input}` | **activity** (registered function) |
+| Inside a chain | chain | **member** `{kind, key\|steps, captures…}` | **workflow** |
+
+- **Template** — the authored, parameterized, composable unit. A Helm *chart* is the current
+  authoring technology for templates, never a concept term.
+- **Workflow definition** — the steps blob a template renders to. **Saved workflow** — a definition
+  stored under a key. **Instance** — one durable execution (`instanceId`).
+- **Step** — a definition's authored slot `{id, activity, input}`. **Activity** — a registered
+  function (`run-claude`, `setup`, `write-wf-row`) a step invokes.
+- **Parallel group** — a step whose `parallel:` fans branch steps through one whenAll.
+  **Branch** — one step inside it.
+- **Member** — a chain's authored slot `{kind, key|steps, stage?, id?, captures/inputs/until}`.
+  **Stage** — the set of members that run concurrently (the cursor advances stage by stage).
+  **Kind** — a member's coded threading-contract selector.
+- **Chain data** — the chain's threaded state (the row's `data` field), two-level per D5. Captures
+  write it; inputs read it via dotted data paths.
+- **Panel** — a roster-generated parallel group. **Roster** — the plural `--agent` value.
+  **Panelist/branch** — one roster agent's step. **Judge** — the pinned synthesis executor.
+  **Synthesis** — the judge step emitting the workflow's own contract.
+- **Fire / run / invoke** — *fire* starts a workflow (including fire-and-forget registration);
+  *run* is reserved for agent runs and the literal `h workflow run` command; *invoke* is Dapr
+  transport only. **Agent run** is one activity's agent invocation (run ledger, `run:` mirrors,
+  cost tally).
+- **Workspace** — an agent service's provisioned directory (`workspaceId ?? instanceId`).
+  **Worktree** — a git worktree inside the shared repository checkout.
+- **Cron siblings** — recur, discovery/fan-out, and one-shot
+  (`cron:sub`/`cron:discover`/`cron:sched`).
 
 ## Composition
 

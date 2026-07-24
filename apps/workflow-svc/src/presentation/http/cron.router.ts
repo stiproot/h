@@ -149,10 +149,10 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
         const cs = yield* CronStore;
         const heartbeat = yield* cs.getHeartbeat();
         const crons = yield* cs.listRows();
-        // The fan-out sibling (§9) shares the registry family, so one list surfaces both — a recur cron
+        // The fan-out sibling (§9) shares the registry group, so one list surfaces both — a recur cron
         // and a discovery cron are both "crons" to `h cron list`.
         const discover = yield* cs.listDiscoverRows();
-        // The one-shot scheduled-fire variant (cron:sched:*) also shares the family — surfaced here so
+        // The one-shot scheduled-fire variant (cron:sched:*) also shares the group — surfaced here so
         // `h cron list` sees every time-driven fire, and `h schedule list` is a thin view over these.
         const sched = yield* cs.listSchedRows();
         return { heartbeat: Option.getOrNull(heartbeat), crons, discover, sched };

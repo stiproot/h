@@ -35,7 +35,7 @@ Publish:
 {{- /*
 The declared output contract (structured-workflow-outputs plan): verdict is the loop-until-clean
 predicate (the chain engine stops on a validated CLEAN — there is no marker channel); summary
-carries the findings a human (or a downstream judge) reads off the blackboard.
+carries the findings a human (or a downstream judge) reads off the chain data.
 */ -}}
 {{- define "h.contract.pr-review" -}}
 type: object
