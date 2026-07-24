@@ -1,6 +1,6 @@
 # Phase 4 — Content-invariant guard scripts
 
-Status: Active — 9 item(s), none started
+Status: Active — 9 item(s), 1 complete
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
@@ -16,7 +16,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Add scripts/check-registry-writers.mjs and wire it into root package.json's lint script beside check-templates.mjs (package.json:7). Ownership map: {"watch:", "chain:", "cron:", "wf:", "__workflow_index__"} → apps/workflow-svc/src; {"run:", "runs:index"} → packages/js/agent-server/src + packages/py/agent-server/src/agent_server; {"task:", "tasks:index"} → cli/h/src + apps/workflow-agent/src. Detection must be FILE-level co-occurrence, not same/adjacent-line (the real writers keep the prefix const ~70 lines from the save call — e.g. dapr-watch-store.ts:19 vs :93 — so a line-adjacency heuristic misses both writers and violators): fail if any .ts/.py file under apps/, packages/, cli/ outside the owning path contains BOTH a claimed-prefix string literal in code (strip // and /* */ and # comments and docstrings first — workflow-babysitter.ts:5, workflow_route.py:5, and core-dapr/state-key.ts carry prefixes in comments only) AND a state-write call pattern (client.state.save, state.delete, or an HTTP POST/DELETE to /v1.0/state). Exclude *test* files and dist/. Skip dapr-mcp automatically (its generic state_save contains no prefix literal).
 
-## [ ] A4. pathStateKey wrapping ('a new store MUST do the same') is documentation-only, no lint rule
+## [x] A4. pathStateKey wrapping ('a new store MUST do the same') is documentation-only, no lint rule
 
 *Severity: medium · effort: small*
 
@@ -24,7 +24,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Evidence:** `packages/js/core-dapr/src/state-key.ts:4-14 (the invariant + pathStateKey)` · `apps/workflow-svc/src/infrastructure/dapr-wf-store.ts:35, dapr-watch-store.ts:54,106, dapr-cron-store.ts:60,131,161,190, dapr-chain-store.ts:51,102, dapr-workflow-store.ts:41,47 (all currently wrapped — no violation today)` · `scripts/ contains only check-tsc.mjs and check-templates.mjs — no state-key guard; .dependency-cruiser.cjs cannot express call-argument shape`
 
-**Do:** Add scripts/check-state-keys.mjs and wire it into root package.json's "lint" (beside check-templates.mjs, i.e. "node scripts/check-tsc.mjs && node scripts/check-templates.mjs && node scripts/check-state-keys.mjs && turbo lint"). Scan apps/**/src/**/*.ts and packages/js/**/src/**/*.ts (exclude dist/, node_modules/, *.test.ts): flag any occurrence matching /\.state\.(get|delete)\(\s*[^,]+,\s*(?!pathStateKey\()/ — i.e. a DaprClient `.state.get(`/`.state.delete(` whose second (key) argument is not `pathStateKey(`-wrapped. Note the regex must anchor on the dotted `.state.` form so dapr-mcp's IStateStore port calls (apps/dapr-mcp/src/presentation/http/mcp.router.ts:442,466 — bare `state.get(...)`) don't false-positive; additionally allowlist apps/dapr-mcp/src/infrastructure/dapr-state-store.ts, whose raw-HTTP url builder already encodeURIComponents at lines 41-42. Failure message should point at packages/js/core-dapr/src/state-key.ts and the CLAUDE.md gotcha. Optionally also add the file to turbo.json's lint.inputs so edits bust lint caches, matching the check-templates.mjs precedent.
+**Do:** Add scripts/check-state-keys.mjs and wire it into root package.json's "lint" (beside check-templates.mjs, i.e. "node scripts/check-tsc.mjs && node scripts/check-templates.mjs && node scripts/check-state-keys.mjs && turbo lint"). Scan apps/**/src/**/*.ts and packages/js/**/src/**/*.ts (exclude dist/, node_modules/, *.test.ts): flag any occurrence matching /\.state\.(get|delete)\(\s*[^,]+,\s*(?!pathStateKey\()/ — i.e. a DaprClient `.state.get(`/`.state.delete(` whose second (key) argument is not `pathStateKey(`-wrapped. This guard is intentionally TypeScript-only: the Python clients do not use the `@dapr/dapr` dotted `.state.get`/`.state.delete` API shape, so any future Python path-key guard is a separate follow-up based on the Python client's actual call surface. Note the regex must anchor on the dotted `.state.` form so dapr-mcp's IStateStore port calls (apps/dapr-mcp/src/presentation/http/mcp.router.ts:442,466 — bare `state.get(...)`) don't false-positive; additionally allowlist apps/dapr-mcp/src/infrastructure/dapr-state-store.ts, whose raw-HTTP url builder already encodeURIComponents at lines 41-42. Failure message should point at packages/js/core-dapr/src/state-key.ts and the CLAUDE.md gotcha. Optionally also add the file to turbo.json's lint.inputs so edits bust lint caches, matching the check-templates.mjs precedent.
 
 ## [ ] A5. 'A new hex TS service MUST add depcruise to its lint script' has no meta-guard
 
@@ -98,4 +98,5 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 ## Log
 
+- 2026-07-24 — Completed A4: added the intentionally TypeScript-only `scripts/check-state-keys.mjs`, wired it into the root lint chain and `check-state-keys` package script, confirmed all current scoped call sites pass, and verified an unwrapped `.state.get("store", "k")` fixture fails with its file, line, and snippet before removing the fixture. Python uses a different client surface and would need a separate, API-specific follow-up guard.
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
