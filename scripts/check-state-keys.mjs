@@ -34,6 +34,48 @@ function sourceFiles(dir) {
   return files;
 }
 
+function codePositions(text) {
+  const positions = new Uint8Array(text.length);
+  let quote = null;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (lineComment) {
+      if (char === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === "*" && next === "/") {
+        blockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      lineComment = true;
+      i++;
+    } else if (char === "/" && next === "*") {
+      blockComment = true;
+      i++;
+    } else if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+    } else {
+      positions[i] = 1;
+    }
+  }
+  return positions;
+}
+
 function matchingParen(text, open) {
   let depth = 0;
   let quote = null;
@@ -106,7 +148,9 @@ const violations = [];
 const callPattern = /\.state\.(?:get|delete)\s*\(/g;
 for (const path of scanRoots.filter(existsSync).flatMap(sourceFiles)) {
   const text = readFileSync(path, "utf8");
+  const positions = codePositions(text);
   for (const match of text.matchAll(callPattern)) {
+    if (!positions[match.index]) continue;
     const open = match.index + match[0].lastIndexOf("(");
     const close = matchingParen(text, open);
     const argument = close < 0 ? "" : finalArgument(text.slice(open + 1, close));
