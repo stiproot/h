@@ -1,7 +1,7 @@
 # Panels as a modifier: the `--agent` roster
 
-Status: IMPLEMENTED (v1 + agent-panel retirement, 2026-07-24) — e2e validation pending
-Established: 2026-07-23 · Designed: 2026-07-24 · Built: 2026-07-24
+Status: DONE — v1 + agent-panel retirement + e2e validated 2026-07-24 (PR #64); follow-ups listed
+Established: 2026-07-23 · Designed: 2026-07-24 · Built: 2026-07-24 · Validated: 2026-07-24
 
 ## The idea
 
@@ -144,10 +144,46 @@ deferred (reintroduces N× provisioning).
    never had — + `MODEL_PARAM_SLOTS`); kind-sync guard green by construction, engine 309 +
    h-cli 246 tests green, old golden deleted + answer golden blessed. A panel chain member is
    now `-w answer --agent claude codex openhands` — same words as everywhere else.
-8. PENDING — e2e validation: one chain exercising ALL parallelism substrates — a panelized
-   member (roster → parallel step group), `--parallel` chain stages, and two panels in one
-   stage (`-w answer --agent … --parallel -w answer --agent …`) — plus the panel review loop
-   (codex implements → roster reviews → codex revises, `--strategy loop-until-clean`).
+8. DONE — e2e validated in CONTAINER mode, 2026-07-24, as TWO chains carrying out
+   hardening-audit A9 (the template-gate guard — chosen deliberately: we had authored
+   `answer.yaml` the same day, the exact "new template forgets the gate" hazard):
+   - **Chain 1 `a9-template-gate-guard`** (staged, sequential; ~6 min): stage 0 ran TWO
+     panels concurrently — `design` (`-w answer --agent claude codex --inline --id design`)
+     and `risks` (`--agent claude openhands`) — both capturing namespaced `answer`s (D5, no
+     clobber); stage 1 codex implemented from `--input spec=design.answer` → PR #64
+     (+23/−4, verify PASS). Every parallelism substrate exercised: in-workflow panel groups,
+     two panels in one chain stage, stage join, blackboard threading.
+   - **Chain 2 `a9-review-loop`** (pure sequential, `loop-until-clean --max-iterations 3`):
+     panelized `pr-review --agent claude codex` with `--input focus=risks.answer` (the risks
+     panel STEERED the review) → `revise --agent codex`. Ran the full arc: iteration 1 the
+     panelists DISAGREED (one found the wrap-coverage gap the risks panel had predicted, one
+     said clean) and the unanimous-CLEAN `panelSynthesis` rule correctly emitted FINDINGS;
+     three review×revise rounds drove the guard from a line-regex to a gate-coverage checker
+     (`hasCompleteTemplateGate` + 9 unit tests), including the panel catching a false-positive
+     REGRESSION its own round-2 demand had induced. Verified locally post-loop: guard passes
+     all real templates, fires on gateless + typo'd-gate fixtures.
+   - Split into two chains because loop-until-clean × stages is the DEFERRED reconciliation
+     (chain.py `startCursor` is a member index; a staged cursor is a stage index) — the
+     constraint is real at compose time.
+
+## E2E findings (follow-ups, in priority order)
+
+1. **Worktree lifecycle across chains** — chain 1's finalized worktree kept
+   `feature/<slug>` checked out, so chain 2's revise (fresh engine-derived workspace) died at
+   create-worktree (`already used by worktree`); freed manually and re-fired. A finalized
+   chain leaks its worktrees; any later chain touching the same branch collides. Wants a
+   lifecycle answer (cleanup on finalize, or worktree reuse by branch), not an ad-hoc rm.
+2. **Final-stage captures don't land** — chain 1 finalized without writing `prNumber` to the
+   blackboard (capturePr for the terminal member never ran/persisted; mid-chain captures work).
+   Harmless intra-chain, but chain-to-chain handoff wants the finalized row to carry them.
+3. **loop-until-clean × stages** — encountered as a real constraint; the deferred
+   reconciliation (inline-chain-cron-composition open sub-question) now has a concrete
+   motivating case (panel stage + review loop in ONE chain).
+4. **Panelist attribution** — posted PR reviews carry no `[panel:<agent>]` prefix (design Q4
+   called for it); panelize's preamble doesn't inject posting-attribution prose.
+5. Cosmetics: rich markup swallows a `[label]`-shaped member label in a chain-run console
+   line; `--strategy`/`--max-iterations` must precede the `--` separator (Typer options) —
+   worth a hint in the ExprError for known Typer flag names.
 
 ## v1 caveats (observed while building — candidates for the e2e to confirm or dissolve)
 
@@ -199,3 +235,9 @@ deferred (reintroduces N× provisioning).
   `consensus`+`best` — `best` died with the fixed three-agent roster; the judge merges instead).
   multi-agent-panel.md's engine deliverable (the parallel step group) is untouched and now
   exclusively fed by panelize.
+- 2026-07-24 — Item 8 done: container-mode e2e (two chains, hardening-audit A9 as the real
+  workload) validated every parallelism substrate + the panel review loop; PR #64 driven
+  through 3 review×revise iterations by a claude∥codex panel with risks-panel-steered focus.
+  Five findings recorded above (worktree lifecycle being the substantive one). Also hardened
+  along the way: compose daprd sidecars got `restart: on-failure` after the SQLite-NR
+  Host-registration-lost fatal recurred and left the stack unsupervised for 5h.
