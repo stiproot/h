@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See [README.md](./README.md) for stack overview, local dev setup, component reference, and tooling.
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the primitives, the composition stack, and the principles.
+See [docs/cookbook.md](./docs/cookbook.md) for h BY EXAMPLE — real, validated commands (each
+stamped with date + artifact). When an e2e validates a new composition, lift its command there.
 See [cli/README.md](./cli/README.md) for the local tooling — `cli/` is the early prototype of the
 h CLI: the run/invoke shell scripts (`cli/scripts/`), the helm-templated workflow definitions
 (`cli/charts/`), and the `h` command itself (`cli/h/`, Typer + rich, a uv workspace member — `uv
