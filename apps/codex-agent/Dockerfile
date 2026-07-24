@@ -7,7 +7,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/* && \
     node --version && \
-    npm install -g --ignore-scripts @openai/codex
+    npm install -g --ignore-scripts @openai/codex && \
+    chown -R agent-cli:agent "$(npm root -g)/@openai/codex" && \
+    chmod -R g+w "$(npm root -g)/@openai/codex"
 
 WORKDIR /app
 
