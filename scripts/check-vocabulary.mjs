@@ -18,11 +18,11 @@ const exactFiles = [
 ];
 const proseDirs = ["skills", ".claude/skills/observe-h"];
 const proseExtensions = new Set([".md", ".txt", ".yaml", ".yml"]);
-const rules = [
-  { pattern: /\bhop\b/gi, replacement: "path or step" },
-  { pattern: /\bfamily\b/gi, replacement: "cron siblings or a precise grouping" },
-  { pattern: /\bblackboard\b/gi, replacement: "chain data" },
-  { pattern: /\bchain workflow\b/gi, replacement: "chain member" },
+export const rules = [
+  { pattern: /\bhops?\b/gi, replacement: "path or step" },
+  { pattern: /\b(?:family|families)\b/gi, replacement: "cron siblings or a precise grouping" },
+  { pattern: /\bblackboards?\b/gi, replacement: "chain data" },
+  { pattern: /\bchain workflows?\b/gi, replacement: "chain member" },
 ];
 
 function filesUnder(path) {
@@ -37,31 +37,38 @@ function filesUnder(path) {
   return files;
 }
 
-const files = [
-  ...exactFiles.map((path) => resolve(root, path)).filter(existsSync),
-  ...proseDirs.flatMap((path) => filesUnder(resolve(root, path))),
-];
-const violations = [];
-
-for (const path of files) {
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+export function findViolations(path, contents, repositoryRoot = root) {
+  const violations = [];
+  const lines = contents.split(/\r?\n/);
   for (let index = 0; index < lines.length; index++) {
     for (const rule of rules) {
       rule.pattern.lastIndex = 0;
-      if (rule.pattern.test(lines[index])) {
+      for (const match of lines[index].matchAll(rule.pattern)) {
         violations.push(
-          `${relative(root, path)}:${index + 1}: replace with “${rule.replacement}”; ` +
+          `${relative(repositoryRoot, path)}:${index + 1}:${match.index + 1}: ` +
+            `replace “${match[0]}” with “${rule.replacement}”; ` +
             `see ${glossary}`,
         );
       }
     }
   }
+  return violations;
 }
 
-if (violations.length) {
-  console.error("Vocabulary guard failed:");
-  for (const violation of violations) console.error(`  ${violation}`);
-  process.exitCode = 1;
-} else {
-  console.log(`Vocabulary guard passed (${files.length} long-lived prose files checked).`);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const files = [
+    ...exactFiles.map((path) => resolve(root, path)).filter(existsSync),
+    ...proseDirs.flatMap((path) => filesUnder(resolve(root, path))),
+  ];
+  const violations = files.flatMap((path) =>
+    findViolations(path, readFileSync(path, "utf8")),
+  );
+
+  if (violations.length) {
+    console.error("Vocabulary guard failed:");
+    for (const violation of violations) console.error(`  ${violation}`);
+    process.exitCode = 1;
+  } else {
+    console.log(`Vocabulary guard passed (${files.length} long-lived prose files checked).`);
+  }
 }

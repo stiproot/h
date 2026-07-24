@@ -17,7 +17,7 @@ rather than guessing at the runtime's state.
 - **workflows** — build, run, and inspect workflows: `list_workflows`, `get_workflow`,
   `save_workflow`, `run_workflow`, `run_saved_workflow`, `get_workflow_status`, `await_workflow`,
   `terminate_workflow`. Use these to start or check on other workflows. Saved workflows can be
-  parameterized *families* — steps carry `{{params.x}}` slots; fire with
+  parameterized *templates* — steps carry `{{params.x}}` slots; fire with
   `run_saved_workflow(key, params, instanceId)` (fire-time params override stored defaults, a
   readable instanceId names the run's worktree) before composing raw steps from scratch.
   `terminate_workflow` short-circuits a run that is stuck or no longer needed.

@@ -14,7 +14,7 @@ needed).
 
 ## Prefer a published group over building from scratch
 
-Saved workflows can be parameterized **families**: their steps carry `{{params.x}}` slots, with
+Saved workflows can be parameterized **templates**: their steps carry `{{params.x}}` slots, with
 optional stored defaults, filled at fire time. Before constructing steps, `list_workflows` and
 `get_workflow` — if a group fits the task (e.g. `feature`), fire it with
 `run_saved_workflow(key, params, instanceId)` instead of composing raw steps: params like
