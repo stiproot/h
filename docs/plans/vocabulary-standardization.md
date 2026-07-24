@@ -52,9 +52,12 @@ Sub-decisions taken by the plan (overturn at review if wrong):
 
 - **"cron family" → "cron siblings"** — frees the retired word entirely (the docs already lean
   on "sibling"), so the vocab guard can ban `family` outright in long-lived docs.
-- **`ChainRow.data` stays `data`; prose standardizes on "blackboard"** — field names need not
-  mirror prose nouns (`steps` vs step); the glossary documents the mapping. Only `workflows` →
-  `members` changes on the wire, because there the word is WRONG, not merely terse.
+- **"blackboard" is RETIRED; the term is "chain data"** (user decision 2026-07-24 — blackboard
+  is unexplained AI-architecture jargon). Prose converges on the existing wire field `data`, so
+  the synonym cluster dissolves instead of being renamed: "captures write the chain's data;
+  inputs read it (dotted `id.field` data paths)". No field change. Only `workflows` → `members`
+  changes on the wire, because there the word is WRONG, not merely terse. `blackboard` joins the
+  guard's banlist.
 - **`-w` stays** (names the target, see above); `-t` stays (template operands).
 - **stage vs parallel group** — deliberately different words for the two levels' concurrency:
   a *stage* is a chain's concurrent member set; a *parallel group* is a workflow's concurrent
