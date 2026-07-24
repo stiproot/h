@@ -13,6 +13,15 @@ test("rejects ungated YAML followed by an empty matching gate", () => {
   assert.equal(hasCompleteTemplateGate(`kind: Workflow\n${gate}\n{{- end }}\n`, "feature"), false);
 });
 
+test("rejects an empty matching gate", () => {
+  assert.equal(hasCompleteTemplateGate(`${gate}\n{{- end }}\n`, "feature"), false);
+});
+
+test("rejects a matching gate with no whitespace after the pipe", () => {
+  const invalidGate = '{{- if eq (.Values.template |default "") "feature" }}';
+  assert.equal(hasCompleteTemplateGate(`${invalidGate}\nkind: Workflow\n{{- end }}\n`, "feature"), false);
+});
+
 test("rejects an ungated document after a gated first document", () => {
   assert.equal(
     hasCompleteTemplateGate(`${gate}\nkind: Workflow\n{{- end }}\n---\nkind: ConfigMap\n`, "feature"),

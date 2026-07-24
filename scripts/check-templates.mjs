@@ -27,17 +27,20 @@ const shortForce = /(?:^|\s)-f(?:\s|$)/;
 export function hasCompleteTemplateGate(content, templateName) {
   const escapedName = templateName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const gatePattern = new RegExp(
-    `^if\\s+eq\\s+\\(\\s*\\.Values\\.template\\s*\\|\\s*default\\s+(?:""|'')\\s*\\)\\s+(?:"${escapedName}"|'${escapedName}')$`,
+    `^if\\s+eq\\s+\\(\\s*\\.Values\\.template\\s*\\|\\s+default\\s+(?:""|'')\\s*\\)\\s+(?:"${escapedName}"|'${escapedName}')$`,
   );
   const actionPattern = /\{\{-?\s*\/\*[\s\S]*?\*\/\s*-?\}\}|\{\{-?([\s\S]*?)-?\}\}/g;
   const stack = [];
   let gateDepth = -1;
   let gateSeen = false;
+  let gateHasRenderableContent = false;
   let cursor = 0;
 
   for (const match of content.matchAll(actionPattern)) {
     const inDefinition = stack.some((entry) => entry === "define");
-    if (content.slice(cursor, match.index).trim() && gateDepth === -1 && !inDefinition) return false;
+    const text = content.slice(cursor, match.index).trim();
+    if (text && gateDepth === -1 && !inDefinition) return false;
+    if (text && gateDepth !== -1 && !inDefinition) gateHasRenderableContent = true;
 
     const isComment = match[1] === undefined;
     const action = isComment ? "" : match[1].trim();
@@ -72,7 +75,7 @@ export function hasCompleteTemplateGate(content, templateName) {
     cursor = match.index + match[0].length;
   }
 
-  return gateSeen && stack.length === 0 && !content.slice(cursor).trim();
+  return gateSeen && gateHasRenderableContent && stack.length === 0 && !content.slice(cursor).trim();
 }
 
 export function checkTemplates() {
