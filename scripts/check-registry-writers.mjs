@@ -102,19 +102,59 @@ function hasWriteCall(code) {
   return (
     /\.\s*state\s*\.\s*(?:save|delete)\s*\(/.test(code) ||
     /\bstate_(?:save|delete)\s*\(/.test(code) ||
-    (/\/v1\.0\/state/.test(code) && /\b(?:POST|DELETE)\b/.test(code))
+    /(?:\b(?:POST|DELETE)\b[^\n]*\/v1\.0\/state|\/v1\.0\/state[^\n]*\b(?:POST|DELETE)\b)/.test(
+      code,
+    )
   );
+}
+
+function callRanges(code, callPattern) {
+  const ranges = [];
+  for (const match of code.matchAll(callPattern)) {
+    let depth = 1;
+    let end = match.index + match[0].length;
+    while (end < code.length && depth > 0) {
+      if (code[end] === "(") depth++;
+      else if (code[end] === ")") depth--;
+      end++;
+    }
+    ranges.push([match.index, end]);
+  }
+  return ranges;
 }
 
 function hasPrefixLiteral(code, prefix) {
   const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(?:["'\`]|[furbFURB]+["'])${escaped}`, "g");
+  const readRanges = callRanges(
+    code,
+    /(?:\.\s*state\s*\.\s*get|\bstate\s*\.\s*get|\b_get(?:_json)?)\s*\(/g,
+  );
   for (const match of code.matchAll(pattern)) {
     const lineStart = code.lastIndexOf("\n", match.index) + 1;
     const lineEnd = code.indexOf("\n", match.index);
     const line = code.slice(lineStart, lineEnd === -1 ? code.length : lineEnd);
-    // An inline literal passed only to a state read is not evidence that this file writes it.
-    if (!/\.\s*state\s*\.\s*get\s*\(|\b_get(?:_json)?\s*\(/.test(line)) return true;
+    const inRead = readRanges.some(([start, end]) => match.index >= start && match.index < end);
+    const lineHasRead = /(?:\.\s*state\s*\.\s*get|\bstate\s*\.\s*get|\b_get(?:_json)?)\s*\(/.test(
+      line,
+    );
+    if (inRead || lineHasRead) continue;
+
+    // A key variable used by a state read is also read-only evidence, including when the call
+    // spans lines. This covers adapters that normalize a registry key before reading it.
+    const beforeLiteral = line.slice(0, match.index - lineStart);
+    const assignment = beforeLiteral.match(
+      /(?:\b(?:const|let|var)\s+|^\s*)([A-Za-z_$][\w$]*)\s*=\s*$/,
+    );
+    if (
+      assignment &&
+      readRanges.some(([start, end]) =>
+        new RegExp(`\\b${assignment[1]}\\b`).test(code.slice(start, end)),
+      )
+    ) {
+      continue;
+    }
+    return true;
   }
   return false;
 }
@@ -127,6 +167,8 @@ const violations = [];
 for (const sourceRoot of sourceRoots) {
   for (const path of sourceFiles(resolve(root, sourceRoot))) {
     const file = relative(root, path).split(sep).join("/");
+    // dapr-mcp is a generic state-store bridge, not an owner of application registry keys.
+    if (isWithin(file, "apps/dapr-mcp")) continue;
     const code = codeWithoutComments(readFileSync(path, "utf8"), path.endsWith(".py"));
     if (!hasWriteCall(code)) continue;
     for (const [prefix, owners] of ownership) {
