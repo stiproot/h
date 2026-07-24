@@ -43,6 +43,14 @@ RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
 WORKDIR /app/apps/codex-agent
 RUN chown -R agent-svc:agent /app
 
+# Container-private CODEX_HOME, ISOLATED from the host-shared workspace (issue #59): codex's
+# app-server writes a SQLite state DB into CODEX_HOME, and a CODEX_HOME shared with host runs gets
+# polluted by cross-uid state files (host uid writes them 0644 → the container user can't write →
+# "readonly database" → fatal). A container-internal dir is only ever written by the container's
+# own users. setgid + group-writable so BOTH the runner (agent-svc) and the dropped codex CLI
+# (agent-cli, same 'agent' group) can use it; the runner seeds auth.json in from a read-only mount.
+RUN mkdir -p /codex-home && chown agent-svc:agent /codex-home && chmod 2770 /codex-home
+
 EXPOSE 8000
 
 CMD ["bun", "run", "src/index.ts"]

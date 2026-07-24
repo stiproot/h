@@ -416,7 +416,11 @@ services:
       # the account's default model (a ChatGPT plan rejects explicit API model ids). For API-key mode
       # set CODEX_AUTH_MODE=apikey + OPENAI_API_KEY + CODEX_MODEL in .env. See docs/plans/codex-chatgpt-auth.md.
       - CODEX_AUTH_MODE=${CODEX_AUTH_MODE:-chatgpt}
-      - CODEX_HOME=${CODEX_HOME:-/workspace/codex-home}
+      # Container-PRIVATE CODEX_HOME (built into the image, group-writable) — NOT the host-shared
+      # /workspace/codex-home, whose cross-uid state files break codex's SQLite state DB (issue #59).
+      # The runner seeds auth.json into it from CODEX_SEED_AUTH (host auth mounted read-only below).
+      - CODEX_HOME=/codex-home
+      - CODEX_SEED_AUTH=/codex-seed/auth.json
       - AGENT_MODEL=${CODEX_MODEL:-}
       - AGENT_BASE_DIR=/workspace/codex-agent
       # h skills, copied into ~/.claude/skills by the setup step (cp -r $H_SKILLS_DIR/. …). MUST be
@@ -429,6 +433,8 @@ services:
       - ../h-workspace:/workspace
       - ./skills:/h-skills:ro
       - ./apps/claude-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro
+      # Host ChatGPT auth, seeded read-only; the runner copies it into the private CODEX_HOME.
+      - ../h-workspace/codex-home/auth.json:/codex-seed/auth.json:ro
     ports:
       - "8016:8000"
       - "3516:3500"

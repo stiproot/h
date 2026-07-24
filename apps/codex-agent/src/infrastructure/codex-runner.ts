@@ -46,6 +46,10 @@ const codexConfig = Effect.gen(function* () {
   // (logged) when either is unset, so codex still runs (just without h's MCP tools).
   const mcpConfigSrc = yield* Config.option(Config.string("MCP_CONFIG_SRC"));
   const codexHome = yield* Config.option(Config.string("CODEX_HOME"));
+  // Container mode: a read-only mount of the host's auth.json; the runner copies it into the
+  // private CODEX_HOME (which codex then writes state/refresh into). Unset in host mode (auth
+  // already lives in CODEX_HOME), so the copy is skipped.
+  const codexSeedAuth = yield* Config.option(Config.string("CODEX_SEED_AUTH"));
   return {
     apiKey,
     model,
@@ -56,6 +60,7 @@ const codexConfig = Effect.gen(function* () {
     runTimeoutMs,
     mcpConfigSrc,
     codexHome,
+    codexSeedAuth,
   };
 });
 
@@ -105,13 +110,29 @@ export const CodexRunnerLive: Layer.Layer<
             yield* log.info({ src, home }, "codex mcp: not provisioning (MCP_CONFIG_SRC/CODEX_HOME unset)");
             return;
           }
+          yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.ignore);
+          // Seed auth.json into the private CODEX_HOME from the read-only mount, if not already
+          // there (container mode). Group-accessible (0660) so the dropped codex CLI can read +
+          // refresh it. Skipped in host mode (CODEX_SEED_AUTH unset, auth already in CODEX_HOME).
+          const seed = Option.getOrNull(cfg.codexSeedAuth);
+          if (seed) {
+            const authDest = join(home, "auth.json");
+            if ((yield* fs.exists(seed)) && !(yield* fs.exists(authDest))) {
+              yield* fs.copyFile(seed, authDest).pipe(Effect.ignore);
+              yield* fs.chmod(authDest, 0o660).pipe(Effect.ignore);
+              yield* log.info({ authDest }, "codex: seeded auth.json into CODEX_HOME");
+            }
+          }
           if (!(yield* fs.exists(src))) {
             yield* log.info({ src }, "codex mcp: MCP_CONFIG_SRC missing — skipping provisioning");
             return;
           }
           const { toml, included, skipped } = mcpJsonToCodexToml(yield* fs.readFileString(src));
-          yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.ignore);
           const configPath = join(home, "config.toml");
+          // codex rewrites config.toml (adding a [projects] trust block) as the dropped uid, so a
+          // prior run's file is owned by that uid and can't be truncated by this runner — remove it
+          // first (the group-writable dir permits it) so re-provisioning always refreshes the MCP set.
+          yield* fs.remove(configPath).pipe(Effect.ignore);
           yield* fs.writeFileString(configPath, toml);
           // The codex CLI runs as the DROPPED sub-agent uid (container process-identity model), which
           // differs from this runner's uid — so config.toml must be group-readable/writable (like the
