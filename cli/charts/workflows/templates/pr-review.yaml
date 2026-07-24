@@ -143,4 +143,17 @@ steps:
         {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
 outputs:
   {{- include "h.contract.pr-review" . | nindent 2 }}
+{{- /*
+panelSynthesis — "how to synthesize a panel of me" (docs/plans/panels-as-a-modifier.md decision
+5): spliced into the judge's task when this workflow runs under an --agent roster; inert
+otherwise. The join SHAPE is the outputs contract above; this block is only the join RULE.
+*/}}
+panelSynthesis: |-
+  Verdict rule: CLEAN only if EVERY panelist's verdict is CLEAN. If any panelist found
+  actionable defects, the verdict is FINDINGS and the summary merges every panelist's
+  findings — deduplicate identical FILE:LINE findings, keep one line each, and drop a
+  finding only when another panelist's answer concretely refutes it (note dropped
+  findings in the summary as "disputed: ..."). The panelists have each already posted
+  their own PR review with their findings as comments — do NOT post another review or
+  any comment; your json block is your only output.
 {{- end }}

@@ -1,7 +1,7 @@
 # Panels as a modifier: the `--agent` roster
 
-Status: Designed — decisions locked, v1 slice enumerated; ready to implement
-Established: 2026-07-23 · Designed: 2026-07-24
+Status: v1 IMPLEMENTED (CLI slice, 2026-07-24) — e2e validation + agent-panel retirement pending
+Established: 2026-07-23 · Designed: 2026-07-24 · Built: 2026-07-24
 
 ## The idea
 
@@ -110,30 +110,46 @@ deferred (reintroduces N× provisioning).
 
 ## v1 slice
 
-1. `cli/h/src/h_cli/infrastructure/chain_expr.py` — `--agent` moves from `VALUE_FLAGS` to a
-   greedy multi-value class (the `-t` atom loop, reused); `WorkflowConfig.agent: str | None` →
-   `agents: tuple[str, ...] = ()`; a single agent stays legal as a chain-wide default, a roster in
-   the prefix is rejected ("a panel is one member's shape — place the roster after a -w/-t
-   workflow", the `--kind` per-workflow-only spirit). Failure mode stays loud: a forgotten `-w`
-   swallows the next word into the roster and dies at `AGENT_IDENTITY` validation with
-   `unknown agent '<word>'`.
-2. `cli/h/src/h_cli/infrastructure/panelize.py` — NEW, pure, dependency-free:
-   `panelize(steps, outputs, roster, judge, panel_synthesis) -> steps'` per decision 3. Unit
-   tests assert the parallel-group shape, contract stripping, preamble injection, judge pinning.
-3. `cli/h/src/h_cli/commands/chain.py` — `_resolve_workflow`: `len(agents)==1` byte-for-byte
-   today's path; `len(agents)>1` → panelize branch (force compose-on-fire; `-w` fetches stored
-   steps; reject write kinds `feature-pr`/`revise`; reject `--model`; relax the pr-review freeze
-   for rosters). `_identity_params` takes the roster.
-4. `cli/h/src/h_cli/commands/workflow.py` — `--agent` becomes repeatable; roster → fetch +
-   panelize + run inline.
-5. `cli/charts/workflows/templates/pr-review.yaml` — declare `panelSynthesis:` (verdict rule:
-   CLEAN only if every panelist is CLEAN and no blocker survives; merge all blockers otherwise).
-6. Docs/tests ripple — grammar docstrings (`chain_expr.py`, `chain.py` help), the CLAUDE.md chain
-   bullet, parser tests, panelize goldens; the kind-sync guard is untouched (no new kind).
-7. Migration of the prior art — `agent-panel` (template + chain kind) becomes the degenerate case
-   (a bare "answer this task" template run with a roster); keep it working through v1, retire in a
-   follow-up cutover once the roster path is validated e2e ([[atomic-cutovers]] applies to the
-   retirement, not to coexistence-while-designing).
+1. DONE — `chain_expr.py`: `--agent` moved to a greedy `ROSTER_FLAGS` class (the `-t` atom loop);
+   `WorkflowConfig.agent` → `agents: tuple[str, ...] = ()`; single agent stays a legal chain-wide
+   default, a prefix roster is rejected. Forgotten `-w` dies loud at `AGENT_IDENTITY` validation.
+2. DONE — `infrastructure/panelize.py` (pure, dependency-free): `panelize(definition, roster)` +
+   `roster_pairs(roster, identity)` (identity table injected to keep the module pure). Notable
+   implementation decisions beyond the design: the synthesis KEEPS the original step id (it IS
+   the step — later `$ref`s resolve to the synthesized result); branch ids are the short agent
+   names (`claude-agent` → `claude`, matching the agent-panel template); the quoted original task
+   inside the synthesis is stripped of its rendered `===OUTPUT CONTRACT===` epilogue (one
+   authoritative contract block); a same-executor-twice roster is rejected (no perspective
+   assignment in v1, so duplication adds nothing). Unit-tested (`test_panelize.py`): shape,
+   stripping, preamble, judge, purity, error paths.
+3. DONE — `chain.py`: roster branch in `_resolve_workflow` (forces compose-on-fire; a `-w` key
+   prefers its chart template render via `_panel_definition` so `panelSynthesis` flows, else the
+   stored def; `WRITE_KINDS` rejected; `--model` rejected; pr-review freeze relaxed for rosters
+   with the judge noted). Wire-tested (`test_chain.py`): inline roster member embeds panelized
+   steps, write-kind + model rejections.
+4. DONE — `workflow.py`: `--agent` repeatable; roster → `_roster_definition` + panelize + fire
+   inline via `run_steps` (roster rejects `--via`/`--cron`/`--at`/`--in` — panel + recurrence/
+   routing composes via `h chain run`). Wire-tested (`test_workflow_run.py`).
+5. DONE — `pr-review.yaml` declares `panelSynthesis:` (unanimous-CLEAN verdict rule, merged
+   findings, disputed-finding notation, no second posted review). Golden re-blessed.
+6. DONE — docs/tests ripple: grammar docstrings, `chain.py`/`workflow.py` help, CLAUDE.md (chain
+   bullet + CLI layout line), parser tests migrated to `agents=`, 246 h-cli tests green.
+7. PENDING — migration of the prior art: `agent-panel` (template + chain kind) still works
+   untouched; retire in a follow-up cutover once the roster path is validated e2e
+   ([[atomic-cutovers]] applies to the retirement, not to coexistence-while-designing).
+8. PENDING — e2e validation: a real panel review chain (codex implements → roster reviews →
+   codex revises, `--strategy loop-until-clean`) against a live PR, host or container mode.
+
+## v1 caveats (observed while building — candidates for the e2e to confirm or dissolve)
+
+- **Provisioning asymmetry**: pr-review's `setup` step provisions only claude-agent's workspace
+  (skills). Roster branches on other agents run without provisioned skills — acceptable for
+  review (the task needs only the github MCP, which every agent auto-provisions), but a
+  panelized template whose task depends on skills would need a per-agent setup story.
+- **Workspace sharing is agent-relative**: each panelist's run activity resolves its OWN
+  workspace dir under its agent service. Branches only truly share a filesystem when the
+  workflow's prefix steps put one at the shared agent-neutral worktree path — the concurrency
+  preamble is written for that case and harmless otherwise.
 
 ## Relation to what exists
 
@@ -159,3 +175,10 @@ deferred (reintroduces N× provisioning).
   the two-substrate table); pure CLI-side `panelize` transform, zero engine change; synthesis
   guidance declared by the template (`panelSynthesis:`), judge pinned to claude; sync steering
   injected by the transform as the single author of branch prose.
+- 2026-07-24 — v1 built (same day): slice items 1–6 done, 246 h-cli tests green (incl. new
+  panelize unit tests + roster wire tests on both surfaces), pr-review golden re-blessed,
+  CLAUDE.md updated. Confirmed zero engine change — no workflow-svc file touched. Deviations
+  from the letter of the design, all shape-level: synthesis reuses the original step id;
+  short-name branch ids; epilogue stripped from the quoted task; duplicate-executor rosters
+  rejected. Remaining: e2e panel-review chain (item 8), then the agent-panel retirement cutover
+  (item 7).

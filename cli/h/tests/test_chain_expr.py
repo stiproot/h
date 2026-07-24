@@ -68,22 +68,22 @@ def test_suffix_flags_bind_to_the_hop_they_follow() -> None:
         ]
     )  # fmt: skip
     implement, review, revise = expr.workflows
-    assert implement.config == WorkflowConfig(agent="claude", model="opus")
-    assert review.config == WorkflowConfig(agent="openhands", model="deepseek", budget="15m")
+    assert implement.config == WorkflowConfig(agents=("claude",), model="opus")
+    assert review.config == WorkflowConfig(agents=("openhands",), model="deepseek", budget="15m")
     assert revise.config == WorkflowConfig(fresh=True)
 
 
 def test_prefix_flags_set_chain_wide_defaults() -> None:
     expr = parse_expr(["--agent", "openhands", "--budget", "45m", "-w", "a", "-w", "b"])
-    assert expr.defaults == WorkflowConfig(agent="openhands", budget="45m")
+    assert expr.defaults == WorkflowConfig(agents=("openhands",), budget="45m")
     assert all(h.config == WorkflowConfig() for h in expr.workflows)
 
 
 def test_effective_config_hop_overrides_default_field_by_field() -> None:
-    defaults = WorkflowConfig(agent="openhands", model="deepseek", budget="45m")
-    workflow = WorkflowConfig(agent="claude", budget="15m")
+    defaults = WorkflowConfig(agents=("openhands",), model="deepseek", budget="45m")
+    workflow = WorkflowConfig(agents=("claude",), budget="15m")
     assert effective_config(defaults, workflow) == WorkflowConfig(
-        agent="claude", model="deepseek", budget="15m"
+        agents=("claude",), model="deepseek", budget="15m"
     )
 
 
@@ -103,7 +103,7 @@ def test_flags_scope_across_a_parallel_connector() -> None:
     expr = parse_expr(["-w", "a", "--fresh", "--parallel", "-w", "b", "--agent", "claude"])
     ((a, b),) = expr.stages
     assert a.config == WorkflowConfig(fresh=True)
-    assert b.config == WorkflowConfig(agent="claude")
+    assert b.config == WorkflowConfig(agents=("claude",))
 
 
 # --- errors: every grammar violation is a clear ExprError ------------------------------------
@@ -194,6 +194,36 @@ def test_mapping_flags_validate_the_assignment_shape() -> None:
 def test_duplicate_capture_destination_is_rejected() -> None:
     with pytest.raises(ExprError, match="duplicate --capture destination 'prNumber'"):
         parse_expr(["-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prNumber=url"])
+
+
+# --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
+
+
+def test_agent_roster_collects_operands_until_next_flag() -> None:
+    expr = parse_expr(
+        ["-w", "pr-review", "--agent", "claude", "codex", "openhands", "--fresh", "-w", "revise"]
+    )
+    review, revise = expr.workflows
+    assert review.config.agents == ("claude", "codex", "openhands")
+    assert review.config.fresh is True
+    assert revise.config == WorkflowConfig()
+
+
+def test_single_agent_stays_a_one_tuple() -> None:
+    expr = parse_expr(["-w", "a", "--agent", "codex"])
+    assert expr.workflows[0].config.agents == ("codex",)
+
+
+def test_effective_config_roster_overrides_default_wholesale() -> None:
+    defaults = WorkflowConfig(agents=("openhands",))
+    workflow = WorkflowConfig(agents=("claude", "codex"))
+    assert effective_config(defaults, workflow).agents == ("claude", "codex")
+    assert effective_config(defaults, WorkflowConfig()).agents == ("openhands",)
+
+
+def test_agent_roster_is_per_workflow_only_in_the_prefix() -> None:
+    with pytest.raises(ExprError, match="roster is per-workflow only"):
+        parse_expr(["--agent", "claude", "codex", "-w", "pr-review"])
 
 
 # --- Phase-6 composition flags (docs/plans/inline-chain-cron-composition.md) -----------------

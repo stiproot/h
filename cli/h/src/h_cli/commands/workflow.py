@@ -16,12 +16,14 @@ from rich.table import Table
 from h_cli.config import (
     AGENT_IDENTITY,
     AGENT_URLS,
+    CHARTS_DIR,
     FROZEN_EXECUTOR_KEYS,
     MODEL_PARAM_SLOTS,
     agent_identity_params,
     resolve_agent_url,
 )
 from h_cli.infrastructure import agent_service, helm, workflow_svc
+from h_cli.infrastructure.panelize import PanelizeError, panelize, roster_pairs
 from h_cli.params import parse_params
 
 app = typer.Typer(no_args_is_help=True, help="Saved workflows and instance status (workflow-svc).")
@@ -175,6 +177,36 @@ def _resolve_via(via: str) -> str:
     return url
 
 
+def _render_template(name: str) -> dict[str, Any]:
+    """Render a chart template in publish mode and return the parsed definition (with steps)."""
+    try:
+        rendered = helm.render_workflow(name, values={"publish": "true"})
+    except helm.HelmError as err:
+        err_console.print(f"[red]helm:[/red] {err}")
+        err_console.print(f"Is '{name}' a chart template (cli/charts/workflows/templates)?")
+        raise typer.Exit(1) from err
+    definition = yaml.safe_load(rendered) or {}
+    if not isinstance(definition, dict) or not definition.get("steps"):
+        err_console.print(f"[red]Template '{name}' rendered no steps[/red] — check its values.")
+        raise typer.Exit(1)
+    return definition
+
+
+def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
+    """A roster fires a PANELIZED definition (docs/plans/panels-as-a-modifier.md), so it must
+    compose-on-fire: render the chart template of that name when one exists (`outputs` AND
+    `panelSynthesis` flow from the render; --inline forces the template reading), else fall back
+    to the stored definition (generic synthesis prose)."""
+    template_path = CHARTS_DIR / "workflows" / "templates" / f"{key}.yaml"
+    if inline or template_path.exists():
+        return _render_template(key)
+    stored = _guarded(lambda: workflow_svc.get(key))
+    if not isinstance(stored, dict) or not stored.get("steps"):
+        err_console.print(f"[red]saved workflow '{key}' has no steps to panelize[/red]")
+        raise typer.Exit(1)
+    return stored
+
+
 def _identity_params(key: str, agent: str) -> dict[str, str]:
     """`--agent NAME` → the {runActivity, agentId} fire-time params (shared with `h chain run`).
 
@@ -217,11 +249,14 @@ def run(
         ),
     ] = False,
     agent: Annotated[
-        str | None,
+        list[str] | None,
         typer.Option(
             "--agent",
             help="Executor machinery: which agent RUNS the steps — expands to the "
-            "{runActivity, agentId} fire-time params. Contrast --via (routing).",
+            "{runActivity, agentId} fire-time params. REPEAT the flag for a panel ROSTER "
+            "(--agent claude --agent codex): the definition is panelized — each roster agent "
+            "answers concurrently, a pinned judge synthesizes under the workflow's own contract "
+            "— and fired inline. Contrast --via (routing).",
         ),
     ] = None,
     model: Annotated[
@@ -353,11 +388,24 @@ def run(
     must be reusable or fired by a trigger/cron.
     """
     params = parse_params(param or [])
-    if agent:
-        params.update(_identity_params(key, agent))
+    roster = tuple(agent) if agent and len(agent) > 1 else ()
+    if agent and not roster:
+        params.update(_identity_params(key, agent[0]))
     if model:
+        if roster:
+            err_console.print(
+                "[red]--model with a roster is not supported[/red] — each panelist falls back "
+                "to its own agent's default model"
+            )
+            raise typer.Exit(1)
         for slot in MODEL_PARAM_SLOTS:
             params[slot] = model
+    if roster and (via or cron or max_fires is not None or at or in_):
+        err_console.print(
+            "[red]a roster fires a panelized definition inline[/red] — drop --via/--cron/"
+            "--at/--in (panel + recurrence/routing composes via `h chain run`)."
+        )
+        raise typer.Exit(1)
     watch_policy: dict[str, Any] | None = None
     if watch or budget or retry is not None:
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
@@ -417,24 +465,33 @@ def run(
                 "(a scheduled fire arms a cron:sched row on workflow-svc)."
             )
             raise typer.Exit(1)
-    if inline:
+    if roster:
+        # Panel path (docs/plans/panels-as-a-modifier.md): panelize the definition and fire the
+        # steps inline (leaving only the wf: status row) — the roster restructures the
+        # definition, so there is no stored def to fire verbatim. The pr-review executor freeze
+        # relaxes for a roster: the panelists run as named, the judge stays pinned (claude).
+        definition = _roster_definition(key, inline)
+        try:
+            panelized = panelize(definition, roster_pairs(roster, AGENT_IDENTITY))
+        except PanelizeError as err:
+            err_console.print(f"[red]cannot panelize '{key}':[/red] {err}")
+            raise typer.Exit(1) from err
+        merged = {**(definition.get("params") or {}), **params}
+        console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
+        result = _guarded(
+            lambda: workflow_svc.run_steps(
+                panelized["steps"], merged, instance_id, fresh, watch_policy, None, None
+            )
+        )
+    elif inline:
         if via:
             err_console.print(
                 "[red]--inline fires directly on workflow-svc[/red] — drop --via (routing "
                 "an inline definition through an agent babysitter is a separate path)."
             )
             raise typer.Exit(1)
-        try:
-            rendered = helm.render_workflow(key, values={"publish": "true"})
-        except helm.HelmError as err:
-            err_console.print(f"[red]helm:[/red] {err}")
-            err_console.print(f"Is '{key}' a chart template (cli/charts/workflows/templates)?")
-            raise typer.Exit(1) from err
-        definition = yaml.safe_load(rendered) or {}
+        definition = _render_template(key)
         steps = definition.get("steps")
-        if not steps:
-            err_console.print(f"[red]Template '{key}' rendered no steps[/red] — check its values.")
-            raise typer.Exit(1)
         # Merge -p/--agent/--model OVER the template's rendered value-defaults (there is no stored
         # definition to merge against server-side, so the CLI does it — same result as a saved
         # fire).

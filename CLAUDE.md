@@ -70,7 +70,17 @@ stack, and the design principles; this section is the terse runtime-facing index
   --until PATH=VALUE` (validated against the declared outputs schema at registration; each declared
   half replaces its side of the kind contract) (suffix = that workflow, prefix = chain-wide default);
   a `-t` group overlays inline and publishes under `<slug>-w<N>` by default, or EMBEDS with `--inline`
-  (compose-on-fire; at most ONE atom per composition declares `outputs`). `h chain list` inspects.
+  (compose-on-fire; at most ONE atom per composition declares `outputs`). `--agent` takes a ROSTER
+  (greedy operands, the `-t` idiom): SEVERAL names PANELIZE the member (docs/plans/panels-as-a-modifier.md
+  — panel as cardinality, 2026-07-24): a pure CLI-side transform (`infrastructure/panelize.py`) replicates
+  the member's contract-carrying step into a parallel step group (one branch per agent, contract+model
+  stripped, concurrency preamble injected) and appends a pinned-judge (claude) synthesis under the
+  member's ORIGINAL id+contract — so every downstream seam (loop-until-clean, captures, watcher) is
+  unchanged and the engine needs nothing new. Read/judge kinds only (write kinds share one worktree —
+  compose N `--parallel` members instead); no `--model` with a roster; a roster forces compose-on-fire
+  (a `-w` key renders its chart template — `panelSynthesis:`, the template's optional join-rule prose,
+  flows from the render — else the stored def); the pr-review executor freeze relaxes to the named
+  roster, the pin migrating to the judge. `h chain list` inspects.
   Strategies: `sequential`, `loop-until-clean` (loop × stages reconciliation is deferred — see the plan
   doc's open sub-questions).
 - **Cron** — the recurrence sibling: a durable registration `{cadence, source, budget}` plus the same
@@ -341,7 +351,7 @@ cli/                                          # early prototype of the h CLI (se
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron,schedule}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent] [--inline] [--cron/--max-fires] [--at <iso> | --in <dur>] [--fallback-agent/-model/-after/-max]|pause <id> <key> --in <dur>|resume <schedId>|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-member flags --agent/--model/--fresh/--inline/--kind/--stage/--cron/--max-fires/--id/--capture/--input/--until, --parallel connector, hand-parsed via infrastructure/chain_expr.py — parallel STAGES, inline+cron members, namespaced threading all live)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover); h schedule list|rm <id> (the one-shot cron:sched surface — a thin view over cron:sched:* rows; also visible in `h cron list`)
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron,schedule}.py  # h feature render|run [--agent]; h template compose|list|get; h workflow list|get|status|publish|run [-p k=v] [--instance-id] [--agent (repeat = panel roster)] [--inline] [--cron/--max-fires] [--at <iso> | --in <dur>] [--fallback-agent/-model/-after/-max]|pause <id> <key> --in <dur>|resume <schedId>|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-member flags --agent (several names = panel roster → infrastructure/panelize.py)/--model/--fresh/--inline/--kind/--stage/--cron/--max-fires/--id/--capture/--input/--until, --parallel connector, hand-parsed via infrastructure/chain_expr.py — parallel STAGES, inline+cron members, namespaced threading, panel rosters all live)|list; h watch list|get|delete; h cron list (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] (fires a provision workflow — §10, no POST /cron/discover); h schedule list|rm <id> (the one-shot cron:sched surface — a thin view over cron:sched:* rows; also visible in `h cron list`)
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```

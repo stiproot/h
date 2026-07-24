@@ -657,3 +657,55 @@ def test_chain_run_agent_panel_bad_capture_field_fails_loud(tmp_path: Path) -> N
     )  # fmt: skip
     assert result.exit_code == 1
     assert "no field(s) notafield" in _all_output(result)
+
+
+# --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
+
+
+@needs_helm
+@respx.mock
+def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
+    """`-w pr-review --agent A B C --inline` renders the template, panelizes it (branches +
+    judge synthesis under the pr-review contract), and embeds the steps in the chain row."""
+    route = _mock_run("panel-x")
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "panel-x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
+            "-w", "pr-review", "--agent", "claude", "codex", "openhands", "--inline",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    member = body["workflows"][0]
+    assert member["kind"] == "pr-review"
+    assert "key" not in member
+    panel = next(step for step in member["steps"] if "parallel" in step)
+    assert [b["activity"] for b in panel["parallel"]] == [
+        "run-claude", "run-codex", "run-openhands",
+    ]
+    synthesis = member["steps"][member["steps"].index(panel) + 1]
+    assert synthesis["id"] == "review"
+    assert synthesis["input"]["outputContract"]
+    # Roster identity is baked per branch — never a runActivity param.
+    assert "runActivity" not in (member.get("params") or {})
+
+
+def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+         "-w", "feature-pr", "--agent", "claude", "codex"],
+    )
+    assert result.exit_code == 1
+    assert "roster" in _all_output(result)
+
+
+def test_chain_roster_rejects_model(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+         "-w", "pr-review", "--agent", "claude", "codex", "--model", "opus"],
+    )
+    assert result.exit_code == 1
+    assert "--model with a roster" in _all_output(result)

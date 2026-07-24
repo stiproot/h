@@ -16,7 +16,7 @@ wherever they sit; everything workflow-scoped is positional in the expression:
     EXPR    := FLAG* STAGE STAGE*         # FLAGs before the first workflow = chain-wide defaults
     STAGE   := WF ( --parallel WF )*      # infix --parallel joins WFs into ONE concurrent stage
     WF      := ( -w KEY | -t ATOM ATOM... ) FLAG*
-    FLAG    := --agent A | --model M | --budget DUR | --fresh | --inline | --kind K
+    FLAG    := --agent A A* | --model M | --budget DUR | --fresh | --inline | --kind K
              | --stage N | --cron CADENCE | --max-fires N | --id NAME
              | --capture DEST=SRC | --input DEST=SRC | --until PATH=VALUE
 
@@ -28,6 +28,14 @@ member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:res
 `--id` gives a member a blackboard namespace so a downstream reads its capture via a dotted
 `--input PARAM=id.field` (D5). Identity flags become fire-time params (§1.9): --agent maps to
 {runActivity, agentId}, --model to the workflow kind's model params.
+
+`--agent` with SEVERAL names is a panel ROSTER (docs/plans/panels-as-a-modifier.md): the member
+is panelized — its contract-carrying step is replicated into a parallel step group, one branch
+per roster agent, and a pinned judge synthesizes under the member's own contract, so every seam
+downstream (loop-until-clean, captures, the watcher) is unchanged. A roster forces
+compose-on-fire (a -w key renders its chart template, or falls back to the stored definition);
+write kinds (feature-pr, revise) reject a roster — N writers can't share one branch — use
+--parallel stage composition for those.
 """
 
 from collections import Counter
@@ -39,7 +47,7 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.commands.template import compose_templates
-from h_cli.config import AGENT_IDENTITY, agent_identity_params
+from h_cli.config import AGENT_IDENTITY, CHARTS_DIR, agent_identity_params
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
@@ -48,6 +56,7 @@ from h_cli.infrastructure.chain_expr import (
     effective_config,
     parse_expr,
 )
+from h_cli.infrastructure.panelize import PanelizeError, panelize, roster_pairs
 from h_cli.params import parse_params
 
 app = typer.Typer(
@@ -91,9 +100,15 @@ KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
     "pr-review": ("modelReview",),
     "agent-panel": (),
 }
-# Untrusted-input executors are FROZEN: --agent warns and keeps the published executor
-# (docs/plans/reviewer-identity-security.md — never an error, never silent compliance).
+# Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
+# (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER
+# is the explicit relaxation (docs/plans/panels-as-a-modifier.md decision 7): the panelists run as
+# named, the pin migrates to the synthesis judge (panelize.JUDGE_ACTIVITY, claude).
 FROZEN_EXECUTOR_KINDS = {"pr-review"}
+# Write kinds share ONE branch/worktree per member — a roster of N writers would clobber it; the
+# isolated form of "N implementations" is --parallel stage composition (the two-substrate table,
+# docs/plans/panels-as-a-modifier.md).
+WRITE_KINDS = frozenset({"feature-pr", "revise"})
 # -t group kind inference: the terminal atom's declared output contract IS the threading contract.
 TERMINAL_ATOM_KIND = {"create-pr": "feature-pr"}
 
@@ -126,20 +141,24 @@ def _budget_ms(raw: str) -> int:
 
 
 def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, str]:
-    """FLAG identity → the fire-time params the workflow's template consumes (§1.9)."""
+    """FLAG identity → the fire-time params the workflow's template consumes (§1.9).
+
+    Single-agent only — a roster (len > 1) takes the panelize path in _resolve_workflow, where
+    identity is baked per branch instead of riding params."""
     params: dict[str, str] = {}
-    if cfg.agent:
+    agent = cfg.agents[0] if cfg.agents else None
+    if agent:
         if kind in FROZEN_EXECUTOR_KINDS:
             _warn(
-                f"--agent '{cfg.agent}' ignored on '{label}': the {kind} executor is frozen "
+                f"--agent '{agent}' ignored on '{label}': the {kind} executor is frozen "
                 "(untrusted-input security invariant — docs/plans/reviewer-identity-security.md); "
                 "keeping the published executor"
             )
         else:
-            identity = agent_identity_params(cfg.agent)
+            identity = agent_identity_params(agent)
             if identity is None:
                 _fail(
-                    f"unknown --agent '{cfg.agent}' — known: "
+                    f"unknown --agent '{agent}' — known: "
                     + ", ".join(sorted(set(AGENT_IDENTITY)))
                 )
                 raise AssertionError("unreachable")
@@ -150,12 +169,38 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
     return params
 
 
+def _panel_definition(key: str) -> dict[str, Any]:
+    """A -w roster member's definition. Restructuring forces compose-on-fire, so prefer the chart
+    template of the same name — `outputs` AND `panelSynthesis` flow from the render — falling
+    back to the stored definition for keys that are not templates (generic synthesis prose)."""
+    template_path = CHARTS_DIR / "workflows" / "templates" / f"{key}.yaml"
+    if template_path.exists():
+        return compose_templates([key])
+    stored = _guarded(lambda: workflow_svc.get(key))
+    if not isinstance(stored, dict) or not stored.get("steps"):
+        _fail(f"saved workflow '{key}' has no steps to panelize")
+        raise AssertionError("unreachable")
+    return stored
+
+
+def _apply_roster(
+    merged: dict[str, Any], roster: tuple[str, ...], label: str
+) -> dict[str, Any]:
+    """Panelize the composed definition with the roster: each name resolves through
+    AGENT_IDENTITY to its run activity; any shape violation fails loud at registration."""
+    try:
+        return panelize(merged, roster_pairs(roster, AGENT_IDENTITY))
+    except PanelizeError as err:
+        _fail(f"cannot panelize '{label}': {err}")
+        raise AssertionError("unreachable")
+
+
 def _check_identity_slots(key: str, cfg: WorkflowConfig, kind: str) -> None:
     """A saved workflow published before fire-time identity has no param slots — fail loud on
     --agent (it would silently fire the baked identity), warn on --model (accepted limitation)."""
     stored = _guarded(lambda: workflow_svc.get(key))
     defaults = stored.get("params") or {}
-    if cfg.agent and kind not in FROZEN_EXECUTOR_KINDS and "runActivity" not in defaults:
+    if cfg.agents and kind not in FROZEN_EXECUTOR_KINDS and "runActivity" not in defaults:
         _fail(
             f"saved workflow '{key}' has no identity param slots (published before fire-time "
             f"identity) — republish it (`h template compose ... --save {key}` or "
@@ -236,24 +281,53 @@ def _resolve_workflow(
     if kind not in KNOWN_KINDS:
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
+    # A roster (several --agent names) panelizes the member (docs/plans/panels-as-a-modifier.md):
+    # read/judge kinds only, no --model (per-branch models fall to each agent's own AGENT_MODEL).
+    roster = cfg.agents if len(cfg.agents) > 1 else ()
+    if roster:
+        if kind in WRITE_KINDS:
+            _fail(
+                f"a roster on '{workflow.label}' ({kind}) is not supported — write kinds share "
+                "one branch/worktree, so N writers would clobber it; compose N members with "
+                "--parallel (isolated instances) instead"
+            )
+        if cfg.model:
+            _fail(
+                f"--model with a roster on '{workflow.label}' is not supported — each panelist "
+                "falls back to its own agent's default model"
+            )
+
     # A cron member self-arms an embedded recurrence (D1/D2), so it MUST be inline; --inline opts
     # any composed member into embedded storage. Both need `-t` templates — a saved -w key can't
-    # be inlined.
+    # be inlined (EXCEPT a roster member: panelizing restructures it, so it is composed either
+    # way and may embed).
     inline = cfg.inline or bool(cfg.cron)
     if cfg.max_fires and not cfg.cron:
         _fail(f"--max-fires on '{workflow.label}' needs --cron (it's the cron's fire budget)")
-    if inline and workflow.key is not None:
+    if inline and workflow.key is not None and not roster:
         _fail(
             f"--inline/--cron member '{workflow.label}' must be composed with -t — an inline "
             "member embeds its own steps (a saved -w key can't be embedded)"
         )
 
-    params = _identity_params(kind, cfg, workflow.label)
+    # Roster identity is baked per branch by panelize, never a runActivity param.
+    params = {} if roster else _identity_params(kind, cfg, workflow.label)
     declared_outputs: dict[str, Any] | None = None
     steps: list[Any] | None = None
     key_field: str | None = None
+    merged: dict[str, Any] | None = None
     if workflow.key is None:
         merged = compose_templates(list(workflow.templates))
+    elif roster:
+        merged = _panel_definition(key)
+    if merged is not None:
+        if roster:
+            merged = _apply_roster(merged, roster, workflow.label)
+            judge_note = " (judge: claude-agent)" if kind in FROZEN_EXECUTOR_KINDS else ""
+            console.print(
+                f"==> panelized '{workflow.label}' — roster: {', '.join(roster)}{judge_note}"
+            )
+        source = " ⊕ ".join(workflow.templates) if workflow.key is None else workflow.key
         declared_outputs = merged.get("outputs")
         merged_params = merged.get("params") or {}
         if inline:
@@ -262,7 +336,7 @@ def _resolve_workflow(
             steps = merged["steps"]
             params = {**merged_params, **params}
             tag = " (cron)" if cfg.cron else ""
-            console.print(f"==> composed [{' ⊕ '.join(workflow.templates)}] embedded inline{tag}")
+            console.print(f"==> composed [{source}] embedded inline{tag}")
         else:
             # Publish-default: overlay + publish under the chain-scoped key (idempotent re-fire).
             key_field = f"{slug}-w{index}"
@@ -274,9 +348,7 @@ def _resolve_workflow(
                     outputs=declared_outputs,
                 )
             )
-            console.print(
-                f"==> composed [{' ⊕ '.join(workflow.templates)}] published as '{key_field}'"
-            )
+            console.print(f"==> composed [{source}] published as '{key_field}'")
     else:
         key_field = key
         if params:
@@ -377,6 +449,11 @@ def run(
                         FOLLOW; before the first workflow they set chain-wide defaults (a prefix
                         --budget is the whole-chain wall clock: <n>m, <n>h, or milliseconds).
                         --inline embeds the composed steps in the chain row instead of publishing.
+
+      --agent A B C...  SEVERAL names are a panel ROSTER: the member is panelized — each roster
+                        agent answers concurrently, a pinned judge (claude) synthesizes under the
+                        member's own output contract, so downstream seams are unchanged. Read/
+                        judge kinds only (write kinds: use --parallel members); no --model.
 
       --stage N         the member's concurrency STAGE (members sharing a stage run concurrently,
                         joined before the next); the alternative to --parallel grouping

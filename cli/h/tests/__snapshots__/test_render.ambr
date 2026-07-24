@@ -688,6 +688,14 @@
       summary:
         type: string
         description: one line per finding, "FILE:LINE — defect summary"; empty or omitted when CLEAN
+  panelSynthesis: |-
+    Verdict rule: CLEAN only if EVERY panelist's verdict is CLEAN. If any panelist found
+    actionable defects, the verdict is FINDINGS and the summary merges every panelist's
+    findings — deduplicate identical FILE:LINE findings, keep one line each, and drop a
+    finding only when another panelist's answer concretely refutes it (note dropped
+    findings in the summary as "disputed: ..."). The panelists have each already posted
+    their own PR review with their findings as comments — do NOT post another review or
+    any comment; your json block is your only output.
   
   '''
 # ---

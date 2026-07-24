@@ -13,6 +13,15 @@ from h_cli.main import app
 
 runner = CliRunner()
 
+
+def _all_output(result) -> str:
+    out = result.output
+    try:
+        out += result.stderr
+    except ValueError:
+        pass
+    return out
+
 needs_helm = pytest.mark.skipif(
     shutil.which("helm") is None, reason="helm not on PATH (renders cli/charts)"
 )
@@ -118,3 +127,59 @@ def test_inline_rejects_via() -> None:
     )
     assert result.exit_code == 1
     assert "inline" in result.output.lower()
+
+
+# --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
+
+
+@needs_helm
+@respx.mock
+def test_agent_roster_panelizes_and_fires_inline() -> None:
+    """A repeated --agent is a panel roster: the definition is panelized (parallel branches +
+    a judge synthesis under the original contract) and fired as raw steps on /workflow/run."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "panel-x", "watching": False})
+    )
+    result = runner.invoke(
+        app,
+        [
+            "workflow", "run", "pr-review",
+            "--agent", "claude", "--agent", "codex", "--agent", "openhands",
+            "-p", "pr=64", "-p", "repo=stiproot/h", "-p", "slug=x",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    body = json.loads(route.calls[0].request.content)
+    steps = body["steps"]
+    panel = next(step for step in steps if "parallel" in step)
+    assert [b["id"] for b in panel["parallel"]] == ["claude", "codex", "openhands"]
+    assert [b["activity"] for b in panel["parallel"]] == [
+        "run-claude", "run-codex", "run-openhands",
+    ]
+    # The synthesis keeps the workflow's own contract-carrying step id + contract, and the
+    # template's panelSynthesis rule is spliced into the judge's task.
+    synthesis = steps[steps.index(panel) + 1]
+    assert synthesis["id"] == "review"
+    assert synthesis["activity"] == "run-claude"
+    assert synthesis["input"]["outputContract"]
+    assert "Verdict rule" in synthesis["input"]["task"]
+    # No identity params ride the body — roster identity is baked per branch.
+    assert "runActivity" not in body["params"]
+
+
+@needs_helm
+def test_agent_roster_rejects_model_and_routing() -> None:
+    result = runner.invoke(
+        app,
+        ["workflow", "run", "pr-review", "--agent", "claude", "--agent", "codex",
+         "--model", "opus"],
+    )
+    assert result.exit_code == 1
+    assert "roster" in _all_output(result)
+    result = runner.invoke(
+        app,
+        ["workflow", "run", "pr-review", "--agent", "claude", "--agent", "codex",
+         "--via", "claude-agent"],
+    )
+    assert result.exit_code == 1
+    assert "roster" in _all_output(result)

@@ -6,7 +6,7 @@ The grammar (docs/plans/chain-composition-surface.md §1.5):
     EXPR    := FLAG* STAGE STAGE*        # FLAGs before the first workflow = chain-wide defaults
     STAGE   := WF ( "--parallel" WF )*    # infix --parallel joins workflows into one parallel stage
     WF      := ( "-w" KEY | "-t" ATOM ATOM* ) FLAG*
-    FLAG := "--agent" A | "--model" M | "--budget" DUR | "--fresh" | "--inline" | "--kind" K
+    FLAG := "--agent" A A* | "--model" M | "--budget" DUR | "--fresh" | "--inline" | "--kind" K
            | "--stage" N | "--cron" CADENCE | "--max-fires" N | "--id" NAME
            | "--capture" DEST=SRC | "--input" DEST=SRC | "--until" PATH=VALUE
 
@@ -15,6 +15,12 @@ workflow it sets a chain-wide default a workflow can override. Adjacent stages r
 a parallel group has an implied join barrier. Typer must never declare these flag names on
 `h chain run` — click consumes declared options wherever they appear in argv, which would destroy
 their position.
+
+`--agent` consumes operands greedily (the `-t` atom idiom): ONE name is the identity flag as
+before; SEVERAL are a panel ROSTER (docs/plans/panels-as-a-modifier.md — the member is panelized:
+each roster agent answers concurrently, a judge synthesizes under the member's own contract). A
+roster is per-workflow only — a panel is one member's shape — so a multi-name prefix is rejected
+while a single-name prefix stays a chain-wide default.
 
 --capture/--input/--until are the declarative structured-output mappings
 (docs/plans/structured-workflow-outputs.md §4-5): per-workflow ONLY (like --kind — a mapping is a
@@ -27,8 +33,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 
+# Greedy multi-value flags (the -t atom idiom: consume operands until the next dash token).
+# --agent's cardinality is the panel dimension: one name = identity, several = a roster.
+ROSTER_FLAGS = ("--agent",)
 VALUE_FLAGS = (
-    "--agent",
     "--model",
     "--budget",
     "--kind",
@@ -60,7 +68,9 @@ class ExprError(ValueError):
 class WorkflowConfig:
     """Per-workflow config carried by FLAGs; every field optional (None/False = not given)."""
 
-    agent: str | None = None
+    # The --agent operands: () = not given, one name = identity, several = a panel ROSTER
+    # (docs/plans/panels-as-a-modifier.md — cardinality is the panel dimension, not a new flag).
+    agents: tuple[str, ...] = ()
     model: str | None = None
     budget: str | None = None  # raw duration token, validated against _BUDGET_RE
     fresh: bool = False
@@ -110,7 +120,7 @@ class ChainExpr:
 def effective_config(defaults: WorkflowConfig, workflow: WorkflowConfig) -> WorkflowConfig:
     """The workflow's config over the chain-wide defaults, per field (workflow wins where given)."""
     return WorkflowConfig(
-        agent=workflow.agent if workflow.agent is not None else defaults.agent,
+        agents=workflow.agents if workflow.agents else defaults.agents,
         model=workflow.model if workflow.model is not None else defaults.model,
         budget=workflow.budget if workflow.budget is not None else defaults.budget,
         fresh=workflow.fresh or defaults.fresh,
@@ -213,6 +223,31 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
             # stage (A --parallel B --parallel C chains into one three-way group).
             finish_workflow()
             joining = True
+        elif token in ROSTER_FLAGS:
+            # Greedy multi-value (the -t atom loop): one name = identity, several = a roster.
+            names: list[str] = []
+            while i + 1 < n and not tokens[i + 1].startswith("-"):
+                i += 1
+                names.append(tokens[i])
+            if not names:
+                raise ExprError(f"{token} needs a value")
+            if current is not None:
+                if current.config.agents:
+                    raise ExprError(f"duplicate {token} on workflow '{current.label}'")
+                current = replace(current, config=replace(current.config, agents=tuple(names)))
+            elif not stages:
+                if len(names) > 1:
+                    raise ExprError(
+                        f"a {token} roster is per-workflow only — a panel is one member's "
+                        "shape; place the roster after a -w/-t workflow"
+                    )
+                if defaults.agents:
+                    raise ExprError(f"duplicate {token} in the chain-wide prefix")
+                defaults = replace(defaults, agents=tuple(names))
+            else:
+                raise ExprError(
+                    f"{token} must follow a workflow (or precede the first workflow as a default)"
+                )
         elif token in MAP_FLAGS:
             flag = token
             value = flag_value(flag)
@@ -258,7 +293,8 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                 )
         elif token.startswith("-"):
             known = ", ".join(
-                (*WORKFLOW_INTRODUCERS, CONNECTOR, *VALUE_FLAGS, *MAP_FLAGS, *BOOL_FLAGS)
+                (*WORKFLOW_INTRODUCERS, CONNECTOR, *ROSTER_FLAGS, *VALUE_FLAGS, *MAP_FLAGS,
+                 *BOOL_FLAGS)
             )
             raise ExprError(f"unknown token '{token}' in the chain expression — known: {known}")
         else:
