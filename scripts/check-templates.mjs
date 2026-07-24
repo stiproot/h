@@ -45,6 +45,20 @@ export function hasCompleteTemplateGate(content, templateName) {
     const isComment = match[1] === undefined;
     const action = isComment ? "" : match[1].trim();
     const control = action.match(/^(if|range|with|define|block)\b/);
+    const isStructuralAction =
+      control ||
+      /^(?:end|else|break|continue)(?:\s|$)/.test(action) ||
+      /^\$[\w.]+\s*(?::=|=)/.test(action);
+
+    if (
+      gateDepth !== -1 &&
+      !inDefinition &&
+      !isComment &&
+      action &&
+      !isStructuralAction
+    ) {
+      gateHasRenderableContent = true;
+    }
 
     if (
       gateDepth === -1 &&

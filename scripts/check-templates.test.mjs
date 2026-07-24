@@ -17,6 +17,17 @@ test("rejects an empty matching gate", () => {
   assert.equal(hasCompleteTemplateGate(`${gate}\n{{- end }}\n`, "feature"), false);
 });
 
+test("accepts a matching gate whose output is produced entirely by a Helm action", () => {
+  assert.equal(
+    hasCompleteTemplateGate(`${gate}\n{{ include "workflow.resource" . }}\n{{- end }}\n`, "feature"),
+    true,
+  );
+});
+
+test("does not treat a variable assignment as rendered gate content", () => {
+  assert.equal(hasCompleteTemplateGate(`${gate}\n{{- $name := "feature" }}\n{{- end }}\n`, "feature"), false);
+});
+
 test("rejects a matching gate with no whitespace after the pipe", () => {
   const invalidGate = '{{- if eq (.Values.template |default "") "feature" }}';
   assert.equal(hasCompleteTemplateGate(`${invalidGate}\nkind: Workflow\n{{- end }}\n`, "feature"), false);
