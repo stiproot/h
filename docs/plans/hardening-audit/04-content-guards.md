@@ -6,7 +6,7 @@ Parent: [hardening-audit index](./README.md) — read its context + executing-ag
 
 New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain beside `check-templates.mjs`. Each encodes a CLAUDE.md "MUST" currently held by discipline alone.
 
-## [ ] A3. Single-writer registry invariant (watch:/chain:/cron:/wf: written only by workflow-svc) is unguarded
+## [x] A3. Single-writer registry invariant (watch:/chain:/cron:/wf: written only by workflow-svc) is unguarded
 
 *Severity: medium · effort: small*
 
@@ -15,6 +15,8 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 **Evidence:** `apps/workflow-svc/src/infrastructure/dapr-watch-store.ts:93 (sole watch:sub writer)` · `apps/workflow-svc/src/infrastructure/dapr-chain-store.ts:89 (sole chain:sub writer)` · `apps/workflow-svc/src/infrastructure/dapr-cron-store.ts:123,153,182 (sole cron:sub/discover/sched writers)` · `apps/workflow-svc/src/infrastructure/dapr-wf-store.ts:50 (sole wf: writer)` · `packages/js/agent-server/src/run-ledger.ts:200 + packages/py/agent-server/src/agent_server/run_ledger.py:97 (run: prefix owners)` · `grep of watch:sub|chain:sub|cron:*|wf: save calls outside apps/workflow-svc: only comments/CLI display strings (cli/h/src/h_cli/commands/cron.py:137 builds the key for display; disarm goes via POST /cron/disarm)`
 
 **Do:** Add scripts/check-registry-writers.mjs and wire it into root package.json's lint script beside check-templates.mjs (package.json:7). Ownership map: {"watch:", "chain:", "cron:", "wf:", "__workflow_index__"} → apps/workflow-svc/src; {"run:", "runs:index"} → packages/js/agent-server/src + packages/py/agent-server/src/agent_server; {"task:", "tasks:index"} → cli/h/src + apps/workflow-agent/src. Detection must be FILE-level co-occurrence, not same/adjacent-line (the real writers keep the prefix const ~70 lines from the save call — e.g. dapr-watch-store.ts:19 vs :93 — so a line-adjacency heuristic misses both writers and violators): fail if any .ts/.py file under apps/, packages/, cli/ outside the owning path contains BOTH a claimed-prefix string literal in code (strip // and /* */ and # comments and docstrings first — workflow-babysitter.ts:5, workflow_route.py:5, and core-dapr/state-key.ts carry prefixes in comments only) AND a state-write call pattern (client.state.save, state.delete, or an HTTP POST/DELETE to /v1.0/state). Exclude *test* files and dist/. Skip dapr-mcp automatically (its generic state_save contains no prefix literal).
+
+**Completed 2026-07-24:** Added `scripts/check-registry-writers.mjs`, wired it into the root lint chain, verified the current tree is clean, and verified an out-of-owner `watch:` save fixture fails with the workflow-svc owner diagnostic.
 
 ## [x] A4. pathStateKey wrapping ('a new store MUST do the same') is documentation-only, no lint rule
 
