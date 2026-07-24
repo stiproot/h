@@ -58,7 +58,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Add /home/stiproot/code/h/scripts/check-dockerfiles.mjs and wire it into root package.json "lint" beside the existing guards: "lint": "node scripts/check-tsc.mjs && node scripts/check-templates.mjs && node scripts/check-dockerfiles.mjs && turbo lint". The script: (1) enumerate workspace members from disk — every packages/js/*/package.json and every apps/*/package.json (the apps glob self-selects JS apps; Python apps have no package.json); (2) for each apps/*/Dockerfile whose content matches /bun install --frozen-lockfile/, assert a `COPY packages/js/<name>/package.json` line exists for all packages/js members AND a `COPY apps/<name>/package.json` line for all JS-app members (workflow-svc/Dockerfile:10-25 shows both lists are required for the frozen install); (3) the stale-line inverse — fail if any `COPY packages/js/<dir>/` or `COPY apps/<dir>/package.json` line references a directory with no package.json on disk. Exclude docker/agent-base-*.Dockerfile (Makefile:76-77) unless they also run the frozen install. Print the exact missing/stale COPY line per Dockerfile so the fix is copy-pasteable. Optionally note the guard in CLAUDE.md's "Docker build context" paragraph (one clause: "guarded by scripts/check-dockerfiles.mjs").
 
-## [ ] A9. Chart template gate is only guarded behaviorally, and only for templates that use `required`
+## [x] A9. Chart template gate is only guarded behaviorally, and only for templates that use `required`
 
 *Severity: low · effort: small*
 
@@ -100,5 +100,6 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 ## Log
 
+- 2026-07-24: A9 landed — scripts/check-templates.mjs now requires every workflow template YAML to contain a filename-matched .Values.template gate.
 - 2026-07-24 — Completed A4: added the intentionally TypeScript-only `scripts/check-state-keys.mjs`, wired it into the root lint chain and `check-state-keys` package script, confirmed all current scoped call sites pass, and verified an unwrapped `.state.get("store", "k")` fixture fails with its file, line, and snippet before removing the fixture. Python uses a different client surface and would need a separate, API-specific follow-up guard.
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
