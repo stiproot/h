@@ -113,9 +113,21 @@ function callRanges(code, callPattern) {
   for (const match of code.matchAll(callPattern)) {
     let depth = 1;
     let end = match.index + match[0].length;
+    let quote = null;
+    let escaped = false;
     while (end < code.length && depth > 0) {
-      if (code[end] === "(") depth++;
-      else if (code[end] === ")") depth--;
+      const ch = code[end];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === quote) quote = null;
+      } else if (ch === "'" || ch === '"' || ch === "`") {
+        quote = ch;
+      } else if (ch === "(") {
+        depth++;
+      } else if (ch === ")") {
+        depth--;
+      }
       end++;
     }
     ranges.push([match.index, end]);
