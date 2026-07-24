@@ -82,7 +82,8 @@ Registry**. New sharp entries:
 - **member** — a chain's authored slot `{kind, key|steps, stage?, id?, captures/inputs/until}`.
   **stage** — the set of members that run concurrently (cursor advances stage-by-stage).
   **kind** — a member's coded threading-contract selector.
-- **blackboard** — the chain's threaded state (the row's `data` field), two-level per D5.
+- **chain data** — the chain's threaded state (the row's `data` field), two-level per D5;
+  captures write it, inputs read it via dotted data paths. ("blackboard" is retired jargon.)
 - **panel** — a roster-generated parallel group. **roster** — the plural `--agent` value.
   **panelist/branch** — one roster agent's step. **judge** — the pinned synthesis executor.
   **synthesis** — the judge step emitting the workflow's own contract.
@@ -100,7 +101,8 @@ Registry**. New sharp entries:
    docs/cookbook.md, skills (author-workflow-template, workflow-orchestrator, observe-h),
    apps/claude-agent/steering/h-runtime.md, CLI help/docstrings, comments. Kill the hop fossils
    (test names included), re-word "cron family" → siblings, correct step/activity misuse,
-   member everywhere for the chain slot. docs/plans/ (historical logs) are EXEMPT — plans are
+   member everywhere for the chain slot, blackboard → chain data everywhere (CLI help,
+   chain_expr/chain.py docstrings, CLAUDE.md chain bullet, engine comments). docs/plans/ (historical logs) are EXEMPT — plans are
    records, not living docs.
 3. [ ] **Tier 2 — internal identifiers**: `ChainWorkflow` → `ChainMember` (+ `MemberMappings`
    audit — already right), `WORKFLOW_KINDS` → `MEMBER_KINDS`, chain_expr's `WorkflowRef` →
@@ -114,7 +116,7 @@ Registry**. New sharp entries:
 5. [ ] **The guard — `scripts/check-vocabulary.mjs`** (harden-by-encoding): bans retired/wrong
    terms in LONG-LIVED prose surfaces (CLAUDE.md, README.md, ARCHITECTURE.md, cli/README.md,
    docs/cookbook.md, skills/, steering; NOT docs/plans/). Initial banlist: `\bhop\b`,
-   `\bfamily\b`, `chain workflow` (the slot sense), plus a HINT list (warn-only) if useful.
+   `\bfamily\b`, `\bblackboard\b`, `chain workflow` (the slot sense), plus a HINT list (warn-only) if useful.
    Banlist lives in the guard beside a pointer to the glossary; wired into root `lint`.
 6. [ ] **Sync-guard ripple**: test_kind_sync + any guard that greps renamed identifiers
    (`check-registry-writers`, `check-state-keys` are content-based — verify unaffected);
@@ -123,7 +125,7 @@ Registry**. New sharp entries:
 ## Acceptance
 
 - `rg -w hop cli apps docs/cookbook.md CLAUDE.md README.md ARCHITECTURE.md` → nothing.
-- `rg -w family` over the guard's surfaces → nothing; `check-vocabulary.mjs` proves it fires on
+- `rg -w family` and `rg -w blackboard` over the guard's surfaces → nothing; `check-vocabulary.mjs` proves it fires on
   a fixture before landing.
 - One triple table in ARCHITECTURE.md; CLAUDE.md/README use its words exactly.
 - Engine + CLI test suites green; e2e smoke (a chain registers and advances) after the Tier 3
@@ -142,3 +144,5 @@ Registry**. New sharp entries:
 - 2026-07-24 — Ideated with the user (survey: hop fossils, recycled "family", the five senses of
   "workflow"); three forks locked (keep step+activity sharpened; member; all-tiers atomic).
   Plan written, phased for h to execute.
+- 2026-07-24 — "blackboard" retired by user decision; the term is **chain data** (prose
+  converges on the wire field — the cluster dissolves rather than renames). Banlist updated.
