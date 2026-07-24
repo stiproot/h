@@ -7,6 +7,7 @@ WORKDIR /app
 # like the other workspace agents). Workspace manifests first for layer caching.
 COPY pyproject.toml uv.lock ./
 COPY packages/py/agent-core/pyproject.toml ./packages/py/agent-core/
+COPY packages/py/agent-server/pyproject.toml ./packages/py/agent-server/
 COPY apps/workflow-agent/pyproject.toml ./apps/workflow-agent/
 
 RUN --mount=type=cache,id=uv-store,sharing=locked,target=/root/.cache/uv \
@@ -14,6 +15,7 @@ RUN --mount=type=cache,id=uv-store,sharing=locked,target=/root/.cache/uv \
 
 # Workspace package + app source, then install the editable workspace packages
 COPY packages/py/agent-core/ ./packages/py/agent-core/
+COPY packages/py/agent-server/ ./packages/py/agent-server/
 COPY apps/workflow-agent/src/ ./apps/workflow-agent/src/
 
 RUN --mount=type=cache,id=uv-store,sharing=locked,target=/root/.cache/uv \

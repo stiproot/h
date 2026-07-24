@@ -3378,6 +3378,7 @@ version = "0.1.0"
 source = { virtual = "apps/workflow-agent" }
 dependencies = [
     { name = "agent-core", extra = ["dapr"] },
+    { name = "agent-server" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "opentelemetry-exporter-zipkin-json" },
@@ -3396,6 +3397,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "agent-core", extras = ["dapr"], editable = "packages/py/agent-core" },
+    { name = "agent-server", editable = "packages/py/agent-server" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "opentelemetry-exporter-zipkin-json", specifier = ">=1.27" },

@@ -6,6 +6,10 @@ dependencies = [
   # agent-core[dapr] provides the shared ReAct loop, the OpenAIChatClient adapter, and the
   # workflow-MCP toolset (and, transitively, dapr-agents). httpx stays for the statestore.
   "agent-core[dapr]",
+  # agent-server provides the shared HTTP contract main.py imports (WorkflowBabysitter,
+  # register_workflow_route). Required at runtime — host mode has the full workspace synced, but
+  # the container image only installs declared deps, so this must be explicit.
+  "agent-server",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
   "httpx>=0.27",
@@ -17,6 +21,7 @@ dependencies = [
 
 [tool.uv.sources]
 agent-core = { workspace = true }
+agent-server = { workspace = true }
 
 [dependency-groups]
 dev = ["ruff>=0.9", "import-linter>=2.1"]
