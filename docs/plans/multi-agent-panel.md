@@ -1,5 +1,11 @@
 # Multi-agent panel — parallel step groups in the generic workflow
 
+> **2026-07-24 — superseded at the authoring level by [[panels-as-a-modifier]]:** the engine's
+> parallel step group (this plan's deliverable) is unchanged and load-bearing, but panels are no
+> longer HAND-AUTHORED — the CLI's `panelize` transform generates the group from an `--agent`
+> roster on any read/judge workflow. The `agent-panel` template + chain kind this plan shipped
+> are retired, subsumed by the `answer` template/kind (the bare panelizable task member).
+
 ## Position: augment agents, never replace them
 
 h does not compete with what an agent runtime already does well — Claude Code's subagents,

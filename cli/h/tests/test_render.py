@@ -30,7 +30,6 @@ MINIMAL_VALUES = {
 }
 PINNED_OR_OVERLAY_IDENTITY = {
     "pr-review",
-    "agent-panel",
     "plugin-setup-test",
     "plugin-improvement",
     "verify",
@@ -478,22 +477,23 @@ def test_bootstrap_repo_contract_in_three_places() -> None:
     assert "===OUTPUT CONTRACT===" in agent["input"]["task"]
 
 
-def test_agent_panel_publish_golden(snapshot) -> None:
-    """agent-panel publish mode: the first parallel-group template — three pinned branches
-    fanned out in ONE group, one synthesis declarer (docs/plans/multi-agent-panel.md)."""
-    rendered = helm.render_workflow("agent-panel", values={"publish": "true"}, include_local=False)
+def test_answer_publish_golden(snapshot) -> None:
+    """answer publish mode: the bare panelizable task template (docs/plans/panels-as-a-modifier.md
+    — successor of the retired hand-built agent-panel; a roster panelizes it at fire time)."""
+    rendered = helm.render_workflow("answer", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
 
-def test_agent_panel_is_one_group_plus_synthesis() -> None:
-    """Structure contract: a single parallel group of the three pinned agent branches, then a
-    sequential synthesis step that is the composition's ONE output declarer."""
-    rendered = helm.render_workflow("agent-panel", values={"publish": "true"}, include_local=False)
+def test_answer_is_one_contract_step_with_panel_synthesis() -> None:
+    """Structure contract: ONE contract-carrying step (what panelize replicates), open identity
+    slots, and a top-level panelSynthesis join rule for roster runs."""
+    rendered = helm.render_workflow("answer", values={"publish": "true"}, include_local=False)
     definition = json.loads(helm.to_wire_json(rendered))
-    group, synth = definition["steps"]
-    assert group["id"] == "panel"
-    assert [b["activity"] for b in group["parallel"]] == ["run-claude", "run-openhands", "run-pi"]
-    assert all("outputContract" not in (b.get("input") or {}) for b in group["parallel"])
-    assert synth["id"] == "synthesize"
-    assert synth["input"]["outputContract"] == definition["outputs"]
-    assert definition["outputs"]["required"] == ["consensus", "best"]
+    (step,) = definition["steps"]
+    assert step["id"] == "answer"
+    assert step["activity"] == "{{params.runActivity}}"
+    assert step["input"]["outputContract"] == definition["outputs"]
+    assert "===OUTPUT CONTRACT===" in step["input"]["task"]
+    assert definition["outputs"]["required"] == ["answer"]
+    assert "answer" in definition["panelSynthesis"]
+    assert "disagreements" in definition["panelSynthesis"]

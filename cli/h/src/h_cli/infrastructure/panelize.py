@@ -85,7 +85,7 @@ def roster_pairs(
 
 def _branch_id(agent: str) -> str:
     """Roster name → branch id: the short form ('claude-agent' → 'claude'), matching the
-    agent-panel template's branch naming."""
+    branch naming the run activities' outputs read back (`{{claude.output}}`)."""
     return agent.removesuffix("-agent")
 
 

@@ -102,20 +102,19 @@ export function captureReview(output: string | undefined, data: Blackboard): voi
 }
 
 /**
- * Capture a multi-agent panel's synthesis from its validated structured output: `consensus` (the
- * merged answer the panel agreed on) plus `best` (which panelist — or "merged" — to prefer). A
- * downstream member threads `consensus` in as its spec. `disagreements` stays reachable via an
- * explicit `--capture`. This flat write is the lone-member default; a PARALLEL panel member (two
+ * Capture an `answer` member's conclusion from its validated structured output: `answer` (the
+ * conclusive answer to the task — for a panelized run, the judge's merged synthesis). A downstream
+ * member threads `answer` in as its spec. `disagreements` (panel runs) stays reachable via an
+ * explicit `--capture`. This flat write is the lone-member default; a PARALLEL answer member (two
  * panels in one stage) declares explicit `captures` + an `id`, which namespaces them under `data[id]`
- * so concurrent panels never clobber this flat `consensus`. A missing consensus is a broken panel
- * contract — fail loud, never fire the next member on a guess.
+ * so concurrent members never clobber this flat `answer`. A missing answer is a broken contract —
+ * fail loud, never fire the next member on a guess.
  */
-export function capturePanel(output: string | undefined, data: Blackboard): void {
-  const s = requireStructured(output, "capturePanel");
-  if (typeof s.consensus !== "string" || s.consensus === "")
-    throw new ChainThreadError("capturePanel: structured output has no 'consensus'");
-  data.consensus = s.consensus;
-  if (typeof s.best === "string" && s.best) data.best = s.best;
+export function captureAnswer(output: string | undefined, data: Blackboard): void {
+  const s = requireStructured(output, "captureAnswer");
+  if (typeof s.answer !== "string" || s.answer === "")
+    throw new ChainThreadError("captureAnswer: structured output has no 'answer'");
+  data.answer = s.answer;
 }
 
 /**
@@ -283,15 +282,17 @@ export const WORKFLOW_KINDS: Record<ChainWorkflowKind, WorkflowContract> = {
       ),
     capture: capturePr,
   },
-  // A multi-agent panel (claude ∥ openhands ∥ pi, one in-process parallel step, then a synthesis):
-  // reads a `task` from the blackboard; captures the synthesis's `consensus`/`best` so a downstream
-  // member can consume the chosen design as its spec. Identity is PINNED per-branch in the template
-  // (run-claude/run-openhands/run-pi), so there are no fire-time identity params to thread. Two panels
-  // in one stage override this coded contract with explicit `--input task=…` + namespaced `--capture`.
-  "agent-panel": {
+  // A bare "answer this task" member (templates/answer.yaml) — the panelizable degenerate case
+  // (docs/plans/panels-as-a-modifier.md): identity is ordinary fire-time params, and an --agent
+  // ROSTER turns the one answer step into a multi-agent panel (parallel panelists + a judge
+  // synthesis under this same contract) — the retired hand-built `agent-panel` template/kind,
+  // subsumed 2026-07-24. Reads a `task` from the blackboard; captures the structured `answer` so
+  // a downstream member can consume it (e.g. as its spec). Two answer members in one stage
+  // override this coded contract with explicit `--input task=…` + namespaced `--capture`.
+  answer: {
     buildParams: (data) => ({
-      task: requireStr(data, "task", "agent-panel needs a task on the blackboard"),
+      task: requireStr(data, "task", "answer needs a task on the blackboard"),
     }),
-    capture: capturePanel,
+    capture: captureAnswer,
   },
 };

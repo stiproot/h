@@ -1,6 +1,6 @@
 # Panels as a modifier: the `--agent` roster
 
-Status: v1 IMPLEMENTED (CLI slice, 2026-07-24) — e2e validation + agent-panel retirement pending
+Status: IMPLEMENTED (v1 + agent-panel retirement, 2026-07-24) — e2e validation pending
 Established: 2026-07-23 · Designed: 2026-07-24 · Built: 2026-07-24
 
 ## The idea
@@ -134,11 +134,20 @@ deferred (reintroduces N× provisioning).
    findings, disputed-finding notation, no second posted review). Golden re-blessed.
 6. DONE — docs/tests ripple: grammar docstrings, `chain.py`/`workflow.py` help, CLAUDE.md (chain
    bullet + CLI layout line), parser tests migrated to `agents=`, 246 h-cli tests green.
-7. PENDING — migration of the prior art: `agent-panel` (template + chain kind) still works
-   untouched; retire in a follow-up cutover once the roster path is validated e2e
-   ([[atomic-cutovers]] applies to the retirement, not to coexistence-while-designing).
-8. PENDING — e2e validation: a real panel review chain (codex implements → roster reviews →
-   codex revises, `--strategy loop-until-clean`) against a live PR, host or container mode.
+7. DONE — the prior art is retired ([[atomic-cutovers]]): `agent-panel` (template + chain kind)
+   → **`answer`**, the bare panelizable task member. New `answer.yaml` (ONE contract-carrying
+   step, open identity slots, contract `{answer, disagreements?}`, its own `panelSynthesis:`);
+   engine kind renamed on both sides (`chain.model.ts` literal + `chain-workflows.ts`
+   `captureAnswer` capturing the flat `answer`; `capturePanel`/`consensus`/`best` deleted); CLI
+   tables follow (`KNOWN_KINDS`/`WELL_KNOWN`/`KIND_FIRE` prefix `answer-<slug>`/
+   `KIND_MODEL_PARAMS` gains `modelAnswer` — a real model slot the old pinned-identity panel
+   never had — + `MODEL_PARAM_SLOTS`); kind-sync guard green by construction, engine 309 +
+   h-cli 246 tests green, old golden deleted + answer golden blessed. A panel chain member is
+   now `-w answer --agent claude codex openhands` — same words as everywhere else.
+8. PENDING — e2e validation: one chain exercising ALL parallelism substrates — a panelized
+   member (roster → parallel step group), `--parallel` chain stages, and two panels in one
+   stage (`-w answer --agent … --parallel -w answer --agent …`) — plus the panel review loop
+   (codex implements → roster reviews → codex revises, `--strategy loop-until-clean`).
 
 ## v1 caveats (observed while building — candidates for the e2e to confirm or dissolve)
 
@@ -182,3 +191,11 @@ deferred (reintroduces N× provisioning).
   short-name branch ids; epilogue stripped from the quoted task; duplicate-executor rosters
   rejected. Remaining: e2e panel-review chain (item 8), then the agent-panel retirement cutover
   (item 7).
+- 2026-07-24 — Item 7 done (same day, reordered before the e2e at the user's direction —
+  finish implementation first, then one e2e exercising every parallelism substrate):
+  `agent-panel` → `answer` cutover across template, engine kind (both sides), CLI tables, tests,
+  goldens, CLAUDE.md, and a superseded-note on docs/plans/multi-agent-panel.md. The kind's
+  contract simplified with the reshape: `task` in (unchanged), flat `answer` out (was
+  `consensus`+`best` — `best` died with the fixed three-agent roster; the judge merges instead).
+  multi-agent-panel.md's engine deliverable (the parallel step group) is untouched and now
+  exclusively fed by panelize.

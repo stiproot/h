@@ -60,7 +60,13 @@ AGENT_IDENTITY: dict[str, tuple[str, str]] = {
 
 # The model param slots publish-mode templates expose (chain's KIND_MODEL_PARAMS, unioned).
 # `--model` is execution machinery (like `--agent`): it sets these slots on `h workflow run`.
-MODEL_PARAM_SLOTS: tuple[str, ...] = ("modelPlan", "modelImplement", "modelReview", "modelRevise")
+MODEL_PARAM_SLOTS: tuple[str, ...] = (
+    "modelPlan",
+    "modelImplement",
+    "modelReview",
+    "modelRevise",
+    "modelAnswer",
+)
 
 # Saved keys whose executor is pinned: --agent is warned-and-ignored, never applied. pr-review's
 # executor is the loop's consistent reviewer (claude-agent). Under the trust model this pin is an

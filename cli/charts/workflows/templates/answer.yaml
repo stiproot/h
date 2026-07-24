@@ -1,0 +1,85 @@
+{{- /*
+answer workflow — one bare "answer this task" step, the panelizable degenerate case.
+
+Successor of the hand-built agent-panel template (retired 2026-07-24 — docs/plans/
+panels-as-a-modifier.md): a panel is no longer a separate workflow but a CARDINALITY of
+`--agent`. Run this with one agent and it answers; run it with a roster
+(`--agent claude codex openhands`) and the CLI panelizes it — the answer step fans into a
+parallel branch per agent (each working independently, no cross-talk) and a pinned judge
+synthesizes under this same contract. h provides the fan-out and the join; the judgment stays
+agent-side.
+
+Publish-native: per-run inputs are {{params.*}} engine tokens — save it once, fire it with
+`h workflow run answer -p task=…` (or run_saved_workflow / a workflow-trigger event), or chain
+it as the `answer` kind (`-w answer`; reads `task` off the blackboard, captures `answer`).
+
+Fire-time params:
+  task         the question or task to answer (required)
+  runActivity  / agentId — fire-time identity (--agent), defaulting to claude
+
+Template config (values, baked at publish time): answer.models.answer.
+
+Publish:
+  helm template answer cli/charts/workflows -s templates/answer.yaml \
+    --set template=answer --set publish=true
+*/ -}}
+{{- /*
+The declared output contract (structured-workflow-outputs): `answer` is what a downstream chain
+member consumes (captureAnswer); `disagreements` only means something on a panel run, where the
+judge surfaces where the panelists diverged.
+*/ -}}
+{{- define "h.contract.answer" -}}
+type: object
+required:
+  - answer
+properties:
+  answer:
+    type: string
+    description: the conclusive answer to the task, plainly stated
+  disagreements:
+    type: string
+    description: >-
+      panel runs only — where independent answers diverged and why it matters; empty or
+      omitted otherwise
+{{- end }}
+{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "answer" }}
+{{- $a := .Values.answer }}
+{{- $contract := include "h.contract.answer" . | fromYaml }}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
+{{- $activityRef := include "h.token" "params.runActivity" | quote }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  {{- with $a.models.answer }}
+  modelAnswer: {{ . | quote }}
+  {{- end }}
+steps:
+  - id: answer
+    activity: {{ $activityRef }}
+    input:
+      outputContract: {{ $contract | toJson }}
+      {{- with $a.models.answer }}
+      model: {{ include "h.token" "params.modelAnswer" | quote }}
+      {{- end }}
+      task: |-
+        Answer the task under ===TASK=== below. Work independently from your own knowledge and
+        reasoning; do not ask questions. Be concise and conclusive — end with your answer,
+        plainly stated, reported via the fields of your final json block.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+
+        ===TASK===
+        {{- include "h.token" "params.task" | nindent 8 }}
+outputs:
+  {{- include "h.contract.answer" . | nindent 2 }}
+{{- /*
+panelSynthesis — "how to synthesize a panel of me" (docs/plans/panels-as-a-modifier.md): spliced
+into the judge's task when this workflow runs under an --agent roster; inert otherwise.
+*/}}
+panelSynthesis: |-
+  Merge the panelists' answers into ONE conclusive `answer`: prefer the strongest reasoning
+  over the largest headcount, and merge complementary points rather than picking a side when
+  they compose. Surface real divergences — different conclusions, not different phrasings —
+  in `disagreements`, naming which panelist held what and why it matters; leave it empty
+  when the panel genuinely agrees.
+{{- end }}

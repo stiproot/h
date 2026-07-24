@@ -1,42 +1,18 @@
 # serializer version: 1
-# name: test_agent_panel_publish_golden
+# name: test_answer_publish_golden
   '''
+  params:
+    runActivity: "run-claude"
+    agentId: "claude-agent"
   steps:
-    - id: panel
-      parallel:
-        - id: claude
-          activity: run-claude
-          input:
-            task: |-
-              Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated.
-  
-              ===TASK===
-              {{params.task}}
-        - id: openhands
-          activity: run-openhands
-          input:
-            task: |-
-              Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated.
-  
-              ===TASK===
-              {{params.task}}
-        - id: pi
-          activity: run-pi
-          input:
-            task: |-
-              Answer the task under ===TASK=== below. Work independently from your own knowledge and reasoning; do not ask questions. Be concise and conclusive — end with your answer, plainly stated.
-  
-              ===TASK===
-              {{params.task}}
-    - id: synthesize
-      activity: run-claude
+    - id: answer
+      activity: "{{params.runActivity}}"
       input:
-        outputContract: {"properties":{"best":{"description":"which single answer to prefer, or \"merged\" when the consensus beats them all","enum":["claude","openhands","pi","merged"]},"consensus":{"description":"what the panel agrees on — the merged answer to the task","type":"string"},"disagreements":{"description":"where the answers diverge and why it matters (empty if none)","type":"string"}},"required":["consensus","best"],"type":"object"}
+        outputContract: {"properties":{"answer":{"description":"the conclusive answer to the task, plainly stated","type":"string"},"disagreements":{"description":"panel runs only — where independent answers diverged and why it matters; empty or omitted otherwise","type":"string"}},"required":["answer"],"type":"object"}
         task: |-
-          Three agents (claude, openhands, pi) independently answered the same task. The task
-          and their answers are below. Compare them: what do they agree on, where do they
-          diverge in ways that matter, and which answer — or a merge — is best?
-          Report the outcome ONLY via the fields of your final json block below.
+          Answer the task under ===TASK=== below. Work independently from your own knowledge and
+          reasoning; do not ask questions. Be concise and conclusive — end with your answer,
+          plainly stated, reported via the fields of your final json block.
           
           ===OUTPUT CONTRACT===
           End your final message with a fenced ```json code block containing a single JSON
@@ -44,61 +20,42 @@
           mismatching block fails this step. Nothing may follow the block.
           {
             "properties": {
-              "best": {
-                "description": "which single answer to prefer, or \"merged\" when the consensus beats them all",
-                "enum": [
-                  "claude",
-                  "openhands",
-                  "pi",
-                  "merged"
-                ]
-              },
-              "consensus": {
-                "description": "what the panel agrees on — the merged answer to the task",
+              "answer": {
+                "description": "the conclusive answer to the task, plainly stated",
                 "type": "string"
               },
               "disagreements": {
-                "description": "where the answers diverge and why it matters (empty if none)",
+                "description": "panel runs only — where independent answers diverged and why it matters; empty or omitted otherwise",
                 "type": "string"
               }
             },
             "required": [
-              "consensus",
-              "best"
+              "answer"
             ],
             "type": "object"
           }
   
           ===TASK===
           {{params.task}}
-  
-          ===CLAUDE===
-          {{claude.output}}
-  
-          ===OPENHANDS===
-          {{openhands.output}}
-  
-          ===PI===
-          {{pi.output}}
   outputs:
     type: object
     required:
-      - consensus
-      - best
+      - answer
     properties:
-      consensus:
+      answer:
         type: string
-        description: what the panel agrees on — the merged answer to the task
+        description: the conclusive answer to the task, plainly stated
       disagreements:
         type: string
-        description: where the answers diverge and why it matters (empty if none)
-      best:
-        enum:
-          - claude
-          - openhands
-          - pi
-          - merged
-        description: which single answer to prefer, or "merged" when the consensus beats them all
+        description: >-
+          panel runs only — where independent answers diverged and why it matters; empty or
+          omitted otherwise
+  panelSynthesis: |-
+    Merge the panelists' answers into ONE conclusive `answer`: prefer the strongest reasoning
+    over the largest headcount, and merge complementary points rather than picking a side when
+    they compose. Surface real divergences — different conclusions, not different phrasings —
+    in `disagreements`, naming which panelist held what and why it matters; leave it empty
+    when the panel genuinely agrees.
   
   '''
 # ---

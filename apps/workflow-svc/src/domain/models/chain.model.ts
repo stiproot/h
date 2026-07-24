@@ -47,7 +47,7 @@ export type ChainOutcome = Schema.Schema.Type<typeof ChainOutcome>;
 // fire-params from the blackboard and captures its output back into it. Threading is engine code,
 // not a config DSL (mirrors the watcher's ruling W3) — a novel chain adds a kind here + in
 // chain-workflows.ts. Closed literal so an unknown kind fails validation at registration.
-export const ChainWorkflowKind = Schema.Literal("feature-pr", "pr-review", "revise", "agent-panel");
+export const ChainWorkflowKind = Schema.Literal("feature-pr", "pr-review", "revise", "answer");
 export type ChainWorkflowKind = Schema.Schema.Type<typeof ChainWorkflowKind>;
 
 /**

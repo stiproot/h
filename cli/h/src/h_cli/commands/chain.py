@@ -68,37 +68,36 @@ err_console = Console(stderr=True)
 PER_WORKFLOW_BUDGET_MS = 45 * 60_000
 _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
-KNOWN_KINDS = ("feature-pr", "pr-review", "revise", "agent-panel")
+KNOWN_KINDS = ("feature-pr", "pr-review", "revise", "answer")
 # Well-known -w names → (kind, saved key fired). Each is a first-class standalone workflow with its
 # own saved definition — `revise` fires the `revise` template (which reads the PR's review threads
-# itself), no longer a re-fire of feature-pr's definition. `agent-panel` is the multi-agent panel
-# (claude ∥ openhands ∥ pi → synthesis): a chain member whose in-process parallel step runs
-# concurrently with the rest of its stage — its coded threading contract lives in
+# itself), no longer a re-fire of feature-pr's definition. `answer` is the bare "answer this task"
+# member (the panelizable degenerate case, docs/plans/panels-as-a-modifier.md — successor of the
+# retired agent-panel): reads `task` off the blackboard, captures `answer`; an --agent roster
+# panelizes it at fire time. Coded threading contracts live in
 # workflow-svc/domain/chain-workflows.ts (a novel kind is added on both sides, per chain.model.ts).
 WELL_KNOWN: dict[str, tuple[str, str]] = {
     "feature-pr": ("feature-pr", "feature-pr"),
     "pr-review": ("pr-review", "pr-review"),
     "revise": ("revise", "revise"),
-    "agent-panel": ("agent-panel", "agent-panel"),
+    "answer": ("answer", "answer"),
 }
 # kind → (instanceId prefix, fresh default). feature-pr and revise share the branch instance
-# (feature-<slug>) — they operate on the same branch; revise re-runs it fresh. agent-panel cuts no
-# branch; its prefix only names a LONE sequential panel's instance (a parallel member's instance is
-# engine-derived, <chainId>-w<index>), and it re-runs fresh so each chain gets a fresh design.
+# (feature-<slug>) — they operate on the same branch; revise re-runs it fresh. answer cuts no
+# branch; its prefix only names a LONE sequential member's instance (a parallel member's instance
+# is engine-derived, <chainId>-w<index>), and it re-runs fresh so each chain gets a fresh answer.
 KIND_FIRE: dict[str, tuple[str, bool]] = {
     "feature-pr": ("feature", False),
     "pr-review": ("pr-review", False),
     "revise": ("feature", True),
-    "agent-panel": ("panel", True),
+    "answer": ("answer", True),
 }
-# kind → the model param slots its template exposes (--model sets them all). agent-panel bakes its
-# per-panelist models at publish time (agentPanel.models.* in values), NOT as fire-time params, so
-# it exposes no --model slots (an empty tuple: --model is a no-op, never a bogus param).
+# kind → the model param slots its template exposes (--model sets them all).
 KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
     "feature-pr": ("modelPlan", "modelImplement"),
     "revise": ("modelRevise",),
     "pr-review": ("modelReview",),
-    "agent-panel": (),
+    "answer": ("modelAnswer",),
 }
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
 # (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER

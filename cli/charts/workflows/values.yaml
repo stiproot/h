@@ -138,12 +138,11 @@ prReview:
   models:
     review: ""
 
-# agent-panel workflow (templates/agent-panel.yaml): one task, three agents in parallel, one
-# synthesis (docs/plans/multi-agent-panel.md). Publish-native; identity pinned per branch.
-agentPanel:
-  # Per-branch model overrides; empty = each agent's AGENT_MODEL.
+# answer workflow (templates/answer.yaml): one bare "answer this task" step — the panelizable
+# degenerate case (docs/plans/panels-as-a-modifier.md; successor of the retired agent-panel).
+# Identity is fire-time params; an --agent roster panelizes it at fire time.
+answer:
   models:
-    claude: ""
-    openhands: ""
-    pi: ""
-    synthesize: ""
+    # Model for a single-executor run (opens the modelAnswer slot); empty = the agent's
+    # AGENT_MODEL. A panel run strips per-branch models (each panelist uses its own default).
+    answer: ""

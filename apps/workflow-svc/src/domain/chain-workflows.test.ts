@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   type Blackboard,
-  capturePanel,
+  captureAnswer,
   capturePr,
   captureReview,
   ChainThreadError,
@@ -265,47 +265,46 @@ describe("loopIsClean", () => {
   });
 });
 
-describe("agent-panel kind (multi-agent panel as a chain member)", () => {
+describe("answer kind (the panelizable bare-task member)", () => {
   it("buildParams reads a task off the blackboard", () => {
-    expect(WORKFLOW_KINDS["agent-panel"].buildParams({ task: "design the codex integration" })).toEqual({
+    expect(WORKFLOW_KINDS["answer"].buildParams({ task: "design the codex integration" })).toEqual({
       task: "design the codex integration",
     });
   });
 
   it("buildParams fails loud when no task is on the blackboard", () => {
-    expect(() => WORKFLOW_KINDS["agent-panel"].buildParams({})).toThrow(ChainThreadError);
+    expect(() => WORKFLOW_KINDS["answer"].buildParams({})).toThrow(ChainThreadError);
   });
 
-  it("capturePanel threads consensus + best onto the blackboard", () => {
+  it("captureAnswer threads the answer onto the blackboard", () => {
     const data: Blackboard = {};
-    capturePanel(
+    captureAnswer(
       result({
-        synthesize: { structured: { consensus: "use exec --json", best: "claude", disagreements: "" } },
+        answer: { structured: { answer: "use exec --json", disagreements: "" } },
       }),
       data,
     );
-    expect(data.consensus).toBe("use exec --json");
-    expect(data.best).toBe("claude");
+    expect(data.answer).toBe("use exec --json");
   });
 
-  it("capturePanel fails loud when the synthesis emitted no consensus", () => {
+  it("captureAnswer fails loud when no answer was emitted", () => {
     expect(() =>
-      capturePanel(result({ synthesize: { structured: { best: "merged" } } }), {}),
+      captureAnswer(result({ answer: { structured: { disagreements: "none" } } }), {}),
     ).toThrow(ChainThreadError);
   });
 
-  it("a parallel panel's explicit captures + id namespace under data[id] (no clobber of the flat consensus)", () => {
-    const data: Blackboard = { consensus: "flat-from-a-lone-member" };
+  it("a parallel member's explicit captures + id namespace under data[id] (no clobber of the flat answer)", () => {
+    const data: Blackboard = { answer: "flat-from-a-lone-member" };
     const contract = contractFor({
-      kind: "agent-panel",
+      kind: "answer",
       id: "design",
-      captures: { consensus: "consensus", best: "best" },
+      captures: { answer: "answer", disagreements: "disagreements" },
     });
     contract.capture(
-      result({ synthesize: { structured: { consensus: "namespaced answer", best: "pi" } } }),
+      result({ answer: { structured: { answer: "namespaced answer", disagreements: "minor" } } }),
       data,
     );
-    expect(data.design).toEqual({ consensus: "namespaced answer", best: "pi" });
-    expect(data.consensus).toBe("flat-from-a-lone-member"); // untouched
+    expect(data.design).toEqual({ answer: "namespaced answer", disagreements: "minor" });
+    expect(data.answer).toBe("flat-from-a-lone-member"); // untouched
   });
 });
