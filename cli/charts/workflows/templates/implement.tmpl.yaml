@@ -56,6 +56,10 @@ non-publish render stays byte-identical to the pre-params-era output. */ -}}
 {{- $spec = include "h.token" "params.spec" }}
 params:
   runActivity: {{ $runActivity | quote }}
+  {{- /* Target-repo knob (multi-repo, docs/plans/chain-engine-followups.md successor work):
+  the pre-clone path the worktree cuts from. Values default (empty = the shared <root>/repo);
+  fire-time -p clonePath=/workspace/<other-repo> aims the run at another checkout. */}}
+  clonePath: {{ $f.clonePath | default "" | quote }}
   agentId: {{ .Values.agentId | quote }}
   {{- /* wf-registry identity (owner/name) — a stored default; -p repo=… overrides per fire.
   Identity only: no step reads it (the worktree cuts from clonePath, the push derives owner/repo
@@ -80,9 +84,7 @@ steps:
     input:
       agentId: {{ $agentIdRef | quote }}
       branch: {{ printf "feature/%s" $slug | quote }}
-      {{- with $f.clonePath }}
-      clonePath: {{ . | quote }}
-      {{- end }}
+      clonePath: {{ include "h.token" "params.clonePath" | quote }}
       {{- with $f.remoteBase }}
       remoteBase: {{ . | quote }}
       {{- end }}

@@ -312,3 +312,26 @@ describe("answer kind (the panelizable bare-task member)", () => {
     expect(data.answer).toBe("flat-from-a-lone-member"); // untouched
   });
 });
+
+describe("multi-repo target knobs (clonePath/verifyCmd passthrough)", () => {
+  it("implement-pr threads clonePath + verifyCmd from the chain data when present", () => {
+    const params = MEMBER_KINDS["implement-pr"].buildParams({
+      slug: "s",
+      spec: "do it",
+      clonePath: "/workspace/trxy-v2",
+      verifyCmd: "bun run lint",
+    });
+    expect(params).toMatchObject({ clonePath: "/workspace/trxy-v2", verifyCmd: "bun run lint" });
+  });
+
+  it("revise-pr threads clonePath; absent knobs stay absent", () => {
+    const params = MEMBER_KINDS["revise-pr"].buildParams({
+      prNumber: "7",
+      slug: "s",
+      clonePath: "/workspace/trxy-v2",
+    });
+    expect(params).toMatchObject({ clonePath: "/workspace/trxy-v2" });
+    const bare = MEMBER_KINDS["implement-pr"].buildParams({ slug: "s", spec: "x" });
+    expect(bare).not.toHaveProperty("clonePath");
+  });
+});

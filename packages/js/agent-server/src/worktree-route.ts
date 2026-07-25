@@ -77,7 +77,9 @@ const worktreeEffect = (
     const startedAtMs = Date.now();
     const key = workspaceId ?? workflowInstanceId;
     const worktreePath = join(sharedRoot, "worktrees", key);
-    const repoPath = clonePath ?? join(sharedRoot, "repo");
+    // Empty string = unset: templates now always emit clonePath as a {{params.clonePath}} token
+    // whose default is "" (multi-repo promotion) — treat blank exactly like absent.
+    const repoPath = clonePath?.trim() ? clonePath : join(sharedRoot, "repo");
     const rec = (
       status: ActivityRecord["status"],
       extra?: Partial<ActivityRecord>,

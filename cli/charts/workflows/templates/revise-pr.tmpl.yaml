@@ -57,6 +57,7 @@ with fire-time params). $activityRef is pre-quoted so the bare `{{` isn't read a
 {{- $pr := include "h.token" "params.pr" }}
 params:
   runActivity: {{ $runActivity | quote }}
+  clonePath: {{ $r.clonePath | default "" | quote }}
   agentId: {{ .Values.agentId | quote }}
   {{- /* wf-registry identity (owner/name) — a stored default; -p repo=… overrides per fire.
   Identity only (does not drive the worktree clonePath). Omitted when empty (opt-in). */ -}}
@@ -72,9 +73,7 @@ steps:
     input:
       agentId: {{ $agentIdRef | quote }}
       branch: {{ printf "feature/%s" $slug | quote }}
-      {{- with $r.clonePath }}
-      clonePath: {{ . | quote }}
-      {{- end }}
+      clonePath: {{ include "h.token" "params.clonePath" | quote }}
       {{- with $r.remoteBase }}
       remoteBase: {{ . | quote }}
       {{- end }}

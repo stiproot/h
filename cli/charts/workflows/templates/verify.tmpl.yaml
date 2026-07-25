@@ -25,6 +25,10 @@ Render alone (for inspection):
 role: overlay
 {{- $v := .Values.verify }}
 {{- $cmd := required "verify.cmd is required (--set verify.cmd=<command>)" $v.cmd }}
+{{- /* The command is a fire-time param (multi-repo): values supply the default (required so a
+render can never silently have no check); -p verifyCmd="bun run verify" retargets per fire. */}}
+params:
+  verifyCmd: {{ $cmd | quote }}
 steps:
   - id: implement
     input:
@@ -33,7 +37,7 @@ steps:
         Before you finish, prove the change with the acceptance check. Run exactly this
         command in the worktree root:
 
-            {{ $cmd }}
+            {{ include "h.token" "params.verifyCmd" }}
 
         If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
         until it passes or you have made 3 fix attempts. Do not weaken the check (no

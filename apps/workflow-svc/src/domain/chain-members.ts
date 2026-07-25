@@ -245,6 +245,11 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
       };
       if (typeof data.issueNumber === "string" && data.issueNumber)
         params.issueNumber = data.issueNumber;
+      // Target-repo knobs (multi-repo): optional passthrough from the chain data, so a chain
+      // aimed at another checkout seeds them once (-p clonePath=… -p verifyCmd=…) instead of
+      // per-member --input redeclaration.
+      for (const key of ["clonePath", "verifyCmd"] as const)
+        if (typeof data[key] === "string" && data[key]) params[key] = data[key];
       return withRepo(params, data);
     },
     capture: capturePr,
@@ -268,18 +273,19 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
   // only durable REFERENCES — the PR number + slug — not the review text: revise reads the review
   // from GitHub, so the workflow stays self-sufficient and runnable standalone.
   "revise-pr": {
-    buildParams: (data) =>
-      withRepo(
-        {
-          pr: requireStr(
-            data,
-            "prNumber",
-            "revise needs a PR number on the chain data (create-pr's structured `pr`)",
-          ),
-          slug: requireStr(data, "slug", "revise needs a slug on the chain data"),
-        },
-        data,
-      ),
+    buildParams: (data) => {
+      const params: Record<string, unknown> = {
+        pr: requireStr(
+          data,
+          "prNumber",
+          "revise needs a PR number on the chain data (create-pr's structured `pr`)",
+        ),
+        slug: requireStr(data, "slug", "revise needs a slug on the chain data"),
+      };
+      // Target-repo knob (multi-repo): the PR-branch worktree cuts from the same checkout.
+      if (typeof data.clonePath === "string" && data.clonePath) params.clonePath = data.clonePath;
+      return withRepo(params, data);
+    },
     capture: capturePr,
   },
   // A bare "answer this task" member (templates/answer.yaml) — the panelizable degenerate case
