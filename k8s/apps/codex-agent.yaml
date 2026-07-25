@@ -13,10 +13,6 @@ data:
         "dapr": {
           "type": "sse",
           "url": "http://dapr-mcp:8000/sse"
-        },
-        "obs": {
-          "type": "sse",
-          "url": "http://obs-mcp:8000/sse"
         }
       }
     }
