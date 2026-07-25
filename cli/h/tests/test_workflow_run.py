@@ -174,8 +174,9 @@ def test_agent_roster_panelizes_and_fires_inline() -> None:
     assert "runActivity" not in body["params"]
 
 
+@pytest.mark.parametrize("key", ["custom-workflow", "feature-pr"])
 @respx.mock
-def test_agent_roster_panelizes_a_custom_saved_workflow() -> None:
+def test_agent_roster_panelizes_a_custom_saved_workflow(key: str) -> None:
     definition = {
         "params": {"topic": "stored"},
         "steps": [
@@ -189,7 +190,7 @@ def test_agent_roster_panelizes_a_custom_saved_workflow() -> None:
             }
         ],
     }
-    get_route = respx.get(f"{WORKFLOW_URL}/workflow/get/custom-workflow").mock(
+    get_route = respx.get(f"{WORKFLOW_URL}/workflow/get/{key}").mock(
         return_value=Response(200, json=definition)
     )
     run_route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
@@ -198,7 +199,7 @@ def test_agent_roster_panelizes_a_custom_saved_workflow() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "custom-workflow",
+            "workflow", "run", key,
             "--agent", "claude", "--agent", "codex",
         ],
     )
