@@ -10,8 +10,8 @@ const H_MCP = JSON.stringify({
       url: "https://api.githubcopilot.com/mcp/",
       headers: { Authorization: "Bearer ${GH_TOKEN}" },
     },
-    dapr: { type: "sse", url: "http://localhost:8011/sse" },
-    obs: { type: "sse", url: "http://localhost:8013/sse" },
+    dapr: { type: "http", url: "http://localhost:8011/mcp" },
+    obs: { type: "http", url: "http://localhost:8013/mcp" },
     notion: {
       type: "stdio",
       command: "npx",
@@ -39,12 +39,28 @@ describe("mcpJsonToCodexToml", () => {
     expect(toml).toContain("env = {");
   });
 
-  it("SKIPS sse servers (codex uses streamable-http, not sse) with a reason", () => {
+  it("includes Dapr and observability over Streamable HTTP, targeting their /mcp routes", () => {
+    const { toml, included, skipped } = mcpJsonToCodexToml(H_MCP);
+    expect(included).toContain("dapr");
+    expect(included).toContain("obs");
+    expect(skipped.some((s) => s.startsWith("dapr:") || s.startsWith("obs:"))).toBe(false);
+    expect(toml).toContain("[mcp_servers.dapr]");
+    expect(toml).toContain('url = "http://localhost:8011/mcp"');
+    expect(toml).toContain("[mcp_servers.obs]");
+    expect(toml).toContain('url = "http://localhost:8013/mcp"');
+  });
+
+  it("still skips genuinely SSE-only servers with an instructive reason", () => {
     const { included, skipped } = mcpJsonToCodexToml(H_MCP);
     expect(included).not.toContain("workflows");
-    expect(included).not.toContain("dapr");
-    expect(included).not.toContain("obs");
-    expect(skipped.some((s) => s.startsWith("dapr:") && s.includes("sse"))).toBe(true);
+    expect(
+      skipped.some(
+        (s) =>
+          s.startsWith("workflows:") &&
+          s.includes("sse transport unsupported") &&
+          s.includes("streamable-http"),
+      ),
+    ).toBe(true);
   });
 
   it("emits a header comment when servers are present", () => {

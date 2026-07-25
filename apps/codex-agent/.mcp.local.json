@@ -5,12 +5,12 @@
       "url": "http://localhost:8005/sse"
     },
     "dapr": {
-      "type": "sse",
-      "url": "http://localhost:8011/sse"
+      "type": "http",
+      "url": "http://localhost:8011/mcp"
     },
     "obs": {
-      "type": "sse",
-      "url": "http://localhost:8013/sse"
+      "type": "http",
+      "url": "http://localhost:8013/mcp"
     }
   }
 }

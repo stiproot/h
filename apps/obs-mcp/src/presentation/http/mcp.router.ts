@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { withAmbientParent, withServerSpan } from "telemetry";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -244,6 +245,24 @@ export async function registerMcpRoutes(
   fastify: FastifyInstance,
   runtime: ObsMcpRuntime,
 ): Promise<void> {
+  fastify.route({
+    method: ["GET", "POST", "DELETE"],
+    url: "/mcp",
+    handler: async (req, reply) => {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const server = createServer(runtime);
+      await server.connect(transport);
+      reply.raw.on("close", () => {
+        void transport.close();
+        void server.close();
+      });
+      reply.hijack();
+      await withServerSpan("mcp tool call", req.headers, () =>
+        transport.handleRequest(req.raw, reply.raw, req.body),
+      );
+    },
+  });
+
   const sessions = new Map<string, { transport: SSEServerTransport; server: Server }>();
 
   fastify.get("/sse", (_req, reply) => {

@@ -1,6 +1,7 @@
 import { DaprActorError, DaprPubSubError } from "core-dapr";
-import { Effect, JSONSchema, Layer } from "effect";
+import { Effect, JSONSchema, Layer, ManagedRuntime } from "effect";
 import type { Schema } from "effect";
+import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
 import { ActorStore } from "../../domain/ports/IActorStore.ts";
@@ -23,6 +24,7 @@ import {
   StateGetInput,
   StateSaveInput,
   TOOL_DEFINITIONS,
+  registerMcpRoutes,
   toolHandlers,
 } from "./mcp.router.ts";
 
@@ -81,6 +83,54 @@ describe("published inputSchema stays aligned with the annotated Structs", () =>
       }
     });
   }
+});
+
+describe("Streamable HTTP transport", () => {
+  it("serves actor_state_set from /mcp", async () => {
+    const runtime = ManagedRuntime.make(stubPorts);
+    const app = Fastify();
+    await registerMcpRoutes(app, runtime);
+    const headers = {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    };
+
+    const initialize = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers,
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "route-test", version: "1.0.0" },
+        },
+      },
+    });
+    expect(initialize.statusCode).toBe(200);
+    const tools = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers,
+      payload: { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    });
+    expect(tools.statusCode).toBe(200);
+    const toolsMessage = JSON.parse(
+      tools.body
+        .split("\n")
+        .find((line) => line.startsWith("data: "))!
+        .slice("data: ".length),
+    );
+    expect(toolsMessage.result.tools.map((tool: { name: string }) => tool.name)).toContain(
+      "actor_state_set",
+    );
+
+    await app.close();
+    await runtime.dispose();
+  });
 });
 
 // ---------------------------------------------------------------------------------------------
