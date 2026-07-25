@@ -68,6 +68,10 @@ help: ## Show this help
 
 .PHONY: infra-up
 infra-up: ## Start local infra via Docker Compose (placement, scheduler, redis, logging)
+	# The scheduler's ./dapr-etcd bind mount: docker creates a missing bind dir ROOT-owned and the
+	# nonroot scheduler then fatals (mkdir /data/...: permission denied — bit us 2026-07-25 after a
+	# from-scratch reset). Pre-create it world-writable so a reset can never brick the scheduler.
+	mkdir -p dapr-etcd && chmod 0777 dapr-etcd 2>/dev/null || true
 	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.local.yml up --build -d
 
 .PHONY: infra-down
