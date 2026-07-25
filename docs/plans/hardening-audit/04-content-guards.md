@@ -38,7 +38,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Add /home/stiproot/code/h/scripts/check-hex-lint.mjs and chain it into the root lint script in /home/stiproot/code/h/package.json:7 (currently `node scripts/check-tsc.mjs && node scripts/check-templates.mjs && turbo lint` → insert `&& node scripts/check-hex-lint.mjs` before `turbo lint`). The script: glob apps/*/package.json and packages/js/*/package.json; for each package whose src/ contains a `domain/` or `presentation/` directory (check src/, not dist/, to avoid build artefacts), assert its `scripts.lint` contains the substring `depcruise --config`; on failure, exit 1 printing the offending package path and the exact required suffix (`depcruise --config ../../.dependency-cruiser.cjs src`). Optionally extend the same script (or a `make lint-py` preflight) to the Python sibling gap: the Makefile (lines 109-117) hard-codes the three import-linter apps, so a new Python hex agent with a src/domain/ dir would likewise drift — assert every apps/*/pyproject.toml with a src/domain dir declares `[tool.importlinter]`. Also update the CLAUDE.md "Architecture is linted" gotcha to note the rule is now machine-checked.
 
-## [ ] A6. Compose/k8s env vars missing from .env.example — the stale-shell-export bug class re-opened
+## [x] A6. Compose/k8s env vars missing from .env.example — the stale-shell-export bug class re-opened
 
 *Severity: medium · effort: small*
 
@@ -101,6 +101,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 ## Log
 
 - 2026-07-24 — Completed A5: added `scripts/check-hex-lint.mjs`, wired it into the root lint chain, confirmed all current TypeScript hex packages pass, and proved a temporary `apps/` fixture with `src/domain/` and no depcruise lint suffix fails with its `package.json` path, line, and copy-pasteable required suffix before removing the fixture.
+- 2026-07-24 — Completed A6: added `scripts/check-env-parity.mjs`, wired it into root lint, documented the missing Codex and Tessl inputs in `.env.example`, confirmed the current Compose/Kubernetes-secret surfaces pass, and proved a temporary undocumented Compose interpolation fails with its file, line, and copy-pasteable fix before removing the fixture.
 - 2026-07-24: A9 landed — scripts/check-templates.mjs now requires every workflow template YAML to contain a filename-matched .Values.template gate.
 - 2026-07-24 — Completed A4: added the intentionally TypeScript-only `scripts/check-state-keys.mjs`, wired it into the root lint chain and `check-state-keys` package script, confirmed all current scoped call sites pass, and verified an unwrapped `.state.get("store", "k")` fixture fails with its file, line, and snippet before removing the fixture. Python uses a different client surface and would need a separate, API-specific follow-up guard.
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
