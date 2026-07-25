@@ -168,6 +168,11 @@ deferred (reintroduces N× provisioning).
 
 ## E2E findings (follow-ups, in priority order)
 
+> LIFTED 2026-07-25: the actionable items are now GitHub issues — worktree lifecycle #76,
+> final-stage captures #77, chain-arms-chain #78, chain-run latency + loop×stages #79 — so this
+> plan can archive without losing them. Attribution (finding 4) and cosmetics (finding 5)
+> remain minor, unfiled.
+
 1. **Worktree lifecycle across chains** — chain 1's finalized worktree kept
    `feature/<slug>` checked out, so chain 2's revise (fresh engine-derived workspace) died at
    create-worktree (`already used by worktree`); freed manually and re-fired. A finalized
