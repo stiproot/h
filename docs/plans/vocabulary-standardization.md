@@ -95,16 +95,16 @@ Registry**. New sharp entries:
 
 ## Phases
 
-1. [ ] **Glossary lands in ARCHITECTURE.md** — a `## Glossary` section from the draft above
+1. [x] **Glossary lands in ARCHITECTURE.md** — a `## Glossary` section from the draft above
    (adjusted to survive review); CLAUDE.md's primitives index points to it.
-2. [ ] **Tier 1 — prose sweep**: CLAUDE.md, README.md, ARCHITECTURE.md, cli/README.md,
+2. [x] **Tier 1 — prose sweep**: CLAUDE.md, README.md, ARCHITECTURE.md, cli/README.md,
    docs/cookbook.md, skills (author-workflow-template, workflow-orchestrator, observe-h),
    apps/claude-agent/steering/h-runtime.md, CLI help/docstrings, comments. Kill the hop fossils
    (test names included), re-word "cron family" → siblings, correct step/activity misuse,
    member everywhere for the chain slot, blackboard → chain data everywhere (CLI help,
    chain_expr/chain.py docstrings, CLAUDE.md chain bullet, engine comments). docs/plans/ (historical logs) are EXEMPT — plans are
    records, not living docs.
-3. [ ] **Tier 2 — internal identifiers**: `ChainWorkflow` → `ChainMember` (+ `MemberMappings`
+3. [x] **Tier 2 — internal identifiers**: `ChainWorkflow` → `ChainMember` (+ `MemberMappings`
    audit — already right), `WORKFLOW_KINDS` → `MEMBER_KINDS`, chain_expr's `WorkflowRef` →
    `MemberRef` (+ its `workflows` property → `members`), engine locals/params named `workflow`
    that hold a member. File renames where the old word is the filename (`chain-workflows.ts` →
@@ -113,12 +113,12 @@ Registry**. New sharp entries:
    body + viz consumer `web/` if it reads chain rows). Flag day: drain/terminate active chains
    before deploy (finalized rows with the old field remain as unreadable-by-new-schema audit —
    acceptable; note it in the cutover commit). Rebuild + recreate workflow-svc container.
-5. [ ] **The guard — `scripts/check-vocabulary.mjs`** (harden-by-encoding): bans retired/wrong
+5. [x] **The guard — `scripts/check-vocabulary.mjs`** (harden-by-encoding): bans retired/wrong
    terms in LONG-LIVED prose surfaces (CLAUDE.md, README.md, ARCHITECTURE.md, cli/README.md,
    docs/cookbook.md, skills/, steering; NOT docs/plans/). Initial banlist: `\bhop\b`,
    `\bfamily\b`, `\bblackboard\b`, `chain workflow` (the slot sense), plus a HINT list (warn-only) if useful.
    Banlist lives in the guard beside a pointer to the glossary; wired into root `lint`.
-6. [ ] **Sync-guard ripple**: test_kind_sync + any guard that greps renamed identifiers
+6. [x] **Sync-guard ripple**: test_kind_sync + any guard that greps renamed identifiers
    (`check-registry-writers`, `check-state-keys` are content-based — verify unaffected);
    goldens re-blessed only where rendered text legitimately changed.
 
@@ -146,3 +146,6 @@ Registry**. New sharp entries:
   Plan written, phased for h to execute.
 - 2026-07-24 — "blackboard" retired by user decision; the term is **chain data** (prose
   converges on the wire field — the cluster dissolves rather than renames). Banlist updated.
+- 2026-07-24 — Phases 1, 2, 3, 5, and 6 landed: the canonical glossary and prose sweep,
+  member-oriented internal identifiers and filenames, vocabulary guard, and sync updates. Phase 4
+  remains open; durable rows and HTTP bodies intentionally retain their `workflows` wire field.

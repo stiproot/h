@@ -4,7 +4,7 @@ A chain is a registered policy the chain engine (workflow-svc) sequences on the 
 mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the
 workflows run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable
 registry. State threads workflow-to-workflow IN THE ENGINE (it reads each workflow's validated
-structured output — docs/plans/structured-workflow-outputs.md — into the chain's blackboard and
+structured output — docs/plans/structured-workflow-outputs.md — into the chain's chain data and
 builds the next workflow's params), so the chained workflows stay chain-agnostic.
 
 The workflow list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5),
@@ -25,7 +25,7 @@ chain-scoped key `<slug>-w<N>` by default, or EMBEDDED in the chain row with `--
 Concurrency is stages (docs/plans/inline-chain-cron-composition.md D3): --parallel (or an explicit
 --stage N) groups members into one concurrent stage the engine joins before advancing. A `--cron`
 member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:resolved (D2/D4);
-`--id` gives a member a blackboard namespace so a downstream reads its capture via a dotted
+`--id` gives a member a chain data namespace so a downstream reads its capture via a dotted
 `--input PARAM=id.field` (D5). Identity flags become fire-time params (§1.9): --agent maps to
 {runActivity, agentId}, --model to the workflow kind's model params.
 
@@ -51,8 +51,8 @@ from h_cli.config import AGENT_IDENTITY, CHARTS_DIR, agent_identity_params
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
+    MemberRef,
     WorkflowConfig,
-    WorkflowRef,
     effective_config,
     parse_expr,
 )
@@ -73,9 +73,9 @@ KNOWN_KINDS = ("feature-pr", "pr-review", "revise", "answer")
 # own saved definition — `revise` fires the `revise` template (which reads the PR's review threads
 # itself), no longer a re-fire of feature-pr's definition. `answer` is the bare "answer this task"
 # member (the panelizable degenerate case, docs/plans/panels-as-a-modifier.md — successor of the
-# retired agent-panel): reads `task` off the blackboard, captures `answer`; an --agent roster
+# retired agent-panel): reads `task` off the chain data, captures `answer`; an --agent roster
 # panelizes it at fire time. Coded threading contracts live in
-# workflow-svc/domain/chain-workflows.ts (a novel kind is added on both sides, per chain.model.ts).
+# workflow-svc/domain/chain-members.ts (a novel kind is added on both sides, per chain.model.ts).
 WELL_KNOWN: dict[str, tuple[str, str]] = {
     "feature-pr": ("feature-pr", "feature-pr"),
     "pr-review": ("pr-review", "pr-review"),
@@ -157,8 +157,7 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
             identity = agent_identity_params(agent)
             if identity is None:
                 _fail(
-                    f"unknown --agent '{agent}' — known: "
-                    + ", ".join(sorted(set(AGENT_IDENTITY)))
+                    f"unknown --agent '{agent}' — known: " + ", ".join(sorted(set(AGENT_IDENTITY)))
                 )
                 raise AssertionError("unreachable")
             params.update(identity)
@@ -182,9 +181,7 @@ def _panel_definition(key: str) -> dict[str, Any]:
     return stored
 
 
-def _apply_roster(
-    merged: dict[str, Any], roster: tuple[str, ...], label: str
-) -> dict[str, Any]:
+def _apply_roster(merged: dict[str, Any], roster: tuple[str, ...], label: str) -> dict[str, Any]:
     """Panelize the composed definition with the roster: each name resolves through
     AGENT_IDENTITY to its run activity; any shape violation fails loud at registration."""
     try:
@@ -219,7 +216,7 @@ def _check_output_mappings(
 ) -> None:
     """Registration-time validation (structured-workflow-outputs §1, consumer 3): every --capture
     source field and the --until path must exist in the workflow's declared outputs schema, so a
-    broken thread fails HERE, not mid-chain. --input maps blackboard keys (dynamic) — not
+    broken thread fails HERE, not mid-chain. --input maps chain data keys (dynamic) — not
     checkable."""
     refs = list((entry.get("captures") or {}).values())
     if entry.get("until"):
@@ -243,7 +240,7 @@ def _check_output_mappings(
 
 
 def _resolve_workflow(
-    workflow: WorkflowRef,
+    member: MemberRef,
     cfg: WorkflowConfig,
     slug: str,
     index: int,
@@ -251,26 +248,26 @@ def _resolve_workflow(
     uses_stages: bool,
     in_parallel: bool,
 ) -> dict[str, Any]:
-    """A parsed workflow → the engine's ChainWorkflow. Emits `key` (published) XOR `steps` (inline,
+    """A parsed member → the engine's ChainMember. Emits `key` (published) XOR `steps` (inline,
     D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface."""
-    if workflow.key:
-        if workflow.key in WELL_KNOWN and not cfg.kind:
-            kind, key = WELL_KNOWN[workflow.key]
+    if member.key:
+        if member.key in WELL_KNOWN and not cfg.kind:
+            kind, key = WELL_KNOWN[member.key]
         else:
-            key = workflow.key
+            key = member.key
             if cfg.kind is None:
                 _fail(
-                    f"-w '{workflow.key}' is not a well-known workflow name "
+                    f"-w '{member.key}' is not a well-known workflow name "
                     f"({', '.join(WELL_KNOWN)}) — follow it with --kind "
                     f"(one of: {', '.join(KNOWN_KINDS)}) so the engine knows its threading "
                     "contract"
                 )
             kind = cfg.kind or ""
     else:
-        inferred = cfg.kind or TERMINAL_ATOM_KIND.get(workflow.templates[-1])
+        inferred = cfg.kind or TERMINAL_ATOM_KIND.get(member.templates[-1])
         if inferred is None:
             _fail(
-                f"cannot infer the workflow kind for `-t {' '.join(workflow.templates)}` — "
+                f"cannot infer the workflow kind for `-t {' '.join(member.templates)}` — "
                 "end the group with create-pr (its structured pr output is the feature-pr "
                 "contract) "
                 "or pass --kind"
@@ -286,13 +283,13 @@ def _resolve_workflow(
     if roster:
         if kind in WRITE_KINDS:
             _fail(
-                f"a roster on '{workflow.label}' ({kind}) is not supported — write kinds share "
+                f"a roster on '{member.label}' ({kind}) is not supported — write kinds share "
                 "one branch/worktree, so N writers would clobber it; compose N members with "
                 "--parallel (isolated instances) instead"
             )
         if cfg.model:
             _fail(
-                f"--model with a roster on '{workflow.label}' is not supported — each panelist "
+                f"--model with a roster on '{member.label}' is not supported — each panelist "
                 "falls back to its own agent's default model"
             )
 
@@ -302,31 +299,31 @@ def _resolve_workflow(
     # way and may embed).
     inline = cfg.inline or bool(cfg.cron)
     if cfg.max_fires and not cfg.cron:
-        _fail(f"--max-fires on '{workflow.label}' needs --cron (it's the cron's fire budget)")
-    if inline and workflow.key is not None and not roster:
+        _fail(f"--max-fires on '{member.label}' needs --cron (it's the cron's fire budget)")
+    if inline and member.key is not None and not roster:
         _fail(
-            f"--inline/--cron member '{workflow.label}' must be composed with -t — an inline "
+            f"--inline/--cron member '{member.label}' must be composed with -t — an inline "
             "member embeds its own steps (a saved -w key can't be embedded)"
         )
 
     # Roster identity is baked per branch by panelize, never a runActivity param.
-    params = {} if roster else _identity_params(kind, cfg, workflow.label)
+    params = {} if roster else _identity_params(kind, cfg, member.label)
     declared_outputs: dict[str, Any] | None = None
     steps: list[Any] | None = None
     key_field: str | None = None
     merged: dict[str, Any] | None = None
-    if workflow.key is None:
-        merged = compose_templates(list(workflow.templates))
+    if member.key is None:
+        merged = compose_templates(list(member.templates))
     elif roster:
         merged = _panel_definition(key)
     if merged is not None:
         if roster:
-            merged = _apply_roster(merged, roster, workflow.label)
+            merged = _apply_roster(merged, roster, member.label)
             judge_note = " (judge: claude-agent)" if kind in FROZEN_EXECUTOR_KINDS else ""
             console.print(
-                f"==> panelized '{workflow.label}' — roster: {', '.join(roster)}{judge_note}"
+                f"==> panelized '{member.label}' — roster: {', '.join(roster)}{judge_note}"
             )
-        source = " ⊕ ".join(workflow.templates) if workflow.key is None else workflow.key
+        source = " ⊕ ".join(member.templates) if member.key is None else member.key
         declared_outputs = merged.get("outputs")
         merged_params = merged.get("params") or {}
         if inline:
@@ -354,7 +351,7 @@ def _resolve_workflow(
             _check_identity_slots(key, cfg, kind)
     if cfg.budget:
         _warn(
-            f"per-workflow --budget on '{workflow.label}' is not yet enforced "
+            f"per-workflow --budget on '{member.label}' is not yet enforced "
             "(per-workflow watch lands with the engine's next slice); ignored"
         )
 
@@ -374,11 +371,11 @@ def _resolve_workflow(
     # --stage); a purely sequential chain omits it (the engine defaults a member's stage to index).
     if uses_stages:
         entry["stage"] = stage
-    # id (D5): the member's blackboard namespace, needed where concurrent captures could clobber —
+    # id (D5): the member's chain data namespace, needed where concurrent captures could clobber —
     # a parallel member, or an explicit --id (a downstream reads it back via a dotted `id.field`
     # --input). A lone sequential member threads flat (no namespace), so its inputs stay flat keys.
     if cfg.id or in_parallel:
-        entry["id"] = cfg.id or workflow.label
+        entry["id"] = cfg.id or member.label
     if cfg.cron:
         cron_obj: dict[str, Any] = {"cadence": cfg.cron}
         if cfg.max_fires:
@@ -397,10 +394,10 @@ def _resolve_workflow(
         path, _, expected = cfg.until.partition("=")
         entry["until"] = {"path": path, "equals": expected}
     if entry.get("captures") or entry.get("until"):
-        if declared_outputs is None and workflow.key is not None:
+        if declared_outputs is None and member.key is not None:
             stored = _guarded(lambda: workflow_svc.get(key))
             declared_outputs = stored.get("outputs") if isinstance(stored, dict) else None
-        _check_output_mappings(entry, declared_outputs, workflow.label)
+        _check_output_mappings(entry, declared_outputs, member.label)
     return entry
 
 
@@ -461,12 +458,12 @@ def run(
                         on CADENCE until its goal resolves (wf:<repo>:<slug>:<kind>.resolved) or the
                         fire budget trips; the chain OBSERVES it, never re-fires it. Needs -p repo=…
 
-      --id NAME         the member's blackboard namespace (D5) — a downstream reads its capture
+      --id NAME         the member's chain data namespace (D5) — a downstream reads its capture
                         via a dotted `--input PARAM=NAME.field`; defaults to the -t/-w label
 
       --capture BB=FIELD --input PARAM=SRC --until PATH=VALUE   structured-output threading for
                         the workflow they follow (per-workflow only): capture a declared output
-                        FIELD onto blackboard key BB; feed SRC (a flat key OR a dotted `id.field`)
+                        FIELD onto chain data key BB; feed SRC (a flat key OR a dotted `id.field`)
                         in as PARAM; stop a loop when the structured field at PATH equals VALUE.
 
       --parallel        joins adjacent workflows into one concurrent stage (joined before the next)
@@ -503,13 +500,13 @@ def run(
     # shared — so `-t a --stage 0 -t b --stage 0` and `-w a --parallel -w b` mark parallel alike.
     # A chain "uses stages" (emits an explicit `stage` on every member) when a stage is shared OR
     # any --stage is explicit; else it stays purely sequential (engine defaults stage to the index).
-    members: list[tuple[WorkflowRef, WorkflowConfig, int, int]] = []
+    members: list[tuple[MemberRef, WorkflowConfig, int, int]] = []
     flat = 0
     for stage_index, stage_group in enumerate(expr.stages):
-        for workflow in stage_group:
-            cfg = effective_config(expr.defaults, workflow.config)
+        for member in stage_group:
+            cfg = effective_config(expr.defaults, member.config)
             final_stage = int(cfg.stage) if cfg.stage is not None else stage_index
-            members.append((workflow, cfg, flat, final_stage))
+            members.append((member, cfg, flat, final_stage))
             flat += 1
     stage_counts = Counter(final_stage for *_, final_stage in members)
     uses_stages = any(count > 1 for count in stage_counts.values()) or any(
@@ -517,17 +514,17 @@ def run(
     )
 
     workflows: list[dict[str, Any]] = []
-    for workflow, cfg, index, final_stage in members:
+    for member, cfg, index, final_stage in members:
         in_parallel = stage_counts[final_stage] > 1
         workflows.append(
-            _resolve_workflow(workflow, cfg, slug, index, final_stage, uses_stages, in_parallel)
+            _resolve_workflow(member, cfg, slug, index, final_stage, uses_stages, in_parallel)
         )
-    # Chain-level -p values seed the shared data blackboard, threaded to every workflow. slug is the
+    # Chain-level -p values seed the shared data chain data, threaded to every member. slug is the
     # chain's identity; the engine threads durable refs (e.g. the PR number) to revise, which reads
     # the review itself. Each workflow fires its own saved definition — no key rewriting.
     data: dict[str, Any] = {"slug": slug, **parse_params(param or [])}
     # A cron member's recurrence + the chain's completion predicate both read wf:<repo>:<slug>:<wf>,
-    # so it needs a repo on the blackboard — fail loud here, not mid-fire in the engine.
+    # so it needs a repo on the chain data — fail loud here, not mid-fire in the engine.
     if any(w.get("cron") for w in workflows) and not data.get("repo"):
         _fail(
             "a --cron member needs a repo — add -p repo=owner/name (its recurrence + completion "
@@ -557,7 +554,7 @@ def run(
 
     result = _guarded(lambda: workflow_svc.chain_run(body))
 
-    labels = [workflow.label for workflow in expr.workflows]
+    labels = [member.label for workflow in expr.members]
     console.print(
         f"==> chain '{result['chainId']}' registered [{' -> '.join(labels)}] "
         f"(branch feature/{slug}, strategy={strategy})"

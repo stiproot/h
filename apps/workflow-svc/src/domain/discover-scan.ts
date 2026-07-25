@@ -121,7 +121,7 @@ export const scanDiscoverEffect = (
   Effect.gen(function* () {
     const cs = yield* CronStore;
     const nowMs = Date.now();
-    // Kill switch is shared across the cron family (cron:config); the heartbeat is beaten by the recur
+    // Kill switch is shared across the cron siblings (cron:config); the heartbeat is beaten by the recur
     // scan (scanCronsEffect), which always runs on the same tick — no double-beat here.
     const config = yield* cs.getConfig();
     const enabled = Option.isNone(config) || config.value.enabled !== false;

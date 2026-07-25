@@ -85,7 +85,7 @@ Rules:
 
 A chained workflow stays chain-agnostic: params in, declared structured output out, runnable
 standalone. The engine threads state via kind contracts (`feature-pr`, `pr-review`, `revise` in
-workflow-svc `chain-workflows.ts`) or declarative member mappings (`--capture BB=FIELD`,
+workflow-svc `chain-members.ts`) or declarative member mappings (`--capture BB=FIELD`,
 `--input PARAM=BB`, `--until PATH=VALUE` on `h chain run`, validated against your `outputs:` at
 registration). A novel recurring shape earns a new kind (code + closed literal); a one-off shape
 uses the flags.

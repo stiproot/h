@@ -25,6 +25,6 @@ def init_tracing(app: FastAPI, service_name: str) -> None:
     trace.set_tracer_provider(provider)
 
     # Server spans for inbound requests (roots the trace) and traceparent injection on the MCP
-    # client's outbound httpx calls, so the workflow-mcp hop continues this trace.
+    # client's outbound httpx calls, so the workflow-mcp step continues this trace.
     FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()

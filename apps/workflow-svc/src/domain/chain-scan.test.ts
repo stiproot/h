@@ -194,7 +194,7 @@ describe("registerChainForFire", () => {
     });
   });
 
-  it("stamps the wf-registry identity on the fired workflow when the blackboard carries a repo", async () => {
+  it("stamps the wf-registry identity on the fired workflow when the chain data carries a repo", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
     await Effect.runPromise(
@@ -207,13 +207,13 @@ describe("registerChainForFire", () => {
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
-    // wf leaf = the fired member's kind; slug = the chain slug; repo = the blackboard target.
+    // wf leaf = the fired member's kind; slug = the chain slug; repo = the chain data target.
     expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "feature-pr" });
     // the threaded repo also rides the member's params (feature reads none, pr-review's target).
     expect(inv.invokes[0].params).toMatchObject({ repo: "o/r" });
   });
 
-  it("omits the wf identity when the blackboard carries no repo (opt-in)", async () => {
+  it("omits the wf identity when the chain data carries no repo (opt-in)", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
     await Effect.runPromise(
@@ -608,7 +608,7 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
         steps: [{ activity: "run-claude" }],
         cron: { cadence: "*/30 * * * *" },
         // Declared inputs replace the kind's buildParams, so the inline member fires off the seeded
-        // blackboard (a pr-review's coded contract would demand a prNumber the seed lacks).
+        // chain data (a pr-review's coded contract would demand a prNumber the seed lacks).
         inputs: { slug: "slug", spec: "spec" },
       },
     ] as const;
@@ -626,7 +626,9 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
       ).pipe(Effect.provide(provide)),
     );
     pub.events.length = 0;
-    const report = await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(provide)));
+    const report = await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(provide)),
+    );
 
     // The chain fails as a unit.
     expect(report.finalized).toEqual(["x:failed"]);

@@ -11,7 +11,7 @@ agent-side.
 
 Publish-native: per-run inputs are {{params.*}} engine tokens — save it once, fire it with
 `h workflow run answer -p task=…` (or run_saved_workflow / a workflow-trigger event), or chain
-it as the `answer` kind (`-w answer`; reads `task` off the blackboard, captures `answer`).
+it as the `answer` kind (`-w answer`; reads `task` off the chain data, captures `answer`).
 
 Fire-time params:
   task         the question or task to answer (required)

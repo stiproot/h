@@ -69,7 +69,7 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
     assert workflow["revise"]["instanceId"] == "feature-demo"
     assert workflow["revise"]["fresh"] is True
     assert workflow["pr-review"]["instanceId"] == "pr-review-demo"
-    # The initial blackboard carries the first workflow's inputs.
+    # The initial chain data carries the first workflow's inputs.
     assert body["data"]["slug"] == "demo"
     assert body["data"]["issueNumber"] == "7"
     assert "Do the thing" in body["data"]["spec"]
@@ -327,7 +327,7 @@ def test_chain_run_parallel_emits_a_shared_stage(tmp_path: Path) -> None:
     # Both members share stage 0 — one concurrent stage the engine joins before finalizing.
     assert a["stage"] == 0 and b["stage"] == 0
     # Parallel members get a unique engine-derived instance (no shared branch instanceId) + a
-    # blackboard namespace, so concurrent captures never collide.
+    # chain data namespace, so concurrent captures never collide.
     assert "instanceId" not in a and "instanceId" not in b
     assert a["id"] == "feature-pr" and b["id"] == "pr-review"
 
@@ -595,7 +595,7 @@ def test_chain_run_answer_is_a_first_class_kind(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_answer_parallel_member_namespaces_its_captures(tmp_path: Path) -> None:
     """An answer member runs concurrently with another workflow in a stage: a `--parallel` member
-    drops its shared branch instance, gets a blackboard namespace, and its --capture fields
+    drops its shared branch instance, gets a chain data namespace, and its --capture fields
     validate against answer's declared outputs schema (answer/disagreements)."""
     route = _mock_run()
     respx.get(f"{WORKFLOW_URL}/workflow/get/answer").mock(
@@ -670,8 +670,21 @@ def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "chain", "run", "--slug", "panel-x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
-            "-w", "pr-review", "--agent", "claude", "codex", "openhands", "--inline",
+            "chain",
+            "run",
+            "--slug",
+            "panel-x",
+            "-p",
+            _pspec(tmp_path),
+            "-p",
+            "repo=o/r",
+            "-w",
+            "pr-review",
+            "--agent",
+            "claude",
+            "codex",
+            "openhands",
+            "--inline",
         ],
     )
     assert result.exit_code == 0, _all_output(result)
@@ -681,7 +694,9 @@ def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
     assert "key" not in member
     panel = next(step for step in member["steps"] if "parallel" in step)
     assert [b["activity"] for b in panel["parallel"]] == [
-        "run-claude", "run-codex", "run-openhands",
+        "run-claude",
+        "run-codex",
+        "run-openhands",
     ]
     synthesis = member["steps"][member["steps"].index(panel) + 1]
     assert synthesis["id"] == "review"
@@ -693,8 +708,19 @@ def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
 def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-         "-w", "feature-pr", "--agent", "claude", "codex"],
+        [
+            "chain",
+            "run",
+            "--slug",
+            "x",
+            "-p",
+            _pspec(tmp_path),
+            "-w",
+            "feature-pr",
+            "--agent",
+            "claude",
+            "codex",
+        ],
     )
     assert result.exit_code == 1
     assert "roster" in _all_output(result)
@@ -703,8 +729,21 @@ def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
 def test_chain_roster_rejects_model(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-         "-w", "pr-review", "--agent", "claude", "codex", "--model", "opus"],
+        [
+            "chain",
+            "run",
+            "--slug",
+            "x",
+            "-p",
+            _pspec(tmp_path),
+            "-w",
+            "pr-review",
+            "--agent",
+            "claude",
+            "codex",
+            "--model",
+            "opus",
+        ],
     )
     assert result.exit_code == 1
     assert "--model with a roster" in _all_output(result)

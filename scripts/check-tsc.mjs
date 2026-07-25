@@ -2,7 +2,7 @@
 // Toolchain guard — fail LOUDLY when a toolchain binary is a silent no-op.
 //
 // bun's package store can leave a tool's launcher as a 0-byte stub (`node_modules/.bin/<tool>`
-// resolving to an empty file). Two symptoms, same family:
+// resolving to an empty file). Two symptoms, same class:
 //   - `tsc` hollow → `tsc --noEmit`/`tsc -p …` exit 0 while doing NOTHING — every `bun run lint`/
 //     `bun run build` becomes a HOLLOW GREEN (typechecks that check nothing, builds that emit no dist).
 //   - a NATIVE binary hollow (turbo/oxlint/oxfmt/tsgo/tsgolint) → it exits NONZERO with NO output, so

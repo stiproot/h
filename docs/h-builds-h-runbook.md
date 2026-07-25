@@ -57,7 +57,7 @@ loop can only land work through a PR.
 
 The workspace root (`../h-workspace`) is shared by both modes: host run-scripts write it as your uid,
 compose agents write it as `agent-svc` (uid/gid **10001**). Whichever ran first would own the
-pre-clone + worktrees and lock the other out (the cross-uid problem — same family as the poisoned bun
+pre-clone + worktrees and lock the other out (the cross-uid problem — same class as the poisoned bun
 cache). Make it a shared, group-owned workspace ONCE (before `clone.sh`, and re-run after if new files
 land root-owned):
 
@@ -121,12 +121,12 @@ duplicate-dispatch bug.
 
 ## Kill switches (in order)
 
-1. `state_save cron:config {"enabled": false}` (dapr MCP) — pauses the WHOLE cron family scan
+1. `state_save cron:config {"enabled": false}` (dapr MCP) — pauses the WHOLE cron siblings scan
    (discovery + every per-PR revise loop) loudly; `cron:__tick__` records disarmed.
 2. Remove `agent-approved` labels on GitHub — nothing new is eligible to discover (in-flight PRs
    still revise until merged/budget).
 3. `state_save watch:config {"enabled": false}` — pauses the watcher scan (supervision of in-flight
-   runs), independent of the cron family.
+   runs), independent of the cron siblings.
 
 To disarm a specific recur cron (stops a single workflow from recurring without touching the kill
 switch), use `h cron rm <repo> <slug> <workflow>` — e.g. `h cron rm stiproot/h dark-mode revise`.
@@ -139,7 +139,7 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
   `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
   (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
-  it runs until the family kill switch (`h cron rm` is RECUR-only — a discovery row's identity is
+  it runs until the group kill switch (`h cron rm` is RECUR-only — a discovery row's identity is
   repo+label, which `REPO SLUG WORKFLOW` cannot address; a discovery disarm is a follow-up).
 - **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron is armed with
   `--run-budget-mins` (wall-clock `maxDurationMs` terminate) and optionally `--run-retries` (engine
@@ -153,6 +153,6 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
 - Engine budget-terminate ends the workflow, not the in-flight `claude` subprocess.
 - No hard token cap inside h — set a LiteLLM-proxy budget too.
 - Local/compose only: the k8s cron path can double-fire (no leader guard).
-- Worktrees accumulate until a GC family ships.
+- Worktrees accumulate until a GC system ships.
 - An UNsupervised (`--run-budget-mins` omitted) hung `feature-pr` stalls the discovery cron's serialize
   until the run's own budget trips — arm the watch policy to avoid this.

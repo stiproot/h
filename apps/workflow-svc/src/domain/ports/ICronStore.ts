@@ -19,12 +19,12 @@ export interface CronStoreService {
   readonly saveRow: (row: CronRow) => Effect.Effect<void, WorkflowError>;
   readonly deleteRow: (cronId: string) => Effect.Effect<void, WorkflowError>;
   // Discovery rows (`cron:discover:<repo>:<label>`) — the fan-out sibling under the same registry
-  // family; share the config/heartbeat/ledger below with the recur rows above.
+  // group; share the config/heartbeat/ledger below with the recur rows above.
   readonly getDiscoverRow: (id: string) => Effect.Effect<Option.Option<DiscoverRow>, WorkflowError>;
   readonly listDiscoverRows: () => Effect.Effect<readonly DiscoverRow[], WorkflowError>;
   readonly saveDiscoverRow: (row: DiscoverRow) => Effect.Effect<void, WorkflowError>;
   readonly deleteDiscoverRow: (id: string) => Effect.Effect<void, WorkflowError>;
-  // Scheduled-fire rows (`cron:sched:<id>`) — the one-shot sibling under the same registry family
+  // Scheduled-fire rows (`cron:sched:<id>`) — the one-shot sibling under the same registry group
   // (fire ONCE at an absolute time); share the config/heartbeat/ledger below with the recur rows.
   readonly getSchedRow: (id: string) => Effect.Effect<Option.Option<SchedRow>, WorkflowError>;
   readonly listSchedRows: () => Effect.Effect<readonly SchedRow[], WorkflowError>;

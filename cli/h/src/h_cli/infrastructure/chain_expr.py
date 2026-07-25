@@ -45,7 +45,7 @@ VALUE_FLAGS = (
     "--stage",  # explicit concurrency stage index (else positional, from --parallel grouping)
     "--cron",  # cron cadence — the member self-arms a recurrence (forces --inline)
     "--max-fires",  # cron budget (requires --cron)
-    "--id",  # the member's blackboard namespace (D5) — defaults to the -t/-w label
+    "--id",  # the member's chain data namespace (D5) — defaults to the -t/-w label
 )
 # Repeatable dest=source mapping flags — accumulate instead of the duplicate-flag rejection.
 MAP_FLAGS = ("--capture", "--input")
@@ -77,7 +77,7 @@ class WorkflowConfig:
     kind: str | None = None
     # Phase-6 composition (docs/plans/inline-chain-cron-composition.md): stage = explicit stage idx
     # (str; else positional); cron = cadence (member self-arms a recurrence, forces inline);
-    # max_fires = cron budget; id = the member's blackboard namespace (D5); inline = embed the
+    # max_fires = cron budget; id = the member's chain data namespace (D5); inline = embed the
     # composed steps in the chain row instead of publishing under <slug>-w<N>.
     stage: str | None = None
     cron: str | None = None
@@ -85,7 +85,7 @@ class WorkflowConfig:
     id: str | None = None
     inline: bool = False
     # Structured-output mappings (per-workflow only, assignment-ordered destination=source):
-    # captures: blackboardKey=outputField pairs; inputs: param=blackboardKey pairs; until: the
+    # captures: chain dataKey=outputField pairs; inputs: param=chain dataKey pairs; until: the
     # raw PATH=VALUE token (chain.py shapes it for the engine).
     captures: tuple[tuple[str, str], ...] = ()
     inputs: tuple[tuple[str, str], ...] = ()
@@ -93,7 +93,7 @@ class WorkflowConfig:
 
 
 @dataclass(frozen=True)
-class WorkflowRef:
+class MemberRef:
     """One workflow: a saved-workflow key (-w) XOR a template group to compose-on-fire (-t)."""
 
     key: str | None = None
@@ -110,32 +110,32 @@ class ChainExpr:
     """The parsed expression: chain-wide defaults + ordered stages (each a parallel group)."""
 
     defaults: WorkflowConfig = field(default_factory=WorkflowConfig)
-    stages: tuple[tuple[WorkflowRef, ...], ...] = ()
+    stages: tuple[tuple[MemberRef, ...], ...] = ()
 
     @property
-    def workflows(self) -> tuple[WorkflowRef, ...]:
-        return tuple(workflow for stage in self.stages for workflow in stage)
+    def members(self) -> tuple[MemberRef, ...]:
+        return tuple(member for stage in self.stages for member in stage)
 
 
-def effective_config(defaults: WorkflowConfig, workflow: WorkflowConfig) -> WorkflowConfig:
-    """The workflow's config over the chain-wide defaults, per field (workflow wins where given)."""
+def effective_config(defaults: WorkflowConfig, member: WorkflowConfig) -> WorkflowConfig:
+    """The member config over the chain-wide defaults, per field (member wins where given)."""
     return WorkflowConfig(
-        agents=workflow.agents if workflow.agents else defaults.agents,
-        model=workflow.model if workflow.model is not None else defaults.model,
-        budget=workflow.budget if workflow.budget is not None else defaults.budget,
-        fresh=workflow.fresh or defaults.fresh,
-        kind=workflow.kind,  # kind is per-workflow only; defaults never carry one (parser enforces)
+        agents=member.agents if member.agents else defaults.agents,
+        model=member.model if member.model is not None else defaults.model,
+        budget=member.budget if member.budget is not None else defaults.budget,
+        fresh=member.fresh or defaults.fresh,
+        kind=member.kind,  # kind is per-workflow only; defaults never carry one (parser enforces)
         # stage/cron/max_fires/id are per-workflow only (parser enforces) — no defaults to merge;
         # inline may be a chain-wide default (like fresh — "compose everything inline").
-        stage=workflow.stage,
-        cron=workflow.cron,
-        max_fires=workflow.max_fires,
-        id=workflow.id,
-        inline=workflow.inline or defaults.inline,
+        stage=member.stage,
+        cron=member.cron,
+        max_fires=member.max_fires,
+        id=member.id,
+        inline=member.inline or defaults.inline,
         # Mappings are per-workflow only too (parser enforces) — no defaults to merge.
-        captures=workflow.captures,
-        inputs=workflow.inputs,
-        until=workflow.until,
+        captures=member.captures,
+        inputs=member.inputs,
+        until=member.until,
     )
 
 
@@ -172,8 +172,8 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
     infix position, duplicate flags on one workflow, --kind in the prefix.
     """
     defaults = WorkflowConfig()
-    stages: list[list[WorkflowRef]] = []
-    current: WorkflowRef | None = None  # the workflow whose suffix FLAGs are being collected
+    stages: list[list[MemberRef]] = []
+    current: MemberRef | None = None  # the workflow whose suffix FLAGs are being collected
     joining = False  # a --parallel is pending: the next workflow joins the current stage
     i = 0
     n = len(tokens)
@@ -204,7 +204,7 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                 if i + 1 >= n or tokens[i + 1].startswith("-"):
                     raise ExprError("-w needs a saved-workflow key")
                 i += 1
-                current = WorkflowRef(key=tokens[i])
+                current = MemberRef(key=tokens[i])
             else:
                 atoms: list[str] = []
                 while i + 1 < n and not tokens[i + 1].startswith("-"):
@@ -212,7 +212,7 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                     atoms.append(tokens[i])
                 if not atoms:
                     raise ExprError("-t needs at least one template operand")
-                current = WorkflowRef(templates=tuple(atoms))
+                current = MemberRef(templates=tuple(atoms))
         elif token == CONNECTOR:
             if current is None:
                 # Covers a connector at the start, in the prefix, and two connectors in a row.
@@ -293,8 +293,14 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                 )
         elif token.startswith("-"):
             known = ", ".join(
-                (*WORKFLOW_INTRODUCERS, CONNECTOR, *ROSTER_FLAGS, *VALUE_FLAGS, *MAP_FLAGS,
-                 *BOOL_FLAGS)
+                (
+                    *WORKFLOW_INTRODUCERS,
+                    CONNECTOR,
+                    *ROSTER_FLAGS,
+                    *VALUE_FLAGS,
+                    *MAP_FLAGS,
+                    *BOOL_FLAGS,
+                )
             )
             raise ExprError(f"unknown token '{token}' in the chain expression — known: {known}")
         else:

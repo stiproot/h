@@ -10,7 +10,7 @@ import {
  * CURRENT STAGE (docs/plans/inline-chain-cron-composition.md D3), and the clock, decide what to do.
  * No I/O — the scan (chain-scan.ts) reads each member's runtime status (and, for cron/`until`
  * members, its output/`wf:resolved`), reduces each to a `done`/`failed` observation, then executes
- * the decision against the ports (capture outputs, thread the blackboard, fire the next stage).
+ * the decision against the ports (capture outputs, thread the chain data, fire the next stage).
  *
  * Pure so the whole sequencing surface is unit-testable without layers — the sibling of
  * watch-engine.ts, where the structural difference is that a chain ADVANCES to the next STAGE (a

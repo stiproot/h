@@ -9,7 +9,7 @@ import { WorkflowParams } from "./workflow.model.ts";
  * until its goal resolves, a discovery cron ENUMERATES a source each due tick and fires ONE workflow
  * PER newly-discovered item, deduping against the `wf:*` keys. It has no single `wf:` identity and no
  * `resolved` handshake — it never resolves; it drains a label class, bounded by a daily fire cap, and
- * runs until manually disarmed. Same registry family (`cron:*`), same tick, same config/heartbeat/
+ * runs until manually disarmed. Same registry group (`cron:*`), same tick, same config/heartbeat/
  * ledger; a DISTINCT row shape under `cron:discover:<repo>:<label>`. Single-writer: workflow-svc.
  */
 

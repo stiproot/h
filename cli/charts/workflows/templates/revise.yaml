@@ -5,7 +5,7 @@ and its branch slug, it REFRESHES the PR — rebasing its branch onto the latest
 resolving conflicts when the branch is stale (force-push-with-lease) — AND reads the PR's UNRESOLVED
 review threads ITSELF (durable state, via the github MCP), addresses each in a worktree of the PR's
 branch, replies inline + resolves them, and pushes — updating the PR (docs/plans/revise-rebase-stale.md).
-It reads its subject from GitHub, not a chain blackboard, so it runs standalone:
+It reads its subject from GitHub, not chain data, so it runs standalone:
 
   h workflow run revise -p pr=30 -p slug=pi-agent --agent claude-agent
 
