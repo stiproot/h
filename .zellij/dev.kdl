@@ -11,6 +11,7 @@ layout {
         pane split_direction="horizontal" {
             pane name="workflow-svc" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-workflow-svc.sh"; }
             pane name="claude-agent" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-claude-agent.sh"; }
+            pane name="codex-agent" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-codex-agent.sh"; }
             pane name="workflow-agent" command="bash" { args "cli/scripts/_pane.sh" "cli/scripts/run-workflow-agent.sh"; }
         }
         pane split_direction="horizontal" {

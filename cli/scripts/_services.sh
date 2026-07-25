@@ -15,6 +15,7 @@ services_for_mode() {
       cat <<'EOF'
 run-workflow-svc.sh
 run-claude-agent.sh
+run-codex-agent.sh
 run-workflow-agent.sh
 run-workflow-mcp.sh
 run-openhands-agent.sh
