@@ -58,10 +58,11 @@ export function checkPorts() {
     const stopPorts = stopMatch[2].trim().split(/\s+/);
     const flags = [];
     lines.forEach((line, index) => {
-      const match = line.match(
-        /(--app-port|--dapr-http-port|--dapr-grpc-port|--dapr-internal-grpc-port)(?:=|\s+)(\d+)/,
-      );
-      if (match) flags.push({ flag: match[1], port: match[2], line: index + 1 });
+      for (const match of line.matchAll(
+        /(--app-port|--dapr-http-port|--dapr-grpc-port|--dapr-internal-grpc-port)(?:=|\s+)(\d+)/g,
+      )) {
+        flags.push({ flag: match[1], port: match[2], line: index + 1 });
+      }
     });
 
     for (const { flag, port, line } of flags) {
