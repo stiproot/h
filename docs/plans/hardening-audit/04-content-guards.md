@@ -28,7 +28,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Add scripts/check-state-keys.mjs and wire it into root package.json's "lint" (beside check-templates.mjs, i.e. "node scripts/check-tsc.mjs && node scripts/check-templates.mjs && node scripts/check-state-keys.mjs && turbo lint"). Scan apps/**/src/**/*.ts and packages/js/**/src/**/*.ts (exclude dist/, node_modules/, *.test.ts): flag any occurrence matching /\.state\.(get|delete)\(\s*[^,]+,\s*(?!pathStateKey\()/ — i.e. a DaprClient `.state.get(`/`.state.delete(` whose second (key) argument is not `pathStateKey(`-wrapped. This guard is intentionally TypeScript-only: the Python clients do not use the `@dapr/dapr` dotted `.state.get`/`.state.delete` API shape, so any future Python path-key guard is a separate follow-up based on the Python client's actual call surface. Note the regex must anchor on the dotted `.state.` form so dapr-mcp's IStateStore port calls (apps/dapr-mcp/src/presentation/http/mcp.router.ts:442,466 — bare `state.get(...)`) don't false-positive; additionally allowlist apps/dapr-mcp/src/infrastructure/dapr-state-store.ts, whose raw-HTTP url builder already encodeURIComponents at lines 41-42. Failure message should point at packages/js/core-dapr/src/state-key.ts and the CLAUDE.md gotcha. Optionally also add the file to turbo.json's lint.inputs so edits bust lint caches, matching the check-templates.mjs precedent.
 
-## [ ] A5. 'A new hex TS service MUST add depcruise to its lint script' has no meta-guard
+## [x] A5. 'A new hex TS service MUST add depcruise to its lint script' has no meta-guard
 
 *Severity: low · effort: small*
 
@@ -100,6 +100,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 ## Log
 
+- 2026-07-24 — Completed A5: added `scripts/check-hex-lint.mjs`, wired it into the root lint chain, confirmed all current TypeScript hex packages pass, and proved a temporary `apps/` fixture with `src/domain/` and no depcruise lint suffix fails with its `package.json` path, line, and copy-pasteable required suffix before removing the fixture.
 - 2026-07-24: A9 landed — scripts/check-templates.mjs now requires every workflow template YAML to contain a filename-matched .Values.template gate.
 - 2026-07-24 — Completed A4: added the intentionally TypeScript-only `scripts/check-state-keys.mjs`, wired it into the root lint chain and `check-state-keys` package script, confirmed all current scoped call sites pass, and verified an unwrapped `.state.get("store", "k")` fixture fails with its file, line, and snippet before removing the fixture. Python uses a different client surface and would need a separate, API-specific follow-up guard.
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
