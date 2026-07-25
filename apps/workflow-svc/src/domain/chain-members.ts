@@ -8,7 +8,7 @@ import type { ChainMemberKind } from "./models/chain.model.ts";
  * validated STRUCTURED output back into it (docs/plans/structured-workflow-outputs.md — the marker
  * parsing this file once did was retired 2026-07-15; every chained template declares an outputs
  * contract). Threading is engine code, never a config DSL (mirrors the watcher's ruling W3), and it
- * reads the workflow's output — NOT a chain actor — so the workflows it chains stay chain-agnostic
+ * reads the workflow's output — NOT a chain actor — so the members it chains stay chain-agnostic
  * (params in, declared structured output out) and runnable standalone.
  *
  * Pure and dependency-free (no Effect, no I/O): the scan (chain-scan.ts) calls these around the
@@ -237,7 +237,7 @@ export function loopIsClean(member: MemberMappings, workflowOutput: string | und
 
 export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
   // Implements the issue and opens/updates its PR. Reads the feature spec; captures the PR it opened.
-  "feature-pr": {
+  "implement-pr": {
     buildParams: (data) => {
       const params: Record<string, unknown> = {
         slug: requireStr(data, "slug", "feature-pr needs a slug on the chain data"),
@@ -250,7 +250,7 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
     capture: capturePr,
   },
   // Reviews the PR the previous workflow opened; captures the review findings for a revise workflow.
-  "pr-review": {
+  "review-pr": {
     buildParams: (data) => {
       const pr = data.prNumber;
       if (typeof pr !== "string" || pr === "") {
@@ -263,11 +263,11 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
     },
     capture: captureReview,
   },
-  // Fires the standalone `revise` workflow, which reads the PR's UNRESOLVED review threads itself
+  // Fires the standalone `revise-pr` workflow, which reads the PR's UNRESOLVED review threads itself
   // (github MCP) and addresses them on the same branch; captures the updated PR. The chain threads
   // only durable REFERENCES — the PR number + slug — not the review text: revise reads the review
   // from GitHub, so the workflow stays self-sufficient and runnable standalone.
-  revise: {
+  "revise-pr": {
     buildParams: (data) =>
       withRepo(
         {

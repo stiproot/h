@@ -13,7 +13,7 @@ docs/plans/chain-composition-surface.md.
 ## Run a saved workflow, pick the executor
 
 ```sh
-h workflow run feature-pr -p slug=my-feature -p spec=@spec.md --agent codex
+h workflow run implement-pr -p slug=my-feature -p spec=@spec.md --agent codex
 ```
 
 `-p` populates content values (`@path` splices a file); `--agent` is machinery — it expands to
@@ -23,7 +23,7 @@ table: `cli/h/src/h_cli/config.py`.)*
 ## Run a template inline — nothing published
 
 ```sh
-h workflow run revise --inline -p pr=30 -p repo=stiproot/h -p slug=pi-agent
+h workflow run revise-pr --inline -p pr=30 -p repo=stiproot/h -p slug=pi-agent
 ```
 
 `--inline` treats the argument as a CHART TEMPLATE: rendered on the fly, steps fired directly;
@@ -66,11 +66,11 @@ h chain run --slug a9-review-loop -p repo=stiproot/h -p slug=a9-template-gate-gu
   -p prNumber=64 -p focus=@risks-answer.md \
   --strategy loop-until-clean --max-iterations 3 \
   -- \
-  -w pr-review --agent claude codex --inline --input pr=prNumber --input focus=focus \
-  -t revise --kind revise --agent codex --inline
+  -w review-pr --agent claude codex --inline --input pr=prNumber --input focus=focus \
+  -t revise-pr --kind revise-pr --agent codex --inline
 ```
 
-A panelized `pr-review` (each panelist posts its own PR review; the judge emits the ONE
+A panelized `review-pr` (each panelist posts its own PR review; the judge emits the ONE
 CLEAN/FINDINGS verdict the loop keys on) alternating with codex revisions. Note the split from
 the chain above: loop-until-clean × stages is a deferred reconciliation — loops want purely
 sequential members. Chain-level flags (`--strategy`, `--max-iterations`, `--slug`, `-p`) sit
@@ -83,14 +83,14 @@ panelists disagreed in round 1 and the unanimity rule caught it.)*
 h chain run --slug my-feature -p spec=@spec.md -p repo=stiproot/h --strategy loop-until-clean
 ```
 
-No expression ⇒ the default `-w feature-pr -w pr-review -w revise`. *(Validated 2026-07-20,
+No expression ⇒ the default `-w implement-pr -w review-pr -w revise-pr`. *(Validated 2026-07-20,
 PR #52.)*
 
 ## Schedule a run, or pause and resume one
 
 ```sh
-h workflow run feature-pr -p slug=x -p spec=@s.md --in 2h        # fire ONCE, later
-h workflow pause <instanceId> feature-pr --in 30m                # stop now, continue later
+h workflow run implement-pr -p slug=x -p spec=@s.md --in 2h        # fire ONCE, later
+h workflow pause <instanceId> implement-pr --in 30m                # stop now, continue later
 h workflow resume <schedId>                                      # ...or continue immediately
 ```
 
@@ -100,7 +100,7 @@ One-shot `cron:sched` rows; pause reuses the run's workspace so the worktree sur
 ## Usage-limit fallback — continue under another agent
 
 ```sh
-h workflow run feature-pr -p slug=x -p spec=@s.md \
+h workflow run implement-pr -p slug=x -p spec=@s.md \
   --fallback-agent openhands --fallback-after 10m --fallback-max 1
 ```
 

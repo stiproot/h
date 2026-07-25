@@ -38,7 +38,7 @@ def test_inline_renders_a_template_and_fires_its_steps() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "revise", "--inline",
+            "workflow", "run", "revise-pr", "--inline",
             "-p", "pr=30", "-p", "repo=stiproot/h", "-p", "slug=pi-agent",
             "--instance-id", "revise-pi-agent",
         ],
@@ -66,7 +66,7 @@ def test_inline_cron_arms_an_embedded_recurrence() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "revise", "--inline",
+            "workflow", "run", "revise-pr", "--inline",
             "-p", "repo=stiproot/h", "-p", "slug=pi-agent", "-p", "pr=30",
             "--cron", "*/30 * * * *", "--max-fires", "20",
             "--instance-id", "revise-pi-agent",
@@ -76,12 +76,12 @@ def test_inline_cron_arms_an_embedded_recurrence() -> None:
     body = json.loads(route.calls[0].request.content)
     assert body["armCron"] == {
         "cadence": "*/30 * * * *",
-        "workflow": "revise",
+        "workflow": "revise-pr",
         "inline": True,
         "budget": {"maxFires": 20},
     }
     # The wf-identity the cron key mirrors + the goal-handshake row the run writes.
-    assert body["wf"] == {"repo": "stiproot/h", "slug": "pi-agent", "workflow": "revise"}
+    assert body["wf"] == {"repo": "stiproot/h", "slug": "pi-agent", "workflow": "revise-pr"}
     # The embedded source recurs THESE steps — they still ride the initial run body.
     assert isinstance(body["steps"], list) and body["steps"]
 
@@ -91,7 +91,7 @@ def test_inline_cron_requires_repo_and_slug() -> None:
     """The cron key mirrors the wf: coords, so --inline --cron without repo/slug is a clear error
     (fail closed rather than arm a malformed cron row)."""
     result = runner.invoke(
-        app, ["workflow", "run", "revise", "--inline", "--cron", "*/30 * * * *"]
+        app, ["workflow", "run", "revise-pr", "--inline", "--cron", "*/30 * * * *"]
     )
     assert result.exit_code == 1
     assert "repo and slug" in result.output
@@ -100,12 +100,12 @@ def test_inline_cron_requires_repo_and_slug() -> None:
 @respx.mock
 def test_cron_flag_registers_a_recurrence_on_the_saved_run() -> None:
     """--cron/--max-fires ride the run as a cron policy on /workflow/run/:key (the 4d field)."""
-    route = respx.post(f"{WORKFLOW_URL}/workflow/run/revise").mock(
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run/revise-pr").mock(
         return_value=Response(202, json={"instanceId": "revise-x", "watching": False})
     )
     result = runner.invoke(
         app,
-        ["workflow", "run", "revise", "-p", "repo=o/r", "-p", "slug=x",
+        ["workflow", "run", "revise-pr", "-p", "repo=o/r", "-p", "slug=x",
          "--cron", "*/30 * * * *", "--max-fires", "50"],
     )
     assert result.exit_code == 0, result.output
@@ -115,7 +115,7 @@ def test_cron_flag_registers_a_recurrence_on_the_saved_run() -> None:
 
 
 def test_max_fires_without_cron_errors() -> None:
-    result = runner.invoke(app, ["workflow", "run", "revise", "--max-fires", "10"])
+    result = runner.invoke(app, ["workflow", "run", "revise-pr", "--max-fires", "10"])
     assert result.exit_code == 1
     assert "--cron" in result.output
 
@@ -123,7 +123,7 @@ def test_max_fires_without_cron_errors() -> None:
 def test_inline_rejects_via() -> None:
     """--inline fires directly on workflow-svc; combining it with --via is a clear error."""
     result = runner.invoke(
-        app, ["workflow", "run", "revise", "--inline", "--via", "claude-agent"]
+        app, ["workflow", "run", "revise-pr", "--inline", "--via", "claude-agent"]
     )
     assert result.exit_code == 1
     assert "inline" in result.output.lower()
@@ -150,7 +150,7 @@ def test_agent_roster_panelizes_and_fires_inline() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "pr-review",
+            "workflow", "run", "review-pr",
             "--agent", "claude", "--agent", "codex", "--agent", "openhands",
             "-p", "pr=64", "-p", "repo=stiproot/h", "-p", "slug=x",
         ],
@@ -174,7 +174,7 @@ def test_agent_roster_panelizes_and_fires_inline() -> None:
     assert "runActivity" not in body["params"]
 
 
-@pytest.mark.parametrize("key", ["custom-workflow", "feature-pr"])
+@pytest.mark.parametrize("key", ["custom-workflow", "implement-pr"])
 @respx.mock
 def test_agent_roster_panelizes_a_custom_saved_workflow(key: str) -> None:
     definition = {
@@ -211,7 +211,7 @@ def test_agent_roster_panelizes_a_custom_saved_workflow(key: str) -> None:
     assert next(step for step in body["steps"] if "parallel" in step)
 
 
-@pytest.mark.parametrize("template", ["verify", "create-pr", "arm-revise"])
+@pytest.mark.parametrize("template", ["verify", "create-pr", "arm-revise-pr"])
 def test_agent_roster_refuses_overlay_templates(template: str) -> None:
     result = runner.invoke(
         app,
@@ -227,14 +227,14 @@ def test_agent_roster_refuses_overlay_templates(template: str) -> None:
 def test_agent_roster_rejects_model_and_routing() -> None:
     result = runner.invoke(
         app,
-        ["workflow", "run", "pr-review", "--agent", "claude", "--agent", "codex",
+        ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
          "--model", "opus"],
     )
     assert result.exit_code == 1
     assert "roster" in _all_output(result)
     result = runner.invoke(
         app,
-        ["workflow", "run", "pr-review", "--agent", "claude", "--agent", "codex",
+        ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
          "--via", "claude-agent"],
     )
     assert result.exit_code == 1

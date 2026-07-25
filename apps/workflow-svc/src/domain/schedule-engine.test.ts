@@ -8,7 +8,7 @@ const base: SchedRow = {
   id: "sched-abc",
   status: "armed",
   fireAt: "2026-07-18T01:00:00Z",
-  source: { mode: "saved", key: "feature-pr" },
+  source: { mode: "saved", key: "implement-pr" },
   instanceId: "sched-abc",
   epoch: 1,
   createdAt: "2026-07-18T00:00:00Z",

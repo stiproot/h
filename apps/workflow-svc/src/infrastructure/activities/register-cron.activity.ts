@@ -24,7 +24,7 @@ import { runActivity } from "../activity-runtime.ts";
  * workflow's params.
  */
 export type RegisterCronInput = {
-  /** The saved key to recur (e.g. "revise"). With `inline`, this is only the wf-identity workflow
+  /** The saved key to recur (e.g. "revise-pr"). With `inline`, this is only the wf-identity workflow
    *  name (the cron key coord), not a store key. */
   workflow: string;
   repo: string;
@@ -75,7 +75,7 @@ const prNumberFrom = (blob: string | undefined): string | undefined => {
 /**
  * The pure decision (unit-tested): assemble the recur registration from the input, applying the
  * arm-at-birth guard. When `requirePrFrom` is set and its structured block carries no `pr` (a
- * create-pr skip, or no block), return a no-op — arming a revise loop for a PR that doesn't exist
+ * create-pr skip, or no block), return a no-op — arming a revise-pr loop for a PR that doesn't exist
  * is wrong, and it is a valid outcome, NOT a failure. Otherwise thread the PR number into the
  * fired params.
  */
@@ -87,7 +87,7 @@ export function planCron(input: RegisterCronInput): CronPlan {
   };
   if (input.requirePrFrom !== undefined) {
     const pr = prNumberFrom(input.requirePrFrom);
-    if (pr === undefined) return { armed: false, reason: "no PR opened — revise loop not armed" };
+    if (pr === undefined) return { armed: false, reason: "no PR opened — revise-pr loop not armed" };
     fireParams.pr = pr;
   }
   // Inline (embedded) recurrence: recur the run's own steps verbatim — nothing to re-hydrate by key.

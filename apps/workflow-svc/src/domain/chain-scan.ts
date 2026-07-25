@@ -58,10 +58,10 @@ export type ChainScanReport = {
 /** The instanceId a member runs under: explicit on the member, else derived from the chain + index. */
 export function instanceIdAt(
   chainId: string,
-  workflows: readonly ChainMember[],
+  members: readonly ChainMember[],
   index: number,
 ): string {
-  return workflows[index]?.instanceId ?? `${chainId}-w${index}`;
+  return members[index]?.instanceId ?? `${chainId}-w${index}`;
 }
 
 /** One member of the current stage read from the invoker, with its completion predicate resolved. */
@@ -80,7 +80,7 @@ type MemberRead = {
 
 export type ChainRegistration = {
   readonly slug: string;
-  readonly workflows: readonly ChainMember[];
+  readonly members: readonly ChainMember[];
   /** Initial chain data — the inputs the first stage reads (slug, spec, issueNumber?). */
   readonly data: ChainData;
   readonly strategy?: ChainStrategy;
@@ -104,7 +104,7 @@ export const registerChainForFire = (
 ): Effect.Effect<{ chainId: string; firing: boolean }, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
     const cs = yield* ChainStore;
-    const invalid = validateChain(reg.workflows);
+    const invalid = validateChain(reg.members);
     if (invalid !== null)
       return yield* Effect.fail(
         new WorkflowError({ cause: `invalid chain stages: ${invalid}`, instanceId: reg.slug }),
@@ -113,13 +113,13 @@ export const registerChainForFire = (
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
     const data: ChainData = { ...reg.data };
-    const stage0 = membersInStage(reg.workflows, 0);
-    const primary = instanceIdAt(reg.slug, reg.workflows, stage0[0] ?? 0);
+    const stage0 = membersInStage(reg.members, 0);
+    const primary = instanceIdAt(reg.slug, reg.members, stage0[0] ?? 0);
     const row: ChainRow = {
       chainId: reg.slug,
       epoch: (Option.getOrUndefined(existing)?.epoch ?? 0) + 1,
       slug: reg.slug,
-      workflows: reg.workflows,
+      members: reg.members,
       strategy: reg.strategy ?? "sequential",
       ...(reg.loop ? { loop: { ...reg.loop, iterations: 0 } } : {}),
       ...(reg.budgetMs !== undefined ? { budgetMs: reg.budgetMs } : {}),
@@ -156,7 +156,7 @@ const fireWorkflow = (
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
     const wfStore = yield* WorkflowStore;
-    const member = row.workflows[memberIndex];
+    const member = row.members[memberIndex];
     if (!member) return;
     // A missing chain data input (ChainThreadError) or any other build failure surfaces as a
     // WorkflowError the caller turns into a failed-chain finalize. The workflow's own params (fire-time
@@ -210,7 +210,7 @@ const fireWorkflow = (
       }
       base = toRequest(stored.value, traceparent, params);
     }
-    const instanceId = instanceIdAt(row.chainId, row.workflows, memberIndex);
+    const instanceId = instanceIdAt(row.chainId, row.members, memberIndex);
     yield* invoker.invoke({
       ...base,
       instanceId,
@@ -239,7 +239,7 @@ const fireStage = (
   forceFresh = false,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.forEach(
-    membersInStage(row.workflows, stage),
+    membersInStage(row.members, stage),
     (i) => fireWorkflow(row, i, traceparent, forceFresh),
     { discard: true },
   );
@@ -289,8 +289,8 @@ const observeMember = (
   index: number,
 ): Effect.Effect<MemberRead, WorkflowError, WorkflowInvoker | WfStore> =>
   Effect.gen(function* () {
-    const instanceId = instanceIdAt(row.chainId, row.workflows, index);
-    const member = row.workflows[index];
+    const instanceId = instanceIdAt(row.chainId, row.members, index);
+    const member = row.members[index];
     // Cron member (D2/D4): the chain OBSERVES `wf:<repo>:<slug>:<kind>` — it never fired the
     // recurrence (the member self-armed cron:sub via §10) and never reads the flaky instance status.
     // `done` ⟺ the goal handshake `resolved` flag is set (the cron engine reads the same flag to
@@ -341,7 +341,7 @@ const processRow = (
   Effect.gen(function* () {
     // Observe every member of the current stage. Sequential reads keep the scan deterministic (tests
     // assert on fire order) — a stage is a handful of members.
-    const members = membersInStage(row.workflows, row.cursor);
+    const members = membersInStage(row.members, row.cursor);
     const reads = yield* Effect.forEach(members, (i) => observeMember(row, i));
     const observations: MemberObservation[] = reads.map((r) => ({
       index: r.index,
@@ -364,7 +364,7 @@ const processRow = (
         // The just-completed stage IS the loop-start (review) stage here; its declared `until`
         // (structured) or the kind's coded reviewIsClean verdict check decides whether the loop stops.
         if (loop && row.cursor === loop.startCursor) {
-          const loopMember = row.workflows[members[0]];
+          const loopMember = row.members[members[0]];
           if (loopMember && loopIsClean(loopMember, reads[0]?.output)) {
             const note = `clean after ${loop.iterations} revise iteration(s)`;
             return yield* executeFinalize({ ...row, note }, "completed", nowMs, report);
@@ -453,16 +453,16 @@ const executeAdvance = (
     // Capture what every member of the just-completed stage produced into a fresh chain data — its
     // validated structured output (explicit captures mapping, else the kind contract).
     const data: ChainData = { ...row.data };
-    for (const r of completed) contractFor(row.workflows[r.index]).capture(r.output, data);
+    for (const r of completed) contractFor(row.members[r.index]).capture(r.output, data);
 
     const now = new Date(nowMs).toISOString();
-    const nextMembers = membersInStage(row.workflows, nextStage);
-    const primary = instanceIdAt(row.chainId, row.workflows, nextMembers[0] ?? nextStage);
+    const nextMembers = membersInStage(row.members, nextStage);
+    const primary = instanceIdAt(row.chainId, row.members, nextMembers[0] ?? nextStage);
     // A loop-back re-enters the loop body: bump the iteration counter and re-fire fresh (the target
     // instances are terminal from the prior pass).
     const loop =
       loopBack && row.loop ? { ...row.loop, iterations: row.loop.iterations + 1 } : row.loop;
-    const kinds = nextMembers.map((i) => row.workflows[i].kind).join(", ");
+    const kinds = nextMembers.map((i) => row.members[i].kind).join(", ");
     const next: ChainRow = {
       ...row,
       epoch: row.epoch + 1,
@@ -485,7 +485,7 @@ const executeAdvance = (
       Effect.tap(() =>
         Effect.sync(() => {
           for (const i of nextMembers)
-            report.advanced.push(`${row.chainId}:w${i}:${row.workflows[i].kind}`);
+            report.advanced.push(`${row.chainId}:w${i}:${row.members[i].kind}`);
         }),
       ),
       // A failed advance finalizes the chain failed (fenced on the NEW epoch) — never loop.
@@ -521,8 +521,8 @@ const disarmStageCrons = (
     const publisher = yield* DaprPublisherTag;
     const repo = typeof row.data.repo === "string" ? row.data.repo : undefined;
     if (!repo) return;
-    for (const i of membersInStage(row.workflows, stage)) {
-      const w = row.workflows[i];
+    for (const i of membersInStage(row.members, stage)) {
+      const w = row.members[i];
       if (!w.cron) continue;
       yield* publisher
         .publish(PUBSUB, CRON_DISARM_TOPIC, { repo, slug: row.slug, workflow: w.kind })
@@ -622,7 +622,7 @@ const executeFinalize = (
         runtimeStatus: final.lastStatus,
         watcher: "workflow-svc",
         slug: row.slug,
-        workflows: row.workflows.length,
+        members: row.members.length,
         reachedCursor: row.cursor,
         startedAt: row.startedAt,
         endedAt,
@@ -667,9 +667,9 @@ export const tallyChainCost = (
   Effect.gen(function* () {
     const cs = yield* ChainStore;
     const ran = new Set<string>();
-    for (let i = 0; i < row.workflows.length; i++) {
-      if (stageOf(row.workflows, i) <= row.cursor)
-        ran.add(instanceIdAt(row.chainId, row.workflows, i));
+    for (let i = 0; i < row.members.length; i++) {
+      if (stageOf(row.members, i) <= row.cursor)
+        ran.add(instanceIdAt(row.chainId, row.members, i));
     }
     const keys = yield* cs.listRunKeys();
     const mine = keys.filter((key) => [...ran].some((id) => key.startsWith(`run:${id}:`)));

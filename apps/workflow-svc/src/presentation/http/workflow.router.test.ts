@@ -414,7 +414,7 @@ describe("POST /workflow/run/:key", () => {
     );
     const res = await app.inject({
       method: "POST",
-      url: "/workflow/run/revise",
+      url: "/workflow/run/revise-pr",
       payload: { cron: { cadence: "*/30 * * * *", budget: { maxFires: 50 } } },
     });
     expect(res.statusCode).toBe(202);
@@ -422,7 +422,7 @@ describe("POST /workflow/run/:key", () => {
     // bracket (register-cron activity) arms the recur cron idempotently.
     expect(invokes[0]!.armCron).toEqual({
       cadence: "*/30 * * * *",
-      workflow: "revise",
+      workflow: "revise-pr",
       budget: { maxFires: 50 },
     });
   });
@@ -436,7 +436,7 @@ describe("POST /workflow/run/:key", () => {
     );
     const res = await app.inject({
       method: "POST",
-      url: "/workflow/run/revise",
+      url: "/workflow/run/revise-pr",
       payload: { cron: { cadence: "*/30 * * * *" } },
     });
     expect(res.statusCode).toBe(400);

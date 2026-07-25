@@ -140,12 +140,12 @@ function env(
   );
 }
 
-// The default feature-pr → pr-review → revise chain, with explicit shared instanceIds
-// (feature + revise share the branch instance; pr-review has its own).
+// The default implement-pr → review-pr → revise-pr chain, with explicit shared instanceIds
+// (feature + revise-pr share the branch instance; review-pr has its own).
 const DEFAULT_WORKFLOWS = [
-  { kind: "feature-pr", key: "feature-pr", instanceId: "feature-x" },
-  { kind: "pr-review", key: "pr-review", instanceId: "pr-review-x" },
-  { kind: "revise", key: "revise", instanceId: "feature-x", fresh: true },
+  { kind: "implement-pr", key: "implement-pr", instanceId: "feature-x" },
+  { kind: "review-pr", key: "review-pr", instanceId: "review-pr-x" },
+  { kind: "revise-pr", key: "revise-pr", instanceId: "feature-x", fresh: true },
 ] as const;
 
 // Structured envelopes, as the rung-2 seam produces them (structured-workflow-outputs): a
@@ -171,7 +171,7 @@ describe("registerChainForFire", () => {
     const inv = recordingInvoker();
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
+        { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -179,14 +179,14 @@ describe("registerChainForFire", () => {
     expect(row?.epoch).toBe(1);
     expect(row?.cursor).toBe(0);
     expect(row?.currentInstanceId).toBe("feature-x");
-    // workflow 0 fired: feature-pr resolved, under feature-x, with the spec threaded in.
+    // workflow 0 fired: implement-pr resolved, under feature-x, with the spec threaded in.
     expect(inv.invokes).toHaveLength(1);
     expect(inv.invokes[0].instanceId).toBe("feature-x");
-    // Every member shares a workspaceId = chainId, so all resolve ONE worktree (feature-pr creates
-    // it, revise reuses it). Without this, members cut the same branch at per-instanceId paths and
+    // Every member shares a workspaceId = chainId, so all resolve ONE worktree (implement-pr creates
+    // it, revise-pr reuses it). Without this, members cut the same branch at per-instanceId paths and
     // collide ("'feature/<slug>' is already used by worktree at …").
     expect(inv.invokes[0].workspaceId).toBe("x");
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-feature-pr" }]);
+    expect(inv.invokes[0].steps).toEqual([{ activity: "run-implement-pr" }]);
     expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "do it" });
     expect(mem.ledgers.get(new Date().toISOString().slice(0, 10))).toMatchObject({
       chainsRegistered: 1,
@@ -201,15 +201,15 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         {
           slug: "x",
-          workflows: [...DEFAULT_WORKFLOWS],
+          members: [...DEFAULT_WORKFLOWS],
           data: { slug: "x", spec: "do it", repo: "o/r" },
         },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
     // wf leaf = the fired member's kind; slug = the chain slug; repo = the chain data target.
-    expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "feature-pr" });
-    // the threaded repo also rides the member's params (feature reads none, pr-review's target).
+    expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "implement-pr" });
+    // the threaded repo also rides the member's params (feature reads none, review-pr's target).
     expect(inv.invokes[0].params).toMatchObject({ repo: "o/r" });
   });
 
@@ -218,7 +218,7 @@ describe("registerChainForFire", () => {
     const inv = recordingInvoker();
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
+        { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -228,10 +228,10 @@ describe("registerChainForFire", () => {
   it("merges the workflow's own params OVER the kind contract's threading params", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
-    const workflows = [
+    const members = [
       {
-        kind: "feature-pr",
-        key: "feature-pr",
+        kind: "implement-pr",
+        key: "implement-pr",
         instanceId: "feature-x",
         // Fire-time identity from the CLI (chain-composition-surface §1.9): rides the workflow row,
         // merged over buildParams' threading keys at fire time.
@@ -240,7 +240,7 @@ describe("registerChainForFire", () => {
     ] as const;
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows, data: { slug: "x", spec: "do it" } },
+        { slug: "x", members, data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -258,7 +258,7 @@ describe("registerChainForFire", () => {
     const wfStore = stubWorkflowStore({ get: () => Effect.succeed(Option.none()) });
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
+        { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service, wfStore))),
     );
@@ -280,15 +280,15 @@ async function seedAt(cursor: number, statuses: Record<string, WorkflowStatus>) 
     registerChainForFire(
       {
         slug: "x",
-        // prNumber pre-seeded so a fast-forward to the revise cursor has the PR ref revise threads.
-        workflows: [...DEFAULT_WORKFLOWS],
+        // prNumber pre-seeded so a fast-forward to the revise-pr cursor has the PR ref revise-pr threads.
+        members: [...DEFAULT_WORKFLOWS],
         data: { slug: "x", spec: "do it", prNumber: "42" },
       },
       undefined,
     ).pipe(Effect.provide(env(mem.service, inv.service))),
   );
   const row = mem.rows.get("x")!;
-  const inst = ["feature-x", "pr-review-x", "feature-x"][cursor];
+  const inst = ["feature-x", "review-pr-x", "feature-x"][cursor];
   mem.rows.set("x", {
     ...row,
     cursor,
@@ -301,7 +301,7 @@ async function seedAt(cursor: number, statuses: Record<string, WorkflowStatus>) 
 }
 
 describe("scanChainsEffect: advance threads state to the next workflow", () => {
-  it("captures the structured pr and fires pr-review with it", async () => {
+  it("captures the structured pr and fires review-pr with it", async () => {
     const { mem, inv } = await seedAt(0, {
       "feature-x": {
         instanceId: "feature-x",
@@ -312,19 +312,19 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
     const report = await Effect.runPromise(
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
-    expect(report.advanced).toEqual(["x:w1:pr-review"]);
+    expect(report.advanced).toEqual(["x:w1:review-pr"]);
     const row = mem.rows.get("x");
     expect(row?.cursor).toBe(1);
     expect(row?.data.prNumber).toBe("42");
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("pr-review-x");
+    expect(inv.invokes[0].instanceId).toBe("review-pr-x");
     expect(inv.invokes[0].params).toMatchObject({ pr: "42" });
   });
 
-  it("advances to revise, threading only the PR ref + slug (revise reads the review itself)", async () => {
+  it("advances to revise-pr, threading only the PR ref + slug (revise-pr reads the review itself)", async () => {
     const { mem, inv } = await seedAt(1, {
-      "pr-review-x": {
-        instanceId: "pr-review-x",
+      "review-pr-x": {
+        instanceId: "review-pr-x",
         runtimeStatus: "COMPLETED",
         output: review("file.ts:12 — missing guard"),
       },
@@ -334,8 +334,8 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
     );
     const row = mem.rows.get("x");
     expect(row?.cursor).toBe(2);
-    // revise fires on the shared branch instance, fresh, with only the durable references —
-    // NOT the review text (revise reads the PR's unresolved threads from GitHub itself).
+    // revise-pr fires on the shared branch instance, fresh, with only the durable references —
+    // NOT the review text (revise-pr reads the PR's unresolved threads from GitHub itself).
     expect(inv.invokes[0].instanceId).toBe("feature-x");
     expect(inv.invokes[0].fresh).toBe(true);
     expect(inv.invokes[0].params).toEqual({ pr: "42", slug: "x" });
@@ -347,12 +347,12 @@ describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
     const mem = memoryChainStore();
     // {a ∥ b} → c: a and b share stage 0 and both capture `val` (would clobber if flat); c reads a's
     // namespaced capture via the dotted input `a.val`.
-    const workflows = [
-      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "a", captures: { val: "n" } },
-      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "b", captures: { val: "n" } },
+    const members = [
+      { kind: "implement-pr", key: "implement-pr", stage: 0, id: "a", captures: { val: "n" } },
+      { kind: "implement-pr", key: "implement-pr", stage: 0, id: "b", captures: { val: "n" } },
       {
-        kind: "feature-pr",
-        key: "feature-pr",
+        kind: "implement-pr",
+        key: "implement-pr",
         stage: 1,
         id: "c",
         inputs: { slug: "slug", spec: "a.val" },
@@ -365,7 +365,7 @@ describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
     });
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [...workflows], data: { slug: "x", spec: "do it" } },
+        { slug: "x", members: [...members], data: { slug: "x", spec: "do it" } },
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -392,7 +392,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
   // fires it ONCE (arming its cron via §10) then observes wf:<member>.resolved. A downstream plain
   // member reads the cron member's captured metrics via the dotted input.
   const cronMember = {
-    kind: "feature-pr",
+    kind: "implement-pr",
     stage: 0,
     id: "gather",
     steps: [{ activity: "run-claude" }],
@@ -400,18 +400,18 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
     captures: { metrics: "latest" },
   } as const;
   const reportMember = {
-    kind: "feature-pr",
-    key: "feature-pr",
+    kind: "implement-pr",
+    key: "implement-pr",
     stage: 1,
     id: "report",
     inputs: { slug: "slug", spec: "gather.metrics" },
   } as const;
   const data = { slug: "x", repo: "o/r", spec: "seed" };
-  const WF_KEY = "wf:o/r:x:feature-pr";
+  const WF_KEY = "wf:o/r:x:implement-pr";
   const resolvedWfRow = {
     repo: "o/r",
     slug: "x",
-    workflow: "feature-pr",
+    workflow: "implement-pr",
     status: "done" as const,
     resolved: true,
     instanceId: "x-w0",
@@ -425,7 +425,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
     const wfReg = memoryWfStore(wfRows);
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [cronMember, reportMember], data },
+        { slug: "x", members: [cronMember, reportMember], data },
         undefined,
       ).pipe(
         Effect.provide(
@@ -445,12 +445,12 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
     // The member arms its OWN recurrence — the chain never writes cron:sub.
     expect(fire.armCron).toEqual({
       cadence: "*/30 * * * *",
-      workflow: "feature-pr",
+      workflow: "implement-pr",
       inline: true,
       budget: { maxFires: 20 },
     });
     // wf identity is REQUIRED for a cron member (the cron goal + the chain predicate both read it).
-    expect(fire.wf).toEqual({ repo: "o/r", slug: "x", workflow: "feature-pr" });
+    expect(fire.wf).toEqual({ repo: "o/r", slug: "x", workflow: "implement-pr" });
     expect(fire.instanceId).toBe("x-w0");
   });
 
@@ -493,7 +493,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
     const inv = recordingInvoker();
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [cronMember], data: { slug: "x", spec: "seed" } }, // no repo
+        { slug: "x", members: [cronMember], data: { slug: "x", spec: "seed" } }, // no repo
         undefined,
       ).pipe(Effect.provide(env(mem.service, inv.service))),
     );
@@ -512,11 +512,11 @@ describe("scanChainsEffect: loop-until-clean", () => {
       chainId: "x",
       epoch: 1,
       slug: "x",
-      workflows: [...DEFAULT_WORKFLOWS],
+      members: [...DEFAULT_WORKFLOWS],
       strategy: "loop-until-clean",
       loop: { startCursor: 1, maxIterations: 3, iterations: 0 },
       cursor: 1,
-      currentInstanceId: "pr-review-x",
+      currentInstanceId: "review-pr-x",
       data: { slug: "x", spec: "do it", prNumber: "42" },
       status: "running",
       lastStatus: "RUNNING",
@@ -528,11 +528,11 @@ describe("scanChainsEffect: loop-until-clean", () => {
     return { mem };
   }
 
-  it("finalizes completed when the review comes back CLEAN — no revise", async () => {
-    const { mem } = loopStore({ cursor: 1, currentInstanceId: "pr-review-x" });
+  it("finalizes completed when the review comes back CLEAN — no revise-pr", async () => {
+    const { mem } = loopStore({ cursor: 1, currentInstanceId: "review-pr-x" });
     const inv = recordingInvoker({
-      "pr-review-x": {
-        instanceId: "pr-review-x",
+      "review-pr-x": {
+        instanceId: "review-pr-x",
         runtimeStatus: "COMPLETED",
         output: review("CLEAN"),
       },
@@ -541,14 +541,14 @@ describe("scanChainsEffect: loop-until-clean", () => {
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
     expect(report.finalized).toEqual(["x:completed"]);
-    expect(inv.invokes).toHaveLength(0); // did NOT advance to revise
+    expect(inv.invokes).toHaveLength(0); // did NOT advance to revise-pr
   });
 
-  it("advances to revise when the review still has findings", async () => {
-    const { mem } = loopStore({ cursor: 1, currentInstanceId: "pr-review-x" });
+  it("advances to revise-pr when the review still has findings", async () => {
+    const { mem } = loopStore({ cursor: 1, currentInstanceId: "review-pr-x" });
     const inv = recordingInvoker({
-      "pr-review-x": {
-        instanceId: "pr-review-x",
+      "review-pr-x": {
+        instanceId: "review-pr-x",
         runtimeStatus: "COMPLETED",
         output: review("src/x.ts:9 — missing guard"),
       },
@@ -557,10 +557,10 @@ describe("scanChainsEffect: loop-until-clean", () => {
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
     expect(mem.rows.get("x")?.cursor).toBe(2);
-    expect(inv.invokes[0].instanceId).toBe("feature-x"); // revise fired
+    expect(inv.invokes[0].instanceId).toBe("feature-x"); // revise-pr fired
   });
 
-  it("loops back to re-review after revise, fresh, bumping the iteration", async () => {
+  it("loops back to re-review after revise-pr, fresh, bumping the iteration", async () => {
     const { mem } = loopStore({ cursor: 2, currentInstanceId: "feature-x" });
     const inv = recordingInvoker({
       "feature-x": { instanceId: "feature-x", runtimeStatus: "COMPLETED", output: pr("pull/42") },
@@ -569,9 +569,9 @@ describe("scanChainsEffect: loop-until-clean", () => {
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
     const row = mem.rows.get("x");
-    expect(row?.cursor).toBe(1); // back to pr-review
+    expect(row?.cursor).toBe(1); // back to review-pr
     expect(row?.loop?.iterations).toBe(1);
-    expect(inv.invokes[0].instanceId).toBe("pr-review-x");
+    expect(inv.invokes[0].instanceId).toBe("review-pr-x");
     expect(inv.invokes[0].fresh).toBe(true); // re-review must purge the terminal prior run
   });
 
@@ -598,17 +598,17 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
   it("terminates running siblings and publishes cron-disarm before finalizing failed", async () => {
     const mem = memoryChainStore();
     // stage 0 = { failer(FAILED) ∥ runner(RUNNING) ∥ watcher(inline cron, unresolved) }.
-    const workflows = [
-      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "failer" },
-      { kind: "feature-pr", key: "feature-pr", stage: 0, id: "runner" },
+    const members = [
+      { kind: "implement-pr", key: "implement-pr", stage: 0, id: "failer" },
+      { kind: "implement-pr", key: "implement-pr", stage: 0, id: "runner" },
       {
-        kind: "pr-review",
+        kind: "review-pr",
         stage: 0,
         id: "watcher",
         steps: [{ activity: "run-claude" }],
         cron: { cadence: "*/30 * * * *" },
         // Declared inputs replace the kind's buildParams, so the inline member fires off the seeded
-        // chain data (a pr-review's coded contract would demand a prNumber the seed lacks).
+        // chain data (a review-pr's coded contract would demand a prNumber the seed lacks).
         inputs: { slug: "slug", spec: "spec" },
       },
     ] as const;
@@ -621,7 +621,7 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
     const provide = env(mem.service, inv.service, stubWorkflowStore(), pub.service);
     await Effect.runPromise(
       registerChainForFire(
-        { slug: "x", workflows: [...workflows], data: { slug: "x", repo: "o/r", spec: "seed" } },
+        { slug: "x", members: [...members], data: { slug: "x", repo: "o/r", spec: "seed" } },
         undefined,
       ).pipe(Effect.provide(provide)),
     );
@@ -638,7 +638,7 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
     // The cron member's cron is disarmed via pub/sub — the chain NEVER writes cron:sub itself.
     const disarms = pub.events.filter((e) => e.topic === "cron-disarm");
     expect(disarms).toHaveLength(1);
-    expect(disarms[0].data).toEqual({ repo: "o/r", slug: "x", workflow: "pr-review" });
+    expect(disarms[0].data).toEqual({ repo: "o/r", slug: "x", workflow: "review-pr" });
   });
 
   it("does NOT terminate or disarm on a clean completed finalize (nothing to reap)", async () => {
@@ -722,7 +722,7 @@ describe("scanChainsEffect: isolation and kill switch", () => {
     };
     const base = {
       // A single stage-0 member with no explicit instanceId, so each chain reads its own `<id>-w0`.
-      workflows: [{ kind: "feature-pr" as const, key: "feature-pr" }],
+      members: [{ kind: "implement-pr" as const, key: "implement-pr" }],
       strategy: "sequential" as const,
       data: {},
       unknownStreak: 0,
@@ -747,7 +747,7 @@ describe("scanChainsEffect: isolation and kill switch", () => {
       chainId: "x",
       epoch: 1,
       slug: "x",
-      workflows: [...DEFAULT_WORKFLOWS],
+      members: [...DEFAULT_WORKFLOWS],
       strategy: "sequential",
       cursor: 0,
       currentInstanceId: "feature-x",

@@ -152,7 +152,7 @@ def discover_add(
         ..., "--cadence", "-c", help="5-field cron expression (UTC) — how often to scan."
     ),
     workflow: str = typer.Option(
-        "feature-pr", "--workflow", "-w", help="Saved workflow fired per discovered issue."
+        "implement-pr", "--workflow", "-w", help="Saved workflow fired per discovered issue."
     ),
     max_per_day: int | None = typer.Option(
         None, "--max-per-day", help="Daily fan-out cap (backstop; server default 5)."

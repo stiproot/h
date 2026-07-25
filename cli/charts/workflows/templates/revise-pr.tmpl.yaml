@@ -7,15 +7,15 @@ review threads ITSELF (durable state, via the github MCP), addresses each in a w
 branch, replies inline + resolves them, and pushes — updating the PR (docs/plans/revise-rebase-stale.md).
 It reads its subject from GitHub, not chain data, so it runs standalone:
 
-  h workflow run revise -p pr=30 -p slug=pi-agent --agent claude-agent
+  h workflow run revise-pr -p pr=30 -p slug=pi-agent --agent claude-agent
 
 and as a chain member (the engine threads pr + slug from the prior workflow). Publish-native: pr /
 slug are {{params.*}} engine tokens; identity is fire-time params (runActivity/agentId); gitAuth
 bakes from values.
 
 Render (for inspection):
-  helm template revise cli/charts/workflows -s templates/revise.tmpl.yaml \
-    --set template=revise --set publish=true
+  helm template revise-pr cli/charts/workflows -s templates/revise-pr.tmpl.yaml \
+    --set template=revise-pr --set publish=true
 */ -}}
 {{- /*
 The declared output contract (structured-workflow-outputs plan): pr/url/skipped mirror
@@ -44,9 +44,9 @@ properties:
     description: RESOLVED when the PR is merged, else PENDING
 {{- end }}
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
-{{- if eq (.Values.template | default "") "revise" }}
+{{- if eq (.Values.template | default "") "revise-pr" }}
 role: standalone
-{{- $r := .Values.revise }}
+{{- $r := .Values.revisePr }}
 {{- $contract := include "h.contract.revise" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
 {{- /* Publish-native: identity + subject are always {{params.*}} tokens (revise is only ever fired
@@ -87,7 +87,7 @@ steps:
       agentId: {{ $agentIdRef | quote }}
       setup:
         {{- include "h.setupSteps" . | nindent 8 }}
-  - id: revise
+  - id: revise-pr
     activity: {{ $activityRef }}
     input:
       outputContract: {{ $contract | toJson }}

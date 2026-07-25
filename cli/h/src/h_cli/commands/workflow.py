@@ -215,7 +215,7 @@ def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
 def _identity_params(key: str, agent: str) -> dict[str, str]:
     """`--agent NAME` → the {runActivity, agentId} fire-time params (shared with `h chain run`).
 
-    The pr-review executor is frozen (untrusted-input security invariant) — warn and apply
+    The review-pr executor is frozen (untrusted-input security invariant) — warn and apply
     nothing; the template has no identity slots, so the params would be inert anyway.
     """
     if key in FROZEN_EXECUTOR_KEYS:
@@ -480,7 +480,7 @@ def run(
     if roster:
         # Panel path (docs/plans/panels-as-a-modifier.md): panelize the definition and fire the
         # steps inline (leaving only the wf: status row) — the roster restructures the
-        # definition, so there is no stored def to fire verbatim. The pr-review executor freeze
+        # definition, so there is no stored def to fire verbatim. The review-pr executor freeze
         # relaxes for a roster: the panelists run as named, the judge stays pinned (claude).
         definition = _roster_definition(key, inline)
         try:

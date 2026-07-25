@@ -11,7 +11,7 @@ import { WorkflowParams, WorkflowStep } from "./workflow.model.ts";
  * until the goal is met. Single-writer (workflow-svc), epoch-fenced — identical discipline to the
  * other two.
  *
- * The key coords mirror the `wf:` row this cron recurs: a cron on `revise` for stiproot/h·pi-agent is
+ * The key coords mirror the `wf:` row this cron recurs: a cron on `revise-pr` for stiproot/h·pi-agent is
  * `cron:sub:stiproot/h:pi-agent:revise`, recurring `wf:stiproot/h:pi-agent:revise` and reading THAT
  * row's `resolved` flag to know when to stop.
  */

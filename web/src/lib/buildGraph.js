@@ -20,7 +20,7 @@ export function collectInstances({ watches = [], chains = [], crons = [], discov
   for (const r of runs) touch(r.workflowInstanceId, r.endedAt || r.startedAt);
   for (const w of watches) touch(w.instanceId, w.updatedAt || w.startedAt);
   for (const c of chains) {
-    for (const m of c.workflows || []) touch(m.instanceId, c.updatedAt || c.startedAt);
+    for (const m of c.members || []) touch(m.instanceId, c.updatedAt || c.startedAt);
     touch(c.currentInstanceId, c.updatedAt || c.startedAt);
   }
   for (const c of crons) touch(c.currentInstanceId || c.instanceId, c.updatedAt || c.lastRunAt || c.createdAt);
@@ -117,7 +117,7 @@ export function buildGraph(rows) {
       row: c,
       r: 12,
     });
-    (c.workflows || []).forEach((m, i) => {
+    (c.members || []).forEach((m, i) => {
       const inst = instanceNode.get(m.instanceId);
       if (!inst) return;
       addLink({ source: hubId, target: m.instanceId, type: "chain", order: i, cursor: i === c.cursor });

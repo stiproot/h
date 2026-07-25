@@ -36,7 +36,7 @@ describe("stepStructured: merges validated structured envelopes", () => {
   it("merges in step order — later steps win", () => {
     const out = result({
       review: { structured: { verdict: "FINDINGS", summary: "old" } },
-      revise: { structured: { summary: "new" } },
+      "revise-pr": { structured: { summary: "new" } },
     });
     expect(stepStructured(out)).toEqual({ verdict: "FINDINGS", summary: "new" });
   });
@@ -64,7 +64,7 @@ describe("capturePr (structured only)", () => {
     capturePr(result({ "create-pr": { structured: { skipped: "GH_TOKEN unset" } } }), data);
     expect(data.prNumber).toBeUndefined();
     expect(data.prUrl).toBeUndefined();
-    expect(() => MEMBER_KINDS["pr-review"].buildParams(data)).toThrow(ChainThreadError);
+    expect(() => MEMBER_KINDS["review-pr"].buildParams(data)).toThrow(ChainThreadError);
   });
 
   it("fails loud when the run emitted NO structured output (undeclared template)", () => {
@@ -111,24 +111,24 @@ describe("reviewIsClean (structured only)", () => {
 });
 
 describe("MEMBER_KINDS buildParams (chain data → fire params)", () => {
-  it("feature-pr needs slug + spec, threads optional issueNumber and repo", () => {
-    const params = MEMBER_KINDS["feature-pr"].buildParams({
+  it("implement-pr needs slug + spec, threads optional issueNumber and repo", () => {
+    const params = MEMBER_KINDS["implement-pr"].buildParams({
       slug: "dark-mode",
       spec: "the spec",
       issueNumber: "7",
       repo: "o/r",
     });
     expect(params).toEqual({ slug: "dark-mode", spec: "the spec", issueNumber: "7", repo: "o/r" });
-    expect(() => MEMBER_KINDS["feature-pr"].buildParams({ slug: "s" })).toThrow(ChainThreadError);
+    expect(() => MEMBER_KINDS["implement-pr"].buildParams({ slug: "s" })).toThrow(ChainThreadError);
   });
 
-  it("pr-review needs the captured prNumber", () => {
-    expect(MEMBER_KINDS["pr-review"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
-    expect(() => MEMBER_KINDS["pr-review"].buildParams({})).toThrow(/structured output/);
+  it("review-pr needs the captured prNumber", () => {
+    expect(MEMBER_KINDS["review-pr"].buildParams({ prNumber: "22" })).toEqual({ pr: "22" });
+    expect(() => MEMBER_KINDS["review-pr"].buildParams({})).toThrow(/structured output/);
   });
 
-  it("revise needs prNumber + slug", () => {
-    expect(MEMBER_KINDS.revise.buildParams({ prNumber: "22", slug: "s" })).toEqual({
+  it("revise-pr needs prNumber + slug", () => {
+    expect(MEMBER_KINDS["revise-pr"].buildParams({ prNumber: "22", slug: "s" })).toEqual({
       pr: "22",
       slug: "s",
     });
@@ -137,7 +137,7 @@ describe("MEMBER_KINDS buildParams (chain data → fire params)", () => {
 
 describe("contractFor: declared mappings replace their half of the kind contract", () => {
   const member = {
-    kind: "feature-pr" as const,
+    kind: "implement-pr" as const,
     captures: { prNumber: "pr", prUrl: "url" },
     inputs: { slug: "slug", spec: "spec" },
   };
@@ -182,7 +182,7 @@ describe("contractFor: declared mappings replace their half of the kind contract
   });
 
   it("an undeclared half falls back to the kind's coded contract", () => {
-    const half = contractFor({ kind: "pr-review", inputs: { pr: "prNumber" } });
+    const half = contractFor({ kind: "review-pr", inputs: { pr: "prNumber" } });
     const data: ChainData = {};
     half.capture(result({ review: { structured: { verdict: "FINDINGS", summary: "f" } } }), data);
     expect(data.reviewFindings).toBe("f");
@@ -193,7 +193,7 @@ describe("contractFor: declared mappings replace their half of the kind contract
 describe("contractFor: namespaced chain data (D5)", () => {
   it("namespace-implicit capture writes under the member's own id", () => {
     const member = {
-      kind: "feature-pr" as const,
+      kind: "implement-pr" as const,
       id: "research",
       captures: { findings: "summary" },
     };
@@ -204,8 +204,8 @@ describe("contractFor: namespaced chain data (D5)", () => {
   });
 
   it("concurrent members with distinct ids never clobber (both capture the same bbKey)", () => {
-    const a = { kind: "feature-pr" as const, id: "a", captures: { val: "n" } };
-    const b = { kind: "feature-pr" as const, id: "b", captures: { val: "n" } };
+    const a = { kind: "implement-pr" as const, id: "a", captures: { val: "n" } };
+    const b = { kind: "implement-pr" as const, id: "b", captures: { val: "n" } };
     const data: ChainData = {};
     contractFor(a).capture(result({ s: { structured: { n: 1 } } }), data);
     contractFor(b).capture(result({ s: { structured: { n: 2 } } }), data);
@@ -213,7 +213,7 @@ describe("contractFor: namespaced chain data (D5)", () => {
   });
 
   it("without an id, declared captures still thread FLAT (degenerate one-member-per-stage)", () => {
-    const member = { kind: "feature-pr" as const, captures: { findings: "summary" } };
+    const member = { kind: "implement-pr" as const, captures: { findings: "summary" } };
     const data: ChainData = {};
     contractFor(member).capture(result({ s: { structured: { summary: "flat" } } }), data);
     expect(data).toEqual({ findings: "flat" });
@@ -221,7 +221,7 @@ describe("contractFor: namespaced chain data (D5)", () => {
 
   it("namespace-explicit input reads a dotted member.field path", () => {
     const reader = {
-      kind: "feature-pr" as const,
+      kind: "implement-pr" as const,
       inputs: { slug: "slug", spec: "research.findings" },
     };
     const data: ChainData = { slug: "x", research: { findings: "the findings" } };
@@ -230,7 +230,7 @@ describe("contractFor: namespaced chain data (D5)", () => {
   });
 
   it("a dotted input fails loud when the referenced member.field is absent", () => {
-    const reader = { kind: "feature-pr" as const, inputs: { spec: "research.findings" } };
+    const reader = { kind: "implement-pr" as const, inputs: { spec: "research.findings" } };
     expect(() => contractFor(reader).buildParams({ research: {} })).toThrow(
       /needs 'research.findings'/,
     );
@@ -239,7 +239,7 @@ describe("contractFor: namespaced chain data (D5)", () => {
 
 describe("loopIsClean", () => {
   const untilMember = {
-    kind: "pr-review" as const,
+    kind: "review-pr" as const,
     until: { path: "verdict", equals: "CLEAN" },
   };
 
@@ -258,11 +258,11 @@ describe("loopIsClean", () => {
 
   it("undeclared until falls back to the kind's reviewIsClean verdict check", () => {
     expect(
-      loopIsClean({ kind: "pr-review" }, result({ review: { structured: { verdict: "CLEAN" } } })),
+      loopIsClean({ kind: "review-pr" }, result({ review: { structured: { verdict: "CLEAN" } } })),
     ).toBe(true);
     expect(
       loopIsClean(
-        { kind: "pr-review" },
+        { kind: "review-pr" },
         result({ review: { structured: { verdict: "FINDINGS" } } }),
       ),
     ).toBe(false);

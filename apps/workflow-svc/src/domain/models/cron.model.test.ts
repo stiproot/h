@@ -5,8 +5,8 @@ import { CronRow, cronId } from "./cron.model.ts";
 
 describe("cronId", () => {
   it("is the coord tuple <repo>:<slug>:<workflow> — mirroring the wf: coords it recurs", () => {
-    expect(cronId({ repo: "stiproot/h", slug: "pi-agent", workflow: "revise" })).toBe(
-      "stiproot/h:pi-agent:revise",
+    expect(cronId({ repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" })).toBe(
+      "stiproot/h:pi-agent:revise-pr",
     );
   });
 });
@@ -16,7 +16,7 @@ describe("CronRow", () => {
   const base = {
     repo: "stiproot/h",
     slug: "pi-agent",
-    workflow: "revise",
+    workflow: "revise-pr",
     status: "active",
     cadence: "*/30 * * * *",
     budget: { maxFires: 100 },
@@ -28,7 +28,7 @@ describe("CronRow", () => {
   };
 
   it("decodes a saved-source cron (mode 1: key + fixed params)", () => {
-    const row = decode({ ...base, source: { mode: "saved", key: "revise", params: { pr: "30" } } });
+    const row = decode({ ...base, source: { mode: "saved", key: "revise-pr", params: { pr: "30" } } });
     expect(row.status).toBe("active");
     expect(row.source.mode).toBe("saved");
     expect(row.budget.maxFires).toBe(100);
@@ -44,7 +44,7 @@ describe("CronRow", () => {
 
   it("rejects an unknown status (closed literal)", () => {
     expect(() =>
-      decode({ ...base, status: "paused", source: { mode: "saved", key: "revise" } }),
+      decode({ ...base, status: "paused", source: { mode: "saved", key: "revise-pr" } }),
     ).toThrow();
   });
 

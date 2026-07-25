@@ -97,5 +97,8 @@ def overlay(*definitions: dict[str, Any]) -> dict[str, Any]:
                 steps_by_id[step_id] = clone
                 order.append(step_id)
 
+    # A composed definition is a workflow definition, not a template: the per-template `role`
+    # marker must not leak through (later-wins would keep the LAST atom's role — misleading).
+    result.pop("role", None)
     result["steps"] = [steps_by_id[step_id] for step_id in order]
     return result

@@ -129,7 +129,7 @@ const armedRow = (over: Partial<SchedRow> = {}): SchedRow => ({
   id: "sched-abc",
   status: "armed",
   fireAt: PAST,
-  source: { mode: "saved", key: "feature-pr" },
+  source: { mode: "saved", key: "implement-pr" },
   instanceId: "sched-abc",
   epoch: 1,
   createdAt: "2020-01-01T00:00:00Z",
@@ -146,7 +146,7 @@ describe("registerSchedForFire", () => {
     const res = await arm(cs.service, {
       id: "sched-abc",
       fireAt: FUTURE,
-      source: { mode: "saved", key: "feature-pr" },
+      source: { mode: "saved", key: "implement-pr" },
       origin: "at",
     });
     expect(res).toEqual({ schedId: "sched-abc", armed: true });
@@ -163,7 +163,7 @@ describe("registerSchedForFire", () => {
     await arm(cs.service, {
       id: "sched-abc",
       fireAt: FUTURE,
-      source: { mode: "saved", key: "feature-pr" },
+      source: { mode: "saved", key: "implement-pr" },
     });
     expect(cs.sched.get("sched-abc")!.epoch).toBe(4);
   });
@@ -174,7 +174,7 @@ describe("registerSchedForFire", () => {
     await arm(cs.service, {
       id: "sched-abc",
       fireAt: FUTURE,
-      source: { mode: "saved", key: "feature-pr" },
+      source: { mode: "saved", key: "implement-pr" },
     });
     const row = cs.sched.get("sched-abc")!;
     expect(row.status).toBe("armed");
@@ -196,7 +196,7 @@ describe("scanSchedEffect", () => {
     expect(inv.invokes).toHaveLength(1);
     expect(inv.invokes[0].instanceId).toBe("sched-abc");
     expect(inv.invokes[0].fresh).toBe(true);
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-feature-pr" }]);
+    expect(inv.invokes[0].steps).toEqual([{ activity: "run-implement-pr" }]);
     const row = cs.sched.get("sched-abc")!;
     expect(row.status).toBe("fired");
     expect(row.outcome).toBe("fired");

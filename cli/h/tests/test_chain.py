@@ -61,14 +61,14 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
     body = json.loads(route.calls[0].request.content)
     assert body["slug"] == "demo"
     assert body["strategy"] == "sequential"
-    assert [h["kind"] for h in body["workflows"]] == ["feature-pr", "pr-review", "revise"]
-    workflow = {h["kind"]: h for h in body["workflows"]}
-    # feature-pr + revise share the branch instance; pr-review has its own; revise re-runs fresh.
-    assert workflow["feature-pr"]["instanceId"] == "feature-demo"
-    assert workflow["feature-pr"]["fresh"] is False
-    assert workflow["revise"]["instanceId"] == "feature-demo"
-    assert workflow["revise"]["fresh"] is True
-    assert workflow["pr-review"]["instanceId"] == "pr-review-demo"
+    assert [h["kind"] for h in body["members"]] == ["implement-pr", "review-pr", "revise-pr"]
+    workflow = {h["kind"]: h for h in body["members"]}
+    # implement-pr + revise-pr share the branch instance; review-pr has its own; revise-pr re-runs fresh.
+    assert workflow["implement-pr"]["instanceId"] == "implement-demo"
+    assert workflow["implement-pr"]["fresh"] is False
+    assert workflow["revise-pr"]["instanceId"] == "implement-demo"
+    assert workflow["revise-pr"]["fresh"] is True
+    assert workflow["review-pr"]["instanceId"] == "review-pr-demo"
     # The initial chain data carries the first workflow's inputs.
     assert body["data"]["slug"] == "demo"
     assert body["data"]["issueNumber"] == "7"
@@ -81,21 +81,21 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
 def test_chain_run_single_workflow_hop(tmp_path: Path) -> None:
     route = _mock_run()
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w", "feature-pr"]
+        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-w", "implement-pr"]
     )
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    assert [h["kind"] for h in body["workflows"]] == ["feature-pr"]
+    assert [h["kind"] for h in body["members"]] == ["implement-pr"]
 
 
 @respx.mock
 def test_chain_run_fresh_binds_to_its_hop(tmp_path: Path) -> None:
     route = _mock_run()
     args = ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path)]
-    runner.invoke(app, [*args, "-w", "feature-pr", "--fresh", "-w", "pr-review"])
+    runner.invoke(app, [*args, "-w", "implement-pr", "--fresh", "-w", "review-pr"])
     body = json.loads(route.calls[0].request.content)
-    assert body["workflows"][0]["fresh"] is True
-    assert body["workflows"][1]["fresh"] is False
+    assert body["members"][0]["fresh"] is True
+    assert body["members"][1]["fresh"] is False
 
 
 @respx.mock
@@ -115,11 +115,11 @@ def test_chain_run_default_budget_scales_with_workflows(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
     route = _mock_run()
-    respx.get(f"{WORKFLOW_URL}/workflow/get/feature-pr").mock(
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
         return_value=Response(
             200,
             json={
-                "key": "feature-pr",
+                "key": "implement-pr",
                 "steps": [],
                 "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
             },
@@ -129,26 +129,26 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--agent", "openhands", "-w", "pr-review",
+            "-w", "implement-pr", "--agent", "openhands", "-w", "review-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    assert body["workflows"][0]["params"] == {
+    assert body["members"][0]["params"] == {
         "runActivity": "run-openhands",
         "agentId": "openhands-agent",
     }
-    assert "params" not in body["workflows"][1]
+    assert "params" not in body["members"][1]
 
 
 @respx.mock
 def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
     route = _mock_run()
-    respx.get(f"{WORKFLOW_URL}/workflow/get/feature-pr").mock(
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
         return_value=Response(
             200,
             json={
-                "key": "feature-pr",
+                "key": "implement-pr",
                 "steps": [],
                 "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
             },
@@ -158,30 +158,30 @@ def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--agent", "pi", "-w", "pr-review",
+            "-w", "implement-pr", "--agent", "pi", "-w", "review-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    assert body["workflows"][0]["params"] == {
+    assert body["members"][0]["params"] == {
         "runActivity": "run-pi",
         "agentId": "pi-agent",
     }
-    assert "params" not in body["workflows"][1]
+    assert "params" not in body["members"][1]
 
 
 @respx.mock
 def test_chain_run_agent_on_slotless_workflow_fails_loud(tmp_path: Path) -> None:
     _mock_run()
     # Published before fire-time identity: no runActivity default → --agent must not silently bake.
-    respx.get(f"{WORKFLOW_URL}/workflow/get/feature-pr").mock(
-        return_value=Response(200, json={"key": "feature-pr", "steps": []})
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
+        return_value=Response(200, json={"key": "implement-pr", "steps": []})
     )
     result = runner.invoke(
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--agent", "openhands",
+            "-w", "implement-pr", "--agent", "openhands",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
@@ -195,13 +195,13 @@ def test_chain_run_agent_on_frozen_executor_warns_and_defaults(tmp_path: Path) -
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "pr-review", "--agent", "openhands", "-w", "revise",
+            "-w", "review-pr", "--agent", "openhands", "-w", "revise-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     assert "frozen" in _all_output(result)  # rich may wrap the warning mid-phrase
     body = json.loads(route.calls[0].request.content)
-    assert "params" not in body["workflows"][0]  # the identity flag was dropped, not applied
+    assert "params" not in body["members"][0]  # the identity flag was dropped, not applied
 
 
 def test_chain_run_unknown_agent(tmp_path: Path) -> None:
@@ -209,7 +209,7 @@ def test_chain_run_unknown_agent(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--agent", "hal9000",
+            "-w", "implement-pr", "--agent", "hal9000",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
@@ -227,7 +227,7 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-t", "implement", "verify", "create-pr", "-w", "pr-review", "-w", "revise",
+            "-t", "implement", "verify", "create-pr", "-w", "review-pr", "-w", "revise-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
@@ -236,17 +236,17 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
     assert saved["key"] == "x-w0"
     assert saved["params"]["runActivity"] == "run-claude"
     body = json.loads(route.calls[0].request.content)
-    assert body["workflows"][0] == {
-        "kind": "feature-pr",
+    assert body["members"][0] == {
+        "kind": "implement-pr",
         "key": "x-w0",
-        "instanceId": "feature-x",
+        "instanceId": "implement-x",
         "fresh": False,
     }
-    # revise is its own first-class workflow — it fires the published `revise` key (NOT the composed
-    # feature-pr definition), sharing the branch instance so it operates on the same feature/<slug>.
-    assert body["workflows"][2]["kind"] == "revise"
-    assert body["workflows"][2]["key"] == "revise"
-    assert body["workflows"][2]["instanceId"] == "feature-x"
+    # revise-pr is its own first-class workflow — it fires the published `revise` key (NOT the composed
+    # implement-pr definition), sharing the branch instance so it operates on the same feature/<slug>.
+    assert body["members"][2]["kind"] == "revise-pr"
+    assert body["members"][2]["key"] == "revise-pr"
+    assert body["members"][2]["instanceId"] == "implement-x"
 
 
 @respx.mock
@@ -259,11 +259,11 @@ def test_chain_run_inline_embeds_steps_without_publishing(tmp_path: Path) -> Non
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-t", "implement", "verify", "create-pr", "--inline", "-w", "pr-review",
+            "-t", "implement", "verify", "create-pr", "--inline", "-w", "review-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
-    member = json.loads(route.calls[0].request.content)["workflows"][0]
+    member = json.loads(route.calls[0].request.content)["members"][0]
     assert "steps" in member and "key" not in member  # embedded, not published
     assert "embedded inline" in result.output
 
@@ -278,11 +278,11 @@ def test_chain_run_cron_member_arms_an_embedded_recurrence(tmp_path: Path) -> No
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
             "-t", "implement", "create-pr", "--cron", "*/30 * * * *", "--max-fires", "20",
             "--id", "gather",
-            "-w", "pr-review",
+            "-w", "review-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
-    member = json.loads(route.calls[0].request.content)["workflows"][0]
+    member = json.loads(route.calls[0].request.content)["members"][0]
     # --cron forces inline (embedded steps), arms {cadence, maxFires}, and takes the explicit id.
     assert "steps" in member and "key" not in member
     assert member["cron"] == {"cadence": "*/30 * * * *", "maxFires": 20}
@@ -338,18 +338,18 @@ def test_chain_run_parallel_emits_a_shared_stage(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--parallel", "-w", "pr-review",
+            "-w", "implement-pr", "--parallel", "-w", "review-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    a, b = body["workflows"]
+    a, b = body["members"]
     # Both members share stage 0 — one concurrent stage the engine joins before finalizing.
     assert a["stage"] == 0 and b["stage"] == 0
     # Parallel members get a unique engine-derived instance (no shared branch instanceId) + a
     # chain data namespace, so concurrent captures never collide.
     assert "instanceId" not in a and "instanceId" not in b
-    assert a["id"] == "feature-pr" and b["id"] == "pr-review"
+    assert a["id"] == "implement-pr" and b["id"] == "review-pr"
 
 
 @respx.mock
@@ -359,18 +359,18 @@ def test_chain_run_explicit_stage_marks_members_parallel(tmp_path: Path) -> None
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--stage", "0", "-w", "pr-review", "--stage", "0",
-            "-w", "revise", "--stage", "1",
+            "-w", "implement-pr", "--stage", "0", "-w", "review-pr", "--stage", "0",
+            "-w", "revise-pr", "--stage", "1",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
-    workflows = json.loads(route.calls[0].request.content)["workflows"]
+    workflows = json.loads(route.calls[0].request.content)["members"]
     assert [w["stage"] for w in workflows] == [0, 0, 1]
     # --stage 0 on two members (no --parallel) still marks them parallel — computed from the FINAL
     # stage, so they share a stage and drop their shared branch instance.
     assert "instanceId" not in workflows[0] and "instanceId" not in workflows[1]
-    # revise is alone in stage 1 → keeps its branch instance.
-    assert workflows[2]["instanceId"] == "feature-x"
+    # revise-pr is alone in stage 1 → keeps its branch instance.
+    assert workflows[2]["instanceId"] == "implement-x"
 
 
 @respx.mock
@@ -380,13 +380,13 @@ def test_chain_run_dotted_input_flows_through(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "-w", "pr-review", "--input", "pr=feature-pr.prNumber",
+            "-w", "implement-pr", "-w", "review-pr", "--input", "pr=implement-pr.prNumber",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
     # A dotted `id.field` input passes through verbatim; the engine resolves it as a path (D5).
-    assert body["workflows"][1]["inputs"] == {"pr": "feature-pr.prNumber"}
+    assert body["members"][1]["inputs"] == {"pr": "implement-pr.prNumber"}
 
 
 def test_chain_run_max_fires_needs_cron(tmp_path: Path) -> None:
@@ -394,7 +394,7 @@ def test_chain_run_max_fires_needs_cron(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--max-fires", "5",
+            "-w", "implement-pr", "--max-fires", "5",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
@@ -407,7 +407,7 @@ def test_chain_run_cron_on_saved_key_is_rejected(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--cron", "* * * * *",
+            "-w", "implement-pr", "--cron", "* * * * *",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
@@ -428,7 +428,7 @@ def test_chain_run_loop_until_clean(tmp_path: Path) -> None:
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
     assert body["strategy"] == "loop-until-clean"
-    # the loop body starts at the pr-review workflow (index 1 in feature-pr → pr-review → revise).
+    # the loop body starts at the review-pr workflow (index 1 in implement-pr → review-pr → revise).
     assert body["loop"] == {"startCursor": 1, "maxIterations": 5}
 
 
@@ -437,11 +437,11 @@ def test_chain_run_loop_needs_a_review_hop(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--strategy", "loop-until-clean",
+            "-w", "implement-pr", "--strategy", "loop-until-clean",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
-    assert "pr-review" in _all_output(result)
+    assert "review-pr" in _all_output(result)
 
 
 def test_chain_run_unknown_workflow_needs_kind(tmp_path: Path) -> None:
@@ -486,10 +486,10 @@ def test_chain_list_renders_registry() -> None:
                         "chainId": "dark-mode",
                         "status": "running",
                         "cursor": 1,
-                        "workflows": [
-                            {"kind": "feature-pr"},
-                            {"kind": "pr-review"},
-                            {"kind": "revise"},
+                        "members": [
+                            {"kind": "implement-pr"},
+                            {"kind": "review-pr"},
+                            {"kind": "revise-pr"},
                         ],
                         "outcome": None,
                     }
@@ -529,18 +529,18 @@ def _mock_get(key: str, outputs: dict | None = None):
 @respx.mock
 def test_chain_run_mapping_flags_land_on_the_member(tmp_path: Path) -> None:
     route = _mock_run()
-    _mock_get("feature-pr", outputs=PR_OUTPUTS)
+    _mock_get("implement-pr", outputs=PR_OUTPUTS)
     result = runner.invoke(
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--capture", "prNumber=pr", "--capture", "prUrl=url",
-            "-w", "pr-review", "--input", "pr=prNumber",
+            "-w", "implement-pr", "--capture", "prNumber=pr", "--capture", "prUrl=url",
+            "-w", "review-pr", "--input", "pr=prNumber",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    feature, review = body["workflows"]
+    feature, review = body["members"]
     assert feature["captures"] == {"prNumber": "pr", "prUrl": "url"}
     assert "inputs" not in feature
     assert review["inputs"] == {"pr": "prNumber"}
@@ -549,17 +549,17 @@ def test_chain_run_mapping_flags_land_on_the_member(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_until_shapes_the_predicate(tmp_path: Path) -> None:
     route = _mock_run()
-    _mock_get("pr-review", outputs={"type": "object", "properties": {"verdict": {}}})
+    _mock_get("review-pr", outputs={"type": "object", "properties": {"verdict": {}}})
     result = runner.invoke(
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "-w", "pr-review", "--until", "verdict=CLEAN",
+            "-w", "implement-pr", "-w", "review-pr", "--until", "verdict=CLEAN",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    assert body["workflows"][1]["until"] == {"path": "verdict", "equals": "CLEAN"}
+    assert body["members"][1]["until"] == {"path": "verdict", "equals": "CLEAN"}
 
 
 @respx.mock
@@ -567,27 +567,27 @@ def test_chain_run_capture_without_declared_outputs_fails_at_registration(
     tmp_path: Path,
 ) -> None:
     _mock_run()
-    _mock_get("feature-pr")  # no outputs declaration on the saved workflow
+    _mock_get("implement-pr")  # no outputs declaration on the saved workflow
     result = runner.invoke(
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--capture", "prNumber=pr",
+            "-w", "implement-pr", "--capture", "prNumber=pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
-    assert "declares no outputs schema" in _all_output(result)
+    assert "declares no outputs" in _all_output(result)
 
 
 @respx.mock
 def test_chain_run_capture_of_undeclared_field_fails_at_registration(tmp_path: Path) -> None:
     _mock_run()
-    _mock_get("feature-pr", outputs=PR_OUTPUTS)
+    _mock_get("implement-pr", outputs=PR_OUTPUTS)
     result = runner.invoke(
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-w", "feature-pr", "--capture", "prNumber=prNum",
+            "-w", "implement-pr", "--capture", "prNumber=prNum",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
@@ -605,7 +605,7 @@ def test_chain_run_answer_is_a_first_class_kind(tmp_path: Path) -> None:
         ["chain", "run", "--slug", "x", "-p", "task=design the codex integration", "-w", "answer"],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
-    member = json.loads(route.calls[0].request.content)["workflows"][0]
+    member = json.loads(route.calls[0].request.content)["members"][0]
     assert member["kind"] == "answer"
     assert member["key"] == "answer"
     assert member["instanceId"] == "answer-x"
@@ -640,11 +640,11 @@ def test_chain_run_answer_parallel_member_namespaces_its_captures(tmp_path: Path
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
             "-w", "answer", "--id", "design", "--input", "task=task",
             "--capture", "answer=answer",
-            "--parallel", "-w", "feature-pr",
+            "--parallel", "-w", "implement-pr",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
-    member = json.loads(route.calls[0].request.content)["workflows"][0]
+    member = json.loads(route.calls[0].request.content)["members"][0]
     assert member["kind"] == "answer"
     assert member["stage"] == 0
     assert "instanceId" not in member  # parallel → engine-derived instance, no branch collision
@@ -684,8 +684,8 @@ def test_chain_run_answer_bad_capture_field_fails_loud(tmp_path: Path) -> None:
 @needs_helm
 @respx.mock
 def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
-    """`-w pr-review --agent A B C --inline` renders the template, panelizes it (branches +
-    judge synthesis under the pr-review contract), and embeds the steps in the chain row."""
+    """`-w review-pr --agent A B C --inline` renders the template, panelizes it (branches +
+    judge synthesis under the review-pr contract), and embeds the steps in the chain row."""
     route = _mock_run("panel-x")
     result = runner.invoke(
         app,
@@ -699,7 +699,7 @@ def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
             "-p",
             "repo=o/r",
             "-w",
-            "pr-review",
+            "review-pr",
             "--agent",
             "claude",
             "codex",
@@ -709,8 +709,8 @@ def test_chain_roster_member_panelizes_inline(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    member = body["workflows"][0]
-    assert member["kind"] == "pr-review"
+    member = body["members"][0]
+    assert member["kind"] == "review-pr"
     assert "key" not in member
     panel = next(step for step in member["steps"] if "parallel" in step)
     assert [b["activity"] for b in panel["parallel"]] == [
@@ -736,7 +736,7 @@ def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
             "-p",
             _pspec(tmp_path),
             "-w",
-            "feature-pr",
+            "implement-pr",
             "--agent",
             "claude",
             "codex",
@@ -757,7 +757,7 @@ def test_chain_roster_rejects_model(tmp_path: Path) -> None:
             "-p",
             _pspec(tmp_path),
             "-w",
-            "pr-review",
+            "review-pr",
             "--agent",
             "claude",
             "codex",

@@ -8,7 +8,7 @@ import type { DiscoverRow } from "./models/discover.model.ts";
 const base: DiscoverRow = {
   repo: "stiproot/h",
   label: "agent-approved",
-  workflow: "feature-pr",
+  workflow: "implement-pr",
   status: "active",
   cadence: "*/30 * * * *",
   source: { mode: "github-issues" },

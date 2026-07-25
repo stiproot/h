@@ -35,7 +35,7 @@ PINNED_OR_OVERLAY_IDENTITY = {
     "improve-plugin",
     "verify",
     "create-pr",
-    "arm-revise",
+    "arm-revise-pr",
 }
 
 
@@ -103,20 +103,20 @@ def test_verify_requires_a_cmd() -> None:
 
 
 def test_revise_golden(snapshot) -> None:
-    """revise — a standalone, publish-native workflow that reads a PR's unresolved review threads
-    itself (github MCP) and addresses them. worktree → setup → revise,
+    """revise-pr — a standalone, publish-native workflow that reads a PR's unresolved review threads
+    itself (github MCP) and addresses them. worktree → setup → revise-pr,
     {{params.pr}}/{{params.slug}}."""
-    rendered = helm.render_workflow("revise", values={"publish": "true"}, include_local=False)
+    rendered = helm.render_workflow("revise-pr", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
 
 def test_revise_is_worktree_setup_revise() -> None:
-    """revise is self-sufficient: cut the PR's branch, read its threads, push — three steps."""
+    """revise-pr is self-sufficient: cut the PR's branch, read its threads, push — three steps."""
     import yaml
 
-    rendered = helm.render_workflow("revise", values={"publish": "true"}, include_local=False)
+    rendered = helm.render_workflow("revise-pr", values={"publish": "true"}, include_local=False)
     steps = [s["id"] for s in yaml.safe_load(rendered)["steps"]]
-    assert steps == ["worktree", "setup", "revise"]
+    assert steps == ["worktree", "setup", "revise-pr"]
 
 
 def test_compose_implement_verify_create_pr_orders_and_gates() -> None:
@@ -310,13 +310,13 @@ def test_compose_implement_create_pr_extends_implement() -> None:
 def test_arm_revise_golden(snapshot) -> None:
     """arm-revise overlay (§10, Job 2): a lone register-cron step arming a revise-until-merged
     cron."""
-    rendered = helm.render_workflow("arm-revise", values={"publish": "true"}, include_local=False)
+    rendered = helm.render_workflow("arm-revise-pr", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
 
 def test_compose_implement_verify_create_pr_arm_revise_appends_the_arm_step() -> None:
     """implement ⊕ verify ⊕ create-pr ⊕ arm-revise: the arm-revise step is APPENDED (new id) after
-    implement, carrying register-cron + the PR guard — the h-builds-h feature-pr composition."""
+    implement, carrying register-cron + the PR guard — the h-builds-h implement-pr composition."""
     from h_cli.infrastructure.overlay import overlay
 
     def _atom(name: str, **vals: str) -> dict:
@@ -334,18 +334,18 @@ def test_compose_implement_verify_create_pr_arm_revise_appends_the_arm_step() ->
         _atom("implement"),
         _atom("verify", **{"verify.cmd": "bun run lint"}),
         _atom("create-pr"),
-        _atom("arm-revise"),
+        _atom("arm-revise-pr"),
     )
     assert [s["id"] for s in merged["steps"]] == [
         "worktree",
         "setup",
         "plan",
         "implement",
-        "arm-revise",
+        "arm-revise-pr",
     ]
-    arm = next(s for s in merged["steps"] if s["id"] == "arm-revise")
+    arm = next(s for s in merged["steps"] if s["id"] == "arm-revise-pr")
     assert arm["activity"] == "register-cron"
-    assert arm["input"]["workflow"] == "revise"
+    assert arm["input"]["workflow"] == "revise-pr"
     # The guard reads the implement step's structured output for `pr`; identity threads as params.
     assert arm["input"]["requirePrFrom"] == "{{implement.output}}"
     assert arm["input"]["repo"] == "{{params.repo}}"

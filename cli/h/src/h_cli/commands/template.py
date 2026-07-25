@@ -29,7 +29,7 @@ err_console = Console(stderr=True)
 COMPOSABLE_VALUES = {"publish": "true", "composable": "true"}
 TEMPLATE_SUFFIX = ".tmpl.yaml"
 TEMPLATE_ROLES = frozenset({"standalone", "base", "overlay"})
-SAVED_KEY_TEMPLATES = {"pr-review": "review-pr"}
+SAVED_KEY_TEMPLATES = {"review-pr": "review-pr"}
 
 
 def template_name_for_key(key: str) -> str:

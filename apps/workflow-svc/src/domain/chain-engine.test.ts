@@ -6,17 +6,17 @@ import { decide, type MemberObservation } from "./chain-engine.ts";
 
 const T0 = Date.parse("2026-07-08T09:00:00Z");
 
-// A three-workflow chain (feature-pr → pr-review → revise), one member per stage by default; cursor
-// on stage 0 (feature-pr) unless overridden.
+// A three-workflow chain (implement-pr → review-pr → revise-pr), one member per stage by default; cursor
+// on stage 0 (implement-pr) unless overridden.
 function row(overrides: Partial<ChainRow> = {}): ChainRow {
   return {
     chainId: "dark-mode",
     epoch: 1,
     slug: "dark-mode",
-    workflows: [
-      { kind: "feature-pr", key: "feature-pr" },
-      { kind: "pr-review", key: "pr-review" },
-      { kind: "revise", key: "feature-pr" },
+    members: [
+      { kind: "implement-pr", key: "implement-pr" },
+      { kind: "review-pr", key: "review-pr" },
+      { kind: "revise-pr", key: "implement-pr" },
     ],
     strategy: "sequential",
     cursor: 0,
@@ -82,12 +82,12 @@ describe("decide: current stage terminal", () => {
 describe("decide: parallel stage (concurrent members, joined)", () => {
   // A two-member stage-0 chain: {A ∥ B} → C.
   function parRow(overrides: Partial<ChainRow> = {}): ChainRow {
-    const workflows: ChainMember[] = [
-      { kind: "feature-pr", key: "feature-pr", stage: 0 },
-      { kind: "feature-pr", key: "feature-pr", stage: 0 },
-      { kind: "pr-review", key: "pr-review", stage: 1 },
+    const members: ChainMember[] = [
+      { kind: "implement-pr", key: "implement-pr", stage: 0 },
+      { kind: "implement-pr", key: "implement-pr", stage: 0 },
+      { kind: "review-pr", key: "review-pr", stage: 1 },
     ];
-    return row({ workflows, cursor: 0, ...overrides });
+    return row({ members, cursor: 0, ...overrides });
   }
 
   it("waits while any member of the stage is still running (join barrier)", () => {
@@ -109,12 +109,12 @@ describe("decide: parallel stage (concurrent members, joined)", () => {
 
   it("finalizes completed when the last (parallel) stage all completes", () => {
     // Both members share the final stage 1 of a two-stage chain.
-    const workflows: ChainMember[] = [
-      { kind: "feature-pr", key: "feature-pr", stage: 0 },
-      { kind: "pr-review", key: "pr-review", stage: 1 },
-      { kind: "pr-review", key: "pr-review", stage: 1 },
+    const members: ChainMember[] = [
+      { kind: "implement-pr", key: "implement-pr", stage: 0 },
+      { kind: "review-pr", key: "review-pr", stage: 1 },
+      { kind: "review-pr", key: "review-pr", stage: 1 },
     ];
-    const d = decide(row({ workflows, cursor: 1 }), [obs("COMPLETED", 1), obs("COMPLETED", 2)], T0);
+    const d = decide(row({ members, cursor: 1 }), [obs("COMPLETED", 1), obs("COMPLETED", 2)], T0);
     expect(d.kind).toBe("finalize");
     if (d.kind === "finalize") expect(d.outcome).toBe("completed");
   });
@@ -150,7 +150,7 @@ describe("decide: live stage", () => {
     expect(d.kind).toBe("budget-terminate");
   });
 
-  it("never budget-terminates without a chain budget (workflows carry their own)", () => {
+  it("never budget-terminates without a chain budget (members carry their own)", () => {
     const d = decide(row({ budgetMs: undefined }), stage("RUNNING"), T0 + 10 * 60 * 60_000);
     expect(d.kind).toBe("wait");
   });
@@ -175,11 +175,11 @@ describe("decide: UNKNOWN is conservative", () => {
 
   it("treats a stage as UNKNOWN when any member's status is degraded", () => {
     // One member COMPLETED, the other UNKNOWN — not all done, so the streak (not an advance) owns it.
-    const workflows: ChainMember[] = [
-      { kind: "feature-pr", key: "feature-pr", stage: 0 },
-      { kind: "feature-pr", key: "feature-pr", stage: 0 },
+    const members: ChainMember[] = [
+      { kind: "implement-pr", key: "implement-pr", stage: 0 },
+      { kind: "implement-pr", key: "implement-pr", stage: 0 },
     ];
-    const d = decide(row({ workflows, cursor: 0 }), [obs("COMPLETED", 0), obs("UNKNOWN", 1)], T0);
+    const d = decide(row({ members, cursor: 0 }), [obs("COMPLETED", 0), obs("UNKNOWN", 1)], T0);
     expect(d.kind).toBe("wait");
     if (d.kind === "wait") expect(d.row.unknownStreak).toBe(1);
   });
@@ -211,8 +211,8 @@ describe("decide: finalized rows are inert", () => {
 
 describe("validateChain (registration-time member + stage shape)", () => {
   const m = (over: Partial<ChainMember> = {}): ChainMember => ({
-    kind: "feature-pr",
-    key: "feature-pr",
+    kind: "implement-pr",
+    key: "implement-pr",
     ...over,
   });
 
@@ -235,7 +235,7 @@ describe("validateChain (registration-time member + stage shape)", () => {
   it("accepts an inline cron member (steps + cron, no key)", () => {
     expect(
       validateChain([
-        { kind: "feature-pr", steps: [{ activity: "x" }], cron: { cadence: "* * * * *" } },
+        { kind: "implement-pr", steps: [{ activity: "x" }], cron: { cadence: "* * * * *" } },
       ]),
     ).toBeNull();
   });

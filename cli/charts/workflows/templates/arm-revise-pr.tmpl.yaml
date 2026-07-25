@@ -10,23 +10,23 @@ Guard: the register-cron activity only arms if `implement`'s structured output b
 URL — a create-pr run that SKIPPED the push opens no PR and arms nothing (a valid no-op).
 
 Compose (the intended path — the h-builds-h feature-pr key):
-  h template compose implement verify create-pr arm-revise --save feature-pr
+  h template compose implement verify create-pr arm-revise-pr --save implement-pr
 Render alone (for inspection):
-  helm template arm-revise cli/charts/workflows -s templates/arm-revise.tmpl.yaml --set template=arm-revise
+  helm template arm-revise-pr cli/charts/workflows -s templates/arm-revise-pr.tmpl.yaml --set template=arm-revise-pr
 */ -}}
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
-{{- if eq (.Values.template | default "") "arm-revise" }}
+{{- if eq (.Values.template | default "") "arm-revise-pr" }}
 role: overlay
-{{- $a := .Values.armRevise | default dict }}
+{{- $a := .Values.armRevisePr | default dict }}
 {{- $cadence := $a.cadence | default "0 */6 * * *" }}
 {{- $maxFires := $a.maxFires | default 20 }}
 steps:
-  - id: arm-revise
+  - id: arm-revise-pr
     activity: register-cron
     input:
       # The saved workflow the cron re-fires each due tick until the PR merges (revise reports
       # a structured `goal: RESOLVED` on merge; the cron engine reads wf:*.resolved and deactivates).
-      workflow: revise
+      workflow: revise-pr
       repo: {{ include "h.token" "params.repo" | quote }}
       slug: {{ include "h.token" "params.slug" | quote }}
       cadence: {{ $cadence | quote }}

@@ -61,12 +61,12 @@ def test_workflow_run_unknown_via_lists_the_registry() -> None:
 def test_workflow_run_agent_and_model_are_machinery_p_carries_content() -> None:
     """--agent + --model are execution machinery (expand to identity/model params); template
     CONTENT values ride -p key=value. Goes straight to workflow-svc (not a --via babysitter)."""
-    route = respx.post(f"{WORKFLOW_URL}/workflow/run/feature-pr").mock(
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run/implement-pr").mock(
         return_value=Response(200, json={"instanceId": "feature-x", "watching": False})
     )
     result = runner.invoke(
         app,
-        ["workflow", "run", "feature-pr", "-p", "slug=x", "--agent", "openhands", "--model", "m1"],
+        ["workflow", "run", "implement-pr", "-p", "slug=x", "--agent", "openhands", "--model", "m1"],
     )
     assert result.exit_code == 0, result.output
     body = json.loads(route.calls[0].request.content)
@@ -78,18 +78,18 @@ def test_workflow_run_agent_and_model_are_machinery_p_carries_content() -> None:
 
 
 def test_workflow_run_unknown_agent_identity_exits_1() -> None:
-    result = runner.invoke(app, ["workflow", "run", "feature-pr", "--agent", "nope"])
+    result = runner.invoke(app, ["workflow", "run", "implement-pr", "--agent", "nope"])
     assert result.exit_code == 1
     assert "unknown --agent" in (result.output + getattr(result, "stderr", ""))
 
 
 @respx.mock
 def test_workflow_run_agent_on_frozen_executor_is_ignored() -> None:
-    """The pr-review executor is frozen — --agent warns and applies no identity params."""
-    route = respx.post(f"{WORKFLOW_URL}/workflow/run/pr-review").mock(
-        return_value=Response(200, json={"instanceId": "pr-review-x", "watching": False})
+    """The review-pr executor is frozen — --agent warns and applies no identity params."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run/review-pr").mock(
+        return_value=Response(200, json={"instanceId": "review-pr-x", "watching": False})
     )
-    result = runner.invoke(app, ["workflow", "run", "pr-review", "--agent", "openhands"])
+    result = runner.invoke(app, ["workflow", "run", "review-pr", "--agent", "openhands"])
     assert result.exit_code == 0, result.output
     body = json.loads(route.calls[0].request.content)
     # frozen: no identity params leaked in

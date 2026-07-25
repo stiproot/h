@@ -1,6 +1,6 @@
 # Template naming convention — verb grammar, .tmpl.yaml, declared roles
 
-Status: Designed — decisions locked 2026-07-25; phased for h to carry out
+Status: DONE — all phases complete 2026-07-25 (phase 4 executed locally with the vocab wire change)
 Established: 2026-07-25
 
 ## Why
@@ -82,7 +82,7 @@ orthogonal to template names); `_helpers.tpl` (helm's own convention); the `wf:`
    renames, CLI resolution, goldens re-blessed, `values.local.yaml` migration recipe.
 3. [x] Guards + refusals: `check-templates.mjs` extension (suffix + gate + role), CLI overlay
    refusals, fixture proofs, tests.
-4. [ ] **Kind renames — the wire flag day, BUNDLED with vocabulary Phase 4**
+4. [x] **Kind renames — the wire flag day, BUNDLED with vocabulary Phase 4**
    (`ChainRow.workflows` → `members`): one drain of active chains, one engine cutover
    (`implement-pr`, `review-pr`, members field), one workflow-svc rebuild. Two pending wire
    changes, one operational moment.
@@ -109,3 +109,10 @@ orthogonal to template names); `_helpers.tpl` (helm's own convention); the `wf:`
   blocks, declared and enforced roles, extended guards, re-blessed goldens, and swept required
   docs. Phase 4 remains open; kind literals, saved keys, engine contracts, and wire shapes are
   deliberately unchanged.
+- 2026-07-25 — Phase 4 executed locally (with the user): kinds `implement-pr` / `review-pr` /
+  `revise-pr` (the trio aligned per user direction — `revise` → `revise-pr`; templates
+  revise-pr.tmpl.yaml + arm-revise-pr.tmpl.yaml followed, values keys revisePr/armRevisePr),
+  wire field `ChainRow.workflows` → `members` (engine, router, CLI, viz), KIND_FIRE instance
+  prefix `feature-` → `implement-`. Old chain rows purged (unreadable by the new schema —
+  accepted audit loss); saved key republished implement-pr; workflow-svc rebuilt; smoke chain
+  advanced. overlay() also stops leaking the last atom's `role:` into composed definitions.

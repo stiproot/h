@@ -123,7 +123,7 @@ const fmtMins = (ms) => (ms == null ? "—" : `${Math.round(ms / 60000)}m`);
       <div v-if="node.row?.note" class="kv"><span>note</span><span>{{ node.row.note }}</span></div>
       <section>
         <h3>members</h3>
-        <div v-for="(m, i) in node.row?.workflows || []" :key="i" class="kv">
+        <div v-for="(m, i) in node.row?.members || []" :key="i" class="kv">
           <span>#{{ i }}<b v-if="i === node.cursor"> ←</b></span>
           <span>{{ m.kind }} → <code>{{ m.instanceId }}</code></span>
         </div>

@@ -34,7 +34,7 @@ def test_cron_list_renders_rows_with_the_heartbeat() -> None:
                     {
                         "repo": "stiproot/h",
                         "slug": "pi-agent",
-                        "workflow": "revise",
+                        "workflow": "revise-pr",
                         "status": "active",
                         "cadence": "*/30 * * * *",
                         "fires": 2,
@@ -46,7 +46,7 @@ def test_cron_list_renders_rows_with_the_heartbeat() -> None:
     )
     result = runner.invoke(app, ["cron", "list"], env={"COLUMNS": "200"})
     assert result.exit_code == 0, result.output
-    assert "stiproot/h:pi-agent:revise" in result.output
+    assert "stiproot/h:pi-agent:revise-pr" in result.output
     assert "*/30 * * * *" in result.output
     assert "2/100" in result.output
     assert "crons (1)" in result.output
@@ -73,7 +73,7 @@ def test_cron_list_renders_discovery_rows() -> None:
                     {
                         "repo": "stiproot/h",
                         "label": "agent-approved",
-                        "workflow": "feature-pr",
+                        "workflow": "implement-pr",
                         "status": "active",
                         "cadence": "0 * * * *",
                         "fires": 3,
@@ -117,7 +117,7 @@ def test_cron_discover_add_fires_a_provision_workflow() -> None:
             "input": {
                 "repo": "stiproot/h",
                 "label": "agent-approved",
-                "workflow": "feature-pr",  # defaulted
+                "workflow": "implement-pr",  # defaulted
                 "cadence": "0 * * * *",
                 "maxFiresPerDay": 3,
             },
@@ -175,18 +175,18 @@ def test_cron_rm_disarms_an_active_cron() -> None:
         return_value=Response(
             200,
             json={
-                "disarmed": "stiproot/h:dark-mode:revise",
+                "disarmed": "stiproot/h:dark-mode:revise-pr",
                 "status": "inactive",
                 "outcome": "disabled",
             },
         )
     )
-    result = runner.invoke(app, ["cron", "rm", "stiproot/h", "dark-mode", "revise"])
+    result = runner.invoke(app, ["cron", "rm", "stiproot/h", "dark-mode", "revise-pr"])
     assert result.exit_code == 0, result.output
     assert route.called
     body = json.loads(route.calls.last.request.content)
-    assert body == {"repo": "stiproot/h", "slug": "dark-mode", "workflow": "revise"}
-    assert "cron:sub:stiproot/h:dark-mode:revise" in result.output
+    assert body == {"repo": "stiproot/h", "slug": "dark-mode", "workflow": "revise-pr"}
+    assert "cron:sub:stiproot/h:dark-mode:revise-pr" in result.output
     assert "inactive" in result.output
 
 

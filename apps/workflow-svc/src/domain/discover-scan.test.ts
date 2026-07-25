@@ -156,7 +156,7 @@ const issues: SourceItem[] = [
 const activeRow = (over: Partial<DiscoverRow> = {}): DiscoverRow => ({
   repo: "stiproot/h",
   label: "agent-approved",
-  workflow: "feature-pr",
+  workflow: "implement-pr",
   status: "active",
   cadence: DUE,
   source: { mode: "github-issues" },
@@ -175,7 +175,7 @@ describe("registerDiscover", () => {
       registerDiscover({
         repo: "stiproot/h",
         label: "agent-approved",
-        workflow: "feature-pr",
+        workflow: "implement-pr",
         cadence: DUE,
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service, sourceReader([])))),
     );
@@ -198,7 +198,7 @@ describe("registerDiscover", () => {
       registerDiscover({
         repo: "stiproot/h",
         label: "agent-approved",
-        workflow: "feature-pr",
+        workflow: "implement-pr",
         cadence: "*/30 * * * *",
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service, sourceReader([])))),
     );
@@ -225,7 +225,7 @@ describe("scanDiscoverEffect", () => {
     const req = inv.invokes[0]!;
     expect(req.instanceId).toBe("feature-issue-10");
     expect(req.fresh).toBe(true);
-    expect(req.wf).toEqual({ repo: "stiproot/h", slug: "issue-10", workflow: "feature-pr" });
+    expect(req.wf).toEqual({ repo: "stiproot/h", slug: "issue-10", workflow: "implement-pr" });
     expect(req.params).toMatchObject({ repo: "stiproot/h", slug: "issue-10", issueNumber: "10" });
     // Row stamped: fired the oldest, fires incremented, in-flight instance recorded, ledger tallied.
     const row = cs.discoverRows.get("stiproot/h:agent-approved")!;

@@ -90,7 +90,7 @@ template ─(overlay ⊕)→ workflow definition ─(execute)→ workflow ─(ch
   identity (agent/model): published slots with values-baked defaults, overridable per fire.
 - **Workflow** — an executed definition (the durable run).
 - **Chain** — sequence workflows. *Temporal*: for units that hand off to a fresh agent, e.g.
-  `feature-pr → pr-review → revise`.
+  `implement-pr → review-pr → revise-pr`.
 
 Overlay vs chain is *where the agent's context breaks* — and a performance call: shared-context units
 must overlay, or you re-read context per chained workflow.

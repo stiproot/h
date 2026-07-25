@@ -6,7 +6,7 @@ description: File a well-formed GitHub issue ON THE H REPO — format, scope, et
 # h issues
 
 Capture improvements to h as GitHub issues on the h repo, shaped so the h-builds-h loop — the
-discovery cron that fans out one `feature-pr` per labeled issue, then a per-PR revise cron
+discovery cron that fans out one `implement-pr` per labeled issue, then a per-PR revise cron
 (docs/h-builds-h-runbook.md) — or a human — can pick one up and land it as a single PR.
 
 **Scope guard:** these conventions apply to the h repo only. When working in any other

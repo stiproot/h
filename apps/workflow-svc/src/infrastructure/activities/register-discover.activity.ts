@@ -18,7 +18,7 @@ import { runActivity } from "../activity-runtime.ts";
 type Input = {
   repo: string;
   label: string;
-  /** The saved key fired per discovered issue (e.g. "feature-pr"). */
+  /** The saved key fired per discovered issue (e.g. "implement-pr"). */
   workflow: string;
   cadence: string;
   maxFiresPerDay?: number;

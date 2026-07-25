@@ -8,9 +8,9 @@ Job 1) and §10 (arm-at-birth revise/Job 2). Runs locally only — no inbound we
 state is poll-discovered on the `workflow-cron-tick`.
 
 > **The loop is two crons, no sweep agent.** A **discovery cron** (§9) queries the issue board each
-> tick and fires one `feature-pr` per newly-discovered issue (deduped against the `wf:*` keys). Each
-> `feature-pr` run, on opening its PR, arms a per-PR **revise cron** (§10, `arm-revise`) that re-fires
-> `revise` until the PR merges. Both crons are pure engine loops on workflow-svc — the retired
+> tick and fires one `implement-pr` per newly-discovered issue (deduped against the `wf:*` keys). Each
+> `implement-pr` run, on opening its PR, arms a per-PR **revise cron** (§10, `arm-revise-pr`) that re-fires
+> `revise-pr` until the PR merges. Both crons are pure engine loops on workflow-svc — the retired
 > `issue-sweep` agent (which bundled discover + revise into one judgment tick) is gone.
 
 ## Phase 0 — the security boundary (manual, do first)
@@ -74,29 +74,29 @@ mode-agnostic workflow config (`clonePath` unset → `<sharedRoot>/repo`) runs i
 ## Bring-up order
 
 ```sh
-cli/scripts/run-claude-agent.sh      # the loop's executor (feature runs + pr-review)
+cli/scripts/run-claude-agent.sh      # the loop's executor (feature runs + review-pr)
 # workflow-svc, workflow-mcp, dapr-mcp, obs-mcp as usual (make dev-tab)
 ```
 
 `GH_TOKEN` must be set on **workflow-svc** — the discovery cron reads the issue board itself (the
 `git-core` GitHub client), no agent involved. Keep the MCP servers running whenever agents run — a
-down MCP silently drops tools from a `feature-pr` run.
+down MCP silently drops tools from a `implement-pr` run.
 
 ## Publish, seed, arm
 
 ```sh
-# 1. The feature-pr template (implement ⊕ verify ⊕ create-pr ⊕ arm-revise; params: slug, spec,
+# 1. The implement-pr template (implement ⊕ verify ⊕ create-pr ⊕ arm-revise-pr; params: slug, spec,
 #    issueNumber). Each run implements the issue, gates on the acceptance check, and opens its PR —
-#    all in the one implement agent — then arm-revise arms a revise-until-merged recur cron for the
+#    all in the one implement agent — then arm-revise-pr arms a revise-until-merged recur cron for the
 #    PR it just opened (§10, Job 2; a SKIPPED push arms nothing).
-uv run h template compose implement verify create-pr arm-revise --save feature-pr
+uv run h template compose implement verify create-pr arm-revise-pr --save implement-pr
 
-# 2. Also publish `revise` (the per-PR loop's target) so the arm-revise cron has a key to re-fire.
+# 2. Also publish `revise-pr` (the per-PR loop's target) so the arm-revise-pr cron has a key to re-fire.
 uv run h workflow publish revise
 
 # 3. Phase-1 acceptance: hand-fire one issue-linked run before any automation.
 #    Template VALUES ride -p key=value (slug/spec/issueNumber/repo); --agent selects the executor.
-uv run h workflow run feature-pr -p repo=<owner>/h -p slug=issue-X -p spec=@toy.md \
+uv run h workflow run implement-pr -p repo=<owner>/h -p slug=issue-X -p spec=@toy.md \
   -p issueNumber=X --instance-id feature-issue-X --agent claude-agent
 #    Confirm it opened a PR AND armed a revise cron: `h cron list` shows a
 #    cron:sub:<owner>/h:issue-X:revise row.
@@ -104,19 +104,19 @@ uv run h workflow run feature-pr -p repo=<owner>/h -p slug=issue-X -p spec=@toy.
 # 4. Arm the discovery cron — the standing patrol. This fires a one-step provision workflow whose
 #    register-discover activity writes the cron:discover row (§10 — crons via activities); its wf:
 #    row audits the registration. --run-budget-mins attaches a watch policy so the watcher engine
-#    terminates a hung feature-pr (and --run-retries re-fires a failed one) rather than it stalling
+#    terminates a hung implement-pr (and --run-retries re-fires a failed one) rather than it stalling
 #    the one-in-flight serialize.
 uv run h cron discover add <owner>/h \
-  --label agent-approved --cadence "*/30 * * * *" --workflow feature-pr --max-per-day 3 \
+  --label agent-approved --cadence "*/30 * * * *" --workflow implement-pr --max-per-day 3 \
   --run-budget-mins 40 --run-retries 2
 
 # 5. Inspect the loop.
 uv run h cron list        # recur crons (per-PR revise loops) + discovery crons, with the scan heartbeat
 ```
 
-The discovery cron serializes (one `feature-pr` in flight at a time) and is bounded by
+The discovery cron serializes (one `implement-pr` in flight at a time) and is bounded by
 `--max-per-day`; it reads the issue board only when due (the cadence IS the GitHub read budget). It
-skips any issue that already has a `wf:<repo>:issue-<n>:feature-pr` row — the dedup that fixes the
+skips any issue that already has a `wf:<repo>:issue-<n>:implement-pr` row — the dedup that fixes the
 duplicate-dispatch bug.
 
 ## Kill switches (in order)
@@ -134,14 +134,14 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
 
 ## Termination & budgets (engine-owned)
 
-- **Per-PR revise loop** stops on either the goal (`revise` reports `goal: RESOLVED` in its
+- **Per-PR revise loop** stops on either the goal (`revise-pr` reports `goal: RESOLVED` in its
   validated structured output when the PR merges — docs/plans/structured-workflow-outputs.md — →
   `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
   (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;
   it runs until the group kill switch (`h cron rm` is RECUR-only — a discovery row's identity is
   repo+label, which `REPO SLUG WORKFLOW` cannot address; a discovery disarm is a follow-up).
-- **A hung `feature-pr` run** is supervised by the watcher engine when the discovery cron is armed with
+- **A hung `implement-pr` run** is supervised by the watcher engine when the discovery cron is armed with
   `--run-budget-mins` (wall-clock `maxDurationMs` terminate) and optionally `--run-retries` (engine
   re-fire of a failed run). Without those flags the fired runs are unsupervised — a hung run is caught
   only by its own budget while the discovery cron's serialize waits it out.
@@ -154,5 +154,5 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
 - No hard token cap inside h — set a LiteLLM-proxy budget too.
 - Local/compose only: the k8s cron path can double-fire (no leader guard).
 - Worktrees accumulate until a GC system ships.
-- An UNsupervised (`--run-budget-mins` omitted) hung `feature-pr` stalls the discovery cron's serialize
+- An UNsupervised (`--run-budget-mins` omitted) hung `implement-pr` stalls the discovery cron's serialize
   until the run's own budget trips — arm the watch policy to avoid this.

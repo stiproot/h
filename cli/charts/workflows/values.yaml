@@ -66,11 +66,11 @@ verify:
 createPr:
   gitAuth: ""
 
-# arm-revise overlay template (templates/arm-revise.tmpl.yaml): the "arm at birth" step
+# arm-revise overlay template (templates/arm-revise-pr.tmpl.yaml): the "arm at birth" step
 # (docs/plans/workflow-watcher-registry.md §10, Job 2). Appended after implement, it registers a
 # revise-until-merged recur cron for the PR the run just opened — via the register-cron activity
 # (the arm-* pattern), not the fire edge. cadence/maxFires are execution machinery, baked here.
-armRevise:
+armRevisePr:
   # How often the revise cron re-fires until the PR merges (5-field cron, UTC).
   cadence: "0 */6 * * *"
   # Budget backstop — stop re-firing revise after this many attempts even if the PR never merges.
@@ -93,12 +93,12 @@ improvePlugin:
     improve: ""
     verify: ""
 
-# revise workflow (templates/revise.tmpl.yaml): worktree → setup → revise. Publish-native — always
+# revise workflow (templates/revise-pr.tmpl.yaml): worktree → setup → revise. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
 # workflow that reads a PR's unresolved review threads itself and addresses them.
 # revise.verifyCmd (optional): the acceptance gate a revise run must pass before committing —
 # same class as verify.cmd (a property of the target repo; bake from values.local.yaml).
-revise:
+revisePr:
   # GitHub repo (owner/name) this run targets — the wf-registry identity segment. Identity only;
   # does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in); -p repo=… per fire.
   repo: ""

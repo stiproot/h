@@ -51,13 +51,13 @@ describe("genericWorkflow — wf: bracketing", () => {
     const input: WorkflowRequest = {
       steps: [step("copy-session", "s1")],
       params: { pr: "30" },
-      wf: { repo: "stiproot/h", slug: "pi-agent", workflow: "revise" },
+      wf: { repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" },
     } as WorkflowRequest;
     const { calls } = await run(input);
 
     expect(calls[0].activity).toBe(writeWfRow);
     expect(calls[0].input).toMatchObject({ status: "running", instanceId: "inst-1" });
-    expect(calls[0].input.wf).toEqual({ repo: "stiproot/h", slug: "pi-agent", workflow: "revise" });
+    expect(calls[0].input.wf).toEqual({ repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" });
     // the real step fires in the middle
     expect(calls[1].activity).toBe(getActivity("copy-session"));
     // done bracket last, carrying the output
@@ -68,8 +68,8 @@ describe("genericWorkflow — wf: bracketing", () => {
 
   it("sets resolved on the done row when a step's structured output reports goal RESOLVED", async () => {
     const input: WorkflowRequest = {
-      steps: [step("run-claude", "revise")],
-      wf: { repo: "stiproot/h", slug: "pi-agent", workflow: "revise" },
+      steps: [step("run-claude", "revise-pr")],
+      wf: { repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" },
     } as WorkflowRequest;
     const { calls } = await run(input, {
       stepResult: { output: "addressed comments", structured: { pr: 57, goal: "RESOLVED" } },
@@ -80,8 +80,8 @@ describe("genericWorkflow — wf: bracketing", () => {
 
   it("leaves resolved false when the structured goal is PENDING (or absent)", async () => {
     const input: WorkflowRequest = {
-      steps: [step("run-claude", "revise")],
-      wf: { repo: "r", slug: "s", workflow: "revise" },
+      steps: [step("run-claude", "revise-pr")],
+      wf: { repo: "r", slug: "s", workflow: "revise-pr" },
     } as WorkflowRequest;
     const { calls } = await run(input, {
       stepResult: { output: "addressed", structured: { pr: 57, goal: "PENDING" } },
@@ -99,7 +99,7 @@ describe("genericWorkflow — wf: bracketing", () => {
   it("writes a failed row and rethrows when a step fails", async () => {
     const input: WorkflowRequest = {
       steps: [step("copy-session", "s1")],
-      wf: { repo: "r", slug: "s", workflow: "feature-pr" },
+      wf: { repo: "r", slug: "s", workflow: "implement-pr" },
     } as WorkflowRequest;
     // call 0 = running bracket; call 1 = the step — fail it.
     const { calls, error } = await run(input, { failAtCall: 1 });
@@ -116,15 +116,15 @@ describe("genericWorkflow — --cron closing bracket (§10)", () => {
     const input: WorkflowRequest = {
       steps: [step("copy-session", "s1")],
       params: { repo: "stiproot/h", slug: "issue-5" },
-      wf: { repo: "stiproot/h", slug: "issue-5", workflow: "feature-pr" },
-      armCron: { cadence: "0 */6 * * *", workflow: "feature-pr", budget: { maxFires: 20 } },
+      wf: { repo: "stiproot/h", slug: "issue-5", workflow: "implement-pr" },
+      armCron: { cadence: "0 */6 * * *", workflow: "implement-pr", budget: { maxFires: 20 } },
     } as WorkflowRequest;
     const { calls } = await run(input);
 
     const armIdx = calls.findIndex((c) => c.activity === registerCron);
     expect(armIdx).toBeGreaterThan(-1);
     expect(calls[armIdx].input).toMatchObject({
-      workflow: "feature-pr",
+      workflow: "implement-pr",
       repo: "stiproot/h",
       slug: "issue-5",
       cadence: "0 */6 * * *",
@@ -147,8 +147,8 @@ describe("genericWorkflow — --cron closing bracket (§10)", () => {
     const input: WorkflowRequest = {
       steps: [step("copy-session", "s1")],
       params: { repo: "stiproot/h", slug: "issue-5" },
-      wf: { repo: "stiproot/h", slug: "issue-5", workflow: "feature-pr" },
-      armCron: { cadence: "0 */6 * * *", workflow: "feature-pr" },
+      wf: { repo: "stiproot/h", slug: "issue-5", workflow: "implement-pr" },
+      armCron: { cadence: "0 */6 * * *", workflow: "implement-pr" },
     } as WorkflowRequest;
     // calls: 0 running, 1 step, 2 register-cron — fail the arm.
     const { calls, error } = await run(input, { failAtCall: 2 });

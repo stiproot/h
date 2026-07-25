@@ -71,7 +71,7 @@ export function decide(
   // or finalize completed when this was the last stage.
   if (stage.length > 0 && stage.every((m) => m.done)) {
     const nextStage = row.cursor + 1;
-    if (nextStage <= lastStage(row.workflows)) return { kind: "advance", row, nextStage };
+    if (nextStage <= lastStage(row.members)) return { kind: "advance", row, nextStage };
     return { kind: "finalize", row, outcome: "completed" };
   }
 

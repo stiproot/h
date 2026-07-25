@@ -128,7 +128,7 @@ function env(
   );
 }
 
-const identity = { repo: "stiproot/h", slug: "pi-agent", workflow: "revise" };
+const identity = { repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" };
 // Every-minute cadence saved long ago → always due.
 const DUE_CADENCE = "* * * * *";
 
@@ -137,7 +137,7 @@ const activeRow = (over: Partial<CronRow> = {}): CronRow => ({
   ...identity,
   status: "active",
   cadence: DUE_CADENCE,
-  source: { mode: "saved", key: "revise" },
+  source: { mode: "saved", key: "revise-pr" },
   budget: { maxFires: 100 },
   instanceId: "revise-pi-agent",
   epoch: 1,
@@ -156,12 +156,12 @@ describe("registerCronForFire", () => {
       registerCronForFire({
         identity,
         cadence: DUE_CADENCE,
-        source: { mode: "saved", key: "revise" },
+        source: { mode: "saved", key: "revise-pr" },
         instanceId: "revise-pi-agent",
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
-    expect(res).toEqual({ cronId: "stiproot/h:pi-agent:revise", active: true });
-    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    expect(res).toEqual({ cronId: "stiproot/h:pi-agent:revise-pr", active: true });
+    const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.status).toBe("active");
     expect(row.epoch).toBe(1);
     expect(row.fires).toBe(0);
@@ -175,12 +175,12 @@ describe("registerCronForFire", () => {
       registerCronForFire({
         identity,
         cadence: DUE_CADENCE,
-        source: { mode: "saved", key: "revise" },
+        source: { mode: "saved", key: "revise-pr" },
         instanceId: "revise-pi-agent",
         initial: { firedAt: "2026-07-11T00:00:00Z" },
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
-    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.fires).toBe(1);
     expect(row.currentInstanceId).toBe("revise-pi-agent");
     expect(row.lastRunAt).toBe("2026-07-11T00:00:00Z");
@@ -191,20 +191,20 @@ describe("registerCronForFire", () => {
     const reg = {
       identity,
       cadence: DUE_CADENCE,
-      source: { mode: "saved", key: "revise" } as const,
+      source: { mode: "saved", key: "revise-pr" } as const,
       instanceId: "revise-pi-agent",
     };
     await Effect.runPromise(
       registerCronForFire(reg).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
     // Simulate the scan having advanced the row (fired twice, epoch bumped) before a re-run re-arms.
-    const advanced = { ...cs.rows.get("stiproot/h:pi-agent:revise")!, epoch: 5, fires: 2 };
-    cs.rows.set("stiproot/h:pi-agent:revise", advanced);
+    const advanced = { ...cs.rows.get("stiproot/h:pi-agent:revise-pr")!, epoch: 5, fires: 2 };
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", advanced);
     await Effect.runPromise(
       registerCronForFire(reg).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
     // Re-run safety: the active row is untouched — the budget isn't reset.
-    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.epoch).toBe(5);
     expect(row.fires).toBe(2);
   });
@@ -212,18 +212,18 @@ describe("registerCronForFire", () => {
   it("re-arms a DEACTIVATED row (create again, epoch continuing from the prior)", async () => {
     const cs = memoryCronStore();
     cs.rows.set(
-      "stiproot/h:pi-agent:revise",
+      "stiproot/h:pi-agent:revise-pr",
       activeRow({ status: "inactive", epoch: 3, fires: 9 }),
     );
     await Effect.runPromise(
       registerCronForFire({
         identity,
         cadence: DUE_CADENCE,
-        source: { mode: "saved", key: "revise" },
+        source: { mode: "saved", key: "revise-pr" },
         instanceId: "revise-pi-agent",
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service))),
     );
-    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.status).toBe("active");
     expect(row.epoch).toBe(4); // continues from the deactivated prior
     expect(row.fires).toBe(0); // fresh budget
@@ -236,46 +236,46 @@ describe("scanCronsEffect", () => {
 
   it("fires a due, terminal, unresolved cron under its fixed instance, fresh, with the wf identity", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow());
     const inv = recordingInvoker({
       "revise-pi-agent": { instanceId: "revise-pi-agent", runtimeStatus: "COMPLETED" },
     });
     const report = await scan(cs.service, inv.service);
 
-    expect(report.fired).toEqual(["stiproot/h:pi-agent:revise"]);
+    expect(report.fired).toEqual(["stiproot/h:pi-agent:revise-pr"]);
     expect(inv.invokes).toHaveLength(1);
     expect(inv.invokes[0].instanceId).toBe("revise-pi-agent");
     expect(inv.invokes[0].fresh).toBe(true);
     expect(inv.invokes[0].wf).toEqual(identity);
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-revise" }]);
+    expect(inv.invokes[0].steps).toEqual([{ activity: "run-revise-pr" }]);
     // mark-before-fire bumped fires + epoch.
-    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.fires).toBe(2);
     expect(row.epoch).toBe(2);
   });
 
   it("deactivates 'resolved' when the target wf: row reports the goal met — no fire", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow());
     const inv = recordingInvoker();
     const report = await scan(cs.service, inv.service, wfStore(true));
     expect(inv.invokes).toHaveLength(0);
-    expect(report.deactivated).toEqual(["stiproot/h:pi-agent:revise:resolved"]);
-    expect(cs.rows.get("stiproot/h:pi-agent:revise")!.status).toBe("inactive");
+    expect(report.deactivated).toEqual(["stiproot/h:pi-agent:revise-pr:resolved"]);
+    expect(cs.rows.get("stiproot/h:pi-agent:revise-pr")!.status).toBe("inactive");
   });
 
   it("deactivates 'budget-exhausted' when fires reached maxFires — no fire", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ fires: 100 }));
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow({ fires: 100 }));
     const inv = recordingInvoker();
     const report = await scan(cs.service, inv.service);
     expect(inv.invokes).toHaveLength(0);
-    expect(report.deactivated).toEqual(["stiproot/h:pi-agent:revise:budget-exhausted"]);
+    expect(report.deactivated).toEqual(["stiproot/h:pi-agent:revise-pr:budget-exhausted"]);
   });
 
   it("waits (no fire) while the last instance is still running", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow());
     const inv = recordingInvoker({
       "revise-pi-agent": { instanceId: "revise-pi-agent", runtimeStatus: "RUNNING" },
     });
@@ -286,7 +286,7 @@ describe("scanCronsEffect", () => {
 
   it("skips inactive rows entirely", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ status: "inactive" }));
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow({ status: "inactive" }));
     const inv = recordingInvoker();
     const report = await scan(cs.service, inv.service);
     expect(report.scanned).toBe(0);
@@ -296,7 +296,7 @@ describe("scanCronsEffect", () => {
   it("fires an embedded-source cron with its own steps", async () => {
     const cs = memoryCronStore();
     cs.rows.set(
-      "stiproot/h:pi-agent:revise",
+      "stiproot/h:pi-agent:revise-pr",
       activeRow({
         source: { mode: "embedded", steps: [{ activity: "run-claude", input: { task: "t" } }] },
       }),
@@ -324,14 +324,14 @@ describe("disarmCron", () => {
 
   it("disarms an active cron: sets inactive+disabled, bumps epoch, stamps note, bumps ledger", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ epoch: 3, fires: 5 }));
-    const result = await disarm(cs.service, "stiproot/h:pi-agent:revise");
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow({ epoch: 3, fires: 5 }));
+    const result = await disarm(cs.service, "stiproot/h:pi-agent:revise-pr");
     expect(result.status).toBe("inactive");
     expect(result.outcome).toBe("disabled");
     expect(result.note).toBe("disarmed by operator");
     expect(result.epoch).toBe(4);
     expect(result.endedAt).toBeDefined();
-    const row = cs.rows.get("stiproot/h:pi-agent:revise")!;
+    const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.status).toBe("inactive");
     expect(row.epoch).toBe(4);
     const today = new Date().toISOString().slice(0, 10);
@@ -341,10 +341,10 @@ describe("disarmCron", () => {
   it("disarming an already-inactive cron is idempotent: returns the row as-is, no ledger bump", async () => {
     const cs = memoryCronStore();
     cs.rows.set(
-      "stiproot/h:pi-agent:revise",
+      "stiproot/h:pi-agent:revise-pr",
       activeRow({ status: "inactive", outcome: "disabled", epoch: 7, fires: 3 }),
     );
-    const result = await disarm(cs.service, "stiproot/h:pi-agent:revise");
+    const result = await disarm(cs.service, "stiproot/h:pi-agent:revise-pr");
     expect(result.status).toBe("inactive");
     expect(result.epoch).toBe(7);
     const today = new Date().toISOString().slice(0, 10);
@@ -364,16 +364,16 @@ describe("disarmEventEffect (cron-disarm pub/sub — D6 chain teardown)", () => 
 
   it("disarms the named cron from a CloudEvents-wrapped identity payload", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow({ epoch: 2 }));
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow({ epoch: 2 }));
     const res = await runEvent(cs.service, { data: identity });
-    expect(res).toEqual({ disarmed: "stiproot/h:pi-agent:revise" });
-    expect(cs.rows.get("stiproot/h:pi-agent:revise")?.status).toBe("inactive");
+    expect(res).toEqual({ disarmed: "stiproot/h:pi-agent:revise-pr" });
+    expect(cs.rows.get("stiproot/h:pi-agent:revise-pr")?.status).toBe("inactive");
   });
 
   it("acks {skipped} for a missing cron — idempotent, no redelivery (disarm of a gone cron is a no-op)", async () => {
     const cs = memoryCronStore();
     const res = await runEvent(cs.service, { data: identity });
-    expect(res).toEqual({ skipped: "no cron 'stiproot/h:pi-agent:revise'" });
+    expect(res).toEqual({ skipped: "no cron 'stiproot/h:pi-agent:revise-pr'" });
   });
 
   it("acks {skipped} for a payload lacking a cron identity", async () => {
@@ -384,7 +384,7 @@ describe("disarmEventEffect (cron-disarm pub/sub — D6 chain teardown)", () => 
 
   it("tolerates a raw (un-enveloped) payload", async () => {
     const cs = memoryCronStore();
-    cs.rows.set("stiproot/h:pi-agent:revise", activeRow());
-    expect(await runEvent(cs.service, identity)).toEqual({ disarmed: "stiproot/h:pi-agent:revise" });
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow());
+    expect(await runEvent(cs.service, identity)).toEqual({ disarmed: "stiproot/h:pi-agent:revise-pr" });
   });
 });

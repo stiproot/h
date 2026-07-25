@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { type RegisterCronInput, planCron } from "./register-cron.activity.ts";
 
 const base: RegisterCronInput = {
-  workflow: "revise",
+  workflow: "revise-pr",
   repo: "stiproot/h",
   slug: "issue-42",
   cadence: "0 */6 * * *",
@@ -18,13 +18,13 @@ describe("planCron (the arm-* decision)", () => {
     expect(plan.registration.identity).toEqual({
       repo: "stiproot/h",
       slug: "issue-42",
-      workflow: "revise",
+      workflow: "revise-pr",
     });
-    expect(plan.registration.instanceId).toBe("revise-issue-42");
+    expect(plan.registration.instanceId).toBe("revise-pr-issue-42");
     expect(plan.registration.budget).toEqual({ maxFires: 20 });
     expect(plan.registration.source).toEqual({
       mode: "saved",
-      key: "revise",
+      key: "revise-pr",
       params: { repo: "stiproot/h", slug: "issue-42" },
     });
   });
@@ -52,7 +52,7 @@ describe("planCron (the arm-* decision)", () => {
       ...base,
       requirePrFrom: 'could not push\n```json\n{"skipped": "GH_TOKEN unset"}\n```\n',
     });
-    expect(plan).toEqual({ armed: false, reason: "no PR opened — revise loop not armed" });
+    expect(plan).toEqual({ armed: false, reason: "no PR opened — revise-pr loop not armed" });
   });
 
   it("no-ops when the guard output has no structured block at all", () => {
@@ -61,7 +61,7 @@ describe("planCron (the arm-* decision)", () => {
   });
 
   it("omits budget when maxFires is unset (registration falls back to the engine default)", () => {
-    const plan = planCron({ workflow: "revise", repo: "o/r", slug: "s", cadence: "* * * * *" });
+    const plan = planCron({ workflow: "revise-pr", repo: "o/r", slug: "s", cadence: "* * * * *" });
     expect(plan.armed).toBe(true);
     if (!plan.armed) throw new Error("unreachable");
     expect(plan.registration.budget).toBeUndefined();
@@ -84,8 +84,8 @@ describe("planCron (the arm-* decision)", () => {
       workspaceId: "ws-1",
     });
     // Identity + instance still derive from the wf coords, exactly like the saved path.
-    expect(plan.registration.identity.workflow).toBe("revise");
-    expect(plan.registration.instanceId).toBe("revise-issue-42");
+    expect(plan.registration.identity.workflow).toBe("revise-pr");
+    expect(plan.registration.instanceId).toBe("revise-pr-issue-42");
   });
 
   it("threads the PR guard into embedded-source params too", () => {

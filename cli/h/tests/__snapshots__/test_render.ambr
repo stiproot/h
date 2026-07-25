@@ -64,12 +64,12 @@
   '''
   role: overlay
   steps:
-    - id: arm-revise
+    - id: arm-revise-pr
       activity: register-cron
       input:
         # The saved workflow the cron re-fires each due tick until the PR merges (revise reports
         # a structured `goal: RESOLVED` on merge; the cron engine reads wf:*.resolved and deactivates).
-        workflow: revise
+        workflow: revise-pr
         repo: "{{params.repo}}"
         slug: "{{params.slug}}"
         cadence: "0 */6 * * *"
@@ -684,7 +684,7 @@
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
           - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
-    - id: revise
+    - id: revise-pr
       activity: "{{params.runActivity}}"
       input:
         outputContract: {"properties":{"goal":{"description":"RESOLVED when the PR is merged, else PENDING","enum":["RESOLVED","PENDING"]},"pr":{"description":"the pull request number this run revised","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why the push/PR update did not happen","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"required":["goal"],"type":"object"}

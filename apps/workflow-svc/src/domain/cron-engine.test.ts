@@ -7,10 +7,10 @@ import type { CronRow } from "./models/cron.model.ts";
 const base: CronRow = {
   repo: "stiproot/h",
   slug: "pi-agent",
-  workflow: "revise",
+  workflow: "revise-pr",
   status: "active",
   cadence: "*/30 * * * *",
-  source: { mode: "saved", key: "revise" },
+  source: { mode: "saved", key: "revise-pr" },
   budget: { maxFires: 100 },
   instanceId: "revise-pi-agent",
   epoch: 1,

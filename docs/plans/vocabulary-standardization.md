@@ -1,6 +1,6 @@
 # Vocabulary standardization — one dictionary across the repo
 
-Status: Designed — decisions locked 2026-07-24; phased for h to carry out
+Status: DONE — all tiers complete (Tier 3 wire executed 2026-07-25 with the template-naming flag day)
 Established: 2026-07-24
 
 ## Why
@@ -149,3 +149,5 @@ Registry**. New sharp entries:
 - 2026-07-24 — Phases 1, 2, 3, 5, and 6 landed: the canonical glossary and prose sweep,
   member-oriented internal identifiers and filenames, vocabulary guard, and sync updates. Phase 4
   remains open; durable rows and HTTP bodies intentionally retain their `workflows` wire field.
+- 2026-07-25 — Tier 3 (wire) done locally, bundled with the template-naming kind renames:
+  `ChainRow.workflows` → `members` across engine/router/CLI/viz; old rows purged; smoke green.

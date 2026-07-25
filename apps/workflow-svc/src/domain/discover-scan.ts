@@ -65,7 +65,7 @@ export type DiscoverScanReport = {
 export type DiscoverRegistration = {
   readonly repo: string;
   readonly label: string;
-  /** The saved key to fire per discovered issue (e.g. "feature-pr"). */
+  /** The saved key to fire per discovered issue (e.g. "implement-pr"). */
   readonly workflow: string;
   readonly cadence: string;
   readonly source?: DiscoverSource;

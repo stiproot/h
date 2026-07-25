@@ -34,7 +34,7 @@ is panelized — its contract-carrying step is replicated into a parallel step g
 per roster agent, and a pinned judge synthesizes under the member's own contract, so every seam
 downstream (loop-until-clean, captures, the watcher) is unchanged. A roster forces
 compose-on-fire (a -w key renders its chart template, or falls back to the stored definition);
-write kinds (feature-pr, revise) reject a roster — N writers can't share one branch — use
+write kinds (implement-pr, revise) reject a roster — N writers can't share one branch — use
 --parallel stage composition for those.
 """
 
@@ -68,50 +68,50 @@ err_console = Console(stderr=True)
 PER_WORKFLOW_BUDGET_MS = 45 * 60_000
 _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
-KNOWN_KINDS = ("feature-pr", "pr-review", "revise", "answer")
+KNOWN_KINDS = ("implement-pr", "review-pr", "revise-pr", "answer")
 # Well-known -w names → (kind, saved key fired). Each is a first-class standalone workflow with its
-# own saved definition — `revise` fires the `revise` template (which reads the PR's review threads
-# itself), no longer a re-fire of feature-pr's definition. `answer` is the bare "answer this task"
+# own saved definition — `revise-pr` fires the `revise-pr` template (which reads the PR's review threads
+# itself), no longer a re-fire of implement-pr's definition. `answer` is the bare "answer this task"
 # member (the panelizable degenerate case, docs/plans/panels-as-a-modifier.md — successor of the
 # retired agent-panel): reads `task` off the chain data, captures `answer`; an --agent roster
 # panelizes it at fire time. Coded threading contracts live in
 # workflow-svc/domain/chain-members.ts (a novel kind is added on both sides, per chain.model.ts).
 WELL_KNOWN: dict[str, tuple[str, str]] = {
-    "feature-pr": ("feature-pr", "feature-pr"),
-    "pr-review": ("pr-review", "pr-review"),
-    "revise": ("revise", "revise"),
+    "implement-pr": ("implement-pr", "implement-pr"),
+    "review-pr": ("review-pr", "review-pr"),
+    "revise-pr": ("revise-pr", "revise-pr"),
     "answer": ("answer", "answer"),
 }
-# kind → (instanceId prefix, fresh default). feature-pr and revise share the branch instance
+# kind → (instanceId prefix, fresh default). implement-pr and revise share the branch instance
 # (feature-<slug>) — they operate on the same branch; revise re-runs it fresh. answer cuts no
 # branch; its prefix only names a LONE sequential member's instance (a parallel member's instance
 # is engine-derived, <chainId>-w<index>), and it re-runs fresh so each chain gets a fresh answer.
 KIND_FIRE: dict[str, tuple[str, bool]] = {
-    "feature-pr": ("feature", False),
-    "pr-review": ("pr-review", False),
-    "revise": ("feature", True),
+    "implement-pr": ("implement", False),
+    "review-pr": ("review-pr", False),
+    "revise-pr": ("implement", True),
     "answer": ("answer", True),
 }
 # kind → the model param slots its template exposes (--model sets them all).
 KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
-    "feature-pr": ("modelPlan", "modelImplement"),
-    "revise": ("modelRevise",),
-    "pr-review": ("modelReview",),
+    "implement-pr": ("modelPlan", "modelImplement"),
+    "revise-pr": ("modelRevise",),
+    "review-pr": ("modelReview",),
     "answer": ("modelAnswer",),
 }
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
 # (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER
 # is the explicit relaxation (docs/plans/panels-as-a-modifier.md decision 7): the panelists run as
 # named, the pin migrates to the synthesis judge (panelize.JUDGE_ACTIVITY, claude).
-FROZEN_EXECUTOR_KINDS = {"pr-review"}
+FROZEN_EXECUTOR_KINDS = {"review-pr"}
 # Write kinds share ONE branch/worktree per member — a roster of N writers would clobber it; the
 # isolated form of "N implementations" is --parallel stage composition (the two-substrate table,
 # docs/plans/panels-as-a-modifier.md).
-WRITE_KINDS = frozenset({"feature-pr", "revise"})
+WRITE_KINDS = frozenset({"implement-pr", "revise-pr"})
 # -t group kind inference: the terminal atom's declared output contract IS the threading contract.
-TERMINAL_ATOM_KIND = {"create-pr": "feature-pr"}
+TERMINAL_ATOM_KIND = {"create-pr": "implement-pr"}
 
-DEFAULT_EXPR = ["-w", "feature-pr", "-w", "pr-review", "-w", "revise"]
+DEFAULT_EXPR = ["-w", "implement-pr", "-w", "review-pr", "-w", "revise-pr"]
 
 
 def _fail(message: str) -> None:
@@ -269,7 +269,7 @@ def _resolve_workflow(
         if inferred is None:
             _fail(
                 f"cannot infer the workflow kind for `-t {' '.join(member.templates)}` — "
-                "end the group with create-pr (its structured pr output is the feature-pr "
+                "end the group with create-pr (its structured pr output is the implement-pr "
                 "contract) "
                 "or pass --kind"
             )
@@ -423,7 +423,7 @@ def run(
         str,
         typer.Option(
             help="Chain strategy: 'sequential' (run the workflows once) or 'loop-until-clean' "
-            "(repeat pr-review→revise until the review is CLEAN or --max-iterations)."
+            "(repeat review-pr→revise until the review is CLEAN or --max-iterations)."
         ),
     ] = "sequential",
     max_iterations: Annotated[
@@ -438,7 +438,7 @@ def run(
 
     The workflow list is the chain EXPRESSION — everything after the chain-identity flags:
 
-      -w KEY            fire this saved workflow (well-known names: feature-pr, pr-review, revise)
+      -w KEY            fire this saved workflow (well-known names: implement-pr, review-pr, revise)
 
       -t ATOM ATOM...   overlay these templates into ONE workflow (composed and published on fire)
 
@@ -472,7 +472,7 @@ def run(
     Template VALUES ride `-p key=value` (hydrating inline, uniform with `h workflow run`);
     `-t` hydrates STRUCTURE, `-p` hydrates values, the rest is machinery.
 
-    Default expression: -w feature-pr -w pr-review -w revise (a feature to a reviewed PR).
+    Default expression: -w implement-pr -w review-pr -w revise (a feature to a reviewed PR).
     Example:  h chain run --slug demo -p spec=@spec.md -p repo=o/r \\
                   -t research --capture findings=summary \\
                   --parallel -t gather --cron '*/30 * * * *' --max-fires 20 --capture m=latest \\
@@ -538,7 +538,7 @@ def run(
         )
     body: dict[str, Any] = {
         "slug": slug,
-        "workflows": workflows,
+        "members": workflows,
         "data": data,
         "strategy": strategy,
     }
@@ -548,14 +548,14 @@ def run(
     )
 
     if strategy == "loop-until-clean":
-        # The loop body is pr-review→revise: the review workflow is the predicate (CLEAN stops the
+        # The loop body is review-pr→revise: the review workflow is the predicate (CLEAN stops the
         # loop), and the last workflow loops back to it. Require both, in order.
         kinds = [entry["kind"] for entry in workflows]
-        if "pr-review" not in kinds:
-            _fail("loop-until-clean needs a 'pr-review' workflow (the predicate).")
-        start = kinds.index("pr-review")
+        if "review-pr" not in kinds:
+            _fail("loop-until-clean needs a 'review-pr' workflow (the predicate).")
+        start = kinds.index("review-pr")
         if start >= len(workflows) - 1:
-            _fail("loop-until-clean needs a workflow after 'pr-review' (e.g. 'revise') to loop.")
+            _fail("loop-until-clean needs a workflow after 'review-pr' (e.g. 'revise') to loop.")
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
     result = _guarded(lambda: workflow_svc.chain_run(body))
@@ -582,7 +582,7 @@ def list_() -> None:
     chains = result.get("chains", [])
     table = Table("chain", "status", "workflow", "outcome", title=f"chains ({len(chains)})")
     for c in chains:
-        workflows = c.get("workflows", [])
+        workflows = c.get("members", [])
         cursor = c.get("cursor", 0)
         kind = workflows[cursor]["kind"] if 0 <= cursor < len(workflows) else "-"
         table.add_row(

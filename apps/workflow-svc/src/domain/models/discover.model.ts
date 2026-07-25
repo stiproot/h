@@ -44,7 +44,7 @@ export const DiscoverRow = Schema.Struct({
   // Coords + query: the GitHub repo (owner/name — also the fired runs' wf-identity repo) and the label.
   repo: Schema.String,
   label: Schema.String,
-  // What to fire per discovered issue (a saved key, e.g. "feature-pr").
+  // What to fire per discovered issue (a saved key, e.g. "implement-pr").
   workflow: Schema.String,
   status: DiscoverStatus,
   // 5-field cron expression (UTC): the source is read when isDue since lastRunAt (else createdAt).
