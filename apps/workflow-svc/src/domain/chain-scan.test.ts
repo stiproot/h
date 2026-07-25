@@ -942,3 +942,40 @@ describe("threaded params beat rendered defaults (trxy trial finding, 2026-07-25
     });
   });
 });
+
+describe("activation re-stamps startedAt (batch finding: gate-hold must not spend the budget)", () => {
+  it("a chain held past its whole budget by notBefore fires with a fresh clock", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { slug: "x", spec: "do it" },
+          budgetMs: 45 * 60_000,
+          notBefore: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
+    );
+    // Simulate the hold having lasted longer than the whole budget: backdate registration and
+    // open the gate.
+    const held = mem.rows.get("x");
+    if (held)
+      mem.rows.set("x", {
+        ...held,
+        startedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+        notBefore: new Date(Date.now() - 1000).toISOString(),
+      });
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const fired = mem.rows.get("x");
+    expect(inv.invokes.map((i) => i.instanceId)).toEqual(["x-w0"]);
+    expect(fired?.status).toBe("running");
+    // startedAt moved to activation time — the next live tick must NOT budget-terminate.
+    expect(Date.now() - Date.parse(fired?.startedAt ?? "")).toBeLessThan(60_000);
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    expect(mem.rows.get("x")?.status).toBe("running");
+  });
+});

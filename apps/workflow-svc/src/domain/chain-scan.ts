@@ -417,9 +417,13 @@ const processRow = (
         yield* executeFinalize({ ...row, note: activation.note }, "terminated", nowMs, report);
         return;
       }
+      // Activation IS the chain's real start (batch finding, 2026-07-25): the wall-clock
+      // budget must not count the gate-hold — a --in 1h chain with a 45m budget otherwise
+      // budget-terminates the instant it fires. Re-stamp startedAt at activation.
+      const activatedAt = new Date(nowMs).toISOString();
       const seeded: ChainRow = activation.seed
-        ? { ...row, data: { ...activation.seed, ...row.data }, unknownStreak: 0 }
-        : { ...row, unknownStreak: 0 };
+        ? { ...row, data: { ...activation.seed, ...row.data }, unknownStreak: 0, startedAt: activatedAt }
+        : { ...row, unknownStreak: 0, startedAt: activatedAt };
       yield* fireStage(seeded, seeded.cursor, traceparent).pipe(
         Effect.matchEffect({
           onFailure: (err) =>
