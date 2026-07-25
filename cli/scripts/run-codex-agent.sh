@@ -16,6 +16,14 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 # codex-runner writes config.toml (h's MCP servers) here each run. Keeping it separate from
 # ~/.codex means h runs never pollute the user's personal codex config. See docs/plans/codex-chatgpt-auth.md.
 export CODEX_AUTH_MODE="${CODEX_AUTH_MODE:-}"
+# Self-detect ChatGPT-plan auth (trxy trial 1b finding, 2026-07-25): a headless launcher
+# (up-local.sh, a cron, an agent session) rarely carries the interactive shell's exports, and a
+# missing mode fails every codex run late and cryptically. If no API key and no explicit mode
+# but a `codex login` credential exists, chatgpt mode is the only thing that can work — infer it.
+if [ -z "$OPENAI_API_KEY" ] && [ -z "$CODEX_AUTH_MODE" ] && [ -f "$HOME/.codex/auth.json" ]; then
+  export CODEX_AUTH_MODE=chatgpt
+  echo "run-codex-agent: inferred CODEX_AUTH_MODE=chatgpt (~/.codex/auth.json present, no OPENAI_API_KEY)"
+fi
 # h's canonical MCP set (same servers claude-agent provisions); the runner translates it to codex TOML.
 export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/claude-agent/.mcp.local.json}"
 # Model: a ChatGPT-account plan rejects explicit API model ids, so in chatgpt mode default to
