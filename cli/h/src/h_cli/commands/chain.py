@@ -46,7 +46,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from h_cli.commands.template import compose_templates
+from h_cli.commands.template import compose_templates, template_name_for_key, template_role
 from h_cli.config import AGENT_IDENTITY, CHARTS_DIR, agent_identity_params
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
@@ -171,9 +171,10 @@ def _panel_definition(key: str) -> dict[str, Any]:
     """A -w roster member's definition. Restructuring forces compose-on-fire, so prefer the chart
     template of the same name — `outputs` AND `panelSynthesis` flow from the render — falling
     back to the stored definition for keys that are not templates (generic synthesis prose)."""
-    template_path = CHARTS_DIR / "workflows" / "templates" / f"{key}.yaml"
+    template_name = template_name_for_key(key)
+    template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
     if template_path.exists():
-        return compose_templates([key])
+        return compose_templates([template_name])
     stored = _guarded(lambda: workflow_svc.get(key))
     if not isinstance(stored, dict) or not stored.get("steps"):
         _fail(f"saved workflow '{key}' has no steps to panelize")
@@ -515,6 +516,11 @@ def run(
 
     workflows: list[dict[str, Any]] = []
     for member, cfg, index, final_stage in members:
+        if member.templates and all(template_role(atom) == "overlay" for atom in member.templates):
+            _fail(
+                f"-t group '{' '.join(member.templates)}' contains only overlays — "
+                f"compose with a base, e.g. `-t implement {' '.join(member.templates)}`"
+            )
         in_parallel = stage_counts[final_stage] > 1
         workflows.append(
             _resolve_workflow(member, cfg, slug, index, final_stage, uses_stages, in_parallel)

@@ -85,11 +85,11 @@ down MCP silently drops tools from a `feature-pr` run.
 ## Publish, seed, arm
 
 ```sh
-# 1. The feature-pr template (feature ⊕ verify ⊕ create-pr ⊕ arm-revise; params: slug, spec,
+# 1. The feature-pr template (implement ⊕ verify ⊕ create-pr ⊕ arm-revise; params: slug, spec,
 #    issueNumber). Each run implements the issue, gates on the acceptance check, and opens its PR —
 #    all in the one implement agent — then arm-revise arms a revise-until-merged recur cron for the
 #    PR it just opened (§10, Job 2; a SKIPPED push arms nothing).
-uv run h template compose feature verify create-pr arm-revise --save feature-pr
+uv run h template compose implement verify create-pr arm-revise --save feature-pr
 
 # 2. Also publish `revise` (the per-PR loop's target) so the arm-revise cron has a key to re-fire.
 uv run h workflow publish revise

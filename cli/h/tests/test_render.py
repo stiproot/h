@@ -19,19 +19,20 @@ pytestmark = pytest.mark.skipif(
 )
 
 TEMPLATE_NAMES = sorted(
-    path.stem for path in (helm.CHARTS_DIR / "workflows" / "templates").glob("*.yaml")
+    path.name.removesuffix(".tmpl.yaml")
+    for path in (helm.CHARTS_DIR / "workflows" / "templates").glob("*.tmpl.yaml")
 )
 MINIMAL_VALUES = {
     "verify": {"verify.cmd": "echo ok"},
-    "plugin-improvement": {
-        "pluginImprovement.tile": "plugins/linear",
-        "pluginImprovement.clonePath": "/workspace/plugins-repo",
+    "improve-plugin": {
+        "improvePlugin.tile": "plugins/linear",
+        "improvePlugin.clonePath": "/workspace/plugins-repo",
     },
 }
 PINNED_OR_OVERLAY_IDENTITY = {
-    "pr-review",
-    "plugin-setup-test",
-    "plugin-improvement",
+    "review-pr",
+    "test-plugin-setup",
+    "improve-plugin",
     "verify",
     "create-pr",
     "arm-revise",
@@ -64,25 +65,25 @@ def test_every_workflow_template_renders_and_obeys_identity_contract(name: str) 
 
 def _render_hostile(hostile_spec: Path) -> str:
     return helm.render_workflow(
-        "feature",
-        values={"feature.slug": "hostile-fixture"},
-        file_values={"feature.spec": hostile_spec},
+        "implement",
+        values={"implement.slug": "hostile-fixture"},
+        file_values={"implement.spec": hostile_spec},
         include_local=False,
     )
 
 
-def test_feature_yaml_golden(hostile_spec: Path, snapshot) -> None:
+def test_implement_yaml_golden(hostile_spec: Path, snapshot) -> None:
     """The canonical YAML artifact — pins the chart, header stripping, and token coexistence."""
     assert _render_hostile(hostile_spec) == snapshot
 
 
-def test_feature_wire_json_golden(hostile_spec: Path, snapshot) -> None:
+def test_implement_wire_json_golden(hostile_spec: Path, snapshot) -> None:
     """The JSON wire form — pins the final processing step as lossless alongside the YAML."""
     assert helm.to_wire_json(_render_hostile(hostile_spec)) == snapshot
 
 
-def test_feature_is_always_four_pure_steps(hostile_spec: Path) -> None:
-    """feature is a pure atom — worktree/setup/plan/implement, never a verify or PR step."""
+def test_implement_is_always_four_pure_steps(hostile_spec: Path) -> None:
+    """implement is a pure atom — worktree/setup/plan/implement, never a verify or PR step."""
     definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
 
@@ -118,8 +119,8 @@ def test_revise_is_worktree_setup_revise() -> None:
     assert steps == ["worktree", "setup", "revise"]
 
 
-def test_compose_feature_verify_create_pr_orders_and_gates() -> None:
-    """feature ⊕ verify ⊕ create-pr: one implement step, ordered implement → check → PR-if-green."""
+def test_compose_implement_verify_create_pr_orders_and_gates() -> None:
+    """implement ⊕ verify ⊕ create-pr: one step ordered implement → check → PR-if-green."""
     from h_cli.infrastructure.overlay import overlay
 
     def _atom(name: str, **vals: str) -> dict:
@@ -134,7 +135,7 @@ def test_compose_feature_verify_create_pr_orders_and_gates() -> None:
         )
 
     merged = overlay(
-        _atom("feature"),
+        _atom("implement"),
         _atom("verify", **{"verify.cmd": "bun run lint"}),
         _atom("create-pr"),
     )
@@ -146,11 +147,11 @@ def test_compose_feature_verify_create_pr_orders_and_gates() -> None:
 
 
 def test_git_auth_ssh_on_worktree_step(hostile_spec: Path) -> None:
-    """feature.gitAuth=ssh names the auth strategy on the worktree step."""
+    """implement.gitAuth=ssh names the auth strategy on the worktree step."""
     rendered = helm.render_workflow(
-        "feature",
-        values={"feature.slug": "hostile-fixture", "feature.gitAuth": "ssh"},
-        file_values={"feature.spec": hostile_spec},
+        "implement",
+        values={"implement.slug": "hostile-fixture", "implement.gitAuth": "ssh"},
+        file_values={"implement.spec": hostile_spec},
         include_local=False,
     )
     definition = json.loads(helm.to_wire_json(rendered))
@@ -167,40 +168,40 @@ def test_create_pr_gitauth_ssh_swaps_push() -> None:
     assert "x-access-token" not in task
 
 
-def test_feature_never_opens_a_pr(hostile_spec: Path) -> None:
-    """feature carries no PR machinery — a PR only ever comes from the create-pr overlay."""
+def test_implement_never_opens_a_pr(hostile_spec: Path) -> None:
+    """implement carries no PR machinery — a PR only ever comes from the create-pr overlay."""
     rendered = _render_hostile(hostile_spec)
     assert "===CREATE PR===" not in rendered
     assert "===PR===" not in rendered
     assert "do not commit or push" in rendered
 
 
-def test_feature_publish_mode_golden(snapshot) -> None:
+def test_implement_publish_mode_golden(snapshot) -> None:
     """Publish mode: slug/spec become {{params.*}} slots, no instanceId — a saveable template."""
-    rendered = helm.render_workflow("feature", values={"publish": "true"}, include_local=False)
+    rendered = helm.render_workflow("implement", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
 
-def test_feature_publish_mode_opens_param_slots() -> None:
+def test_implement_publish_mode_opens_param_slots() -> None:
     definition = json.loads(
         helm.to_wire_json(
-            helm.render_workflow("feature", values={"publish": "true"}, include_local=False)
+            helm.render_workflow("implement", values={"publish": "true"}, include_local=False)
         )
     )
     assert "instanceId" not in definition
     assert definition["steps"][0]["input"]["branch"] == "feature/{{params.slug}}"
     assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
-    # feature carries no PR params — opening a PR is the create-pr overlay's job, not feature's.
+    # implement carries no PR params — opening a PR is the create-pr overlay's job, not feature's.
     assert "{{params.createPr}}" not in definition["steps"][3]["input"]["task"]
 
 
-def test_plugin_improvement_golden(snapshot) -> None:
-    """The plugin-improvement template (publish-native), hermetic with explicit template config."""
+def test_improve_plugin_golden(snapshot) -> None:
+    """The improve-plugin template (publish-native), hermetic with explicit template config."""
     rendered = helm.render_workflow(
-        "plugin-improvement",
+        "improve-plugin",
         values={
-            "pluginImprovement.tile": "plugins/linear",
-            "pluginImprovement.clonePath": "/workspace/plugins-repo",
+            "improvePlugin.tile": "plugins/linear",
+            "improvePlugin.clonePath": "/workspace/plugins-repo",
         },
         include_local=False,
     )
@@ -209,22 +210,22 @@ def test_plugin_improvement_golden(snapshot) -> None:
 
 def test_templates_do_not_cross_demand_values(hostile_spec: Path) -> None:
     """The template gate: rendering one template never trips another template's `required`."""
-    # feature renders without pluginImprovement.tile or prReview.repo set…
+    # implement renders without improvePlugin.tile or reviewPr.repo set…
     _render_hostile(hostile_spec)
-    # …plugin-improvement renders without feature.slug/spec or prReview.repo set…
+    # …improve-plugin renders without implement.slug/spec or reviewPr.repo set…
     helm.render_workflow(
-        "plugin-improvement",
-        values={"pluginImprovement.tile": "plugins/linear"},
+        "improve-plugin",
+        values={"improvePlugin.tile": "plugins/linear"},
         include_local=False,
     )
-    # …pr-review renders without feature.slug/spec or pluginImprovement.tile set…
+    # …review-pr renders without implement.slug/spec or improvePlugin.tile set…
     helm.render_workflow(
-        "pr-review",
-        values={"prReview.repo": "owner/h"},
+        "review-pr",
+        values={"reviewPr.repo": "owner/h"},
         include_local=False,
     )
-    # …and plugin-setup-test renders without any other template's required values.
-    helm.render_workflow("plugin-setup-test", values={}, include_local=False)
+    # …and test-plugin-setup renders without any other template's required values.
+    helm.render_workflow("test-plugin-setup", values={}, include_local=False)
 
 
 def test_hostile_tokens_survive_verbatim(hostile_spec: Path) -> None:
@@ -238,21 +239,21 @@ def test_hostile_tokens_survive_verbatim(hostile_spec: Path) -> None:
 
 
 def test_missing_slug_is_a_render_error(hostile_spec: Path) -> None:
-    with pytest.raises(helm.HelmError, match="feature.slug is required"):
+    with pytest.raises(helm.HelmError, match="implement.slug is required"):
         helm.render_workflow(
-            "feature",
-            values={"feature.slug": ""},
-            file_values={"feature.spec": hostile_spec},
+            "implement",
+            values={"implement.slug": ""},
+            file_values={"implement.spec": hostile_spec},
             include_local=False,
         )
 
 
 def test_branch_unsafe_slug_fails_schema(hostile_spec: Path) -> None:
-    with pytest.raises(helm.HelmError, match="does not match pattern"):
+    with pytest.raises(helm.HelmError, match="(?i)does not match pattern"):
         helm.render_workflow(
-            "feature",
-            values={"feature.slug": "Bad_Slug"},
-            file_values={"feature.spec": hostile_spec},
+            "implement",
+            values={"implement.slug": "Bad_Slug"},
+            file_values={"implement.spec": hostile_spec},
             include_local=False,
         )
 
@@ -263,12 +264,12 @@ def test_create_pr_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
-def test_composable_feature_ends_implement_neutrally(hostile_spec: Path) -> None:
+def test_composable_implement_ends_implement_neutrally(hostile_spec: Path) -> None:
     """composable=true ends implement neutrally at the plan — the overlay attach point."""
     rendered = helm.render_workflow(
-        "feature",
-        values={"feature.slug": "hostile-fixture", "composable": "true"},
-        file_values={"feature.spec": hostile_spec},
+        "implement",
+        values={"implement.slug": "hostile-fixture", "composable": "true"},
+        file_values={"implement.spec": hostile_spec},
         include_local=False,
     )
     definition = json.loads(helm.to_wire_json(rendered))
@@ -278,14 +279,14 @@ def test_composable_feature_ends_implement_neutrally(hostile_spec: Path) -> None
     assert implement.rstrip().endswith("{{plan.output}}")  # ends at the plan handoff
 
 
-def test_compose_feature_create_pr_extends_implement() -> None:
+def test_compose_implement_create_pr_extends_implement() -> None:
     """overlay(feature[composable], create-pr) == feature-to-a-PR in one workflow (--pr seam)."""
     from h_cli.infrastructure.overlay import overlay
 
     feature = json.loads(
         helm.to_wire_json(
             helm.render_workflow(
-                "feature", values={"publish": "true", "composable": "true"}, include_local=False
+                "implement", values={"publish": "true", "composable": "true"}, include_local=False
             )
         )
     )
@@ -313,8 +314,8 @@ def test_arm_revise_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
-def test_compose_feature_verify_create_pr_arm_revise_appends_the_arm_step() -> None:
-    """feature ⊕ verify ⊕ create-pr ⊕ arm-revise: the arm-revise step is APPENDED (new id) after
+def test_compose_implement_verify_create_pr_arm_revise_appends_the_arm_step() -> None:
+    """implement ⊕ verify ⊕ create-pr ⊕ arm-revise: the arm-revise step is APPENDED (new id) after
     implement, carrying register-cron + the PR guard — the h-builds-h feature-pr composition."""
     from h_cli.infrastructure.overlay import overlay
 
@@ -330,7 +331,7 @@ def test_compose_feature_verify_create_pr_arm_revise_appends_the_arm_step() -> N
         )
 
     merged = overlay(
-        _atom("feature"),
+        _atom("implement"),
         _atom("verify", **{"verify.cmd": "bun run lint"}),
         _atom("create-pr"),
         _atom("arm-revise"),
@@ -351,23 +352,23 @@ def test_compose_feature_verify_create_pr_arm_revise_appends_the_arm_step() -> N
     assert arm["input"]["slug"] == "{{params.slug}}"
 
 
-def test_pr_review_golden(snapshot) -> None:
-    """The pr-review template (publish-native): setup → review with engine tokens."""
+def test_review_pr_golden(snapshot) -> None:
+    """The review-pr template (publish-native): setup → review with engine tokens."""
     rendered = helm.render_workflow(
-        "pr-review",
-        values={"prReview.repo": "owner/h"},
+        "review-pr",
+        values={"reviewPr.repo": "owner/h"},
         include_local=False,
     )
     assert rendered == snapshot
 
 
-def test_pr_review_publish_mode_opens_param_slots() -> None:
+def test_review_pr_publish_mode_opens_param_slots() -> None:
     """PR number and focus are always engine tokens (publish-native template)."""
     definition = json.loads(
         helm.to_wire_json(
             helm.render_workflow(
-                "pr-review",
-                values={"prReview.repo": "owner/h"},
+                "review-pr",
+                values={"reviewPr.repo": "owner/h"},
                 include_local=False,
             )
         )
@@ -384,11 +385,11 @@ def test_pr_review_publish_mode_opens_param_slots() -> None:
     assert definition["steps"][1]["activity"] == "run-claude"
 
 
-def test_pr_review_repo_is_a_fire_param_not_required() -> None:
-    """repo is a fire-time identity param (owner/name), no longer required at publish — pr-review
-    renders with no prReview.repo set, emitting {{params.repo}} as an engine token in the prose."""
+def test_review_pr_repo_is_a_fire_param_not_required() -> None:
+    """repo is a fire-time identity param (owner/name), no longer required at publish — review-pr
+    renders with no reviewPr.repo set, emitting {{params.repo}} as an engine token in the prose."""
     definition = json.loads(
-        helm.to_wire_json(helm.render_workflow("pr-review", values={}, include_local=False))
+        helm.to_wire_json(helm.render_workflow("review-pr", values={}, include_local=False))
     )
     review_task = definition["steps"][1]["input"]["task"]
     assert "{{params.repo}}" in review_task
@@ -397,7 +398,7 @@ def test_pr_review_repo_is_a_fire_param_not_required() -> None:
 def test_plugin_setup_steps_with_marketplaces_golden(snapshot) -> None:
     """h.pluginSetupSteps with a marketplace set: baked URL + {{params.plugins}} token."""
     rendered = helm.render_workflow(
-        "plugin-setup-test",
+        "test-plugin-setup",
         values={
             "plugins.marketplaces[0]": "https://example.com/marketplace.json",
             "publish": "true",
@@ -409,7 +410,7 @@ def test_plugin_setup_steps_with_marketplaces_golden(snapshot) -> None:
 
 def test_plugin_setup_steps_empty_is_noop() -> None:
     """No plugins.marketplaces → helper emits nothing; setup has only the two h.setupSteps cmds."""
-    rendered = helm.render_workflow("plugin-setup-test", values={}, include_local=False)
+    rendered = helm.render_workflow("test-plugin-setup", values={}, include_local=False)
     definition = json.loads(helm.to_wire_json(rendered))
     setup_cmds = definition["steps"][0]["input"]["setup"]
     assert len(setup_cmds) == 2
@@ -419,7 +420,7 @@ def test_plugin_setup_steps_empty_is_noop() -> None:
 def test_plugin_setup_steps_publish_mode_has_params_token() -> None:
     """publish=true + a marketplace → the install cmd holds the open {{params.plugins}} slot."""
     rendered = helm.render_workflow(
-        "plugin-setup-test",
+        "test-plugin-setup",
         values={
             "plugins.marketplaces[0]": "https://example.com/marketplace.json",
             "publish": "true",
@@ -441,7 +442,7 @@ def test_plugin_setup_steps_publish_mode_has_params_token() -> None:
 def test_plugin_setup_steps_marketplace_url_with_query_params() -> None:
     """Marketplace URL with query parameters (e.g., token=abc) is passed correctly to the script."""
     rendered = helm.render_workflow(
-        "plugin-setup-test",
+        "test-plugin-setup",
         values={
             "plugins.marketplaces[0]": "https://example.com/marketplace.json?token=abc",
             "publish": "true",

@@ -129,6 +129,13 @@ def test_inline_rejects_via() -> None:
     assert "inline" in result.output.lower()
 
 
+def test_inline_refuses_overlay_with_base_hint() -> None:
+    result = runner.invoke(app, ["workflow", "run", "create-pr", "--inline"])
+    assert result.exit_code == 1
+    assert "overlay" in _all_output(result)
+    assert "h template compose implement create-pr" in " ".join(_all_output(result).split())
+
+
 # --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
 
 
@@ -165,6 +172,55 @@ def test_agent_roster_panelizes_and_fires_inline() -> None:
     assert "Verdict rule" in synthesis["input"]["task"]
     # No identity params ride the body — roster identity is baked per branch.
     assert "runActivity" not in body["params"]
+
+
+@pytest.mark.parametrize("key", ["custom-workflow", "feature-pr"])
+@respx.mock
+def test_agent_roster_panelizes_a_custom_saved_workflow(key: str) -> None:
+    definition = {
+        "params": {"topic": "stored"},
+        "steps": [
+            {
+                "id": "answer",
+                "activity": "run-claude",
+                "input": {
+                    "task": "Answer the question.",
+                    "outputContract": {"type": "object"},
+                },
+            }
+        ],
+    }
+    get_route = respx.get(f"{WORKFLOW_URL}/workflow/get/{key}").mock(
+        return_value=Response(200, json=definition)
+    )
+    run_route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "panel-custom", "watching": False})
+    )
+    result = runner.invoke(
+        app,
+        [
+            "workflow", "run", key,
+            "--agent", "claude", "--agent", "codex",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert get_route.called
+    assert run_route.called
+    body = json.loads(run_route.calls[0].request.content)
+    assert body["params"] == {"topic": "stored"}
+    assert next(step for step in body["steps"] if "parallel" in step)
+
+
+@pytest.mark.parametrize("template", ["verify", "create-pr", "arm-revise"])
+def test_agent_roster_refuses_overlay_templates(template: str) -> None:
+    result = runner.invoke(
+        app,
+        ["workflow", "run", template, "--agent", "claude", "--agent", "codex"],
+    )
+    assert result.exit_code == 1
+    output = " ".join(_all_output(result).split())
+    assert "overlay" in output
+    assert f"h template compose implement {template}" in output
 
 
 @needs_helm

@@ -92,10 +92,25 @@ export function hasCompleteTemplateGate(content, templateName) {
   return gateSeen && gateHasRenderableContent && stack.length === 0 && !content.slice(cursor).trim();
 }
 
+export function declaredTemplateRole(content) {
+  const roles = [...content.matchAll(/^role:\s*(\S+)\s*$/gm)].map((match) => match[1]);
+  return roles.length === 1 && ["standalone", "base", "overlay"].includes(roles[0])
+    ? roles[0]
+    : null;
+}
+
 export function checkTemplates() {
   const violations = [];
+  const suffixViolations = [];
   const gateViolations = [];
-  for (const file of readdirSync(templatesDir).filter((f) => f.endsWith(".yaml"))) {
+  const roleViolations = [];
+  for (const file of readdirSync(templatesDir).filter((f) => f !== "_helpers.tpl")) {
+    if (!file.endsWith(".tmpl.yaml")) {
+      suffixViolations.push(
+        `${relative(root, join(templatesDir, file))}: workflow template files must end in .tmpl.yaml`,
+      );
+      continue;
+    }
     const path = join(templatesDir, file);
     const content = readFileSync(path, "utf8");
     const lines = content.split("\n");
@@ -106,16 +121,28 @@ export function checkTemplates() {
       }
     });
 
-    const templateName = basename(file, ".yaml");
+    const templateName = basename(file, ".tmpl.yaml");
     if (!hasCompleteTemplateGate(content, templateName)) {
       gateViolations.push(
         `${relative(root, path)}: missing or mismatched chart template gate for "${templateName}"; expected {{- if eq (.Values.template | default "") "${templateName}" }}. See CLAUDE.md Chart template gate gotcha and author-workflow-template skill.`,
       );
     }
+    if (!declaredTemplateRole(content)) {
+      roleViolations.push(
+        `${relative(root, path)}: missing or invalid plain top-level role; expected exactly one of standalone|base|overlay.`,
+      );
+    }
   }
 
-  if (violations.length > 0 || gateViolations.length > 0) {
+  if (
+    violations.length > 0 ||
+    suffixViolations.length > 0 ||
+    gateViolations.length > 0 ||
+    roleViolations.length > 0
+  ) {
+    for (const violation of suffixViolations) console.error(violation);
     for (const violation of gateViolations) console.error(violation);
+    for (const violation of roleViolations) console.error(violation);
 
     if (violations.length === 0) return 1;
 
@@ -127,7 +154,7 @@ export function checkTemplates() {
     return 1;
   }
 
-  console.log("✓ check-templates: no unsafe force-push or incomplete template gates");
+  console.log("✓ check-templates: suffixes, gates, roles, and force-pushes are valid");
   return 0;
 }
 

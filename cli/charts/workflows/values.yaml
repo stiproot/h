@@ -22,12 +22,12 @@ publish: false
 # the plan). Set by `h template compose`; see docs/plans/workflow-composition.md.
 composable: false
 
-# feature workflow (templates/feature.yaml): worktree → setup → plan → implement. A pure atom —
+# implement workflow (templates/implement.tmpl.yaml): worktree → setup → plan → implement. A pure atom —
 # it neither verifies nor opens a PR (compose the verify / create-pr templates for those).
-feature:
+implement:
   # Git-branch-safe token; the run works on branch feature/<slug>. Required at render time.
   slug: ""
-  # The Markdown feature spec. Required — pass with --set-file feature.spec=<path.md>.
+  # The Markdown feature spec. Required — pass with --set-file implement.spec=<path.md>.
   spec: ""
   # GitHub repo (owner/name) this run targets — the wf-registry identity segment (wf:<repo>:…).
   # Identity only; does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in);
@@ -51,22 +51,22 @@ feature:
     plan: claude-sonnet-4-6
     implement: claude-haiku-4-5
 
-# verify overlay template (templates/verify.yaml): an acceptance check that gates the run,
-# extending a composable feature's implement step. Replaces feature.verifyCmd — verification is
-# only ever composed in (`h template compose feature verify create-pr`).
+# verify overlay template (templates/verify.tmpl.yaml): an acceptance check that gates the run,
+# extending a composable implement's implement step. Replaces implement.verifyCmd — verification is
+# only ever composed in (`h template compose implement verify create-pr`).
 verify:
   # Acceptance command (e.g. "bun install && bun run lint"), run in the worktree by the implement
   # agent after the change; a failure stops the run before any commit/PR. Required when composed.
   cmd: ""
 
-# create-pr overlay template (templates/create-pr.yaml): the commit/push/open-PR epilogue as an
-# overlay fragment that extends a composable feature's implement step. Publish-native — slug and
-# issueNumber are fire-time {{params.*}}; only gitAuth bakes here (mirrors feature.gitAuth: "" =
+# create-pr overlay template (templates/create-pr.tmpl.yaml): the commit/push/open-PR epilogue as an
+# overlay fragment that extends a composable implement's implement step. Publish-native — slug and
+# issueNumber are fire-time {{params.*}}; only gitAuth bakes here (mirrors implement.gitAuth: "" =
 # agent default, "pat" = one-shot GH_TOKEN URL, "ssh" = ssh transport).
 createPr:
   gitAuth: ""
 
-# arm-revise overlay template (templates/arm-revise.yaml): the "arm at birth" step
+# arm-revise overlay template (templates/arm-revise.tmpl.yaml): the "arm at birth" step
 # (docs/plans/workflow-watcher-registry.md §10, Job 2). Appended after implement, it registers a
 # revise-until-merged recur cron for the PR the run just opened — via the register-cron activity
 # (the arm-* pattern), not the fire edge. cadence/maxFires are execution machinery, baked here.
@@ -76,10 +76,10 @@ armRevise:
   # Budget backstop — stop re-firing revise after this many attempts even if the PR never merges.
   maxFires: 20
 
-# plugin-improvement workflow (templates/plugin-improvement.yaml): worktree → setup →
+# improve-plugin workflow (templates/improve-plugin.tmpl.yaml): worktree → setup →
 # improve (→ verify). Publish-native — always rendered as a template with {{params.slug}} /
 # {{params.feedback}} slots; see the template header.
-pluginImprovement:
+improvePlugin:
   # Local path of the pre-cloned plugin source repo; empty = the agent's default shared clone.
   clonePath: ""
   # Plugin source dir within the repo (the plugin name is its last path segment). Required.
@@ -93,7 +93,7 @@ pluginImprovement:
     improve: ""
     verify: ""
 
-# revise workflow (templates/revise.yaml): worktree → setup → revise. Publish-native — always
+# revise workflow (templates/revise.tmpl.yaml): worktree → setup → revise. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
 # workflow that reads a PR's unresolved review threads itself and addresses them.
 # revise.verifyCmd (optional): the acceptance gate a revise run must pass before committing —
@@ -106,7 +106,7 @@ revise:
   clonePath: ""
   # Branch refreshed from origin before checking out feature/<slug>; empty = agent default (main).
   remoteBase: ""
-  # Git auth for the worktree + push (mirrors feature.gitAuth: "" = agent default, "pat", "ssh").
+  # Git auth for the worktree + push (mirrors implement.gitAuth: "" = agent default, "pat", "ssh").
   gitAuth: ""
   # Per-step model override; empty = the agent's AGENT_MODEL.
   models:
@@ -115,11 +115,11 @@ revise:
 # Plugin provisioning. Marketplaces are curated config baked at publish time (trust split:
 # sources are config, not fire-time params). Which plugins to install is fire-time content:
 # the `plugins` param (space-separated name@marketplace tokens). Empty/absent → no-op.
-plugins:
+plugins: {}
   # marketplaces:
   #   - https://example.com/marketplace.json
 
-# bootstrap-repo workflow (templates/bootstrap-repo.yaml): setup → bootstrap. Publish-native
+# bootstrap-repo workflow (templates/bootstrap-repo.tmpl.yaml): setup → bootstrap. Publish-native
 # — creates a new GitHub repository from a spec, scaffolds, verifies, and pushes. No worktree,
 # no pre-cloned repo, no PR flow in v1 (the owner gates the repo post-run).
 bootstrapRepo:
@@ -129,16 +129,16 @@ bootstrapRepo:
   models:
     run: ""
 
-# pr-review workflow (templates/pr-review.yaml): setup → review. Publish-native — always
+# review-pr workflow (templates/review-pr.tmpl.yaml): setup → review. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.focus}} slots.
-prReview:
+reviewPr:
   # Target GitHub repo (owner/name) whose PR is reviewed. Required.
   repo: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     review: ""
 
-# answer workflow (templates/answer.yaml): one bare "answer this task" step — the panelizable
+# answer workflow (templates/answer.tmpl.yaml): one bare "answer this task" step — the panelizable
 # degenerate case (docs/plans/panels-as-a-modifier.md; successor of the retired agent-panel).
 # Identity is fire-time params; an --agent roster panelizes it at fire time.
 answer:

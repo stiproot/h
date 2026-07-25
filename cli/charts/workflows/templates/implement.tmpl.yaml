@@ -1,21 +1,21 @@
 {{- /*
-feature workflow — worktree → setup → plan → implement.
+implement workflow — worktree → setup → plan → implement.
 
 Renders a run_workflow request body: a run-specific worktree
 of the pre-cloned target repo on branch feature/<slug>, h skills + runtime steering installed,
 a read-only plan pass over the spec, then an implement pass that leaves the result as
 uncommitted working-tree changes.
 
-feature is a pure atom: it does NOT verify and does NOT open a PR — both are separate, explicit
+implement is a pure atom: it does NOT verify and does NOT open a PR — both are separate, explicit
 compositions. Overlay the verify template to gate the run on an acceptance check, and the create-pr
-template to commit/push/open a PR: `h template compose feature verify create-pr` (create-pr
+template to commit/push/open a PR: `h template compose implement verify create-pr` (create-pr
 last — it is the finishing move, gated by verify's "stop on FAIL"). There is no verifyCmd or
 --pr/createPr flag: if you want a check or a PR, you compose one in. See
 docs/plans/workflow-composition.md.
 
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
-  helm template feature cli/charts/workflows -s templates/feature.yaml \
-    --set feature.slug=dark-mode --set-file feature.spec=./dark-mode.md
+  helm template implement cli/charts/workflows -s templates/implement.tmpl.yaml \
+    --set implement.slug=dark-mode --set-file implement.spec=./dark-mode.md
 
 Publish mode (--set publish=true): instead of literal slug/spec values, the per-run inputs are
 emitted as {{params.slug}} / {{params.spec}} engine tokens and the top-level instanceId is
@@ -25,8 +25,9 @@ verifyCmd) still bakes in from values at publish time.
 */ -}}
 {{- /* Template gate: helm evaluates every template even under -s, so each template's body (and
 its `required` calls) only runs when the renderer selects it via --set template=<name>. */ -}}
-{{- if eq (.Values.template | default "") "feature" }}
-{{- $f := .Values.feature }}
+{{- if eq (.Values.template | default "") "implement" }}
+role: base
+{{- $f := .Values.implement }}
 {{- $publish := .Values.publish | default false }}
 {{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement ends neutrally
 at the plan (no standalone commit-decision closer) so verify/create-pr overlays can append their
@@ -69,8 +70,8 @@ params:
   modelImplement: {{ . | quote }}
   {{- end }}
 {{- else }}
-{{- $slug = required "feature.slug is required (--set feature.slug=<slug>)" $f.slug }}
-{{- $spec = required "feature.spec is required (--set-file feature.spec=<path.md>)" $f.spec }}
+{{- $slug = required "implement.slug is required (--set implement.slug=<slug>)" $f.slug }}
+{{- $spec = required "implement.spec is required (--set-file implement.spec=<path.md>)" $f.spec }}
 instanceId: {{ printf "feature-%s" $slug | quote }}
 {{- end }}
 steps:

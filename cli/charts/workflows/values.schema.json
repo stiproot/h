@@ -17,9 +17,9 @@
     },
     "composable": {
       "type": "boolean",
-      "$comment": "Overlay mode: render a template as an overlay-able atom \u2014 feature omits its standalone commit-decision closer so a create-pr overlay supplies it. Set by `h workflow compose`."
+      "$comment": "Overlay mode: render a template as an overlay-able atom \u2014 implement omits its standalone commit-decision closer so a create-pr overlay supplies it. Set by `h template compose`."
     },
-    "feature": {
+    "implement": {
       "type": "object",
       "properties": {
         "slug": {
@@ -65,7 +65,7 @@
     },
     "verify": {
       "type": "object",
-      "$comment": "verify overlay template (templates/verify.yaml). cmd bakes from values at compose/publish time.",
+      "$comment": "verify overlay template (templates/verify.tmpl.yaml). cmd bakes from values at compose/publish time.",
       "properties": {
         "cmd": {
           "type": "string"
@@ -75,7 +75,7 @@
     },
     "createPr": {
       "type": "object",
-      "$comment": "create-pr overlay template (templates/create-pr.yaml). Publish-native: slug/createPr/issueNumber are fire-time params; only gitAuth bakes here.",
+      "$comment": "create-pr overlay template (templates/create-pr.tmpl.yaml). Publish-native: slug/createPr/issueNumber are fire-time params; only gitAuth bakes here.",
       "properties": {
         "gitAuth": {
           "enum": [
@@ -89,7 +89,7 @@
     },
     "armRevise": {
       "type": "object",
-      "$comment": "arm-revise overlay (templates/arm-revise.yaml, docs/plans/workflow-watcher-registry.md \u00a710): appends a register-cron step that arms a revise-until-merged recur cron at PR birth. cadence/maxFires are execution machinery, baked here.",
+      "$comment": "arm-revise overlay (templates/arm-revise.tmpl.yaml, docs/plans/workflow-watcher-registry.md \u00a710): appends a register-cron step that arms a revise-until-merged recur cron at PR birth. cadence/maxFires are execution machinery, baked here.",
       "properties": {
         "cadence": {
           "type": "string"
@@ -100,7 +100,7 @@
       },
       "additionalProperties": false
     },
-    "pluginImprovement": {
+    "improvePlugin": {
       "type": "object",
       "properties": {
         "clonePath": {
@@ -130,7 +130,7 @@
       },
       "additionalProperties": false
     },
-    "prReview": {
+    "reviewPr": {
       "type": "object",
       "properties": {
         "repo": {
@@ -150,7 +150,7 @@
     },
     "bootstrapRepo": {
       "type": "object",
-      "$comment": "bootstrap-repo template (templates/bootstrap-repo.yaml). Publish-native: repoName/spec/verifyCmd/plugins/visibility are fire-time params; only visibility default and models bake here.",
+      "$comment": "bootstrap-repo template (templates/bootstrap-repo.tmpl.yaml). Publish-native: repoName/spec/verifyCmd/plugins/visibility are fire-time params; only visibility default and models bake here.",
       "properties": {
         "visibility": {
           "enum": ["private", "public"],

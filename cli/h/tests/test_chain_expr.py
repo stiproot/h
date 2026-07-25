@@ -24,9 +24,9 @@ def test_single_chain_member() -> None:
 
 
 def test_template_group_collects_operands_until_next_flag() -> None:
-    expr = parse_expr(["-t", "feature", "verify", "create-pr", "-w", "pr-review"])
+    expr = parse_expr(["-t", "implement", "verify", "create-pr", "-w", "pr-review"])
     assert expr.stages == (
-        (MemberRef(templates=("feature", "verify", "create-pr")),),
+        (MemberRef(templates=("implement", "verify", "create-pr")),),
         (MemberRef(key="pr-review"),),
     )
 
@@ -66,7 +66,7 @@ def test_parallel_group_then_sequential_tail() -> None:
 def test_suffix_flags_bind_to_the_member_they_follow() -> None:
     expr = parse_expr(
         [
-            "-t", "feature", "create-pr", "--agent", "claude", "--model", "opus",
+            "-t", "implement", "create-pr", "--agent", "claude", "--model", "opus",
             "-w", "pr-review", "--agent", "openhands", "--model", "deepseek", "--budget", "15m",
             "-w", "revise", "--fresh",
         ]
@@ -99,7 +99,7 @@ def test_effective_config_kind_never_inherits_from_defaults() -> None:
 
 
 def test_kind_binds_per_member() -> None:
-    expr = parse_expr(["-t", "feature", "create-pr", "--kind", "feature-pr"])
+    expr = parse_expr(["-t", "implement", "create-pr", "--kind", "feature-pr"])
     assert expr.members[0].config.kind == "feature-pr"
 
 

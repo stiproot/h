@@ -14,7 +14,7 @@ slug are {{params.*}} engine tokens; identity is fire-time params (runActivity/a
 bakes from values.
 
 Render (for inspection):
-  helm template revise cli/charts/workflows -s templates/revise.yaml \
+  helm template revise cli/charts/workflows -s templates/revise.tmpl.yaml \
     --set template=revise --set publish=true
 */ -}}
 {{- /*
@@ -43,8 +43,9 @@ properties:
       - PENDING
     description: RESOLVED when the PR is merged, else PENDING
 {{- end }}
-{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "revise" }}
+role: standalone
 {{- $r := .Values.revise }}
 {{- $contract := include "h.contract.revise" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}

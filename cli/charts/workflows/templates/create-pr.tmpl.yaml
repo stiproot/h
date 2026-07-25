@@ -15,9 +15,9 @@ optional — provide it (`-p issueNumber=N`) for a `Closes #N` PR body; omit it 
 issue.
 
 Compose (the intended path):
-  h template compose feature create-pr --save feature-pr
+  h template compose implement create-pr --save feature-pr
 Render alone (for inspection):
-  helm template create-pr cli/charts/workflows -s templates/create-pr.yaml --set template=create-pr
+  helm template create-pr cli/charts/workflows -s templates/create-pr.tmpl.yaml --set template=create-pr
 */ -}}
 {{- /*
 The declared output contract (structured-workflow-outputs plan): the workflow's typed output
@@ -45,8 +45,9 @@ properties:
       - FAIL
     description: the acceptance-gate outcome, present when a verify gate is composed in (verify.yaml); FAIL means the gate stopped the run before any PR step
 {{- end }}
-{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "create-pr" }}
+role: overlay
 {{- $c := .Values.createPr }}
 {{- $slug := include "h.token" "params.slug" }}
 {{- $issueNumber := include "h.token" "params.issueNumber" }}

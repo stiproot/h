@@ -96,16 +96,17 @@ def test_feature_render_bad_slug_surfaces_helm_error(hostile_spec: Path) -> None
         app, ["feature", "render", str(hostile_spec), "--slug", "Bad_Slug", "--json"]
     )
     assert result.exit_code == 1
-    assert "does not match pattern" in _all_output(result)
+    assert "not match pattern" in _all_output(result).lower()
 
 
 @needs_helm
 def test_template_compose_prints_merged_definition() -> None:
-    result = runner.invoke(app, ["template", "compose", "feature", "create-pr"])
+    result = runner.invoke(app, ["template", "compose", "implement", "create-pr"])
     assert result.exit_code == 0, _all_output(result)
-    # The merged YAML carries feature's four steps with create-pr's epilogue folded into implement.
+    # The merged YAML carries implement's four steps with create-pr's epilogue folded into
+    # the implement step.
     assert "worktree" in result.output and "OUTPUT CONTRACT" in result.output
-    assert "feature ⊕ create-pr" in result.output
+    assert "implement ⊕ create-pr" in result.output
 
 
 def test_template_compose_requires_an_operand() -> None:
@@ -123,8 +124,17 @@ def test_template_compose_unknown_template_exits_1() -> None:
 def test_template_list_names_the_chart_atoms() -> None:
     result = runner.invoke(app, ["template", "list"])
     assert result.exit_code == 0, _all_output(result)
-    for name in ("feature", "create-pr", "verify"):
+    for name in ("implement", "create-pr", "verify"):
         assert name in result.output
+    for role in ("base", "overlay", "standalone"):
+        assert role in result.output
+
+
+def test_workflow_publish_refuses_overlay_with_base_hint() -> None:
+    result = runner.invoke(app, ["workflow", "publish", "verify"])
+    assert result.exit_code == 1
+    assert "overlay" in _all_output(result)
+    assert "h template compose implement verify" in " ".join(_all_output(result).split())
 
 
 @needs_helm
@@ -136,7 +146,7 @@ def test_template_get_renders_one_atom() -> None:
 
 def test_workflow_compose_is_gone() -> None:
     # Atomic relocation: the old spelling must fail loudly, not half-work.
-    result = runner.invoke(app, ["workflow", "compose", "-t", "feature"])
+    result = runner.invoke(app, ["workflow", "compose", "-t", "implement"])
     assert result.exit_code != 0
 
 

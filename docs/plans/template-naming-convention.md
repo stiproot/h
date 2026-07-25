@@ -76,17 +76,17 @@ orthogonal to template names); `_helpers.tpl` (helm's own convention); the `wf:`
 
 ## Phases
 
-1. [ ] Convention lands: ARCHITECTURE.md (glossary/naming paragraph) + `author-workflow-template`
+1. [x] Convention lands: ARCHITECTURE.md (glossary/naming paragraph) + `author-workflow-template`
    skill; the rename matrix is the spec.
-2. [ ] Files + names: renames, `.tmpl.yaml`, `role:` keys on all ten, gate updates, values-key
+2. [x] Files + names: renames, `.tmpl.yaml`, `role:` keys on all ten, gate updates, values-key
    renames, CLI resolution, goldens re-blessed, `values.local.yaml` migration recipe.
-3. [ ] Guards + refusals: `check-templates.mjs` extension (suffix + gate + role), CLI overlay
+3. [x] Guards + refusals: `check-templates.mjs` extension (suffix + gate + role), CLI overlay
    refusals, fixture proofs, tests.
 4. [ ] **Kind renames — the wire flag day, BUNDLED with vocabulary Phase 4**
    (`ChainRow.workflows` → `members`): one drain of active chains, one engine cutover
    (`implement-pr`, `review-pr`, members field), one workflow-svc rebuild. Two pending wire
    changes, one operational moment.
-5. [ ] Docs sweep + cookbook update (examples rewritten in the new names, provenance notes
+5. [x] Docs sweep + cookbook update (examples rewritten in the new names, provenance notes
    kept).
 
 ## Acceptance
@@ -105,3 +105,7 @@ orthogonal to template names); `_helpers.tpl` (helm's own convention); the `wf:`
   as a FILE-level type marker (dotted house style; names stay bare in CLI/gates/keys); declared +
   guarded roles with CLI refusal for lone overlays. Kind renames bundled with the vocab Phase-4
   wire flag day.
+- 2026-07-25 — Carried out template-layer phases 1, 2, 3, and 5: renamed files/names/value
+  blocks, declared and enforced roles, extended guards, re-blessed goldens, and swept required
+  docs. Phase 4 remains open; kind literals, saved keys, engine contracts, and wire shapes are
+  deliberately unchanged.
