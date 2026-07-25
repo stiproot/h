@@ -116,6 +116,41 @@ h cron discover add stiproot/h --label agent-approved --cadence "*/10 * * * *" -
 Fires a provision workflow whose activity registers the `cron:discover:` row (§10 — registry
 state is created by activities, not edges). The h-builds-h issue loop. *(Validated 2026-07-12+.)*
 
+## Chain activation gates — schedule a chain, or gate it on another chain
+
+```sh
+h chain run --slug wiresmoke-p -p repo=stiproot/h -p task="Reply with the single word ALPHA." \
+  -- -t answer --kind answer --inline --agent claude --capture handoff=answer
+
+h chain run --slug wiresmoke-c --after wiresmoke-p -p repo=stiproot/h \
+  -- -t answer --kind answer --inline --agent claude --input task=handoff
+```
+
+Registration is data (issue #79): both return instantly as `scheduling`; the engine's tick fires
+them. The child holds until the parent finalizes `completed`, then activates SEEDED from the
+parent's finalized data — including its last stage's captures (issue #77), so `--input
+task=handoff` reads what the parent captured. A failed parent terminates the child instead.
+`--at <iso>` / `--in <dur>` gate on time the same way — chains are schedulable. *(Validated
+2026-07-25 — the child's task was literally the parent's answer; docs/plans/
+chain-engine-followups.md.)*
+
+## The zero-glue pipeline shape — implement, then an --after review loop
+
+```sh
+h chain run --slug fix-N -p repo=stiproot/h -p spec=@spec.md --in 2h \
+  -- -t implement verify create-pr --agent codex --inline
+h chain run --slug fix-N-review --after fix-N \
+  --strategy loop-until-clean --max-iterations 3 \
+  -- -w review-pr --agent claude codex --inline --input pr=prNumber \
+     -t revise-pr --kind revise-pr --agent codex --inline
+```
+
+Both registered up front: the implement chain fires at its time, opens the PR and captures
+`prNumber` terminally; the review chain activates seeded with it and loops to review-clean.
+Worktree reuse-by-branch (issue #76) lets the revise land in the implement chain's checkout.
+*(The composed shape of the 2026-07-24/25 supervised batches, with the glue now engine-owned;
+gates validated 2026-07-25 — run it end-to-end and update this stamp.)*
+
 ## Inspect the engines
 
 ```sh

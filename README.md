@@ -62,7 +62,7 @@ h/
 │   ├── alloy/            # Grafana Alloy config (Docker log scraping → Loki)
 │   ├── grafana/          # Grafana provisioning (Loki datasource)
 │   └── loki/             # Loki config
-├── cli/                  # Early prototype of the h CLI (see cli/README.md)
+├── cli/                  # The h CLI + charts + run scripts (see cli/README.md; examples: docs/cookbook.md)
 │   ├── scripts/          # Run, test, and utility scripts (shell + payload strategy)
 │   ├── charts/           # Helm-templated workflow definitions (client-side helm template)
 │   └── h/                # The `h` command — Python (Typer + rich), uv workspace member
@@ -369,7 +369,8 @@ uv run --package agent-core pytest                # agent-core unit tests (mirro
 cd apps/claude-managed-agent && uv sync --frozen --no-dev
 ```
 
-The `h` CLI (early prototype — see [cli/README.md](./cli/README.md)):
+The `h` CLI (see [cli/README.md](./cli/README.md); **validated examples for every surface:
+[docs/cookbook.md](./docs/cookbook.md)**):
 
 ```sh
 uv run h --help                       # render/run chart-templated workflows, inspect workflow-svc

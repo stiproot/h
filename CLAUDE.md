@@ -6,10 +6,11 @@ See [README.md](./README.md) for stack overview, local dev setup, component refe
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the primitives, the composition stack, and the principles.
 See [docs/cookbook.md](./docs/cookbook.md) for h BY EXAMPLE — real, validated commands (each
 stamped with date + artifact). When an e2e validates a new composition, lift its command there.
-See [cli/README.md](./cli/README.md) for the local tooling — `cli/` is the early prototype of the
-h CLI: the run/invoke shell scripts (`cli/scripts/`), the helm-templated workflow definitions
-(`cli/charts/`), and the `h` command itself (`cli/h/`, Typer + rich, a uv workspace member — `uv
-run h --help`). The two construction strategies co-exist deliberately.
+See [cli/README.md](./cli/README.md) for the local tooling — `cli/` is the h CLI and its
+machinery: the `h` command itself (`cli/h/`, Typer + rich, a uv workspace member — `uv run h
+--help`), the helm-templated workflow definitions (`cli/charts/`), and the run/invoke shell
+scripts (`cli/scripts/`, the service bring-up + ops layer). The construction layers co-exist
+deliberately; validated command examples live in [docs/cookbook.md](./docs/cookbook.md).
 
 ## Plans
 
@@ -349,7 +350,7 @@ packages/py/agent-core/src/agent_core/       # shared agent machinery (uv worksp
 ├── llm/openai.py  # OpenAIChatAdapter over dapr_agents OpenAIChatClient (extra: dapr)
 └── workflows/mcp_tools.py  # connect_workflows_mcp + WorkflowTools + open_workflow_tools (workflow-mcp toolset via MCPClient/SSE; extra: dapr)
 
-cli/                                          # early prototype of the h CLI (see cli/README.md)
+cli/                                          # the h CLI + charts + run scripts (see cli/README.md; examples: docs/cookbook.md)
 ├── scripts/       # strategy 1 – run-*.sh / invoke-workflow-*.sh + payloads (envsubst/jq); _render.sh bridges to strategy 2
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.tmpl.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli

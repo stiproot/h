@@ -1,9 +1,12 @@
-# cli — early prototyping of the h CLI
+# cli — the h CLI
 
-This directory is the incubator for what will eventually become the h CLI. Nothing here is
-the final tool; it is the machinery the CLI will be built from, kept runnable at every step.
+This directory is the h CLI and its supporting machinery. The `h` command (Typer + rich, a uv
+workspace member — `uv run h --help`) is the established operator surface for the runtime:
+templates, workflows, chains, watches, crons, and schedules. **Worked, validated examples of
+every surface live in [docs/cookbook.md](../docs/cookbook.md)** — real commands with the date
+and artifact each produced.
 
-Two workflow-construction strategies co-exist, deliberately — and the `h` command wraps them:
+Two construction layers co-exist, deliberately — and the `h` command wraps them:
 
 ```
 cli/
