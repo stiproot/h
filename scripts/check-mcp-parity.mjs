@@ -12,6 +12,8 @@ const agentApps = new Set(["claude-agent", "codex-agent", "openhands-agent"]);
 const k8sConfigs = {
   "claude-agent": { file: "k8s/apps/claude-agent.yaml", key: "mcp.json" },
   "codex-agent": { file: "k8s/apps/codex-agent.yaml", key: ".mcp.json" },
+  // OpenHands is checked for local/Docker parity only because it has no Kubernetes ConfigMap.
+  "openhands-agent": null,
 };
 const K8S_ABSENT = {
   "claude-agent": new Set(["obs"]),
@@ -40,11 +42,17 @@ function serverSet(path) {
   return new Set(Object.keys(parsed.mcpServers));
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function configMapServerSet({ file, key }) {
   const path = join(root, file);
   const content = readFileSync(path, "utf8");
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const header = new RegExp(`^(\\s*)${escapedKey}:\\s*\\|\\s*$`, "m").exec(content);
+  const header = new RegExp(
+    `^(\\s*)${escapeRegExp(key)}:\\s*([|>])(?:[+-])?\\s*(?:#.*)?$`,
+    "m",
+  ).exec(content);
   if (!header) throw new Error(`${file}:1: could not find block scalar data key \`${key}\``);
 
   const headerIndent = header[1].length;
