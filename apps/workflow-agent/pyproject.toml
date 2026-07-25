@@ -10,7 +10,9 @@ dependencies = [
   # register_workflow_route). Required at runtime — host mode has the full workspace synced, but
   # the container image only installs declared deps, so this must be explicit.
   "agent-server",
-  "fastapi>=0.115",
+  # OpenTelemetry instrumentation 0.60b1 assumes every partial route match has `.path`.
+  # FastAPI 0.137 introduced `_IncludedRouter`, which breaks that assumption on every request.
+  "fastapi>=0.115,<0.137",
   "uvicorn[standard]>=0.30",
   "httpx>=0.27",
   "opentelemetry-sdk>=1.27",
@@ -24,7 +26,7 @@ agent-core = { workspace = true }
 agent-server = { workspace = true }
 
 [dependency-groups]
-dev = ["ruff>=0.9", "import-linter>=2.1"]
+dev = ["ruff>=0.9", "import-linter>=2.1", "pytest>=8.3"]
 
 # Hexagonal-architecture boundary contracts (enforced by `import-linter` — see `make lint-py`).
 # The layout is the contract: `domain` is the pure core, `infrastructure` holds outbound
