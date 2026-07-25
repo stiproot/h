@@ -249,7 +249,7 @@ def test_missing_slug_is_a_render_error(hostile_spec: Path) -> None:
 
 
 def test_branch_unsafe_slug_fails_schema(hostile_spec: Path) -> None:
-    with pytest.raises(helm.HelmError, match="Does not match pattern"):
+    with pytest.raises(helm.HelmError, match="(?i)does not match pattern"):
         helm.render_workflow(
             "implement",
             values={"implement.slug": "Bad_Slug"},

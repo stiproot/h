@@ -96,7 +96,7 @@ def test_feature_render_bad_slug_surfaces_helm_error(hostile_spec: Path) -> None
         app, ["feature", "render", str(hostile_spec), "--slug", "Bad_Slug", "--json"]
     )
     assert result.exit_code == 1
-    assert "Does not match pattern" in _all_output(result)
+    assert "not match pattern" in _all_output(result).lower()
 
 
 @needs_helm
