@@ -5,13 +5,14 @@
 // CODEX_HOME (never the user's ~/.codex). See docs/plans/codex-chatgpt-auth.md.
 //
 // Server type mapping (verified against `codex mcp add` output):
-//   - http  → [mcp_servers.<name>] url + bearer_token_env_var (extracted from a "Bearer ${VAR}"
-//             Authorization header). codex reads the env var itself at run time.
+//   - http  → Streamable HTTP via [mcp_servers.<name>] url + bearer_token_env_var (extracted from a
+//             "Bearer ${VAR}" Authorization header). Includes dapr/obs `/mcp` endpoints; codex
+//             reads the env var itself at run time.
 //   - stdio → command + args (+ env). Best-effort: codex does NOT expand ${VAR} in env values, so a
 //             server whose env needs shell expansion (e.g. notion's OPENAPI_MCP_HEADERS) is emitted
 //             as-is and may not authenticate — acceptable, the PR workflows only need `github`.
-//   - sse   → SKIPPED: codex's `--url` transport is streamable-HTTP, not SSE, so h's sse servers
-//             (dapr/obs/workflows) can't be consumed by codex. Recorded in the returned `skipped`.
+//   - sse   → SKIPPED: codex's `--url` transport is Streamable HTTP, not legacy SSE, so genuinely
+//             SSE-only servers such as workflows can't be consumed. Recorded in `skipped`.
 
 type McpServer = {
   type?: string;

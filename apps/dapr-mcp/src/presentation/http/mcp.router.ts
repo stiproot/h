@@ -4,6 +4,7 @@ import { Effect, Option, Schema } from "effect";
 import type { ManagedRuntime, ParseResult } from "effect";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -586,6 +587,25 @@ export async function registerMcpRoutes(
   fastify: FastifyInstance,
   runtime: DaprMcpRuntime,
 ): Promise<void> {
+  // Codex speaks MCP's current Streamable HTTP transport rather than legacy SSE. This server is
+  // stateless because the Dapr tools neither emit server-initiated notifications nor keep
+  // per-client state; legacy /sse + /messages remain available for existing clients.
+  fastify.route({
+    method: ["GET", "POST", "DELETE"],
+    url: "/mcp",
+    handler: async (req, reply) => {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const server = createServer(runtime);
+      await server.connect(transport);
+      reply.raw.on("close", () => {
+        void transport.close();
+        void server.close();
+      });
+      reply.hijack();
+      await transport.handleRequest(req.raw, reply.raw, req.body);
+    },
+  });
+
   const sessions = new Map<string, { transport: SSEServerTransport; server: Server }>();
 
   fastify.get("/sse", (_req, reply) => {

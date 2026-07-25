@@ -1,4 +1,5 @@
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, ManagedRuntime, Option } from "effect";
+import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,7 +7,7 @@ import {
   ObservabilityService,
   type ObservabilityServiceShape,
 } from "../../domain/ports/IObservabilityService.ts";
-import { toolEffect } from "./mcp.router.ts";
+import { registerMcpRoutes, toolEffect } from "./mcp.router.ts";
 
 // A stub port: every method succeeds empty unless overridden.
 function stubService(overrides: Partial<ObservabilityServiceShape> = {}) {
@@ -83,5 +84,53 @@ describe("toolEffect", () => {
     );
     expect(seen).toEqual([{ agentId: "claude", limit: 5, instanceId: "inst-1" }]);
     expect(JSON.parse(result.content[0]!.text)).toEqual([{ agentId: "claude" }]);
+  });
+});
+
+describe("Streamable HTTP transport", () => {
+  it("serves the observability tools from /mcp", async () => {
+    const runtime = ManagedRuntime.make(stubService());
+    const app = Fastify();
+    await registerMcpRoutes(app, runtime);
+    const headers = {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+    };
+
+    const initialize = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers,
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "route-test", version: "1.0.0" },
+        },
+      },
+    });
+    expect(initialize.statusCode).toBe(200);
+    const tools = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers,
+      payload: { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    });
+    expect(tools.statusCode).toBe(200);
+    const toolsMessage = JSON.parse(
+      tools.body
+        .split("\n")
+        .find((line) => line.startsWith("data: "))!
+        .slice("data: ".length),
+    );
+    expect(toolsMessage.result.tools.map((tool: { name: string }) => tool.name)).toContain(
+      "runs_list",
+    );
+
+    await app.close();
+    await runtime.dispose();
   });
 });

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import { mcpJsonToCodexToml } from "./codex-mcp-config.ts";
@@ -10,8 +12,8 @@ const H_MCP = JSON.stringify({
       url: "https://api.githubcopilot.com/mcp/",
       headers: { Authorization: "Bearer ${GH_TOKEN}" },
     },
-    dapr: { type: "sse", url: "http://localhost:8011/sse" },
-    obs: { type: "sse", url: "http://localhost:8013/sse" },
+    dapr: { type: "http", url: "http://localhost:8011/mcp" },
+    obs: { type: "http", url: "http://localhost:8013/mcp" },
     notion: {
       type: "stdio",
       command: "npx",
@@ -22,6 +24,23 @@ const H_MCP = JSON.stringify({
 });
 
 describe("mcpJsonToCodexToml", () => {
+  it("provisions Docker's mounted Codex config with Dapr and observability HTTP servers", () => {
+    const compose = readFileSync(
+      new URL("../../../../docker-compose.yml", import.meta.url),
+      "utf8",
+    );
+    expect(compose).toContain(
+      "./apps/codex-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro",
+    );
+
+    const dockerConfig = readFileSync(new URL("../../.mcp.json", import.meta.url), "utf8");
+    const { toml } = mcpJsonToCodexToml(dockerConfig);
+    expect(toml).toContain("[mcp_servers.dapr]");
+    expect(toml).toContain('url = "http://dapr-mcp:8000/mcp"');
+    expect(toml).toContain("[mcp_servers.obs]");
+    expect(toml).toContain('url = "http://obs-mcp:8000/mcp"');
+  });
+
   it("maps an http server to url + bearer_token_env_var (extracted from the Bearer header)", () => {
     const { toml, included } = mcpJsonToCodexToml(H_MCP);
     expect(included).toContain("github");
@@ -39,12 +58,28 @@ describe("mcpJsonToCodexToml", () => {
     expect(toml).toContain("env = {");
   });
 
-  it("SKIPS sse servers (codex uses streamable-http, not sse) with a reason", () => {
+  it("includes Dapr and observability over Streamable HTTP, targeting their /mcp routes", () => {
+    const { toml, included, skipped } = mcpJsonToCodexToml(H_MCP);
+    expect(included).toContain("dapr");
+    expect(included).toContain("obs");
+    expect(skipped.some((s) => s.startsWith("dapr:") || s.startsWith("obs:"))).toBe(false);
+    expect(toml).toContain("[mcp_servers.dapr]");
+    expect(toml).toContain('url = "http://localhost:8011/mcp"');
+    expect(toml).toContain("[mcp_servers.obs]");
+    expect(toml).toContain('url = "http://localhost:8013/mcp"');
+  });
+
+  it("still skips genuinely SSE-only servers with an instructive reason", () => {
     const { included, skipped } = mcpJsonToCodexToml(H_MCP);
     expect(included).not.toContain("workflows");
-    expect(included).not.toContain("dapr");
-    expect(included).not.toContain("obs");
-    expect(skipped.some((s) => s.startsWith("dapr:") && s.includes("sse"))).toBe(true);
+    expect(
+      skipped.some(
+        (s) =>
+          s.startsWith("workflows:") &&
+          s.includes("sse transport unsupported") &&
+          s.includes("streamable-http"),
+      ),
+    ).toBe(true);
   });
 
   it("emits a header comment when servers are present", () => {

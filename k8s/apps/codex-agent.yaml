@@ -11,8 +11,8 @@ data:
           "url": "http://workflow-mcp:8000/sse"
         },
         "dapr": {
-          "type": "sse",
-          "url": "http://dapr-mcp:8000/sse"
+          "type": "http",
+          "url": "http://dapr-mcp:8000/mcp"
         }
       }
     }

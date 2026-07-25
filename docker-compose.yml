@@ -442,7 +442,7 @@ services:
     volumes:
       - ../h-workspace:/workspace
       - ./skills:/h-skills:ro
-      - ./apps/claude-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro
+      - ./apps/codex-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro
       # Host ChatGPT auth, seeded read-only; the runner copies it into the private CODEX_HOME.
       - ../h-workspace/codex-home/auth.json:/codex-seed/auth.json:ro
     ports:
