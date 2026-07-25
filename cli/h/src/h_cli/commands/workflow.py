@@ -397,7 +397,10 @@ def run(
     if inline:
         refuse_overlay(key, "run")
     elif roster:
-        refuse_overlay(template_name_for_key(key), "run")
+        template_name = template_name_for_key(key)
+        template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
+        if template_path.exists():
+            refuse_overlay(template_name, "run")
     if agent and not roster:
         params.update(_identity_params(key, agent[0]))
     if model:
