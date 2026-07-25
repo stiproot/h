@@ -13,6 +13,10 @@ data:
         "dapr": {
           "type": "http",
           "url": "http://dapr-mcp:8000/mcp"
+        },
+        "obs": {
+          "type": "http",
+          "url": "http://obs-mcp:8000/mcp"
         }
       }
     }
