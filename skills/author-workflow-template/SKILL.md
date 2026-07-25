@@ -9,6 +9,13 @@ A template under `cli/charts/workflows/templates/<name>.yaml` renders (via helm,
 into a workflow definition: `steps:` (+ optional `params:`, `outputs:`). Follow this checklist —
 every item is load-bearing; skipping one breaks other templates or silently drops your contract.
 
+## 0. Vocabulary (mandatory)
+
+Name things with the canonical dictionary — ARCHITECTURE.md#glossary in the h repo: steps invoke
+activities; chain members (in stages) fire workflows; threaded state is the chain data. Retired
+terms fail `bun run lint` (the banlist lives in scripts/check-vocabulary.mjs), so template prose
+written against the glossary passes the guard by construction.
+
 ## 1. The template gate (mandatory)
 
 Helm evaluates EVERY template file even under `-s`, so your body must be wrapped:

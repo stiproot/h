@@ -25,6 +25,14 @@ rather than guessing at the runtime's state.
   `run_get`, `system_overview`. Use these to find out what a previous run did. The join key across
   traces, logs, and the run ledger is the workflow instance id.
 
+## Vocabulary
+
+When writing about h — docs, comments, PR bodies, workflow prose — use the canonical dictionary
+in the h repository's ARCHITECTURE.md Glossary: a workflow definition is ordered STEPS invoking
+ACTIVITIES; a chain is ordered MEMBERS (grouped into STAGES) firing WORKFLOWS, threading state
+through the CHAIN DATA. Retired terms fail the repository's vocabulary lint guard — the
+banlist lives in scripts/check-vocabulary.mjs beside its glossary pointers.
+
 ## Output contracts
 
 When a task contains an `===OUTPUT CONTRACT===` block holding a JSON schema, your final message
