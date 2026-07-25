@@ -264,6 +264,18 @@ def test_create_pr_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_create_pr_body_is_direct_markdown_without_shell_wrapper() -> None:
+    """The MCP body is prose data, never a shell expression that would be stored literally."""
+    rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
+    task = json.loads(helm.to_wire_json(rendered))["steps"][0]["input"]["task"]
+
+    assert "Pass the intended Markdown directly" in task
+    assert "beginning with the intended heading or first line" in task
+    assert "$(cat" not in task
+    assert "<<'EOF'" not in task
+    assert not any(line.strip() == "EOF" for line in task.splitlines())
+
+
 def test_composable_implement_ends_implement_neutrally(hostile_spec: Path) -> None:
     """composable=true ends implement neutrally at the plan — the overlay attach point."""
     rendered = helm.render_workflow(
