@@ -48,7 +48,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Add /home/stiproot/code/h/scripts/check-env-parity.mjs and wire it into root package.json's lint chain beside check-templates.mjs ("node scripts/check-env-parity.mjs"): (1) extract every ${VAR} interpolation from docker-compose.yml (regex /\$\{([A-Za-z_][A-Za-z0-9_]*)/g) and every ${VAR:-} input read in cli/scripts/gen-k8s-secrets.sh; (2) assert each appears in .env.example as a KEY= line, accepting commented declarations (`# KEY=`) as valid documentation — commented entries are the file's existing convention for optional vars; (3) subtract a committed allowlist of deliberately host-sourced/wrapper vars (H_COMPOSE, HOME, PATH, DOCKER_*, AGENT_*, WORKFLOW_MCP_URL, ZIPKIN_ENDPOINT, TESSL_BIN — verify each against docker-compose.yml before committing the list). Also fix the three concrete omissions now: add a commented codex-agent section (OPENAI_API_KEY=, CODEX_MODEL=o4-mini) and a TESSL_TOKEN= entry (it is live in docker-compose.yml:245/308, k8s/apps/claude-agent.yaml, and run-claude-agent.sh/run-openhands-agent.sh) to .env.example. Drop the LITELLM_API_KEY claim — it is derived from the already-declared LLM_API_KEY.
 
-## [ ] A7. Dockerfile workspace-manifest COPY parity is unguarded discipline
+## [x] A7. Dockerfile workspace-manifest COPY parity is unguarded discipline
 
 *Severity: medium · effort: small*
 
@@ -102,6 +102,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 - 2026-07-24 — Completed A5: added `scripts/check-hex-lint.mjs`, wired it into the root lint chain, confirmed all current TypeScript hex packages pass, and proved a temporary `apps/` fixture with `src/domain/` and no depcruise lint suffix fails with its `package.json` path, line, and copy-pasteable required suffix before removing the fixture.
 - 2026-07-24 — Completed A6: added `scripts/check-env-parity.mjs`, wired it into root lint, documented the missing Codex and Tessl inputs in `.env.example`, confirmed the current Compose/Kubernetes-secret surfaces pass, and proved a temporary undocumented Compose interpolation fails with its file, line, and copy-pasteable fix before removing the fixture.
+- 2026-07-24 — Completed A7: added `scripts/check-dockerfiles.mjs` to enforce missing and stale workspace-manifest COPY parity across frozen-install app Dockerfiles, wired it into root lint, confirmed the current repository passes, and proved a temporary workspace-manifest fixture fails with Dockerfile locations and copy-pasteable COPY fixes before removing it.
 - 2026-07-24: A9 landed — scripts/check-templates.mjs now requires every workflow template YAML to contain a filename-matched .Values.template gate.
 - 2026-07-24 — Completed A4: added the intentionally TypeScript-only `scripts/check-state-keys.mjs`, wired it into the root lint chain and `check-state-keys` package script, confirmed all current scoped call sites pass, and verified an unwrapped `.state.get("store", "k")` fixture fails with its file, line, and snippet before removing the fixture. Python uses a different client surface and would need a separate, API-specific follow-up guard.
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
