@@ -225,7 +225,7 @@ describe("registerChainForFire", () => {
     expect(inv.invokes[0].wf).toBeUndefined();
   });
 
-  it("merges the workflow's own params OVER the kind contract's threading params", async () => {
+  it("carries the member's identity params alongside the contract's threading params (disjoint)", async () => {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
     const members = [
@@ -233,8 +233,9 @@ describe("registerChainForFire", () => {
         kind: "implement-pr",
         key: "implement-pr",
         instanceId: "feature-x",
-        // Fire-time identity from the CLI (chain-composition-surface §1.9): rides the workflow row,
-        // merged over buildParams' threading keys at fire time.
+        // Fire-time identity from the CLI (chain-composition-surface §1.9): rides the member row.
+        // Identity keys are DISJOINT from the contract's threading keys; threaded values win on
+        // any overlap (rendered defaults must never clobber chain data — trxy trial finding).
         params: { runActivity: "run-openhands", agentId: "openhands-agent" },
       },
     ] as const;
@@ -911,5 +912,33 @@ describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () 
     await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
     expect(inv.invokes.map((i) => i.instanceId)).toEqual(["x-w0"]);
     expect(mem.rows.get("x")?.status).toBe("running");
+  });
+});
+
+describe("threaded params beat rendered defaults (trxy trial finding, 2026-07-25)", () => {
+  it("a member's rendered default (clonePath: '') never clobbers the threaded chain data", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [
+            {
+              kind: "implement-pr",
+              key: "implement-pr",
+              // The template's rendered params block: identity + an EMPTY clonePath default.
+              params: { runActivity: "run-codex", clonePath: "" },
+            },
+          ],
+          data: { slug: "x", spec: "do it", clonePath: "/workspace/other-repo" },
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
+    );
+    expect(inv.invokes[0].params).toMatchObject({
+      clonePath: "/workspace/other-repo", // threaded wins
+      runActivity: "run-codex", // identity survives (disjoint from the contract)
+    });
   });
 });

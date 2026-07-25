@@ -165,12 +165,17 @@ const fireWorkflow = (
     const member = row.members[memberIndex];
     if (!member) return;
     // A missing chain data input (ChainThreadError) or any other build failure surfaces as a
-    // WorkflowError the caller turns into a failed-chain finalize. The workflow's own params (fire-time
-    // identity from the CLI) merge OVER the threading params — disjoint by convention, workflow wins.
+    // WorkflowError the caller turns into a failed-chain finalize. THREADED params (the kind
+    // contract / declared inputs reading the chain data) merge OVER the member's own params:
+    // member.params carry fire-time identity (runActivity/agentId/model*) plus the template's
+    // RENDERED DEFAULTS, and a rendered default (clonePath: "", verifyCmd: <repo default>) must
+    // never clobber an explicitly threaded value (trxy trial run 1, 2026-07-25: the h-repo
+    // default clonePath overrode -p clonePath=/workspace/trxy-v2 and the worktree cut from the
+    // WRONG repo). Identity stays safe: no kind contract emits identity keys — disjoint.
     const params = yield* Effect.try({
       try: () => ({
-        ...contractFor(member).buildParams(row.data),
         ...(member.params ?? {}),
+        ...contractFor(member).buildParams(row.data),
       }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),
     });
