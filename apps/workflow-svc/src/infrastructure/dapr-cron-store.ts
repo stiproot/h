@@ -75,7 +75,7 @@ export const CronStoreLive: Layer.Layer<CronStore> = Layer.scoped(
             Effect.mapError((cause) => new WorkflowError({ cause, instanceId: key })),
           );
 
-    // Index maintenance is identical for both row families (recur `cron:index`, discovery
+    // Index maintenance is identical for both row types (recur `cron:index`, discovery
     // `cron:discover-index`); parameterize by index key so the two share one implementation.
     const indexList = (indexKey: string): Effect.Effect<readonly string[], WorkflowError> =>
       tryState(indexKey, () => client.state.get(STORE, pathStateKey(indexKey))).pipe(

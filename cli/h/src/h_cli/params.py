@@ -1,5 +1,5 @@
 """The `-p key=value` parser — template-value hydration, shared by `h workflow run` and
-`h chain run` so the two command families can't drift. A template's content-param space is
+`h chain run` so the two command surfaces can't drift. A template's content-param space is
 unbounded, so it gets one uniform syntax; a value of `@path` splices in that file's content."""
 
 from pathlib import Path
