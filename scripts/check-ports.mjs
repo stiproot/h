@@ -18,6 +18,32 @@ function samePorts(left, right) {
   return left.size === right.size && [...left].every((port) => right.has(port));
 }
 
+function withoutShellComment(line) {
+  let quote = null;
+  let escaped = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = quote === character ? null : quote ?? character;
+      continue;
+    }
+    if (character === "#" && quote === null && (index === 0 || /\s/.test(line[index - 1]))) {
+      return line.slice(0, index);
+    }
+  }
+
+  return line;
+}
+
 function correctedRow(service, stopPorts, flags) {
   const flagged = new Set(flags.map(({ port }) => port));
   const appPorts = [
@@ -58,7 +84,7 @@ export function checkPorts() {
     const stopPorts = stopMatch[2].trim().split(/\s+/);
     const flags = [];
     lines.forEach((line, index) => {
-      for (const match of line.matchAll(
+      for (const match of withoutShellComment(line).matchAll(
         /(--app-port|--dapr-http-port|--dapr-grpc-port|--dapr-internal-grpc-port)(?:=|\s+)(\d+)/g,
       )) {
         flags.push({ flag: match[1], port: match[2], line: index + 1 });
