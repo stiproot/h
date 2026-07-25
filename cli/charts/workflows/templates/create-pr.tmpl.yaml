@@ -80,10 +80,13 @@ steps:
         {{- end }}
         3. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body summarizing the
-           spec, the plan, and what you implemented. If the value under ===ISSUE===
-           above is a number N, include the line `Closes #N` on its own line in the PR
-           body, so the merge auto-closes that issue; otherwise omit it. If a PR for this
-           branch already exists, your push has updated it — do not open a duplicate.
+           spec, the plan, and what you implemented. Pass the intended Markdown directly
+           as the tool's body value, beginning with the intended heading or first line;
+           do not wrap it in shell command substitution or a heredoc. If the value under
+           ===ISSUE=== above is a number N, include the line `Closes #N` on its own line
+           in the PR body, so the merge auto-closes that issue; otherwise omit it. If a
+           PR for this branch already exists, your push has updated it — do not open a
+           duplicate.
         4. If a PR for this branch already existed before this push (this is a revise
            run, not a first-time creation), respond to review feedback:
            a. Find the PR number: use the github MCP tool to list pull requests by
