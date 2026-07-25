@@ -1,6 +1,6 @@
 # Phase 4 — Content-invariant guard scripts
 
-Status: Active — 9 item(s), 1 complete
+Status: Active — 9 item(s), 4 complete
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
