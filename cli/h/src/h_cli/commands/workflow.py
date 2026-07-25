@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
+from h_cli.commands.template import refuse_overlay, template_name_for_key
 from h_cli.config import (
     AGENT_IDENTITY,
     AGENT_URLS,
@@ -68,7 +69,9 @@ def status(instance_id: Annotated[str, typer.Argument(help="Workflow instance id
 def publish(
     template: Annotated[
         str,
-        typer.Argument(help="Chart template (cli/charts/workflows/templates/<template>.yaml)."),
+        typer.Argument(
+            help="Chart template (cli/charts/workflows/templates/<template>.tmpl.yaml)."
+        ),
     ],
     key: Annotated[
         str | None, typer.Option(help="Saved-workflow key; defaults to the template name.")
@@ -104,6 +107,7 @@ def publish(
     values.local.yaml at publish time; per-run inputs stay open as params, supplied later via
     `h workflow run <key> -p k=v` (or run_saved_workflow from any agent).
     """
+    refuse_overlay(template, "publish")
     try:
         rendered = helm.render_workflow(template, values={"publish": "true"})
     except helm.HelmError as err:
@@ -197,9 +201,10 @@ def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
     compose-on-fire: render the chart template of that name when one exists (`outputs` AND
     `panelSynthesis` flow from the render; --inline forces the template reading), else fall back
     to the stored definition (generic synthesis prose)."""
-    template_path = CHARTS_DIR / "workflows" / "templates" / f"{key}.yaml"
+    template_name = key if inline else template_name_for_key(key)
+    template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
     if inline or template_path.exists():
-        return _render_template(key)
+        return _render_template(template_name)
     stored = _guarded(lambda: workflow_svc.get(key))
     if not isinstance(stored, dict) or not stored.get("steps"):
         err_console.print(f"[red]saved workflow '{key}' has no steps to panelize[/red]")
@@ -389,6 +394,10 @@ def run(
     """
     params = parse_params(param or [])
     roster = tuple(agent) if agent and len(agent) > 1 else ()
+    if inline:
+        refuse_overlay(key, "run")
+    elif roster:
+        refuse_overlay(template_name_for_key(key), "run")
     if agent and not roster:
         params.update(_identity_params(key, agent[0]))
     if model:

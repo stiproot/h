@@ -25,7 +25,7 @@ def render_workflow(
     file_values: dict[str, Path] | None = None,
     include_local: bool = True,
 ) -> str:
-    """Render one workflow template (charts/workflows/templates/<template>.yaml) to YAML.
+    """Render one workflow template (charts/workflows/templates/<template>.tmpl.yaml) to YAML.
 
     Merges the gitignored org-specific overrides (values.local.yaml) when present, then the given
     --set / --set-file values. Output is stripped of helm's document separator and "# Source:"
@@ -44,7 +44,7 @@ def render_workflow(
         template,
         str(chart),
         "-s",
-        f"templates/{template}.yaml",
+        f"templates/{template}.tmpl.yaml",
         "--set",
         f"template={template}",
     ]

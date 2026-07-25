@@ -82,7 +82,7 @@ def _warn_missing_source_repo(rendered: str) -> None:
 def _render(spec: str, slug: str | None, agent: str | None = None) -> tuple[str, str]:
     spec_file = _resolve_spec(spec)
     resolved_slug = slug or _derive_slug(spec_file)
-    values = {"feature.slug": resolved_slug}
+    values = {"implement.slug": resolved_slug}
     if agent:
         identity = AGENT_IDENTITY.get(agent)
         if identity is None:
@@ -95,9 +95,9 @@ def _render(spec: str, slug: str | None, agent: str | None = None) -> tuple[str,
         values["runActivity"], values["agentId"] = identity
     try:
         rendered = helm.render_workflow(
-            "feature",
+            "implement",
             values=values,
-            file_values={"feature.spec": spec_file},
+            file_values={"implement.spec": spec_file},
         )
     except helm.HelmError as err:
         err_console.print(f"[red]helm:[/red] {err}")
@@ -127,7 +127,7 @@ def render(
     """Render the workflow definition and print it — no seeding, no run.
 
     feature never opens a PR: to compose a feature-to-a-PR run, use
-    `h template compose feature create-pr`.
+    `h template compose implement create-pr`.
     """
     rendered, _ = _render(spec, slug)
     if as_json:

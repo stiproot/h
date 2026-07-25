@@ -5,7 +5,7 @@ description: Author a new h workflow chart template (or modify one) correctly �
 
 # Author an h workflow template
 
-A template under `cli/charts/workflows/templates/<name>.yaml` renders (via helm, client-side only)
+A template under `cli/charts/workflows/templates/<name>.tmpl.yaml` renders (via helm, client-side only)
 into a workflow definition: `steps:` (+ optional `params:`, `outputs:`). Follow this checklist —
 every item is load-bearing; skipping one breaks other templates or silently drops your contract.
 
@@ -14,21 +14,35 @@ every item is load-bearing; skipping one breaks other templates or silently drop
 Name things with the canonical dictionary — ARCHITECTURE.md#glossary in the h repo: steps invoke
 activities; chain members (in stages) fire workflows; threaded state is the chain data. Retired
 terms fail `bun run lint` (the banlist lives in scripts/check-vocabulary.mjs), so template prose
-written against the glossary passes the guard by construction.
+written against the glossary passes the guard by construction. A template name is an imperative
+verb phrase in kebab-case (`implement`, `review-pr`, `improve-plugin`); its file is
+`<name>.tmpl.yaml`, while gates and CLI operands use the bare `<name>`.
 
-## 1. The template gate (mandatory)
+## 1. Name and role (mandatory)
+
+Declare exactly one plain top-level `role:` inside the template gate:
+
+- `standalone` — a complete workflow that runs alone.
+- `base` — complete and deliberately extensible by overlays.
+- `overlay` — a fragment that is meaningless alone and must be composed with a base.
+
+The CLI refuses to publish or inline-run an overlay alone and rejects an all-overlay `-t` group.
+
+## 2. The template gate (mandatory)
 
 Helm evaluates EVERY template file even under `-s`, so your body must be wrapped:
 
 ```yaml
 {{- if eq (.Values.template | default "") "<name>" }}
+role: standalone
 ...
 {{- end }}
 ```
 
-Without the gate, your template's `required` values break every other template's render.
+The gate value must equal the filename with `.tmpl.yaml` removed. Without the gate, your
+template's `required` values break every other template's render.
 
-## 2. Render modes
+## 3. Render modes
 
 - **Default** — a concrete one-off definition (bakes literals).
 - **`--set publish=true`** — per-run inputs become `{{params.x}}` engine tokens (emit them with the
@@ -40,7 +54,7 @@ Without the gate, your template's `required` values break every other template's
   so a setup-contributing atom extends, never clobbers); every other input field is later-wins;
   new id → appended step. Every step needs an `id`.
 
-## 3. The structured output contract (when a machine consumes your output)
+## 4. The structured output contract (when a machine consumes your output)
 
 Decide first: does anything MACHINE-read this workflow's result — a chain threads it, the goal
 handshake reads it, an arm-cron guard checks it, another workflow consumes it? If NO (purely
@@ -88,7 +102,7 @@ Rules:
   `required`; a field that is legitimately absent in some outcomes (e.g. `pr` when the push was
   skipped) stays optional, and the chain fails loud downstream — that is correct behavior.
 
-## 4. Chain participation (optional)
+## 5. Chain participation (optional)
 
 A chained workflow stays chain-agnostic: params in, declared structured output out, runnable
 standalone. The engine threads state via kind contracts (`feature-pr`, `pr-review`, `revise` in
@@ -97,7 +111,7 @@ workflow-svc `chain-members.ts`) or declarative member mappings (`--capture BB=F
 registration). A novel recurring shape earns a new kind (code + closed literal); a one-off shape
 uses the flags.
 
-## 5. Standard step plumbing
+## 6. Standard step plumbing
 
 - Agent steps: `activity: run-claude` (or `{{params.runActivity}}` token for fire-time identity),
   `cwd: {{ h.token "worktree.worktreePath" }}` when working in a worktree, optional `model`.
@@ -113,9 +127,9 @@ uses the flags.
   `name@marketplace` tokens, always `{{params.plugins}}`). Empty param = runtime no-op — no
   marketplace is added, no plugin touched. Omit when the template never needs plugins.
 
-## 6. Verify and ship
+## 7. Verify and ship
 
-1. Render it: `helm template x cli/charts/workflows -s templates/<name>.yaml --set template=<name>
+1. Render it: `helm template x cli/charts/workflows -s templates/<name>.tmpl.yaml --set template=<name>
    --set publish=true [...]` — check the contract appears in all three places and
    `steps[].input.outputContract == outputs`.
 2. Run the CLI tests: `uv run --package h-cli pytest` — then re-bless goldens ONLY deliberately

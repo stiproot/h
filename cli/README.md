@@ -48,7 +48,7 @@ JSON, so a future YAML-speaking consumer skips that step.
 
 What the chart machinery buys over envsubst/jq:
 
-- `--set-file feature.spec=<path.md>` — arbitrary multi-line Markdown injected safely; no
+- `--set-file implement.spec=<path.md>` — arbitrary multi-line Markdown injected safely; no
   escaping gymnastics.
 - `required` + `values.schema.json` — hard errors with real messages at render time, instead
   of grepping rendered output for leftover `${`.
@@ -67,8 +67,8 @@ cli/scripts/invoke-workflow-feature-helm.sh <spec>.md --render-only
 cli/scripts/invoke-workflow-feature-helm.sh <spec>.md [SLUG=<slug>]
 
 # or drive helm directly
-helm template feature cli/charts/workflows -s templates/feature.yaml \
-  --set feature.slug=dark-mode --set-file feature.spec=./dark-mode.md
+helm template implement cli/charts/workflows -s templates/implement.tmpl.yaml \
+  --set implement.slug=dark-mode --set-file implement.spec=./dark-mode.md
 ```
 
 `invoke-workflow-feature-helm.sh` is the chart-strategy sibling of

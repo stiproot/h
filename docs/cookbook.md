@@ -50,7 +50,7 @@ h chain run --slug a9-template-gate-guard -p repo=stiproot/h \
   -w answer --agent claude codex     --inline --id design --input task=designTask --capture answer=answer \
   --parallel \
   -w answer --agent claude openhands --inline --id risks  --input task=risksTask  --capture answer=answer \
-  -t feature verify create-pr --agent codex --inline --input spec=design.answer --input slug=slug
+  -t implement verify create-pr --agent codex --inline --input spec=design.answer --input slug=slug
 ```
 
 Stage 0: TWO panels run concurrently (chain-stage parallelism × in-workflow panel groups),

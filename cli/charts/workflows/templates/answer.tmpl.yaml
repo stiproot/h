@@ -20,7 +20,7 @@ Fire-time params:
 Template config (values, baked at publish time): answer.models.answer.
 
 Publish:
-  helm template answer cli/charts/workflows -s templates/answer.yaml \
+  helm template answer cli/charts/workflows -s templates/answer.tmpl.yaml \
     --set template=answer --set publish=true
 */ -}}
 {{- /*
@@ -42,8 +42,9 @@ properties:
       panel runs only — where independent answers diverged and why it matters; empty or
       omitted otherwise
 {{- end }}
-{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "answer" }}
+role: standalone
 {{- $a := .Values.answer }}
 {{- $contract := include "h.contract.answer" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}

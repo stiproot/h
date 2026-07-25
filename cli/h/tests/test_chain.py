@@ -227,7 +227,7 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-t", "feature", "verify", "create-pr", "-w", "pr-review", "-w", "revise",
+            "-t", "implement", "verify", "create-pr", "-w", "pr-review", "-w", "revise",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
@@ -259,7 +259,7 @@ def test_chain_run_inline_embeds_steps_without_publishing(tmp_path: Path) -> Non
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-t", "feature", "verify", "create-pr", "--inline", "-w", "pr-review",
+            "-t", "implement", "verify", "create-pr", "--inline", "-w", "pr-review",
         ],
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
@@ -276,7 +276,7 @@ def test_chain_run_cron_member_arms_an_embedded_recurrence(tmp_path: Path) -> No
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
-            "-t", "feature", "create-pr", "--cron", "*/30 * * * *", "--max-fires", "20",
+            "-t", "implement", "create-pr", "--cron", "*/30 * * * *", "--max-fires", "20",
             "--id", "gather",
             "-w", "pr-review",
         ],
@@ -295,7 +295,7 @@ def test_chain_run_cron_member_needs_a_repo(tmp_path: Path) -> None:
         app,
         [
             "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
-            "-t", "feature", "create-pr", "--cron", "* * * * *",
+            "-t", "implement", "create-pr", "--cron", "* * * * *",
         ],
     )  # fmt: skip
     assert result.exit_code == 1
@@ -305,10 +305,30 @@ def test_chain_run_cron_member_needs_a_repo(tmp_path: Path) -> None:
 def test_chain_run_template_group_without_contract_needs_kind(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-t", "feature", "verify"],
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-t", "implement", "verify"],
     )
     assert result.exit_code == 1
     assert "cannot infer the workflow kind" in _all_output(result)
+
+
+def test_chain_run_refuses_all_overlay_template_group(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "x",
+            "-p",
+            _pspec(tmp_path),
+            "-t",
+            "verify",
+            "create-pr",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "only overlays" in _all_output(result)
+    assert "-t implement verify create-pr" in _all_output(result)
 
 
 @respx.mock

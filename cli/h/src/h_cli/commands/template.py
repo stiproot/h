@@ -27,6 +27,44 @@ err_console = Console(stderr=True)
 # Render mode for overlay atoms: {{params.*}} slots stay open (publish) and standalone closers /
 # non-composable steps are omitted (composable), so definitions merge cleanly by step id.
 COMPOSABLE_VALUES = {"publish": "true", "composable": "true"}
+TEMPLATE_SUFFIX = ".tmpl.yaml"
+TEMPLATE_ROLES = frozenset({"standalone", "base", "overlay"})
+SAVED_KEY_TEMPLATES = {"feature-pr": "implement", "pr-review": "review-pr"}
+
+
+def template_name_for_key(key: str) -> str:
+    """Resolve a stable saved workflow key to its renamed chart template."""
+    return SAVED_KEY_TEMPLATES.get(key, key)
+
+
+def template_role(name: str) -> str:
+    """Read a template's required plain top-level role declaration."""
+    path = CHARTS_DIR / "workflows" / "templates" / f"{name}{TEMPLATE_SUFFIX}"
+    if not path.is_file():
+        err_console.print(f"[red]Unknown template '{name}'[/red] — run `h template list`.")
+        raise typer.Exit(1)
+    roles = [
+        line.removeprefix("role:").strip()
+        for line in path.read_text().splitlines()
+        if line.startswith("role:")
+    ]
+    if len(roles) != 1 or roles[0] not in TEMPLATE_ROLES:
+        err_console.print(
+            f"[red]Template '{name}' has invalid role metadata[/red] — expected exactly one of "
+            "standalone, base, overlay."
+        )
+        raise typer.Exit(1)
+    return roles[0]
+
+
+def refuse_overlay(name: str, action: str) -> None:
+    """Refuse an overlay where a complete workflow is required."""
+    if template_role(name) == "overlay":
+        err_console.print(
+            f"[red]Cannot {action} overlay template '{name}' alone.[/red] "
+            f"Compose it with a base: `h template compose implement {name}`."
+        )
+        raise typer.Exit(1)
 
 
 def compose_templates(templates: list[str]) -> dict[str, Any]:
@@ -56,7 +94,7 @@ def compose(
         list[str] | None,
         typer.Argument(
             help="Templates to overlay, space-separated, merged left-to-right by step id. "
-            "E.g. `h template compose feature verify create-pr`.",
+            "E.g. `h template compose implement verify create-pr`.",
             metavar="TEMPLATE...",
         ),
     ] = None,
@@ -72,7 +110,7 @@ def compose(
 ) -> None:
     """Overlay templates into one workflow definition (spatial composition).
 
-    `feature verify create-pr` composes ONE workflow (one instanceId, one worktree, one agent
+    `implement verify create-pr` composes ONE workflow (one instanceId, one worktree, one agent
     context) ordered implement → verify-gate → PR. Publish-native: {{params.*}} slots stay open,
     so a --save'd result fires with `h workflow run <key> -p slug=... --spec <name> --agent <a>`.
     """
@@ -102,13 +140,17 @@ def compose(
 def list_() -> None:
     """List the chart templates (the overlay atoms under cli/charts/workflows/templates)."""
     templates_dir = CHARTS_DIR / "workflows" / "templates"
-    names = sorted(p.stem for p in templates_dir.glob("*.yaml"))
-    if not names:
+    paths = sorted(templates_dir.glob(f"*{TEMPLATE_SUFFIX}"))
+    if not paths:
         err_console.print(f"[red]No templates found[/red] under {templates_dir}")
         raise typer.Exit(1)
-    table = Table("template", title=f"chart templates ({len(names)})")
-    for name in names:
-        table.add_row(name)
+    rows = [
+        (p.name.removesuffix(TEMPLATE_SUFFIX), template_role(p.name.removesuffix(TEMPLATE_SUFFIX)))
+        for p in paths
+    ]
+    table = Table("template", "role", title=f"chart templates ({len(rows)})")
+    for name, role in rows:
+        table.add_row(name, role)
     console.print(table)
 
 

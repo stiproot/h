@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Invoke the feature-request workflow via the CHART strategy: render the workflow definition from
-# cli/charts/workflows/templates/feature.yaml with helm (deterministic construction), seed a task
+# cli/charts/workflows/templates/implement.tmpl.yaml with helm (deterministic construction), seed a task
 # that carries the rendered definition, and trigger the workflow-agent — whose job narrows to
 # run + monitor + self-heal instead of constructing the steps itself.
 #
@@ -21,7 +21,7 @@ set -euo pipefail
 #   --render-only   print the rendered workflow definition (YAML) and exit — no seeding, no run.
 #
 # feature never opens a PR: the run leaves uncommitted working-tree changes. To take a feature to a
-# PR, compose it explicitly — `h template compose feature create-pr` (there is no --pr flag).
+# PR, compose it explicitly — `h template compose implement create-pr` (there is no --pr flag).
 #
 # Org-specific defaults (e.g. feature.clonePath, model ids) go in the gitignored
 # cli/charts/workflows/values.local.yaml, merged automatically by render_workflow.
@@ -80,7 +80,7 @@ fi
 [[ -z "$SLUG" ]] && { echo "Could not derive a slug from '${SPEC_FILE}' — pass SLUG=<slug>"; exit 1; }
 
 # Render the workflow definition from the chart. YAML is the artifact of record here.
-DEF_YAML="$(render_workflow feature --set "feature.slug=${SLUG}" --set-file "feature.spec=${SPEC_FILE}")"
+DEF_YAML="$(render_workflow implement --set "implement.slug=${SLUG}" --set-file "implement.spec=${SPEC_FILE}")"
 
 if [[ $RENDER_ONLY -eq 1 ]]; then
   printf '%s\n' "$DEF_YAML"

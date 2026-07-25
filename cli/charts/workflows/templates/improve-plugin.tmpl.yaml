@@ -11,18 +11,19 @@ Fire-time params:
   slug      branch token — the run works on branch improve/<slug> (e.g. linear-AE-42)
   feedback  the improvement to apply, plain text/Markdown
 
-Template config (values, baked at publish time): pluginImprovement.clonePath (local path of the
-pre-cloned plugin repo), pluginImprovement.tile (plugin source dir within the repo — the plugin
+Template config (values, baked at publish time): improvePlugin.clonePath (local path of the
+pre-cloned plugin repo), improvePlugin.tile (plugin source dir within the repo — the plugin
 name is its last path segment), models, optional verifyCmd.
 
 Publish:
-  helm template plugin-improvement cli/charts/workflows -s templates/plugin-improvement.yaml \
-    --set pluginImprovement.tile=plugins/linear --set pluginImprovement.clonePath=/path/repo
+  helm template improve-plugin cli/charts/workflows -s templates/improve-plugin.tmpl.yaml \
+    --set improvePlugin.tile=plugins/linear --set improvePlugin.clonePath=/path/repo
 */ -}}
-{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
-{{- if eq (.Values.template | default "") "plugin-improvement" }}
-{{- $p := .Values.pluginImprovement }}
-{{- $tile := required "pluginImprovement.tile is required (--set pluginImprovement.tile=<dir>)" $p.tile | trimSuffix "/" }}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "improve-plugin" }}
+role: standalone
+{{- $p := .Values.improvePlugin }}
+{{- $tile := required "improvePlugin.tile is required (--set improvePlugin.tile=<dir>)" $p.tile | trimSuffix "/" }}
 {{- $plugin := $tile | splitList "/" | last }}
 steps:
   - id: worktree

@@ -71,6 +71,12 @@ The same authored-slot/target pattern appears at two levels:
 - **Cron siblings** — recur, discovery/fan-out, and one-shot
   (`cron:sub`/`cron:discover`/`cron:sched`).
 
+Workflow template names are imperative verb phrases in kebab-case: they say what the template
+does (`implement`, `review-pr`, `improve-plugin`). Files carry the type marker
+`<name>.tmpl.yaml`; CLI operands, gates, and saved keys use the bare name. Every template declares
+one top-level `role:`: `standalone` is complete, `base` is complete and composable, and `overlay`
+must be composed onto a base.
+
 ## Composition
 
 ```
@@ -79,7 +85,7 @@ template ─(overlay ⊕)→ workflow definition ─(execute)→ workflow ─(ch
 
 - **Template** — a parameterized workflow.
 - **Overlay (⊕)** — merge templates into one definition. *Spatial*: for units that share an agent's
-  context (one worktree, one run), e.g. `feature ⊕ verify ⊕ create-pr`.
+  context (one worktree, one run), e.g. `implement ⊕ verify ⊕ create-pr`.
 - **Workflow definition** — hydrated template(s), bound to params at fire time — including
   identity (agent/model): published slots with values-baked defaults, overridable per fire.
 - **Workflow** — an executed definition (the durable run).

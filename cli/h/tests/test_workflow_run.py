@@ -129,6 +129,13 @@ def test_inline_rejects_via() -> None:
     assert "inline" in result.output.lower()
 
 
+def test_inline_refuses_overlay_with_base_hint() -> None:
+    result = runner.invoke(app, ["workflow", "run", "create-pr", "--inline"])
+    assert result.exit_code == 1
+    assert "overlay" in _all_output(result)
+    assert "h template compose implement create-pr" in " ".join(_all_output(result).split())
+
+
 # --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
 
 

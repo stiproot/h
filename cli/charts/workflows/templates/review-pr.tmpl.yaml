@@ -16,11 +16,11 @@ untrusted third-party repos return, the reviewer becomes a minimal-surface per-r
 Fire-time params:
   pr      PR number to review (required)
   repo    GitHub owner/name — the review target AND the wf-registry identity segment. Fire-time
-          (values prReview.repo is only the stored default); required at fire, not at publish.
+          (values reviewPr.repo is only the stored default); required at fire, not at publish.
   slug    Branch slug — the wf-key segment only (identity; the review reads by PR number). Per-PR.
   focus   Optional free-text steer, e.g. "docs accuracy" (empty = full review)
 
-Template config (values, baked at publish time): prReview.repo (owner/name — the stored default
+Template config (values, baked at publish time): reviewPr.repo (owner/name — the stored default
 for the repo param), models.review.
 
 Review comment shape consumed by the revise flow: concrete defect, fix direction, acceptance
@@ -29,15 +29,15 @@ trust gates stay human). If no findings, a single COMMENT review states so — e
 review is observable on the PR.
 
 Publish:
-  helm template pr-review cli/charts/workflows -s templates/pr-review.yaml \
-    --set template=pr-review --set prReview.repo=owner/h
+  helm template review-pr cli/charts/workflows -s templates/review-pr.tmpl.yaml \
+    --set template=review-pr --set reviewPr.repo=owner/h
 */ -}}
 {{- /*
 The declared output contract (structured-workflow-outputs plan): verdict is the loop-until-clean
 predicate (the chain engine stops on a validated CLEAN — there is no marker channel); summary
 carries the findings a human (or a downstream judge) reads off the chain data.
 */ -}}
-{{- define "h.contract.pr-review" -}}
+{{- define "h.contract.review-pr" -}}
 type: object
 required:
   - verdict
@@ -51,15 +51,16 @@ properties:
     type: string
     description: one line per finding, "FILE:LINE — defect summary"; empty or omitted when CLEAN
 {{- end }}
-{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
-{{- if eq (.Values.template | default "") "pr-review" }}
-{{- $p := .Values.prReview }}
-{{- $contract := include "h.contract.pr-review" . | fromYaml }}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "review-pr" }}
+{{- $p := .Values.reviewPr }}
+{{- $contract := include "h.contract.review-pr" . | fromYaml }}
 {{- /* Fire-time identity params: repo (owner/name — BOTH the review target and the wf-key segment)
 and slug (the wf-key branch segment; per-PR). repo carries the values default; both override per fire
 (-p repo=… -p slug=…). Model HALF is modelReview (values default). The EXECUTOR stays pinned
 (claude-agent) as the loop's consistent reviewer — an operational default, no longer a security
 boundary under the trust model (see the header). */ -}}
+role: standalone
 params:
   repo: {{ $p.repo | quote }}
   slug: ""
@@ -142,7 +143,7 @@ steps:
         format "FILE:LINE — <defect summary>".
         {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
 outputs:
-  {{- include "h.contract.pr-review" . | nindent 2 }}
+  {{- include "h.contract.review-pr" . | nindent 2 }}
 {{- /*
 panelSynthesis — "how to synthesize a panel of me" (docs/plans/panels-as-a-modifier.md decision
 5): spliced into the judge's task when this workflow runs under an --agent roster; inert

@@ -31,7 +31,7 @@ Trust notes:
 No PR flow, no revise loop, no armCron in v1.
 
 Publish:
-  helm template bootstrap-repo cli/charts/workflows -s templates/bootstrap-repo.yaml \
+  helm template bootstrap-repo cli/charts/workflows -s templates/bootstrap-repo.tmpl.yaml \
     --set template=bootstrap-repo --set publish=true
 */ -}}
 {{- /*
@@ -64,8 +64,9 @@ properties:
     type: string
     description: present on FAILED — why the run halted (repo already exists, gate failure, GH_TOKEN unset, verifyCmd not provided, ...)
 {{- end }}
-{{- /* Template gate — see feature.yaml: bodies only evaluate for the selected template. */ -}}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "bootstrap-repo" }}
+role: standalone
 {{- $b := .Values.bootstrapRepo }}
 {{- $contract := include "h.contract.bootstrap-repo" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
