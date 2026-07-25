@@ -1,6 +1,6 @@
 # Phase 4 — Content-invariant guard scripts
 
-Status: Active — 9 item(s), 1 complete
+Status: Active — 9 item(s), 4 complete
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
@@ -68,7 +68,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Extend /home/stiproot/code/h/scripts/check-templates.mjs with a second rule in the existing file loop: for every file in cli/charts/workflows/templates/*.yaml (the existing .endsWith(".yaml") filter already excludes _helpers.tpl — no extra skip needed), require at least one line matching new RegExp(`\\{\\{-?\\s*if eq \\(\\.Values\\.template \\| default ""\\) "${basename}"`) where basename is the filename without .yaml — asserting both gate presence and gate-name == filename. Anchoring on `.Values.template` is load-bearing: templates contain other `if eq` lines (revise.yaml:140, create-pr.yaml:68 gate on $r.gitAuth) that must not satisfy the check. Emit a violation message pointing at the CLAUDE.md 'Chart template gate' gotcha and skills/author-workflow-template. This closes the one uncovered variant (a new gateless template without `required` values, which today passes every render and test while lying latent) and makes the typo'd-gate case fail at lint time instead of via a confusing empty-render golden diff.
 
-## [ ] A10. Local port allocation uniqueness (run-*.sh) is unguarded; README map can drift
+## [x] A10. Local port allocation uniqueness (run-*.sh) is unguarded; README map can drift
 
 *Severity: medium · effort: small*
 
@@ -103,6 +103,7 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 - 2026-07-24 — Completed A5: added `scripts/check-hex-lint.mjs`, wired it into the root lint chain, confirmed all current TypeScript hex packages pass, and proved a temporary `apps/` fixture with `src/domain/` and no depcruise lint suffix fails with its `package.json` path, line, and copy-pasteable required suffix before removing the fixture.
 - 2026-07-24 — Completed A6: added `scripts/check-env-parity.mjs`, wired it into root lint, documented the missing Codex and Tessl inputs in `.env.example`, confirmed the current Compose/Kubernetes-secret surfaces pass, and proved a temporary undocumented Compose interpolation fails with its file, line, and copy-pasteable fix before removing the fixture.
 - 2026-07-24 — Completed A7: added `scripts/check-dockerfiles.mjs` to enforce missing and stale workspace-manifest COPY parity across frozen-install app Dockerfiles, wired it into root lint, confirmed the current repository passes, and proved a temporary workspace-manifest fixture fails with Dockerfile locations and copy-pasteable COPY fixes before removing it.
+- 2026-07-25: A10 landed — added `scripts/check-ports.mjs` to enforce unique run-script port sets, Dapr flag coverage by `stop_stale`, and README table parity; wired it after `check-templates.mjs` in lint and proved its copy-pasteable `file:line` failure with a temporary fixture before removal.
 - 2026-07-24: A9 landed — scripts/check-templates.mjs now requires every workflow template YAML to contain a filename-matched .Values.template gate.
 - 2026-07-24 — Completed A4: added the intentionally TypeScript-only `scripts/check-state-keys.mjs`, wired it into the root lint chain and `check-state-keys` package script, confirmed all current scoped call sites pass, and verified an unwrapped `.state.get("store", "k")` fixture fails with its file, line, and snippet before removing the fixture. Python uses a different client surface and would need a separate, API-specific follow-up guard.
 - 2026-07-23 — Split out of the monolithic hardening-audit plan.
