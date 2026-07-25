@@ -103,9 +103,12 @@ const worktreeEffect = (
     }
 
     const git = yield* GitClient;
-    yield* Effect.gen(function* () {
+    // Reuse-by-branch (issue #76): addWorktree returns the EFFECTIVE path — the requested one,
+    // or the existing worktree already holding this branch (a finished chain's leftover in any
+    // workspace). Downstream steps cwd into whichever is returned.
+    const effectivePath = yield* Effect.gen(function* () {
       yield* fs.makeDirectory(dirname(worktreePath), { recursive: true });
-      yield* git.addWorktree({
+      return yield* git.addWorktree({
         repoPath,
         worktreePath,
         branch,
@@ -118,6 +121,6 @@ const worktreeEffect = (
       Effect.mapError((cause) => new CloneError({ cause, url: repoPath, dir: worktreePath })),
     );
 
-    yield* rec("completed");
-    return { worktreePath };
+    yield* rec("completed", effectivePath !== worktreePath ? { detail: effectivePath } : undefined);
+    return { worktreePath: effectivePath };
   });

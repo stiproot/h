@@ -142,11 +142,15 @@ export class GitClient extends Context.Tag("GitClient")<
     /** Shallow-clone `url` into `dir` (relative to `cwd`), depth 1 unless overridden. */
     readonly clone: (opts: CloneOptions) => Effect.Effect<void, GitCloneError>;
     /**
-     * Add a git worktree of `repoPath` at `worktreePath`. An existing branch is checked out
-     * as-is (not reset); a missing one is created — from the freshly-fetched `origin/<remoteBase>`
-     * tip when `remoteBase` is set and no explicit `baseRef` pins a start point.
+     * Add a git worktree of `repoPath` at `worktreePath`, returning the EFFECTIVE path. An
+     * existing branch is checked out as-is (not reset); a missing one is created — from the
+     * freshly-fetched `origin/<remoteBase>` tip when `remoteBase` is set and no explicit
+     * `baseRef` pins a start point. Reuse-by-branch (issue #76): a branch can only be checked
+     * out in ONE worktree, so if some worktree (any workspace) already holds it, that
+     * worktree's path is returned instead of failing — members that need a fresh base already
+     * fetch + reset against origin themselves.
      */
-    readonly addWorktree: (opts: WorktreeOptions) => Effect.Effect<void, GitWorktreeError>;
+    readonly addWorktree: (opts: WorktreeOptions) => Effect.Effect<string, GitWorktreeError>;
   }
 >() {}
 
@@ -233,9 +237,25 @@ const branchExistsEffect = (
     Effect.map((code) => code === 0),
   );
 
+/** Parse `git worktree list --porcelain`: the LINKED worktree path currently holding `branch`,
+ *  if any. The first block is the MAIN working tree (the shared pre-clone) — deliberately
+ *  skipped: an agent must never be redirected into it, so a branch held there falls through to
+ *  git's own loud "already used" error. */
+const worktreePathForBranch = (porcelain: string, branch: string): string | undefined => {
+  let current: string | undefined;
+  let block = 0;
+  for (const line of porcelain.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      block += 1;
+      current = block > 1 ? line.slice("worktree ".length).trim() : undefined;
+    } else if (line === `branch refs/heads/${branch}` && current) return current;
+  }
+  return undefined;
+};
+
 const addWorktreeEffect = (
   opts: WorktreeOptions,
-): Effect.Effect<void, GitWorktreeError, CommandExecutor.CommandExecutor> => {
+): Effect.Effect<string, GitWorktreeError, CommandExecutor.CommandExecutor> => {
   const { repoPath, worktreePath, branch, remoteBase } = opts;
   const auth = normalizeAuth(opts.auth, opts.token);
   const token = authToken(auth);
@@ -243,6 +263,15 @@ const addWorktreeEffect = (
     // Drop admin entries for worktree dirs removed out of band, so re-adding at the same path does
     // not fail with "already registered".
     yield* runGit(["-C", repoPath, "worktree", "prune"]);
+
+    // Reuse-by-branch (issue #76): a branch is checked out in at most one worktree; if one holds
+    // it already (a finished chain's leftover, another workspace's checkout), return ITS path
+    // instead of failing with "already used by worktree".
+    if (branch) {
+      const porcelain = yield* runGit(["-C", repoPath, "worktree", "list", "--porcelain"]);
+      const held = worktreePathForBranch(porcelain, branch);
+      if (held !== undefined) return held;
+    }
 
     const reuseExisting = branch ? yield* branchExistsEffect(repoPath, branch) : false;
 
@@ -281,12 +310,12 @@ const addWorktreeEffect = (
       if (baseRef) args.push(baseRef);
     }
     yield* runGit(args);
+    return worktreePath;
   }).pipe(
     Effect.mapError(
       (failure) =>
         new GitWorktreeError({ cause: redactedCause(failure, token), repoPath, worktreePath }),
     ),
-    Effect.asVoid,
   );
 };
 

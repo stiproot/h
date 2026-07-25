@@ -151,6 +151,37 @@ describe("GitClient (ExecGitClient layer)", () => {
     expect(readFileSync(join(worktree, "file.txt"), "utf8")).toBe("v2\n");
   });
 
+  it("reuses the worktree already holding the branch instead of failing (issue #76)", async () => {
+    const first = join(root, "worktrees", "chain-1");
+    const second = join(root, "worktrees", "chain-2");
+    const path1 = await run(
+      Effect.gen(function* () {
+        const git = yield* GitClient;
+        return yield* git.addWorktree({
+          repoPath: repo,
+          worktreePath: first,
+          branch: "feature/x",
+        });
+      }),
+    );
+    expect(path1).toBe(first);
+    // A second chain requests the SAME branch at a DIFFERENT path (the cross-chain collision):
+    // instead of `fatal: 'feature/x' is already used by worktree`, the existing path returns.
+    const path2 = await run(
+      Effect.gen(function* () {
+        const git = yield* GitClient;
+        return yield* git.addWorktree({
+          repoPath: repo,
+          worktreePath: second,
+          branch: "feature/x",
+        });
+      }),
+    );
+    expect(path2).toBe(first);
+    // Nothing was created at the second path.
+    expect(() => readFileSync(join(second, "README.md"), "utf8")).toThrow();
+  });
+
   it("fails a worktree add with GitWorktreeError carrying git's stderr", async () => {
     // The branch checked out in the source repo cannot also be checked out in a worktree.
     const git = (cwd: string, ...args: string[]) =>

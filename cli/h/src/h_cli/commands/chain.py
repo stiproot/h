@@ -66,6 +66,7 @@ console = Console()
 err_console = Console(stderr=True)
 
 PER_WORKFLOW_BUDGET_MS = 45 * 60_000
+_BUDGET_RE_LOCAL = __import__("re").compile(r"^\d+[mh]?$")
 _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
 KNOWN_KINDS = ("implement-pr", "review-pr", "revise-pr", "answer")
@@ -433,6 +434,31 @@ def run(
             help="loop-until-clean only: cap on review→revise cycles before the chain finalizes.",
         ),
     ] = 3,
+    after: Annotated[
+        str | None,
+        typer.Option(
+            "--after",
+            help="Activation gate: fire this chain only after the named chain finalizes "
+            "completed (its finalized data — incl. terminal captures like prNumber — seeds this "
+            "chain's data where absent). A failed parent terminates this chain instead.",
+        ),
+    ] = None,
+    at: Annotated[
+        str | None,
+        typer.Option(
+            "--at",
+            help="Activation gate: do not fire before this absolute time (ISO 8601, UTC). "
+            "Mutually exclusive with --in.",
+        ),
+    ] = None,
+    in_: Annotated[
+        str | None,
+        typer.Option(
+            "--in",
+            help="Activation gate: do not fire before now + this delay (ms, <n>m, or <n>h). "
+            "Mutually exclusive with --at.",
+        ),
+    ] = None,
 ) -> None:
     """Register a chain with the durable engine; it sequences the workflows fire-and-forget.
 
@@ -547,23 +573,59 @@ def run(
         _budget_ms(chain_budget) if chain_budget else len(workflows) * PER_WORKFLOW_BUDGET_MS
     )
 
+    # Activation gates (issue #78): the scan holds stage 0 until they pass.
+    if at is not None and in_ is not None:
+        _fail("--at and --in are mutually exclusive")
+    if after:
+        body["after"] = after
+    if at:
+        body["notBefore"] = at
+    elif in_:
+        import datetime
+
+        if not _BUDGET_RE_LOCAL.match(in_):
+            _fail(f"bad --in '{in_}' — expected milliseconds, <n>m, or <n>h (e.g. 45m)")
+        body["notBefore"] = (
+            datetime.datetime.now(datetime.UTC) + datetime.timedelta(milliseconds=_budget_ms(in_))
+        ).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
     if strategy == "loop-until-clean":
         # The loop body is review-pr→revise: the review workflow is the predicate (CLEAN stops the
-        # loop), and the last workflow loops back to it. Require both, in order.
+        # loop), and the last workflow loops back to it. Require both, in order. The engine's
+        # cursor is a STAGE index (issue #79b), so startCursor is the review member's STAGE —
+        # identical to its member index in a purely sequential chain. Stages BEFORE the loop may
+        # be concurrent (e.g. a panel stage); stages inside the loop segment must be
+        # single-member (the loop re-fires them and reads the sole member's verdict).
         kinds = [entry["kind"] for entry in workflows]
         if "review-pr" not in kinds:
             _fail("loop-until-clean needs a 'review-pr' workflow (the predicate).")
-        start = kinds.index("review-pr")
-        if start >= len(workflows) - 1:
+        review_pos = kinds.index("review-pr")
+        start = members[review_pos][3]  # the review member's FINAL stage
+        last_stage = max(final_stage for *_, final_stage in members)
+        if start >= last_stage:
             _fail("loop-until-clean needs a workflow after 'review-pr' (e.g. 'revise') to loop.")
+        crowded = sorted(
+            {fs for *_, fs in members if fs >= start and stage_counts[fs] > 1}
+        )
+        if crowded:
+            _fail(
+                "loop-until-clean requires single-member stages from the review onward "
+                f"(stage(s) {', '.join(map(str, crowded))} have several members) — concurrent "
+                "stages may only precede the loop segment."
+            )
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
     result = _guarded(lambda: workflow_svc.chain_run(body))
 
     labels = [member.label for workflow in expr.members]
+    gate = (
+        f" — activates after chain '{after}'"
+        if after
+        else (f" — activates at {body.get('notBefore')}" if body.get("notBefore") else "")
+    )
     console.print(
         f"==> chain '{result['chainId']}' registered [{' -> '.join(labels)}] "
-        f"(branch feature/{slug}, strategy={strategy})"
+        f"(branch feature/{slug}, strategy={strategy}){gate}"
     )
     console.print("    the chain engine sequences the workflows on the cron tick; non-blocking.")
     console.print(f"    watch it: h chain list  (or h workflow status feature-{slug})")

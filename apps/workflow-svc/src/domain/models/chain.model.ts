@@ -157,6 +157,12 @@ export const ChainRow = Schema.Struct({
   outcome: Schema.optional(ChainOutcome),
   note: Schema.optional(Schema.String),
   meta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Activation gates (issue #78): the scan fires stage 0 only once both are satisfied. `after`
+  // names a parent chain — this chain activates when the parent finalizes `completed` (its
+  // finalized data seeds this chain's data where absent), and is finalized `terminated` if the
+  // parent finalizes any other way. `notBefore` delays activation until an absolute time.
+  after: Schema.optional(Schema.String),
+  notBefore: Schema.optional(Schema.String),
   startedAt: Schema.String,
   updatedAt: Schema.String,
   endedAt: Schema.optional(Schema.String),

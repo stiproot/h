@@ -767,3 +767,79 @@ def test_chain_roster_rejects_model(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "--model with a roster" in _all_output(result)
+
+
+# --- activation gates + loop×stages (issues #78 / #79b) --------------------------------------
+
+
+@respx.mock
+def test_chain_run_activation_gates_ride_the_body(tmp_path: Path) -> None:
+    """--after and --at/--in become the registration's activation gates (issue #78)."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "c", "-p", _pspec(tmp_path), "--after", "p",
+         "--at", "2027-01-01T00:00:00Z", "-w", "review-pr", "--input", "pr=prNumber",
+         "-w", "revise-pr"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["after"] == "p"
+    assert body["notBefore"] == "2027-01-01T00:00:00Z"
+    assert "activates" in _all_output(result) and "chain 'p'" in _all_output(result).replace(chr(10), " ")
+
+
+@respx.mock
+def test_chain_run_in_computes_not_before(tmp_path: Path) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "c", "-p", _pspec(tmp_path), "--in", "30m", "-w", "review-pr"],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["notBefore"].endswith("Z") and body["notBefore"] > "2026"
+
+
+def test_chain_run_at_and_in_are_exclusive(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "c", "-p", _pspec(tmp_path),
+         "--at", "2027-01-01T00:00:00Z", "--in", "30m", "-w", "review-pr"],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "mutually exclusive" in _all_output(result)
+
+
+@respx.mock
+def test_loop_start_cursor_is_the_review_stage_not_member_index(tmp_path: Path) -> None:
+    """Panels stage before the loop (issue #79b): with {answer ∥ answer} → review-pr → revise-pr,
+    startCursor must be the review member's STAGE (1), not its member index (2)."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "task=design",
+         "--strategy", "loop-until-clean",
+         "-w", "answer", "--id", "a", "--input", "task=task",
+         "--parallel", "-w", "answer", "--id", "b", "--input", "task=task",
+         "-w", "review-pr", "--input", "pr=prNumber",
+         "-w", "revise-pr"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["loop"]["startCursor"] == 1
+    stages = [m.get("stage") for m in body["members"]]
+    assert stages == [0, 0, 1, 2]
+
+
+def test_loop_refuses_concurrent_stages_in_the_loop_segment(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "task=t",
+         "--strategy", "loop-until-clean",
+         "-w", "review-pr", "--input", "pr=prNumber",
+         "--parallel", "-w", "answer", "--id", "a", "--input", "task=task",
+         "-w", "revise-pr"],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    assert "single-member stages" in _all_output(result)

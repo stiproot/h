@@ -9,6 +9,7 @@ import {
   type ChainOutcome,
   type ChainRow,
   type ChainStrategy,
+  DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT,
   chainLedgerDate,
   membersInStage,
   stageOf,
@@ -88,6 +89,9 @@ export type ChainRegistration = {
   readonly loop?: { readonly startCursor: number; readonly maxIterations: number };
   readonly budgetMs?: number;
   readonly meta?: ChainData;
+  /** Activation gates (issue #78) — see chain.model.ts. */
+  readonly after?: string;
+  readonly notBefore?: string;
 };
 
 /**
@@ -100,7 +104,7 @@ export type ChainRegistration = {
  */
 export const registerChainForFire = (
   reg: ChainRegistration,
-  traceparent: string | undefined,
+  _traceparent: string | undefined,
 ): Effect.Effect<{ chainId: string; firing: boolean }, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
     const cs = yield* ChainStore;
@@ -130,14 +134,16 @@ export const registerChainForFire = (
       lastStatus: "SCHEDULED",
       unknownStreak: 0,
       ...(reg.meta ? { meta: reg.meta } : {}),
+      ...(reg.after ? { after: reg.after } : {}),
+      ...(reg.notBefore ? { notBefore: reg.notBefore } : {}),
       startedAt: now,
       updatedAt: now,
     };
     yield* cs.saveRow(row);
     yield* cs.bumpLedger(chainLedgerDate(nowMs), { chainsRegistered: 1 });
-    yield* fireStage(row, 0, traceparent).pipe(
-      Effect.catchAll((err) => finalizeFailed(row, `stage 0 dispatch failed: ${messageOf(err)}`)),
-    );
+    // Issue #79a: registration is persist-only — the SCAN fires stage 0 (activation branch in
+    // processRow), so a slow/hung dispatch can never block this handler or strand an orphan when
+    // the client disconnects. `firing` now means "armed to fire on the next tick".
     return { chainId: reg.slug, firing: true };
   });
 
@@ -332,6 +338,46 @@ const observeMember = (
     };
   });
 
+/** Capture every DONE member's validated output into a fresh chain data (issue #77: run on
+ *  advance AND on the terminal stage, so the finalized row carries the last stage's captures). */
+const captureCompleted = (row: ChainRow, reads: readonly MemberRead[]): ChainData => {
+  const data: ChainData = { ...row.data };
+  for (const r of reads) if (r.done) contractFor(row.members[r.index]).capture(r.output, data);
+  return data;
+};
+
+/** Activation verdict for a `scheduling` row (issues #78/#79a): fire now (optionally seeded from
+ *  the finished parent's data), hold for a gate, or abort because the parent failed. */
+type Activation =
+  | { readonly kind: "hold"; readonly parentAbsent: boolean }
+  | { readonly kind: "fire"; readonly seed?: ChainData }
+  | { readonly kind: "abort"; readonly note: string };
+
+const decideActivation = (
+  row: ChainRow,
+  nowMs: number,
+): Effect.Effect<Activation, WorkflowError, ChainStore> =>
+  Effect.gen(function* () {
+    if (row.notBefore !== undefined && nowMs < Date.parse(row.notBefore))
+      return { kind: "hold", parentAbsent: false } as const;
+    if (row.after !== undefined) {
+      const cs = yield* ChainStore;
+      const parent = yield* cs.getRow(row.after);
+      if (Option.isNone(parent)) return { kind: "hold", parentAbsent: true } as const;
+      const p = parent.value;
+      if (p.status !== "finalized") return { kind: "hold", parentAbsent: false } as const;
+      if (p.outcome !== "completed")
+        return {
+          kind: "abort",
+          note: `after-chain '${row.after}' finalized ${p.outcome} — not activating`,
+        } as const;
+      // Parent completed: its finalized data (incl. terminal captures, #77) seeds this chain's
+      // data where absent — the child's own -p values win on conflicts.
+      return { kind: "fire", seed: p.data } as const;
+    }
+    return { kind: "fire" } as const;
+  });
+
 const processRow = (
   row: ChainRow,
   nowMs: number,
@@ -339,6 +385,62 @@ const processRow = (
   report: ChainScanReport,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
+    // Activation branch (issues #78/#79a): a `scheduling` row means its current stage has not been
+    // successfully dispatched — registration no longer fires stage 0 in the request path, and the
+    // `after`/`notBefore` gates hold the fire until satisfied. Fire-then-mark: dispatch (a re-fire
+    // of an already-started instance ATTACHES, so a crash between fire and mark self-heals by
+    // re-entering here), then flip to `running` so observation owns the row from the next tick.
+    if (row.status === "scheduling") {
+      const activation = yield* decideActivation(row, nowMs);
+      if (activation.kind === "hold") {
+        if (!activation.parentAbsent) return; // gate legitimately pending — no streak, no budget
+        // A missing parent is an operator error (typo'd --after / purged row): streak → orphaned.
+        const streak = row.unknownStreak + 1;
+        if (streak >= DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT) {
+          yield* executeFinalize(
+            { ...row, note: `after-chain '${row.after}' not found` },
+            "orphaned",
+            nowMs,
+            report,
+          );
+          return;
+        }
+        yield* saveFenced(row.epoch, stamp({ ...row, unknownStreak: streak }, nowMs));
+        return;
+      }
+      if (activation.kind === "abort") {
+        yield* executeFinalize({ ...row, note: activation.note }, "terminated", nowMs, report);
+        return;
+      }
+      const seeded: ChainRow = activation.seed
+        ? { ...row, data: { ...activation.seed, ...row.data }, unknownStreak: 0 }
+        : { ...row, unknownStreak: 0 };
+      yield* fireStage(seeded, seeded.cursor, traceparent).pipe(
+        Effect.matchEffect({
+          onFailure: (err) =>
+            finalizeFailed(seeded, `stage ${seeded.cursor} dispatch failed: ${messageOf(err)}`),
+          onSuccess: () =>
+            saveFenced(
+              seeded.epoch,
+              stamp(
+                { ...seeded, status: "running", lastStatus: "SCHEDULED", note: undefined },
+                nowMs,
+              ),
+            ).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  for (const i of membersInStage(seeded.members, seeded.cursor))
+                    report.advanced.push(
+                      `${seeded.chainId}:w${i}:${seeded.members[i].kind}:fired`,
+                    );
+                }),
+              ),
+              Effect.asVoid,
+            ),
+        }),
+      );
+      return;
+    }
     // Observe every member of the current stage. Sequential reads keep the scan deterministic (tests
     // assert on fire order) — a stage is a handful of members.
     const members = membersInStage(row.members, row.cursor);
@@ -367,7 +469,11 @@ const processRow = (
           const loopMember = row.members[members[0]];
           if (loopMember && loopIsClean(loopMember, reads[0]?.output)) {
             const note = `clean after ${loop.iterations} revise iteration(s)`;
-            return yield* executeFinalize({ ...row, note }, "completed", nowMs, report);
+            // Issue #77: the terminal (review) stage's captures land on the finalized row too.
+            const data = yield* Effect.try(() => captureCompleted(row, reads)).pipe(
+              Effect.orElseSucceed(() => row.data),
+            );
+            return yield* executeFinalize({ ...row, data, note }, "completed", nowMs, report);
           }
         }
         return yield* executeAdvance(
@@ -408,8 +514,27 @@ const processRow = (
             for (const id of killed) report.terminated.push(id);
           }
           yield* disarmStageCrons(row, row.cursor);
+          return yield* executeFinalize(decision.row, decision.outcome, nowMs, report);
         }
-        return yield* executeFinalize(decision.row, decision.outcome, nowMs, report);
+        // Issue #77: a COMPLETED finalize captures the terminal stage's outputs into the row's
+        // data first — the finalized row is the chain's durable result surface (an `--after`
+        // child seeds from it). A capture error must not un-complete the chain: fall back to
+        // the uncaptured data with a note.
+        const captured = yield* Effect.try(() => captureCompleted(row, reads)).pipe(
+          Effect.match({
+            onFailure: (err) => ({
+              data: row.data,
+              note: `terminal capture failed: ${messageOf(err)}`,
+            }),
+            onSuccess: (data) => ({ data, note: decision.row.note }),
+          }),
+        );
+        return yield* executeFinalize(
+          { ...decision.row, data: captured.data, ...(captured.note ? { note: captured.note } : {}) },
+          decision.outcome,
+          nowMs,
+          report,
+        );
       }
       case "budget-terminate": {
         return yield* terminateStageAndFinalize(decision.row, reads, nowMs, report);
@@ -452,8 +577,7 @@ const executeAdvance = (
   Effect.gen(function* () {
     // Capture what every member of the just-completed stage produced into a fresh chain data — its
     // validated structured output (explicit captures mapping, else the kind contract).
-    const data: ChainData = { ...row.data };
-    for (const r of completed) contractFor(row.members[r.index]).capture(r.output, data);
+    const data = captureCompleted(row, completed);
 
     const now = new Date(nowMs).toISOString();
     const nextMembers = membersInStage(row.members, nextStage);
@@ -482,6 +606,11 @@ const executeAdvance = (
     const saved = yield* saveFenced(row.epoch, next);
     if (!saved) return;
     yield* fireStage(next, nextStage, traceparent, loopBack).pipe(
+      // Fire-then-mark to `running` (issue #79a symmetry): a crash between fire and this mark
+      // re-enters the activation branch next tick, whose re-fire ATTACHES — idempotent.
+      Effect.tap(() =>
+        saveFenced(next.epoch, stamp({ ...next, status: "running" }, Date.now())),
+      ),
       Effect.tap(() =>
         Effect.sync(() => {
           for (const i of nextMembers)

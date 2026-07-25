@@ -19,6 +19,10 @@ const ChainRunRequest = Schema.Struct({
   ),
   budgetMs: Schema.optional(Schema.Number),
   meta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Activation gates (issue #78): fire only after the named chain finalizes completed, and/or
+  // not before an absolute time. The scan owns activation (chain-scan decideActivation).
+  after: Schema.optional(Schema.String),
+  notBefore: Schema.optional(Schema.String),
 });
 const decodeRunRequest = Schema.decodeUnknown(ChainRunRequest);
 

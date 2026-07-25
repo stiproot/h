@@ -173,7 +173,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     const row = mem.rows.get("x");
     expect(row?.epoch).toBe(1);
@@ -205,7 +205,7 @@ describe("registerChainForFire", () => {
           data: { slug: "x", spec: "do it", repo: "o/r" },
         },
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     // wf leaf = the fired member's kind; slug = the chain slug; repo = the chain data target.
     expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "implement-pr" });
@@ -220,7 +220,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     expect(inv.invokes[0].wf).toBeUndefined();
   });
@@ -242,7 +242,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members, data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     expect(inv.invokes[0].params).toMatchObject({
       slug: "x",
@@ -260,7 +260,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service, wfStore))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service, wfStore))),
     );
     const row = mem.rows.get("x");
     expect(row?.status).toBe("finalized");
@@ -367,7 +367,7 @@ describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
       registerChainForFire(
         { slug: "x", members: [...members], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     // registration fired both stage-0 members (derived instances x-w0, x-w1).
     expect(inv.invokes.map((i) => i.instanceId).sort()).toEqual(["x-w0", "x-w1"]);
@@ -428,6 +428,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
         { slug: "x", members: [cronMember, reportMember], data },
         undefined,
       ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
         Effect.provide(
           env(mem.service, inv.service, stubWorkflowStore(), capturingPublisher().service, wfReg),
         ),
@@ -495,7 +496,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
       registerChainForFire(
         { slug: "x", members: [cronMember], data: { slug: "x", spec: "seed" } }, // no repo
         undefined,
-      ).pipe(Effect.provide(env(mem.service, inv.service))),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     const row = mem.rows.get("x");
     expect(row?.status).toBe("finalized");
@@ -623,7 +624,7 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
       registerChainForFire(
         { slug: "x", members: [...members], data: { slug: "x", repo: "o/r", spec: "seed" } },
         undefined,
-      ).pipe(Effect.provide(provide)),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(provide)),
     );
     pub.events.length = 0;
     const report = await Effect.runPromise(
@@ -765,5 +766,150 @@ describe("scanChainsEffect: isolation and kill switch", () => {
     );
     expect(report.disabled).toBe(true);
     expect(report.scanned).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Terminal captures + activation gates (issues #77 / #78 / #79a)
+// ---------------------------------------------------------------------------
+
+describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () => {
+  const structured = (obj: Record<string, unknown>) => JSON.stringify({ s: { structured: obj } });
+
+  it("captures the LAST stage's outputs onto the finalized row (#77)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker({
+      "x-w0": { instanceId: "x-w0", runtimeStatus: "COMPLETED", output: structured({ pr: 7 }) },
+    });
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [{ kind: "implement-pr", key: "implement-pr", captures: { prNumber: "pr" } }],
+          data: { slug: "x", spec: "do it" },
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
+    );
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+    const row = mem.rows.get("x");
+    expect(row?.status).toBe("finalized");
+    expect(row?.outcome).toBe("completed");
+    // The terminal stage's capture landed — the finalized row is the chain's result surface.
+    expect(row?.data.prNumber).toBe(7);
+  });
+
+  it("an --after child holds while the parent runs, then fires seeded from its finalized data (#78)", async () => {
+    const mem = memoryChainStore();
+    // The parent RUNS at first; the test completes it later by mutating the status map.
+    const statuses: Record<string, WorkflowStatus> = {
+      "p-w0": { instanceId: "p-w0", runtimeStatus: "RUNNING" },
+    };
+    const inv = recordingInvoker(statuses);
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "p",
+          members: [{ kind: "implement-pr", key: "implement-pr", captures: { handoff: "pr" } }],
+          data: { slug: "p", spec: "parent work" },
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
+    );
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "c",
+          members: [
+            { kind: "implement-pr", key: "implement-pr", inputs: { slug: "slug", spec: "handoff" } },
+          ],
+          data: { slug: "c" },
+          after: "p",
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
+    );
+    // Parent fired; child HELD (its member never invoked while the parent is unfinalized).
+    expect(inv.invokes.map((i) => i.instanceId)).toEqual(["p-w0"]);
+    // The parent's member completes; the next scan finalizes it (terminal capture #77 lands
+    // handoff), then the following scan activates the child seeded from the finalized data.
+    statuses["p-w0"] = {
+      instanceId: "p-w0",
+      runtimeStatus: "COMPLETED",
+      output: structured({ pr: "PR-9" }),
+    };
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    expect(mem.rows.get("p")?.outcome).toBe("completed");
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const fired = inv.invokes.map((i) => i.instanceId);
+    expect(fired).toContain("c-w0");
+    const child = inv.invokes.find((i) => i.instanceId === "c-w0");
+    expect(child?.params).toMatchObject({ slug: "c", spec: "PR-9" });
+    expect(mem.rows.get("c")?.status).toBe("running");
+  });
+
+  it("an --after child finalizes terminated when the parent fails (#78)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker({
+      "p-w0": { instanceId: "p-w0", runtimeStatus: "FAILED" },
+    });
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "p",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { slug: "p", spec: "parent work" },
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
+    );
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "c",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { slug: "c", spec: "child work" },
+          after: "p",
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
+    );
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer))); // parent fails
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer))); // child aborts
+    const child = mem.rows.get("c");
+    expect(child?.status).toBe("finalized");
+    expect(child?.outcome).toBe("terminated");
+    expect(child?.note).toContain("finalized failed");
+    // The child's member never fired.
+    expect(inv.invokes.map((i) => i.instanceId)).toEqual(["p-w0"]);
+  });
+
+  it("notBefore holds activation until the time passes (#78)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { slug: "x", spec: "do it" },
+          notBefore: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+        undefined,
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
+    );
+    expect(inv.invokes).toHaveLength(0);
+    expect(mem.rows.get("x")?.status).toBe("scheduling");
+    // Time passes: rewrite the gate into the past — the next scan fires stage 0.
+    const row = mem.rows.get("x");
+    if (row) mem.rows.set("x", { ...row, notBefore: new Date(Date.now() - 1000).toISOString() });
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    expect(inv.invokes.map((i) => i.instanceId)).toEqual(["x-w0"]);
+    expect(mem.rows.get("x")?.status).toBe("running");
   });
 });
