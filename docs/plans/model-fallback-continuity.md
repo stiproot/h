@@ -174,10 +174,18 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight: nothing.
+- In flight (the overnight batch, registered 2026-07-26 ~19:15): `game-visibility`
+  (fired now), `ig-promo-spot` (--in 20m), `ai-challenge` (--in 4h — MUST fire off a main
+  that already carries the merged ig-promo shared machinery; if ig-promo isn't merged by
+  then, push the sched back), each with an --after review loop (claude+codex panel).
+  Executors: codex (limit-immune). Specs in the driver session's scratchpad; content also
+  recoverable from each chain row's data.spec.
 - Merge queue: (empty)
 - Blocked: nothing.
-- Next: tonight's trxy batch (limit-immune executors: codex/openhands; claude reviews; staggered --in; DeepSeek driver as check-in fallback) doubles as the Phase 4 live-fire. Then Phase 2 (deepseek executor
+- Merge order tonight: game-visibility and ig-promo independent; merge ig-promo BEFORE
+  ai-challenge fires (its spec assumes the shared edge-fn machinery on main). trxy merge
+  protocol per DRIVER.md (verify:full, test:core for service changes, env derivation).
+- Next: after the batch — Phase 2 (deepseek executor
   identity + chain-level --fallback-agent) and the Phase 4 live-fire drill (fallback
   merge-queue close-out + park under a real limit window).
 
