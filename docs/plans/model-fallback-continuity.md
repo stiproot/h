@@ -174,20 +174,17 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight (the overnight batch, registered 2026-07-26 ~19:15): `game-visibility`
-  (fired now), `ig-promo-spot` (--in 20m), `ai-challenge` (--in 4h — MUST fire off a main
-  that already carries the merged ig-promo shared machinery; if ig-promo isn't merged by
-  then, push the sched back), each with an --after review loop (claude+codex panel).
-  Executors: codex (limit-immune). Specs in the driver session's scratchpad; content also
-  recoverable from each chain row's data.spec.
-- Merge queue: (empty)
+- In flight: `ai-challenge` (gate 22:31Z) + its review loop — fires off a main carrying
+  BOTH merged features (#50 game-visibility, #51 ig-promo incl. the shared edge-fn
+  machinery its spec reuses) and the fully green floor.
+- Merge queue: (empty — #50 and #51 merged ~20:40Z with full evidence).
+- Done tonight: h #90 (revise body-updates) + #92 (worktree fetch-race mutex, agents
+  redeployed ~20:45Z) merged; trxy #49 (TS2503 fix, verify 31/31), #50, #51 merged;
+  h issue #91 filed (--after fires into certain failure on missing capture); trxy issue
+  #52 filed (bun link nondeterminism / TS2591 flake — reinstall is the interim remedy).
 - Blocked: nothing.
-- Merge order tonight: game-visibility and ig-promo independent; merge ig-promo BEFORE
-  ai-challenge fires (its spec assumes the shared edge-fn machinery on main). trxy merge
-  protocol per DRIVER.md (verify:full, test:core for service changes, env derivation).
-- Next: after the batch — Phase 2 (deepseek executor
-  identity + chain-level --fallback-agent) and the Phase 4 live-fire drill (fallback
-  merge-queue close-out + park under a real limit window).
+- Next: ai-challenge arc → merge; then Phase 2/3 design pass with tonight's live-fire
+  evidence (usage-limit never hit — codex executors sidestepped it entirely).
 
 ## Log
 
