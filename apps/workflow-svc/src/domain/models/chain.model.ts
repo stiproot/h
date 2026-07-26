@@ -150,6 +150,9 @@ export const ChainRow = Schema.Struct({
   // The shared-context chain data threaded across members (Phase 1's {slug, data}.data). Each workflow reads
   // what it needs and writes what it produces; the engine captures workflow outputs into it on advance.
   data: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+  // Low-priority defaults (issue #82): the CLI writes the implicit --slug here so an --after child's
+  // parent-seeded slug wins over it. Explicit -p slug=... lands in `data` and wins over both.
+  defaultData: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   status: ChainStatus,
   // Last observed runtimeStatus of the current workflow.
   lastStatus: Schema.String,

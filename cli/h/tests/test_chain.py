@@ -69,8 +69,9 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
     assert workflow["revise-pr"]["instanceId"] == "implement-demo"
     assert workflow["revise-pr"]["fresh"] is True
     assert workflow["review-pr"]["instanceId"] == "review-pr-demo"
-    # The initial chain data carries the first workflow's inputs.
-    assert body["data"]["slug"] == "demo"
+    # Implicit --slug is in defaultData (lowest precedence, issue #82); explicit -p params in data.
+    assert body["defaultData"]["slug"] == "demo"
+    assert "slug" not in body["data"]
     assert body["data"]["issueNumber"] == "7"
     assert "Do the thing" in body["data"]["spec"]
     assert "chain 'demo' registered" in result.output

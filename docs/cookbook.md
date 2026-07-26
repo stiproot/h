@@ -148,12 +148,13 @@ h chain run --slug fix-N-review --after fix-N -p slug=fix-N \
 Both registered up front: the implement chain fires at its time, opens the PR and captures
 `prNumber` terminally; the review chain activates seeded with it and loops to review-clean.
 Worktree reuse-by-branch (issue #76) lets the revise land in the implement chain's checkout.
-**The child's `-p slug=fix-N` is LOAD-BEARING**: a chain's own `--slug` also seeds `slug` in
-its data and SHADOWS the parent's captured slug on activation (issue #82) — omit it and the
-revise leg cuts a stray `feature/<child-slug>` branch from main instead of landing on the
-PR's branch (bit us live 2026-07-26, PR #80's first review loop). *(The composed shape of the
-2026-07-24/25 supervised batches, with the glue now engine-owned; gates validated 2026-07-25;
-run end-to-end 2026-07-26 — PR #80's arc, which found the slug trap.)*
+The child's `-p slug=fix-N` is optional belt-and-braces: as of issue #82 the engine gives the
+parent's captured slug precedence over the child's implicit `--slug` at activation, so the
+revise leg correctly lands on the PR's branch without the explicit override. An explicit
+`-p slug=fix-N` still wins over both (kept in the example as documentation of that idiom).
+*(The composed shape of the 2026-07-24/25 supervised batches, with the glue now engine-owned;
+gates validated 2026-07-25; run end-to-end 2026-07-26 — PR #80's arc found the slug trap,
+fixed by #82.)*
 
 ## Inspect the engines
 

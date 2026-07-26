@@ -19,6 +19,8 @@ const ChainRunRequest = Schema.Struct({
   ),
   budgetMs: Schema.optional(Schema.Number),
   meta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Low-priority defaults (issue #82): implicit --slug from the CLI lives here so a parent seed wins.
+  defaultData: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   // Activation gates (issue #78): fire only after the named chain finalizes completed, and/or
   // not before an absolute time. The scan owns activation (chain-scan decideActivation).
   after: Schema.optional(Schema.String),

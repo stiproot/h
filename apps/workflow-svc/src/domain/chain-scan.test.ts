@@ -1031,3 +1031,133 @@ describe("activation re-stamps startedAt (batch finding: gate-hold must not spen
     expect(mem.rows.get("x")?.status).toBe("running");
   });
 });
+
+describe("--after slug precedence (issue #82)", () => {
+  it("parent seed wins over child defaultData (implicit --slug) on --after activation", async () => {
+    const mem = memoryChainStore();
+    const statuses: Record<string, WorkflowStatus> = {
+      "p-w0": { instanceId: "p-w0", runtimeStatus: "RUNNING" },
+    };
+    const inv = recordingInvoker(statuses);
+    const layer = env(mem.service, inv.service);
+    // Register parent: captures `slug` from its output.
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "p",
+          members: [{ kind: "implement-pr", key: "implement-pr", captures: { slug: "slug" } }],
+          data: { slug: "p", spec: "parent work" },
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(layer),
+      ),
+    );
+    // Register child: implicit slug goes in defaultData only; explicit data is empty.
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "c",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: {},
+          defaultData: { slug: "c" },
+          after: "p",
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(layer),
+      ),
+    );
+    // Parent completes with slug = "parent-branch" in its output.
+    statuses["p-w0"] = {
+      instanceId: "p-w0",
+      runtimeStatus: "COMPLETED",
+      output: JSON.stringify({
+        implement: { output: "done", structured: { slug: "parent-branch", pr: 1 } },
+      }),
+    };
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    expect(mem.rows.get("p")?.outcome).toBe("completed");
+    // Next tick: child activates seeded from parent data — parent slug wins over defaultData.
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const child = inv.invokes.find((i) => i.instanceId === "c-w0");
+    expect(child).toBeDefined();
+    expect(child?.params?.slug).toBe("parent-branch");
+  });
+
+  it("explicit child -p slug wins over parent seed and defaultData on --after activation", async () => {
+    const mem = memoryChainStore();
+    const statuses: Record<string, WorkflowStatus> = {
+      "p-w0": { instanceId: "p-w0", runtimeStatus: "RUNNING" },
+    };
+    const inv = recordingInvoker(statuses);
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "p",
+          members: [{ kind: "implement-pr", key: "implement-pr", captures: { slug: "slug" } }],
+          data: { slug: "p", spec: "parent" },
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(layer),
+      ),
+    );
+    // Child has explicit -p slug in data AND defaultData with the implicit slug.
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "c",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { slug: "explicit-override" },
+          defaultData: { slug: "c" },
+          after: "p",
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(layer),
+      ),
+    );
+    statuses["p-w0"] = {
+      instanceId: "p-w0",
+      runtimeStatus: "COMPLETED",
+      output: JSON.stringify({
+        implement: { output: "done", structured: { slug: "parent-branch", pr: 1 } },
+      }),
+    };
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const child = inv.invokes.find((i) => i.instanceId === "c-w0");
+    expect(child).toBeDefined();
+    // explicit data.slug wins over parent seed and defaultData.
+    expect(child?.params?.slug).toBe("explicit-override");
+  });
+
+  it("defaultData slug flows into fired params when no --after (standalone chain)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { spec: "do it" },
+          defaultData: { slug: "x" },
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(layer),
+      ),
+    );
+    const fired = inv.invokes.find((i) => i.instanceId === "x-w0");
+    expect(fired).toBeDefined();
+    expect(fired?.params?.slug).toBe("x");
+  });
+});
