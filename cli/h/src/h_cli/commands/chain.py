@@ -551,10 +551,10 @@ def run(
         workflows.append(
             _resolve_workflow(member, cfg, slug, index, final_stage, uses_stages, in_parallel)
         )
-    # Chain-level -p values seed the shared data chain data, threaded to every member. slug is the
-    # chain's identity; the engine threads durable refs (e.g. the PR number) to revise, which reads
-    # the review itself. Each workflow fires its own saved definition — no key rewriting.
-    data: dict[str, Any] = {"slug": slug, **parse_params(param or [])}
+    # Chain-level -p values seed the shared data chain data, threaded to every member. The implicit
+    # slug goes into defaultData (lowest precedence, issue #82) so an --after parent's captured slug
+    # wins at activation. Explicit -p slug=... lands in data and wins over both.
+    data: dict[str, Any] = {**parse_params(param or [])}
     # A cron member's recurrence + the chain's completion predicate both read wf:<repo>:<slug>:<wf>,
     # so it needs a repo on the chain data — fail loud here, not mid-fire in the engine.
     if any(w.get("cron") for w in workflows) and not data.get("repo"):
@@ -566,6 +566,7 @@ def run(
         "slug": slug,
         "members": workflows,
         "data": data,
+        "defaultData": {"slug": slug},
         "strategy": strategy,
     }
     chain_budget = expr.defaults.budget

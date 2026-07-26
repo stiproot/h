@@ -84,6 +84,8 @@ export type ChainRegistration = {
   readonly members: readonly ChainMember[];
   /** Initial chain data — the inputs the first stage reads (slug, spec, issueNumber?). */
   readonly data: ChainData;
+  /** Low-priority defaults (issue #82): implicit --slug lands here so a parent seed wins over it. */
+  readonly defaultData?: ChainData;
   readonly strategy?: ChainStrategy;
   /** For strategy "loop-until-clean": where the loop body starts (the review stage) + the cap. */
   readonly loop?: { readonly startCursor: number; readonly maxIterations: number };
@@ -133,6 +135,7 @@ export const registerChainForFire = (
       status: "scheduling",
       lastStatus: "SCHEDULED",
       unknownStreak: 0,
+      ...(reg.defaultData ? { defaultData: reg.defaultData } : {}),
       ...(reg.meta ? { meta: reg.meta } : {}),
       ...(reg.after ? { after: reg.after } : {}),
       ...(reg.notBefore ? { notBefore: reg.notBefore } : {}),
@@ -420,10 +423,17 @@ const processRow = (
       // Activation IS the chain's real start (batch finding, 2026-07-25): the wall-clock
       // budget must not count the gate-hold — a --in 1h chain with a 45m budget otherwise
       // budget-terminates the instant it fires. Re-stamp startedAt at activation.
+      // Precedence (issue #82): defaultData (implicit --slug) < parent seed < explicit data (-p slug=...).
       const activatedAt = new Date(nowMs).toISOString();
+      const defaults = row.defaultData ?? {};
       const seeded: ChainRow = activation.seed
-        ? { ...row, data: { ...activation.seed, ...row.data }, unknownStreak: 0, startedAt: activatedAt }
-        : { ...row, unknownStreak: 0, startedAt: activatedAt };
+        ? {
+            ...row,
+            data: { ...defaults, ...activation.seed, ...row.data },
+            unknownStreak: 0,
+            startedAt: activatedAt,
+          }
+        : { ...row, data: { ...defaults, ...row.data }, unknownStreak: 0, startedAt: activatedAt };
       yield* fireStage(seeded, seeded.cursor, traceparent).pipe(
         Effect.matchEffect({
           onFailure: (err) =>
@@ -439,9 +449,7 @@ const processRow = (
               Effect.tap(() =>
                 Effect.sync(() => {
                   for (const i of membersInStage(seeded.members, seeded.cursor))
-                    report.advanced.push(
-                      `${seeded.chainId}:w${i}:${seeded.members[i].kind}:fired`,
-                    );
+                    report.advanced.push(`${seeded.chainId}:w${i}:${seeded.members[i].kind}:fired`);
                 }),
               ),
               Effect.asVoid,
@@ -539,7 +547,11 @@ const processRow = (
           }),
         );
         return yield* executeFinalize(
-          { ...decision.row, data: captured.data, ...(captured.note ? { note: captured.note } : {}) },
+          {
+            ...decision.row,
+            data: captured.data,
+            ...(captured.note ? { note: captured.note } : {}),
+          },
           decision.outcome,
           nowMs,
           report,
@@ -617,9 +629,7 @@ const executeAdvance = (
     yield* fireStage(next, nextStage, traceparent, loopBack).pipe(
       // Fire-then-mark to `running` (issue #79a symmetry): a crash between fire and this mark
       // re-enters the activation branch next tick, whose re-fire ATTACHES — idempotent.
-      Effect.tap(() =>
-        saveFenced(next.epoch, stamp({ ...next, status: "running" }, Date.now())),
-      ),
+      Effect.tap(() => saveFenced(next.epoch, stamp({ ...next, status: "running" }, Date.now()))),
       Effect.tap(() =>
         Effect.sync(() => {
           for (const i of nextMembers)
@@ -806,8 +816,7 @@ export const tallyChainCost = (
     const cs = yield* ChainStore;
     const ran = new Set<string>();
     for (let i = 0; i < row.members.length; i++) {
-      if (stageOf(row.members, i) <= row.cursor)
-        ran.add(instanceIdAt(row.chainId, row.members, i));
+      if (stageOf(row.members, i) <= row.cursor) ran.add(instanceIdAt(row.chainId, row.members, i));
     }
     const keys = yield* cs.listRunKeys();
     const mine = keys.filter((key) => [...ran].some((id) => key.startsWith(`run:${id}:`)));
