@@ -114,7 +114,9 @@ export const registerCronForFire = (
  * in-flight scan decision with the old epoch no-ops. Idempotent: an already-inactive row is
  * returned as-is with no ledger bump. Missing id → `{ _tag: "NotFound" }`.
  */
-export const disarmCron = (id: string): Effect.Effect<CronRow, DisarmCronError, CronStore> =>
+export const disarmCron = (
+  id: string,
+): Effect.Effect<CronRow, DisarmCronError, CronStore> =>
   Effect.gen(function* () {
     const cs = yield* CronStore;
     const nowMs = Date.now();

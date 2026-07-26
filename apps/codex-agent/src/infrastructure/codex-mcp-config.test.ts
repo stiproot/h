@@ -29,7 +29,9 @@ describe("mcpJsonToCodexToml", () => {
       new URL("../../../../docker-compose.yml", import.meta.url),
       "utf8",
     );
-    expect(compose).toContain("./apps/codex-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro");
+    expect(compose).toContain(
+      "./apps/codex-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro",
+    );
 
     const dockerConfig = readFileSync(new URL("../../.mcp.json", import.meta.url), "utf8");
     const { toml } = mcpJsonToCodexToml(dockerConfig);

@@ -173,10 +173,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     const row = mem.rows.get("x");
     expect(row?.epoch).toBe(1);
@@ -208,10 +205,7 @@ describe("registerChainForFire", () => {
           data: { slug: "x", spec: "do it", repo: "o/r" },
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     // wf leaf = the fired member's kind; slug = the chain slug; repo = the chain data target.
     expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "implement-pr" });
@@ -226,10 +220,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     expect(inv.invokes[0].wf).toBeUndefined();
   });
@@ -252,10 +243,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members, data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     expect(inv.invokes[0].params).toMatchObject({
       slug: "x",
@@ -273,10 +261,7 @@ describe("registerChainForFire", () => {
       registerChainForFire(
         { slug: "x", members: [...DEFAULT_WORKFLOWS], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service, wfStore)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service, wfStore))),
     );
     const row = mem.rows.get("x");
     expect(row?.status).toBe("finalized");
@@ -383,10 +368,7 @@ describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
       registerChainForFire(
         { slug: "x", members: [...members], data: { slug: "x", spec: "do it" } },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     // registration fired both stage-0 members (derived instances x-w0, x-w1).
     expect(inv.invokes.map((i) => i.instanceId).sort()).toEqual(["x-w0", "x-w1"]);
@@ -515,10 +497,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
       registerChainForFire(
         { slug: "x", members: [cronMember], data: { slug: "x", spec: "seed" } }, // no repo
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     const row = mem.rows.get("x");
     expect(row?.status).toBe("finalized");
@@ -646,10 +625,7 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
       registerChainForFire(
         { slug: "x", members: [...members], data: { slug: "x", repo: "o/r", spec: "seed" } },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(provide),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(provide)),
     );
     pub.events.length = 0;
     const report = await Effect.runPromise(
@@ -814,10 +790,7 @@ describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () 
           data: { slug: "x", spec: "do it" },
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     await Effect.runPromise(
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
@@ -845,30 +818,20 @@ describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () 
           data: { slug: "p", spec: "parent work" },
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(layer),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
     );
     await Effect.runPromise(
       registerChainForFire(
         {
           slug: "c",
           members: [
-            {
-              kind: "implement-pr",
-              key: "implement-pr",
-              inputs: { slug: "slug", spec: "handoff" },
-            },
+            { kind: "implement-pr", key: "implement-pr", inputs: { slug: "slug", spec: "handoff" } },
           ],
           data: { slug: "c" },
           after: "p",
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(layer),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
     );
     // Parent fired; child HELD (its member never invoked while the parent is unfinalized).
     expect(inv.invokes.map((i) => i.instanceId)).toEqual(["p-w0"]);
@@ -903,10 +866,7 @@ describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () 
           data: { slug: "p", spec: "parent work" },
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(layer),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
     );
     await Effect.runPromise(
       registerChainForFire(
@@ -917,10 +877,7 @@ describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () 
           after: "p",
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(layer),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
     );
     await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer))); // parent fails
     await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer))); // child aborts
@@ -945,10 +902,7 @@ describe("scanChainsEffect: terminal captures + activation gates (#77/#78)", () 
           notBefore: new Date(Date.now() + 3_600_000).toISOString(),
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(layer),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
     );
     expect(inv.invokes).toHaveLength(0);
     expect(mem.rows.get("x")?.status).toBe("scheduling");
@@ -980,10 +934,7 @@ describe("threaded params beat rendered defaults (trxy trial finding, 2026-07-25
           data: { slug: "x", spec: "do it", clonePath: "/workspace/other-repo" },
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(env(mem.service, inv.service)),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(env(mem.service, inv.service))),
     );
     expect(inv.invokes[0].params).toMatchObject({
       clonePath: "/workspace/other-repo", // threaded wins
@@ -1007,10 +958,7 @@ describe("activation re-stamps startedAt (batch finding: gate-hold must not spen
           notBefore: new Date(Date.now() + 3_600_000).toISOString(),
         },
         undefined,
-      ).pipe(
-        Effect.tap(() => scanChainsEffect(undefined)),
-        Effect.provide(layer),
-      ),
+      ).pipe(Effect.tap(() => scanChainsEffect(undefined)), Effect.provide(layer)),
     );
     // Simulate the hold having lasted longer than the whole budget: backdate registration and
     // open the gate.

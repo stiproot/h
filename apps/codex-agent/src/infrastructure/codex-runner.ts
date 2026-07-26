@@ -107,10 +107,7 @@ export const CodexRunnerLive: Layer.Layer<
         const home = Option.getOrNull(cfg.codexHome);
         yield* Effect.gen(function* () {
           if (!src || !home) {
-            yield* log.info(
-              { src, home },
-              "codex mcp: not provisioning (MCP_CONFIG_SRC/CODEX_HOME unset)",
-            );
+            yield* log.info({ src, home }, "codex mcp: not provisioning (MCP_CONFIG_SRC/CODEX_HOME unset)");
             return;
           }
           yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.ignore);

@@ -87,8 +87,7 @@ export function planCron(input: RegisterCronInput): CronPlan {
   };
   if (input.requirePrFrom !== undefined) {
     const pr = prNumberFrom(input.requirePrFrom);
-    if (pr === undefined)
-      return { armed: false, reason: "no PR opened — revise-pr loop not armed" };
+    if (pr === undefined) return { armed: false, reason: "no PR opened — revise-pr loop not armed" };
     fireParams.pr = pr;
   }
   // Inline (embedded) recurrence: recur the run's own steps verbatim — nothing to re-hydrate by key.

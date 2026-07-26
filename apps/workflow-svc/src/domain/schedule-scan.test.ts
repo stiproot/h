@@ -91,12 +91,7 @@ const savedStore = (overrides: Partial<WorkflowStoreService> = {}): WorkflowStor
   ...overrides,
 });
 
-const emptyWatchLedger: WatchLedger = {
-  runsFired: 0,
-  runsFinalized: 0,
-  engineFires: 0,
-  costUsd: 0,
-};
+const emptyWatchLedger: WatchLedger = { runsFired: 0, runsFinalized: 0, engineFires: 0, costUsd: 0 };
 const stubWatch: WatchStoreService = {
   getRow: () => Effect.succeed(Option.none()),
   listRows: () => Effect.succeed([]),

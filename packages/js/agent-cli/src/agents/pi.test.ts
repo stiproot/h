@@ -62,7 +62,9 @@ describe("piStrategy.prepareEnvironment model routing", () => {
 
 describe("piStrategy.buildInvocation", () => {
   it("runs pi non-interactively (-p) in json mode with --provider and --model", async () => {
-    const invocation = await buildInvocation(baseRequest({ model: "anthropic/claude-sonnet-4-6" }));
+    const invocation = await buildInvocation(
+      baseRequest({ model: "anthropic/claude-sonnet-4-6" }),
+    );
 
     expect(invocation.command).toBe("pi");
     expect(invocation.args).toContain("-p");
@@ -75,7 +77,9 @@ describe("piStrategy.buildInvocation", () => {
   });
 
   it("resolves a bare deepseek model to --provider deepseek --model <id>", async () => {
-    const invocation = await buildInvocation(baseRequest({ model: "deepseek-v4-flash" }));
+    const invocation = await buildInvocation(
+      baseRequest({ model: "deepseek-v4-flash" }),
+    );
 
     expect(invocation.args[invocation.args.indexOf("--provider") + 1]).toBe("deepseek");
     expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("deepseek-v4-flash");
@@ -89,7 +93,9 @@ describe("piStrategy.buildInvocation", () => {
   });
 
   it("passes the task via stdin (E2BIG-safe), not a temp file", async () => {
-    const invocation = await buildInvocation(baseRequest({ taskPrompt: "implement X" }));
+    const invocation = await buildInvocation(
+      baseRequest({ taskPrompt: "implement X" }),
+    );
 
     expect(invocation.stdinInput).toBe("implement X");
     expect(invocation.args).not.toContain("--file");
