@@ -66,5 +66,6 @@ the definition of done) and too PERMISSIVE about evidence (no one checks that do
   acceptance; (2) review-pr.tmpl.yaml + values.yaml gain optional spec param (conditional
   ===ORIGINAL SPEC=== section; spec-less render is byte-identical); chain-members.ts threads spec
   from chain data; two unit tests added; (3) review-pr checklist gains test-evidence bullet.
-  Goldens re-blessed after reviewing .ambr diff. bun run lint + bun run test + uv run pytest all
-  green.
+  Goldens re-blessed after reviewing .ambr diff. Test evidence: bun run lint (23/23), bun run build
+  (16/16), bun run test (319/319); uv run --package h-cli pytest cli/h/tests/ (260 pass; 2
+  pre-existing failures in test_chain.py unrelated to this change).

@@ -600,10 +600,6 @@
              - Deliberate patterns: a line that looks inconsistent but carries a comment
                explaining why (or matches a documented sibling template) is NOT a finding —
                read the comment before flagging style.
-             - Original spec (if provided): If a spec is supplied below, check that the diff
-               satisfies it — not merely the PR's self-description. An unimplemented spec
-               requirement is a FINDING.
-               Spec: {{params.spec}} (empty if not supplied)
              Optional focus steer (empty = ignore): {{params.focus}}
   
           3. POST. Use the GitHub MCP review workflow:
@@ -734,10 +730,11 @@
              - Deliberate patterns: a line that looks inconsistent but carries a comment
                explaining why (or matches a documented sibling template) is NOT a finding —
                read the comment before flagging style.
-             - Original spec (if provided): If a spec is supplied below, check that the diff
-               satisfies it — not merely the PR's self-description. An unimplemented spec
-               requirement is a FINDING.
-               Spec: {{params.spec}} (empty if not supplied)
+             - Original spec: check that the diff satisfies the spec below — not merely the
+               PR's self-description. An unimplemented spec requirement is a FINDING.
+  
+             ===ORIGINAL SPEC===
+             {{params.spec}}
              Optional focus steer (empty = ignore): {{params.focus}}
   
           3. POST. Use the GitHub MCP review workflow:
