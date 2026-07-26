@@ -19,9 +19,14 @@ Fire-time params:
           (values reviewPr.repo is only the stored default); required at fire, not at publish.
   slug    Branch slug — the wf-key segment only (identity; the review reads by PR number). Per-PR.
   focus   Optional free-text steer, e.g. "docs accuracy" (empty = full review)
+  spec    Optional original spec/task text — when non-empty the review checks the diff
+          satisfies THE SPEC, not merely the PR's self-description (empty = diff-only
+          review). Always an open runtime slot (the focus pattern); chains thread it
+          from chain data automatically.
 
 Template config (values, baked at publish time): reviewPr.repo (owner/name — the stored default
-for the repo param), models.review.
+for the repo param), reviewPr.spec (the stored default for the spec param, empty = diff-only),
+models.review.
 
 Review comment shape consumed by the revise flow: concrete defect, fix direction, acceptance
 check. The review is always submitted as a COMMENT (never APPROVE or REQUEST_CHANGES — human
