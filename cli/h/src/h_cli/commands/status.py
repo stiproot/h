@@ -1,6 +1,6 @@
-"""h status — one-screen driver check-in: chains, engine heartbeats, verdict.
+"""h status — one-screen driver check-in: chains, engine heartbeats, PRs, verdict.
 
-Read-only, zero writes, zero agent invocations. Three independent fetches (chain/watch/cron);
+Read-only, zero writes, zero agent invocations. Four independent fetches (chain/watch/cron/PRs);
 each failure is recorded and surfaced in the verdict rather than exiting non-zero.
 """
 
@@ -43,13 +43,14 @@ def _format_age(seconds: float) -> str:
 
 
 def _fetch_all() -> (
-    tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, list[str]]
+    tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]], list[str]]
 ):
-    """Fetch chain/watch/cron independently; records errors rather than raising."""
+    """Fetch chain/watch/cron/PRs independently; records errors rather than raising."""
     fetch_errors: list[str] = []
     chain_data: dict[str, Any] | None = None
     watch_data: dict[str, Any] | None = None
     cron_data: dict[str, Any] | None = None
+    prs: list[dict[str, Any]] = []
 
     try:
         chain_data = workflow_svc.chain_list()
@@ -66,7 +67,12 @@ def _fetch_all() -> (
     except httpx.HTTPError as err:
         fetch_errors.append(f"cron/list unreachable: {err}")
 
-    return chain_data, watch_data, cron_data, fetch_errors
+    try:
+        prs = workflow_svc.open_prs()
+    except httpx.HTTPError as err:
+        fetch_errors.append(f"open_prs unreachable: {err}")
+
+    return chain_data, watch_data, cron_data, prs, fetch_errors
 
 
 def _findings_count(data: Any) -> int | None:
@@ -83,6 +89,7 @@ def _analyze(
     chain_data: dict[str, Any] | None,
     watch_data: dict[str, Any] | None,
     cron_data: dict[str, Any] | None,
+    prs: list[dict[str, Any]],
     fetch_errors: list[str],
 ) -> tuple[dict[str, Any], list[str]]:
     """Pure analysis: returns (sections_dict, flags_list). Shared by rich and --json paths."""
@@ -145,7 +152,10 @@ def _analyze(
         _hb_entry("cron", cron_data),
     ]
 
-    active_watches = len((watch_data or {}).get("watches") or [])
+    active_watches = len([
+        w for w in ((watch_data or {}).get("watches") or [])
+        if w.get("status") in ("scheduling", "watching")
+    ])
     pending_scheds = [
         s for s in ((cron_data or {}).get("sched") or []) if s.get("status") == "armed"
     ]
@@ -165,6 +175,7 @@ def _analyze(
                 {"id": s.get("id", ""), "fireAt": s.get("fireAt", "")} for s in pending_scheds
             ],
         },
+        "prs": {"open": prs},
         "flags": flags,
         "verdict": verdict,
     }, flags
@@ -173,9 +184,9 @@ def _analyze(
 def status(
     json_output: bool = typer.Option(False, "--json", help="Emit the status digest as JSON."),
 ) -> None:
-    """One-screen driver check-in: chains, engine heartbeats, verdict. Read-only."""
-    chain_data, watch_data, cron_data, fetch_errors = _fetch_all()
-    sections, flags = _analyze(chain_data, watch_data, cron_data, fetch_errors)
+    """One-screen driver check-in: chains, engine heartbeats, PRs, verdict. Read-only."""
+    chain_data, watch_data, cron_data, prs, fetch_errors = _fetch_all()
+    sections, flags = _analyze(chain_data, watch_data, cron_data, prs, fetch_errors)
 
     if json_output:
         console.print_json(data=sections)
@@ -233,6 +244,24 @@ def status(
         console.print(st)
     else:
         console.print("[dim]no pending scheduled fires[/dim]")
+
+    # --- PULL REQUESTS ---
+    console.rule("[bold]PULL REQUESTS[/bold]")
+    open_prs = sections["prs"]["open"]
+    if open_prs:
+        t_prs = Table(
+            "#", "title", "author",
+            title=f"open ({len(open_prs)})",
+        )
+        for pr in open_prs:
+            t_prs.add_row(
+                str(pr.get("number", "?")),
+                pr.get("title", ""),
+                pr.get("author", ""),
+            )
+        console.print(t_prs)
+    else:
+        console.print("[dim]no open pull requests[/dim]")
 
     # --- VERDICT ---
     console.rule("[bold]VERDICT[/bold]")
