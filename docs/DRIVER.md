@@ -13,15 +13,22 @@ plan behind this; the continuity inventory there lists what state lives where.)
   endpoint — the harness, MCP wiring, and steering files carry over unchanged:
 
   ```sh
+  # the DeepSeek key already lives in .env as LLM_API_KEY (the openhands/pi BYOK pair)
   export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
-  export ANTHROPIC_AUTH_TOKEN="$DEEPSEEK_API_KEY"   # from .env
-  export ANTHROPIC_MODEL="deepseek-chat"
-  export ANTHROPIC_SMALL_FAST_MODEL="deepseek-chat"
+  export ANTHROPIC_AUTH_TOKEN="$LLM_API_KEY"
+  export ANTHROPIC_MODEL="deepseek-v4-flash"
+  export ANTHROPIC_SMALL_FAST_MODEL="deepseek-v4-flash"
+  # unset CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY so the override wins
   claude   # then operate per this doc
   ```
 
-  (Validation status: see the model-fallback-continuity plan log — do not assume parity
-  beyond what a validated check-in has proven.)
+  VALIDATED 2026-07-26: wire (Anthropic-shaped responses incl. thinking blocks), headless
+  tool use (Read/Write), MCP (workflows + obs servers), and a cold-start read-only
+  check-in that produced an accurate fleet picture from this doc + durable state alone.
+  Not yet drilled: a fallback-driver merge-queue close-out and park under a real limit
+  window (model-fallback-continuity Phase 4). The cold-start also proved the sharp edge:
+  the fallback reports the Driver state paragraph AS WRITTEN — a stale paragraph is
+  faithfully repeated, so the primary driver MUST keep it current (that is the contract).
 
 ## Authority — completion-oriented, merge-gated
 

@@ -1,6 +1,6 @@
 # Model fallback & session continuity — surviving the subscription limit
 
-Status: Active — Phase 1 in flight (DRIVER.md landed; h-status via chain; DeepSeek key pending)
+Status: Active — Phase 1 items 1/2/4/5 validated 2026-07-26; h-status chain in flight
 Established: 2026-07-26
 
 ## Origin
@@ -174,14 +174,27 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight: `h-status-cmd` implement + review chains (Phase 1 item 3, fired 2026-07-26).
+- In flight: `h-status-cmd` implement + review chains (Phase 1 item 3).
 - Merge queue: (empty)
-- Blocked: Phase 1 item 1 (DeepSeek CLI validation) awaits DEEPSEEK_API_KEY in `.env`.
-- Next: on key arrival — wire-test the compat endpoint, then headless claude-CLI tool/MCP
-  probe, then the cold-start fallback-driver check-in (item 5).
+- Blocked: nothing.
+- Next: merge h-status PR when its loop finalizes; then Phase 2 (deepseek executor
+  identity + chain-level --fallback-agent) and the Phase 4 live-fire drill (fallback
+  merge-queue close-out + park under a real limit window).
 
 ## Log
 
+- 2026-07-26 (evening, later) — Phase 1 validation ladder COMPLETE. The DeepSeek key was
+  already in .env as LLM_API_KEY (the openhands BYOK pair; operator remembered, the grep
+  didn't). Validated: (1) wire — api.deepseek.com/anthropic returns Anthropic-shaped
+  messages (thinking blocks included) for deepseek-v4-flash; (2) headless claude CLI
+  tool use (Read/Write, exact-format replies) with scoped --allowedTools (the
+  --dangerously-skip-permissions variant is classifier-blocked in-session — scoped
+  allowlists are the shape anyway); (3) MCP — the DeepSeek-backed CLI drove the
+  workflows + obs servers correctly; (4) cold-start check-in — accurate fleet picture,
+  correct no-action verdict, correct reading of --after gates and loop state, from
+  DRIVER.md + durable state alone. Finding: it repeated the plan's STALE driver-state
+  paragraph verbatim — faithful-reporting proves the mechanism and exposes the contract:
+  the primary driver must keep the paragraph current. Recipe recorded in DRIVER.md.
 - 2026-07-26 (evening) — Phase 1 started. docs/DRIVER.md authored (check-in loop, merge
   protocol, completion-oriented authority, recovery drawer). `h status` fired as an
   h-builds-h chain (h-status-cmd + review loop) rather than hand-built — the driver
