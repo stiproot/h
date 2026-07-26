@@ -139,7 +139,7 @@ chain-engine-followups.md.)*
 ```sh
 h chain run --slug fix-N -p repo=stiproot/h -p spec=@spec.md --in 2h \
   -- -t implement verify create-pr --agent codex --inline
-h chain run --slug fix-N-review --after fix-N \
+h chain run --slug fix-N-review --after fix-N -p slug=fix-N \
   --strategy loop-until-clean --max-iterations 3 \
   -- -w review-pr --agent claude codex --inline --input pr=prNumber \
      -t revise-pr --kind revise-pr --agent codex --inline
@@ -148,8 +148,12 @@ h chain run --slug fix-N-review --after fix-N \
 Both registered up front: the implement chain fires at its time, opens the PR and captures
 `prNumber` terminally; the review chain activates seeded with it and loops to review-clean.
 Worktree reuse-by-branch (issue #76) lets the revise land in the implement chain's checkout.
-*(The composed shape of the 2026-07-24/25 supervised batches, with the glue now engine-owned;
-gates validated 2026-07-25 — run it end-to-end and update this stamp.)*
+**The child's `-p slug=fix-N` is LOAD-BEARING**: a chain's own `--slug` also seeds `slug` in
+its data and SHADOWS the parent's captured slug on activation (issue #82) — omit it and the
+revise leg cuts a stray `feature/<child-slug>` branch from main instead of landing on the
+PR's branch (bit us live 2026-07-26, PR #80's first review loop). *(The composed shape of the
+2026-07-24/25 supervised batches, with the glue now engine-owned; gates validated 2026-07-25;
+run end-to-end 2026-07-26 — PR #80's arc, which found the slug trap.)*
 
 ## Inspect the engines
 
