@@ -552,6 +552,7 @@
   params:
     repo: "owner/h"
     slug: ""
+    spec: ""
   steps:
     - id: setup
       activity: setup
@@ -599,6 +600,10 @@
              - Deliberate patterns: a line that looks inconsistent but carries a comment
                explaining why (or matches a documented sibling template) is NOT a finding —
                read the comment before flagging style.
+             - Original spec (if provided): If a spec is supplied below, check that the diff
+               satisfies it — not merely the PR's self-description. An unimplemented spec
+               requirement is a FINDING.
+               Spec: {{params.spec}} (empty if not supplied)
              Optional focus steer (empty = ignore): {{params.focus}}
   
           3. POST. Use the GitHub MCP review workflow:
@@ -729,12 +734,10 @@
              - Deliberate patterns: a line that looks inconsistent but carries a comment
                explaining why (or matches a documented sibling template) is NOT a finding —
                read the comment before flagging style.
-             ===ORIGINAL SPEC===
-             {{params.spec}}
-             ===END SPEC===
-             Check the diff satisfies THE SPEC above, not merely the PR's self-description.
-             An unimplemented spec requirement is a FINDING even if the PR description says
-             the work is done.
+             - Original spec (if provided): If a spec is supplied below, check that the diff
+               satisfies it — not merely the PR's self-description. An unimplemented spec
+               requirement is a FINDING.
+               Spec: {{params.spec}} (empty if not supplied)
              Optional focus steer (empty = ignore): {{params.focus}}
   
           3. POST. Use the GitHub MCP review workflow:

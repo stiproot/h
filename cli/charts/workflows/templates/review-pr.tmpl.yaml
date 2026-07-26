@@ -65,11 +65,9 @@ role: standalone
 params:
   repo: {{ $p.repo | quote }}
   slug: ""
+  spec: {{ $spec | quote }}
   {{- with $p.models.review }}
   modelReview: {{ . | quote }}
-  {{- end }}
-  {{- if $spec }}
-  spec: {{ $spec | quote }}
   {{- end }}
 steps:
   - id: setup
@@ -120,14 +118,10 @@ steps:
            - Deliberate patterns: a line that looks inconsistent but carries a comment
              explaining why (or matches a documented sibling template) is NOT a finding —
              read the comment before flagging style.
-        {{- if $spec }}
-           ===ORIGINAL SPEC===
-           {{ include "h.token" "params.spec" }}
-           ===END SPEC===
-           Check the diff satisfies THE SPEC above, not merely the PR's self-description.
-           An unimplemented spec requirement is a FINDING even if the PR description says
-           the work is done.
-        {{- end }}
+           - Original spec (if provided): If a spec is supplied below, check that the diff
+             satisfies it — not merely the PR's self-description. An unimplemented spec
+             requirement is a FINDING.
+             Spec: {{ include "h.token" "params.spec" }} (empty if not supplied)
         {{- $focus := include "h.token" "params.focus" }}
            Optional focus steer (empty = ignore): {{ $focus }}
 

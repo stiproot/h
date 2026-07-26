@@ -386,15 +386,17 @@ def test_review_pr_with_spec_golden(snapshot) -> None:
 
 
 def test_review_pr_spec_absent_when_no_spec_value() -> None:
-    """When reviewPr.spec is empty (the default), the render must contain no spec section and
-    no params.spec token — a spec-less chain gets a byte-identical render."""
+    """When reviewPr.spec is empty (the default), the render must declare params.spec so that
+    a chain can pass spec at fire time. The prose must not show ===ORIGINAL SPEC=== section
+    (spec-less review), but params.spec token is always present for runtime values."""
     rendered = helm.render_workflow(
         "review-pr",
         values={"reviewPr.repo": "owner/h"},
         include_local=False,
     )
     assert "ORIGINAL SPEC" not in rendered
-    assert "params.spec" not in rendered
+    assert "spec: \"\"" in rendered  # params.spec slot is always declared
+    assert "{{params.spec}}" in rendered  # and present as a token in the prose
 
 
 def test_review_pr_publish_mode_opens_param_slots() -> None:
