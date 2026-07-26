@@ -118,15 +118,16 @@ steps:
            - Deliberate patterns: a line that looks inconsistent but carries a comment
              explaining why (or matches a documented sibling template) is NOT a finding —
              read the comment before flagging style.
-        {{- if ne ($spec) "" }}
-           - Original spec: check that the diff satisfies the spec below — not merely the
-             PR's self-description. An unimplemented spec requirement is a FINDING.
+           - Original spec: when the ===ORIGINAL SPEC=== section below is non-empty, check
+             that the diff satisfies THE SPEC — not merely the PR's self-description. An
+             unimplemented spec requirement is a FINDING. When the section is empty, no spec
+             was supplied — review the diff on its own terms (this is the default, and
+             sometimes the diff IS the subject).
+        {{- $focus := include "h.token" "params.focus" }}
+           Optional focus steer (empty = ignore): {{ $focus }}
 
            ===ORIGINAL SPEC===
            {{ include "h.token" "params.spec" }}
-        {{- end }}
-        {{- $focus := include "h.token" "params.focus" }}
-           Optional focus steer (empty = ignore): {{ $focus }}
 
         3. POST. Use the GitHub MCP review workflow:
            a. pull_request_review_write with method "create" to open a pending review on PR

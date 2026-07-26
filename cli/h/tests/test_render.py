@@ -385,18 +385,19 @@ def test_review_pr_with_spec_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
-def test_review_pr_spec_absent_when_no_spec_value() -> None:
-    """When reviewPr.spec is empty (the default), the render must declare params.spec
-    (so that a chain can provide spec at fire time), but the ===ORIGINAL SPEC=== section
-    and its token are hidden (spec-less review). The spec-less render is byte-identical
-    to the pre-change version."""
+def test_review_pr_spec_slot_always_open() -> None:
+    """The spec param follows the focus pattern: the render always declares params.spec AND
+    always carries the ===ORIGINAL SPEC=== section with its token, so a chain can thread a
+    spec at FIRE time (chart-time gating would silence it — PR #80 round-1 finding). With no
+    spec value the section is inert/empty; behavior, not bytes, matches the spec-less past."""
     rendered = helm.render_workflow(
         "review-pr",
         values={"reviewPr.repo": "owner/h"},
         include_local=False,
     )
-    assert "ORIGINAL SPEC" not in rendered
-    assert "spec: \"\"" in rendered  # params.spec slot is always declared
+    assert "===ORIGINAL SPEC===" in rendered
+    assert "{{params.spec}}" in rendered
+    assert 'spec: ""' in rendered  # params.spec slot is always declared
 
 
 def test_review_pr_publish_mode_opens_param_slots() -> None:
