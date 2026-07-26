@@ -138,6 +138,12 @@ steps:
            resolve any thread — report the failure in the `skipped` field of your final json block
            (goal stays PENDING). A revise run must never push a change it has not verified.
            Report what you ran and why that is sufficient.
+        3c. For any unresolved finding that requires content in the PR BODY (test evidence,
+           exemption statements, scope descriptions): read the current PR body with the github
+           MCP pull_request_read (method get_pull_request), then call update_pull_request with
+           the body field — amend or append the relevant section, preserving the rest of the
+           body. Do this for every such thread BEFORE committing or resolving, so you can
+           reference the updated section in the thread reply (step 6).
         4. Commit the review-thread edits you made (if any), on branch feature/{{ $slug }}, with a
            concise conventional commit message. Add files individually (never `git add -A` or
            `git commit -a`). Restore the runner's MCP merge with `git checkout -- .mcp.json` (when the
