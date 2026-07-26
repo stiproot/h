@@ -105,3 +105,9 @@ listed in the session-state paragraph (below), waiting for the returning primary
   `-p spec=@file`; state the repo, the touch-only scope, and the evidence duty.
 - The stack runs HOST-LOCAL for trxy work (supabase CLI on host — memory
   `trxy-runs-local-mode`).
+- **Serialize DB-touching trxy chains.** All trxy runs share ONE local Supabase stack; a
+  `db:reset`/migration in one run corrupts or 502s another's gate (bit us 2026-07-26:
+  ig-promo's final db:reset 502'd while game-visibility's acceptance ran concurrently).
+  Never let two chains whose acceptance touches the DB overlap — gate with --after/--in,
+  or hold the re-fire until the running one finalizes. Check `supabase status` health
+  before re-firing after a 502.
