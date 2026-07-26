@@ -1,6 +1,6 @@
 # Model fallback & session continuity — surviving the subscription limit
 
-Status: Planning — scoped 2026-07-26; DeepSeek + driver session first, then h executors
+Status: Active — Phase 1 in flight (DRIVER.md landed; h-status via chain; DeepSeek key pending)
 Established: 2026-07-26
 
 ## Origin
@@ -172,8 +172,20 @@ chain PARKS instead.
   `docs/plans/ops-journal.md`? the DRIVER.md itself? decide in Phase 1).
 - Chain park vs watcher fallback precedence when both are armed (Phase 3 item 2).
 
+## Driver state
+
+- In flight: `h-status-cmd` implement + review chains (Phase 1 item 3, fired 2026-07-26).
+- Merge queue: (empty)
+- Blocked: Phase 1 item 1 (DeepSeek CLI validation) awaits DEEPSEEK_API_KEY in `.env`.
+- Next: on key arrival — wire-test the compat endpoint, then headless claude-CLI tool/MCP
+  probe, then the cold-start fallback-driver check-in (item 5).
+
 ## Log
 
+- 2026-07-26 (evening) — Phase 1 started. docs/DRIVER.md authored (check-in loop, merge
+  protocol, completion-oriented authority, recovery drawer). `h status` fired as an
+  h-builds-h chain (h-status-cmd + review loop) rather than hand-built — the driver
+  tooling is itself loop-made. DeepSeek validation blocked on the API key.
 - 2026-07-26 (later) — Operator refinements folded in as decisions: (1) lean on core
   primitives — the run ledger's full per-session transcripts make cross-agent hydration
   possible; durable-state standard first, hydration as mid-step recovery; (2) authority is
