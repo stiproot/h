@@ -88,6 +88,11 @@ listed in the session-state paragraph (below), waiting for the returning primary
 
 ## Standing conventions
 
+- **Harden h between target-repo tasks (operator rule, 2026-07-26):** an h weakness
+  surfaced by a trxy arc (bug, template gap, loop inefficiency) is fixed in h BEFORE the
+  next trxy task fires — fire the h chain in the between-tasks window. Check open h
+  issues + the arc's friction at every window; don't batch hardenings for later.
+
 - Chains: implement + `--after` review loop, explicit `-p slug=<feature-slug>`
   belt-and-braces; serialize loops over PRs that share files, merge between.
 - Specs: never bare plan-doc pointers for cross-repo targets — splice content with
