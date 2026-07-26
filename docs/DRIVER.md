@@ -41,7 +41,7 @@ listed in the session-state paragraph (below), waiting for the returning primary
 
 ## The check-in loop (cheap first, deep only on anomaly)
 
-1. **`h status`** (until it lands: `h chain list`, `h watch list`, `h cron list`) — one
+1. **`h status`** (landed 2026-07-26, PR #89; `--json` for scripted check-ins) — one
    screen. Verdict OK and nothing in flight you were waiting on → done, spend nothing
    further.
 2. **Per flagged/advanced chain:** read its findings off the row

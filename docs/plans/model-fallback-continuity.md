@@ -1,6 +1,6 @@
 # Model fallback & session continuity — surviving the subscription limit
 
-Status: Active — Phase 1 items 1/2/4/5 validated 2026-07-26; h-status chain in flight
+Status: Active — Phase 1 COMPLETE 2026-07-26; next: Phase 2/3 design pass + Phase 4 live-fire
 Established: 2026-07-26
 
 ## Origin
@@ -174,10 +174,10 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight: `h-status-cmd` implement + review chains (Phase 1 item 3).
+- In flight: nothing.
 - Merge queue: (empty)
 - Blocked: nothing.
-- Next: merge h-status PR when its loop finalizes; then Phase 2 (deepseek executor
+- Next: tonight's trxy batch (limit-immune executors: codex/openhands; claude reviews; staggered --in; DeepSeek driver as check-in fallback) doubles as the Phase 4 live-fire. Then Phase 2 (deepseek executor
   identity + chain-level --fallback-agent) and the Phase 4 live-fire drill (fallback
   merge-queue close-out + park under a real limit window).
 
