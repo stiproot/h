@@ -318,10 +318,7 @@ describe("scanWatchesEffect", () => {
     mem.runStopReasons.set("run:wf-1:claude-agent:123", "usage-limited");
     mem.runRecords.set("run:wf-1:claude-agent:123", 0.5);
     // Deadline already passed → budget-terminate → finalize budget-terminated.
-    mem.rows.set(
-      "wf-1",
-      activeRow({ instanceId: "wf-1", startedAt: "2000-01-01T00:00:00Z" }),
-    );
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1", startedAt: "2000-01-01T00:00:00Z" }));
     await Effect.runPromise(
       scanWatchesEffect(undefined).pipe(
         Effect.provide(
@@ -492,7 +489,9 @@ describe("scanWatchesEffect", () => {
     expect(mem.ledgers.get(today())).toMatchObject({ runsFired: 1, engineFires: 1 });
   });
 
-  const usageLimitedFallbackRow = (overrides: Partial<import("./models/watch.model.ts").WatchPolicy> = {}) =>
+  const usageLimitedFallbackRow = (
+    overrides: Partial<import("./models/watch.model.ts").WatchPolicy> = {},
+  ) =>
     activeRow({
       instanceId: "wf-1",
       policy: {

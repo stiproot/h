@@ -334,4 +334,17 @@ describe("multi-repo target knobs (clonePath/verifyCmd passthrough)", () => {
     const bare = MEMBER_KINDS["implement-pr"].buildParams({ slug: "s", spec: "x" });
     expect(bare).not.toHaveProperty("clonePath");
   });
+
+  it("review-pr threads spec from the chain data when present", () => {
+    const params = MEMBER_KINDS["review-pr"].buildParams({
+      prNumber: "42",
+      spec: "Add login flow with OAuth2.",
+    });
+    expect(params).toMatchObject({ pr: "42", spec: "Add login flow with OAuth2." });
+  });
+
+  it("review-pr does not include spec when absent from chain data", () => {
+    const params = MEMBER_KINDS["review-pr"].buildParams({ prNumber: "42" });
+    expect(params).not.toHaveProperty("spec");
+  });
 });

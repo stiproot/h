@@ -97,9 +97,11 @@ describe("planCron (the arm-* decision)", () => {
     });
     expect(plan.armed).toBe(true);
     if (!plan.armed) throw new Error("unreachable");
-    expect((plan.registration.source as { params?: Record<string, unknown> }).params).toMatchObject({
-      pr: "57",
-    });
+    expect((plan.registration.source as { params?: Record<string, unknown> }).params).toMatchObject(
+      {
+        pr: "57",
+      },
+    );
   });
 
   it("fails closed (armed:false) when inline is set but there are no steps to recur", () => {

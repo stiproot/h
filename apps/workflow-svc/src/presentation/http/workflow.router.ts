@@ -279,8 +279,17 @@ export function registerWorkflowRoutes(
           // Optional body: fire-time params override the stored defaults key-by-key; a
           // fire-time instanceId/workspaceId overrides the projection (readable run keys).
           // An absent/empty body keeps the pre-params behaviour.
-          const { params, instanceId, workspaceId, fresh, watch, watchMeta, cron, at, in: inDur } =
-            yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
+          const {
+            params,
+            instanceId,
+            workspaceId,
+            fresh,
+            watch,
+            watchMeta,
+            cron,
+            at,
+            in: inDur,
+          } = yield* Schema.decodeUnknown(RunSavedBody)(request.body ?? {});
           const scheduled = at !== undefined || inDur !== undefined;
           // One-shot schedule and recurring cron are mutually exclusive.
           if (scheduled && cron) return yield* new ScheduleConflictsCronError();
@@ -317,9 +326,7 @@ export function registerWorkflowRoutes(
                 ...(req.params ? { params: req.params } : {}),
               },
               ...(wf ? { wf } : {}),
-              ...((watch ?? workflow.value.watch)
-                ? { watch: watch ?? workflow.value.watch }
-                : {}),
+              ...((watch ?? workflow.value.watch) ? { watch: watch ?? workflow.value.watch } : {}),
               origin: "at",
             });
             return { scheduled: armed.schedId, fireAt };
@@ -383,9 +390,13 @@ export function registerWorkflowRoutes(
           runtime,
           reply,
           Effect.gen(function* () {
-            const { key, params, at, in: inDur, workspaceId } = yield* Schema.decodeUnknown(
-              PauseBody,
-            )(request.body ?? {});
+            const {
+              key,
+              params,
+              at,
+              in: inDur,
+              workspaceId,
+            } = yield* Schema.decodeUnknown(PauseBody)(request.body ?? {});
             const fireAt = yield* Effect.try({
               try: () => resolveFireAt({ at, in: inDur }, Date.now()),
               catch: (e) => new InvalidScheduleError({ message: messageOf(e) }),

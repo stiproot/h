@@ -54,6 +54,7 @@ properties:
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "review-pr" }}
 {{- $p := .Values.reviewPr }}
+{{- $spec := $p.spec | default "" }}
 {{- $contract := include "h.contract.review-pr" . | fromYaml }}
 {{- /* Fire-time identity params: repo (owner/name — BOTH the review target and the wf-key segment)
 and slug (the wf-key branch segment; per-PR). repo carries the values default; both override per fire
@@ -66,6 +67,9 @@ params:
   slug: ""
   {{- with $p.models.review }}
   modelReview: {{ . | quote }}
+  {{- end }}
+  {{- if $spec }}
+  spec: {{ $spec | quote }}
   {{- end }}
 steps:
   - id: setup
@@ -109,9 +113,21 @@ steps:
            - Acceptance: if the PR body or its linked issue/spec lists acceptance criteria,
              check EACH one against the diff — an unmet criterion (a missing test, golden,
              doc update, or named behavior) is a FINDING, not a style note.
+           - Test evidence: if the diff touches code, the PR body must include evidence of
+             test execution proportionate to the change (which suites ran and their outcome,
+             or an explicit justified exemption). Absence of test evidence on a code-touching
+             diff is a FINDING.
            - Deliberate patterns: a line that looks inconsistent but carries a comment
              explaining why (or matches a documented sibling template) is NOT a finding —
              read the comment before flagging style.
+        {{- if $spec }}
+           ===ORIGINAL SPEC===
+           {{ include "h.token" "params.spec" }}
+           ===END SPEC===
+           Check the diff satisfies THE SPEC above, not merely the PR's self-description.
+           An unimplemented spec requirement is a FINDING even if the PR description says
+           the work is done.
+        {{- end }}
         {{- $focus := include "h.token" "params.focus" }}
            Optional focus steer (empty = ignore): {{ $focus }}
 

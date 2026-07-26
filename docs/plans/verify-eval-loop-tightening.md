@@ -1,6 +1,6 @@
 # Verify & eval loop tightening — acceptance deduced, review evidence-checked
 
-Status: Planning — scoped 2026-07-26 from the trxy cross-repo trial; not started
+Status: Implemented — 2026-07-26
 Established: 2026-07-26
 
 ## Origin
@@ -62,3 +62,9 @@ the definition of done) and too PERMISSIVE about evidence (no one checks that do
   disobedience) after hand-validating PR #43 (654/654 integration green). Sibling plan on the
   trxy side covers the target-repo half (verify script includes tests; mobile e2e mandatory on
   mobile-consumed changes).
+- 2026-07-26 — Implemented all three seams: (1) verify.tmpl.yaml re-framed to floor + deduce-full
+  acceptance; (2) review-pr.tmpl.yaml + values.yaml gain optional spec param (conditional
+  ===ORIGINAL SPEC=== section; spec-less render is byte-identical); chain-members.ts threads spec
+  from chain data; two unit tests added; (3) review-pr checklist gains test-evidence bullet.
+  Goldens re-blessed after reviewing .ambr diff. bun run lint + bun run test + uv run pytest all
+  green.

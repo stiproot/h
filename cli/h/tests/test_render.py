@@ -374,6 +374,29 @@ def test_review_pr_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_review_pr_with_spec_golden(snapshot) -> None:
+    """review-pr with a spec param: renders an ===ORIGINAL SPEC=== section and a params.spec
+    token; the spec-less golden must remain byte-identical to its snapshot (no drift)."""
+    rendered = helm.render_workflow(
+        "review-pr",
+        values={"reviewPr.repo": "owner/h", "reviewPr.spec": "Add login flow with OAuth2."},
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_review_pr_spec_absent_when_no_spec_value() -> None:
+    """When reviewPr.spec is empty (the default), the render must contain no spec section and
+    no params.spec token — a spec-less chain gets a byte-identical render."""
+    rendered = helm.render_workflow(
+        "review-pr",
+        values={"reviewPr.repo": "owner/h"},
+        include_local=False,
+    )
+    assert "ORIGINAL SPEC" not in rendered
+    assert "params.spec" not in rendered
+
+
 def test_review_pr_publish_mode_opens_param_slots() -> None:
     """PR number and focus are always engine tokens (publish-native template)."""
     definition = json.loads(
