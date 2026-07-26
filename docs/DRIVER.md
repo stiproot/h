@@ -63,9 +63,10 @@ listed in the session-state paragraph (below), waiting for the returning primary
 2. Branch updated against main; verify sweep AT HEAD in a worktree:
    - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest`
      (all green — the suite is hermetic since #85).
-   - trxy-v2: `bun run verify` (accept ONLY the documented pre-existing failure:
-     `ig-automation-svc` TS2503); service-file changes additionally need `test:core`
-     GREEN — if a run claims "Supabase unavailable", derive the env first:
+   - trxy-v2: `bun run verify` fully green — 31/31 since trxy PR #49 (2026-07-26) killed
+     the TS2503 hoisting flake; there are NO accepted pre-existing failures anymore, and
+     a run claiming one must prove it on base. Service-file changes additionally need
+     `test:core` GREEN — if a run claims "Supabase unavailable", derive the env first:
      `supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)' | sed 's/^API_URL/SUPABASE_URL/; s/^ANON_KEY/SUPABASE_ANON_KEY/; s/^SERVICE_ROLE_KEY/SUPABASE_SERVICE_ROLE_KEY/' > packages/core/.env`
 3. Squash-merge; commit message records what the loop caught and the verification
    evidence. Resolve any threads your close-out addressed (reply with the sha).
@@ -88,6 +89,11 @@ listed in the session-state paragraph (below), waiting for the returning primary
 
 ## Standing conventions
 
+- **The verify FLOOR must be green on base before a batch fires.** Prove the exact floor
+  command passes on the target repo's main (fresh worktree) BEFORE registering chains on
+  it — a floor that is red on base walls every honest run (2026-07-26: game-visibility
+  implemented everything, then obeyed the gate and opened no PR because the floor carried
+  a pre-existing failure). Fix the base or change the floor; never ship a known-red floor.
 - **Harden h between target-repo tasks (operator rule, 2026-07-26):** an h weakness
   surfaced by a trxy arc (bug, template gap, loop inefficiency) is fixed in h BEFORE the
   next trxy task fires — fire the h chain in the between-tasks window. Check open h
