@@ -408,7 +408,11 @@ def run(
     ctx: typer.Context,
     slug: Annotated[
         str | None,
-        typer.Option(help="Chain slug — the branch token (feature/<slug>) and chain id."),
+        typer.Option(
+            help="Chain slug — the branch token (feature/<slug>) and chain id. Seeds the data "
+            "key 'slug' at LOWEST precedence (issue #82): an --after parent's captured slug "
+            "overrides it at activation, and an explicit -p slug=... overrides both."
+        ),
     ] = None,
     param: Annotated[
         list[str] | None,
