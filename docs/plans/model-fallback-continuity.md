@@ -37,11 +37,23 @@ durable state only. Audit of what exists today (all verified live in the 2026-07
 | What reviewers demand | PR review threads (unresolved = the work queue) | yes |
 | Orchestration position | `chain:sub:` rows (cursor, iterations, captures), `wf:` rows, watch rows | yes |
 | What each run did | run ledger + `run:` mirrors (incl. `stopReason: usage-limited`) | yes |
+| The full agent session, turn by turn | run ledger `events.jsonl` + `output.txt` — agent-cli logs every session to disk per agent per run | yes — see below |
 | Driver intent ("what's next, what to check") | **nowhere durable** — lives in the driver's conversation + harness task list | **NO — the gap** |
 
 Conclusion the plan builds on: h-side state is already resumable by construction; the
 driver's supervisory state is the only non-transferable piece. Fix that with a durable
 driver runbook + state doc, not with session-transfer magic.
+
+**Session hydration is available but is the second resort, not the design (decision
+2026-07-26).** Because agent-cli persists the full session transcript, a successor agent —
+any model — CAN trawl the predecessor's `events.jsonl` and hydrate ("here is the dying
+run's transcript; continue"). Lean on this core machinery rather than building a new
+handoff channel. But hydration only helps when the durable state is ALREADY maintained to
+the pick-up standard — a transcript is a narrative, not a work queue. So the plan's
+ordering: first-class continuity = the durable-state standard (branch + plan doc + threads
++ rows); transcript hydration = the recovery tool for runs that died MID-step, before
+their state landed (e.g. mid-plan-update). A continuation prompt template that splices the
+tail of the predecessor's events into the successor's task is a Phase 2/3 building block.
 
 ## Enhancements
 
@@ -68,10 +80,17 @@ verify at head, merge or park. Make that role executable by a fresh, cheaper ses
    `h status` or a script summarizing chains (status/iter/findings-count), watches,
    scheds, open PRs — one screen, no agent tokens. The DeepSeek driver (and Claude) both
    check in against THAT, reading deeper only on anomaly.
-4. **Authority policy.** Decide what a fallback driver may do: recommended — full
-   read/verify/park authority; merges allowed only when the loop finalized CLEAN and the
-   verify sweep is green (mechanical close-out); judgment calls (spec contradictions,
-   scope changes) are parked for Claude/human. Encode in DRIVER.md.
+4. **Authority policy — completion-oriented, merge-gated (decided 2026-07-26).** The
+   fallback (driver or executor) TRIES TO SEE THE WORK THROUGH to completion — implement,
+   revise, re-review, drive loops clean, update plan docs — with ONE hard boundary: it
+   never merges to main. Everything up to the merge is reversible-by-branch; the merge is
+   where Claude (or the human) has the final say on return. No static "park judgment
+   calls" list: the starting posture is CONFIDENCE that the steering context in the h and
+   trxy repos is sufficient for an alternate model to complete a take — held until an
+   experiment proves otherwise (Phase 4 measures exactly this: how far fallback-completed
+   branches get before the returning Claude's merge review finds gaps). Encode in
+   DRIVER.md; the plan doc's session-state paragraph records what the fallback completed
+   so the returning driver's first check-in is a merge queue, not an investigation.
 5. **Validation:** kill the Claude driver mid-batch (simulated), launch the DeepSeek
    driver cold, have it complete one full check-in + one mechanical merge close-out +
    one park, from durable state only.
@@ -88,10 +107,26 @@ verify at head, merge or park. Make that role executable by a fresh, cheaper ses
    [--fallback-model …]` threads the existing watcher fallback onto every member fire
    (today it's `h workflow run`-only). Validate `classify-stop` matches the exact 5h-limit
    phrasing seen live 2026-07-26 ("You've hit your session limit · resets …").
-3. **Panel/judge policy under fallback.** review-pr panels pin the judge to claude; decide
-   the degraded-mode roster (codex+deepseek panel, deepseek judge?) vs parking reviews
-   until Claude resumes (cheaper and safer — reviews are rarely urgent). Recommended:
-   executors fall back, review loops park.
+3. **Panel/judge policy under fallback.** review-pr panels pin the judge to claude; under
+   the completion-oriented posture the degraded-mode roster runs too (codex+deepseek
+   panel, deepseek judge) so loops can drive branches clean without Claude — the merge
+   gate, not a parked review, is where Claude's judgment re-enters. Validate the degraded
+   panel's verdict quality in Phase 4 against the same PRs Claude-judged.
+4. **The watcher as the on-course primitive (shape decided, mechanism to design).** The
+   question "who keeps fallback work on course?" is answered by composing the EXISTING
+   watcher vocabulary, not a new supervisor — judgment stays agent-side, the watcher stays
+   mechanical:
+   - Every fallback fire is watched (already true — `invokeWithWatch` is the fire choke
+     point), so budgets/retries hold regardless of model.
+   - The new piece: a watch policy `escalate: {onOutcome: "completed-under-fallback",
+     key: <claude-checkpoint workflow>}` — when a run completes under a fallback identity,
+     the watcher REGISTERS (via the escalation's workflow arming a `cron:sched` one-shot
+     at the limit-reset time) a deferred Claude checkpoint: re-review the branch, then
+     merge or send findings back through a revise. The watcher never judges the work; it
+     guarantees the "Claude has the final say" appointment gets booked, mechanically.
+   - Requires: the fallback identity stamped on the run's outcome (`run:` mirror already
+     carries agentId/model), and an `onOutcome` value for it in the watch model — small
+     additions to existing rows, no new engine.
 
 ### Phase 3 — chain-level park-and-resume
 
@@ -103,10 +138,13 @@ chain PARKS instead.
    +5h), keeps the cursor, and re-fires the member `fresh` when the gate reopens —
    reusing pause/resume's stop-and-continue semantics at the chain tier. No new
    primitive: it is the existing activation-gate machinery pointed at a new trigger.
-2. Interaction with Phase 2: if a fallback agent is declared, fall back; else park. Both
-   paths must leave the plan doc's status line honest (the run that died mid-plan-update
-   is the risk case — the review evidence rule already catches stale plan claims, which
-   is the backstop).
+2. Interaction with Phase 2: **fallback-first, park-second (decided 2026-07-26)** — if a
+   fallback agent is declared (and it should be, by default), the work continues to
+   completion under it; parking is the path only when no fallback exists or the fallback
+   itself dies. Both paths must leave the plan doc's status line honest (the run that
+   died mid-plan-update is the risk case — transcript hydration from `events.jsonl` is
+   the recovery tool there, and the review evidence rule catches stale plan claims as
+   the backstop).
 3. Kill-switch + budget: parking must not fight the wall-clock budget (activation
    re-stamps startedAt — the gate-hold lesson from e4802e2 applies).
 
@@ -136,6 +174,15 @@ chain PARKS instead.
 
 ## Log
 
+- 2026-07-26 (later) — Operator refinements folded in as decisions: (1) lean on core
+  primitives — the run ledger's full per-session transcripts make cross-agent hydration
+  possible; durable-state standard first, hydration as mid-step recovery; (2) authority is
+  completion-oriented and DYNAMIC, gated at merge-to-main only — starting posture is
+  confidence that repo steering suffices for alternate models, experiment-validated; (3)
+  the watcher is the on-course primitive: watch every fallback fire (already true) + an
+  escalate-on-`completed-under-fallback` policy that books the deferred Claude checkpoint
+  via a `cron:sched` one-shot; (4) driver = Claude primary, the claude CLI on DeepSeek's
+  Anthropic-compat endpoint as fallback (mechanism confirmed).
 - 2026-07-26 — Scoped. Origin evidence: fix-82 revise usage-limit death (operator finished
   by hand); the day's hand-holding audit (see the verify-eval arc) counts 2 machinery bugs
   (both fixed same-day: #82/#87, cookbook), 1 operator error (--fresh), ~4 judgment calls
