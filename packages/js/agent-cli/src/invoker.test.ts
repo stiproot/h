@@ -139,7 +139,8 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
 
     try {
       const strategy = nodeStrategy("", {
-        buildInvocation: () => Effect.succeed({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
+        buildInvocation: () =>
+          Effect.succeed({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
       });
       const result = await invoke(strategy, baseParams());
       expect(result.success).toBe(false);

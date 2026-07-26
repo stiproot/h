@@ -138,18 +138,14 @@ function invokeAgent(
           stdout: notFound
             ? `Command not found: ${error.command}. Ensure the CLI is installed and in PATH.`
             : `Failed to spawn ${error.command}: ${describeCause(error.cause)}`,
-          stderr: notFound
-            ? `Command '${error.command}' not found`
-            : describeCause(error.cause),
+          stderr: notFound ? `Command '${error.command}' not found` : describeCause(error.cause),
           exitCode: notFound ? 127 : 1,
         });
       },
     }),
   );
 
-  return params.verbose
-    ? baseEffect.pipe(Logger.withMinimumLogLevel(LogLevel.Debug))
-    : baseEffect;
+  return params.verbose ? baseEffect.pipe(Logger.withMinimumLogLevel(LogLevel.Debug)) : baseEffect;
 }
 
 function isPlatformNotFoundError(cause: unknown): boolean {

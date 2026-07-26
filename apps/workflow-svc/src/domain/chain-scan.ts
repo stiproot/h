@@ -422,7 +422,12 @@ const processRow = (
       // budget-terminates the instant it fires. Re-stamp startedAt at activation.
       const activatedAt = new Date(nowMs).toISOString();
       const seeded: ChainRow = activation.seed
-        ? { ...row, data: { ...activation.seed, ...row.data }, unknownStreak: 0, startedAt: activatedAt }
+        ? {
+            ...row,
+            data: { ...activation.seed, ...row.data },
+            unknownStreak: 0,
+            startedAt: activatedAt,
+          }
         : { ...row, unknownStreak: 0, startedAt: activatedAt };
       yield* fireStage(seeded, seeded.cursor, traceparent).pipe(
         Effect.matchEffect({
@@ -439,9 +444,7 @@ const processRow = (
               Effect.tap(() =>
                 Effect.sync(() => {
                   for (const i of membersInStage(seeded.members, seeded.cursor))
-                    report.advanced.push(
-                      `${seeded.chainId}:w${i}:${seeded.members[i].kind}:fired`,
-                    );
+                    report.advanced.push(`${seeded.chainId}:w${i}:${seeded.members[i].kind}:fired`);
                 }),
               ),
               Effect.asVoid,
@@ -539,7 +542,11 @@ const processRow = (
           }),
         );
         return yield* executeFinalize(
-          { ...decision.row, data: captured.data, ...(captured.note ? { note: captured.note } : {}) },
+          {
+            ...decision.row,
+            data: captured.data,
+            ...(captured.note ? { note: captured.note } : {}),
+          },
           decision.outcome,
           nowMs,
           report,
@@ -617,9 +624,7 @@ const executeAdvance = (
     yield* fireStage(next, nextStage, traceparent, loopBack).pipe(
       // Fire-then-mark to `running` (issue #79a symmetry): a crash between fire and this mark
       // re-enters the activation branch next tick, whose re-fire ATTACHES — idempotent.
-      Effect.tap(() =>
-        saveFenced(next.epoch, stamp({ ...next, status: "running" }, Date.now())),
-      ),
+      Effect.tap(() => saveFenced(next.epoch, stamp({ ...next, status: "running" }, Date.now()))),
       Effect.tap(() =>
         Effect.sync(() => {
           for (const i of nextMembers)
@@ -806,8 +811,7 @@ export const tallyChainCost = (
     const cs = yield* ChainStore;
     const ran = new Set<string>();
     for (let i = 0; i < row.members.length; i++) {
-      if (stageOf(row.members, i) <= row.cursor)
-        ran.add(instanceIdAt(row.chainId, row.members, i));
+      if (stageOf(row.members, i) <= row.cursor) ran.add(instanceIdAt(row.chainId, row.members, i));
     }
     const keys = yield* cs.listRunKeys();
     const mine = keys.filter((key) => [...ran].some((id) => key.startsWith(`run:${id}:`)));

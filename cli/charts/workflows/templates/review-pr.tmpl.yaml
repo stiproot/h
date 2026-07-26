@@ -19,9 +19,14 @@ Fire-time params:
           (values reviewPr.repo is only the stored default); required at fire, not at publish.
   slug    Branch slug — the wf-key segment only (identity; the review reads by PR number). Per-PR.
   focus   Optional free-text steer, e.g. "docs accuracy" (empty = full review)
+  spec    Optional original spec/task text — when non-empty the review checks the diff
+          satisfies THE SPEC, not merely the PR's self-description (empty = diff-only
+          review). Always an open runtime slot (the focus pattern); chains thread it
+          from chain data automatically.
 
 Template config (values, baked at publish time): reviewPr.repo (owner/name — the stored default
-for the repo param), models.review.
+for the repo param), reviewPr.spec (the stored default for the spec param, empty = diff-only),
+models.review.
 
 Review comment shape consumed by the revise flow: concrete defect, fix direction, acceptance
 check. The review is always submitted as a COMMENT (never APPROVE or REQUEST_CHANGES — human
@@ -54,6 +59,7 @@ properties:
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "review-pr" }}
 {{- $p := .Values.reviewPr }}
+{{- $spec := $p.spec | default "" }}
 {{- $contract := include "h.contract.review-pr" . | fromYaml }}
 {{- /* Fire-time identity params: repo (owner/name — BOTH the review target and the wf-key segment)
 and slug (the wf-key branch segment; per-PR). repo carries the values default; both override per fire
@@ -64,6 +70,7 @@ role: standalone
 params:
   repo: {{ $p.repo | quote }}
   slug: ""
+  spec: {{ $spec | quote }}
   {{- with $p.models.review }}
   modelReview: {{ . | quote }}
   {{- end }}
@@ -109,11 +116,23 @@ steps:
            - Acceptance: if the PR body or its linked issue/spec lists acceptance criteria,
              check EACH one against the diff — an unmet criterion (a missing test, golden,
              doc update, or named behavior) is a FINDING, not a style note.
+           - Test evidence: if the diff touches code, the PR body must include evidence of
+             test execution proportionate to the change (which suites ran and their outcome,
+             or an explicit justified exemption). Absence of test evidence on a code-touching
+             diff is a FINDING.
            - Deliberate patterns: a line that looks inconsistent but carries a comment
              explaining why (or matches a documented sibling template) is NOT a finding —
              read the comment before flagging style.
+           - Original spec: when the ===ORIGINAL SPEC=== section below is non-empty, check
+             that the diff satisfies THE SPEC — not merely the PR's self-description. An
+             unimplemented spec requirement is a FINDING. When the section is empty, no spec
+             was supplied — review the diff on its own terms (this is the default, and
+             sometimes the diff IS the subject).
         {{- $focus := include "h.token" "params.focus" }}
            Optional focus steer (empty = ignore): {{ $focus }}
+
+           ===ORIGINAL SPEC===
+           {{ include "h.token" "params.spec" }}
 
         3. POST. Use the GitHub MCP review workflow:
            a. pull_request_review_write with method "create" to open a pending review on PR

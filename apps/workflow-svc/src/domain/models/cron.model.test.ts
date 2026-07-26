@@ -28,7 +28,10 @@ describe("CronRow", () => {
   };
 
   it("decodes a saved-source cron (mode 1: key + fixed params)", () => {
-    const row = decode({ ...base, source: { mode: "saved", key: "revise-pr", params: { pr: "30" } } });
+    const row = decode({
+      ...base,
+      source: { mode: "saved", key: "revise-pr", params: { pr: "30" } },
+    });
     expect(row.status).toBe("active");
     expect(row.source.mode).toBe("saved");
     expect(row.budget.maxFires).toBe(100);
