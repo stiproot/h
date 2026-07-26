@@ -219,7 +219,11 @@ def test_chain_run_unknown_agent(tmp_path: Path) -> None:
 
 @respx.mock
 @needs_helm
-def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
+def test_chain_run_template_group_composes_on_fire(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "h_cli.commands.template.COMPOSABLE_VALUES",
+        {"publish": "true", "composable": "true", "verify.cmd": "echo ok"},
+    )
     route = _mock_run()
     save = respx.post(f"{WORKFLOW_URL}/workflow/save").mock(
         return_value=Response(200, json={"key": "x-w0"})
@@ -252,7 +256,11 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path) -> None:
 
 @respx.mock
 @needs_helm
-def test_chain_run_inline_embeds_steps_without_publishing(tmp_path: Path) -> None:
+def test_chain_run_inline_embeds_steps_without_publishing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "h_cli.commands.template.COMPOSABLE_VALUES",
+        {"publish": "true", "composable": "true", "verify.cmd": "echo ok"},
+    )
     route = _mock_run()
     # No /workflow/save mock: if the inline member tried to publish, the un-mocked call would fail
     # the run (exit 1). Exit 0 proves it embedded instead.

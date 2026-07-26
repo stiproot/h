@@ -52,8 +52,6 @@ describe("classifyStop", () => {
   });
 
   it("timeout wins over a usage marker (a killed process is a timeout, not a limit)", () => {
-    expect(
-      classifyStop({ exitCode: 124, signal: null, stderr: "rate limit" }),
-    ).toBe("timeout");
+    expect(classifyStop({ exitCode: 124, signal: null, stderr: "rate limit" })).toBe("timeout");
   });
 });

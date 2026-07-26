@@ -96,8 +96,6 @@ improvePlugin:
 # revise workflow (templates/revise-pr.tmpl.yaml): worktree → setup → revise. Publish-native — always
 # rendered as a template with {{params.pr}} / {{params.slug}} slots. A standalone, first-class
 # workflow that reads a PR's unresolved review threads itself and addresses them.
-# revise.verifyCmd (optional): the acceptance gate a revise run must pass before committing —
-# same class as verify.cmd (a property of the target repo; bake from values.local.yaml).
 revisePr:
   # GitHub repo (owner/name) this run targets — the wf-registry identity segment. Identity only;
   # does NOT drive the clone (that is clonePath). Empty = no identity row (opt-in); -p repo=… per fire.
@@ -108,6 +106,10 @@ revisePr:
   remoteBase: ""
   # Git auth for the worktree + push (mirrors implement.gitAuth: "" = agent default, "pat", "ssh").
   gitAuth: ""
+  # Floor command for step 3b's acceptance gate (e.g. "bun install && bun run build && bun run test").
+  # Empty = no floor command; the gate itself is always present — the agent must deduce and run the
+  # target repo's full acceptance suite from its own context. Bake from values.local.yaml.
+  verifyCmd: ""
   # Per-step model override; empty = the agent's AGENT_MODEL.
   models:
     revise: ""
@@ -134,6 +136,10 @@ bootstrapRepo:
 reviewPr:
   # Target GitHub repo (owner/name) whose PR is reviewed. Required.
   repo: ""
+  # Optional: the original feature spec the PR was implementing. When set, the review checks
+  # the diff satisfies THE SPEC, not merely the PR's self-description. Empty = spec-less review
+  # (identical render to the no-spec default — the chain passes this through when present).
+  spec: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     review: ""
