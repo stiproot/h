@@ -264,7 +264,11 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
             "(no `pr` in its structured output — was the PR skipped?). Did the feature workflow open a PR?",
         );
       }
-      return withRepo({ pr }, data);
+      const params: Record<string, unknown> = { pr };
+      // Optional passthrough: when the chain data carries a spec, thread it into the review
+      // so the reviewer checks the diff against the original spec, not just the PR description.
+      if (typeof data.spec === "string" && data.spec) params.spec = data.spec;
+      return withRepo(params, data);
     },
     capture: captureReview,
   },

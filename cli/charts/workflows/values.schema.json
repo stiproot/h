@@ -136,6 +136,10 @@
         "repo": {
           "type": "string"
         },
+        "spec": {
+          "type": "string",
+          "$comment": "Optional: original feature spec the PR implements. When set, renders an ===ORIGINAL SPEC=== section so the reviewer checks the diff against the spec, not just the PR description."
+        },
         "models": {
           "type": "object",
           "properties": {
