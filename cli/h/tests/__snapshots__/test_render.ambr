@@ -889,7 +889,7 @@
              Report what you ran and why that is sufficient.
           3c. For any unresolved finding that requires content in the PR BODY (test evidence,
              exemption statements, scope descriptions): read the current PR body with the github
-             MCP pull_request_read (method get_pull_request), then call update_pull_request with
+             MCP pull_request_read (method get), then call update_pull_request with
              the body field — amend or append the relevant section, preserving the rest of the
              body. Do this for every such thread BEFORE committing or resolving, so you can
              reference the updated section in the thread reply (step 6).
