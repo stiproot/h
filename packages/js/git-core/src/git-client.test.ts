@@ -182,7 +182,7 @@ describe("GitClient (ExecGitClient layer)", () => {
     expect(() => readFileSync(join(second, "README.md"), "utf8")).toThrow();
   });
 
-  it("serializes concurrent addWorktree calls so both succeed when the remote has moved", async () => {
+  it("serializes concurrent addWorktree calls so all succeed when the remote has moved (issue #84 — three chains)", async () => {
     const git = (cwd: string, ...args: string[]) =>
       execFileSync("git", args, { cwd, stdio: "pipe" });
     const remote = join(root, "remote");
@@ -196,18 +196,19 @@ describe("GitClient (ExecGitClient layer)", () => {
     const clone = join(root, "clone");
     git(root, "clone", "-q", remote, "clone");
 
-    // Remote advances after the clone; without the mutex the two concurrent fetches into
-    // the same shared clone would race on refs/remotes/origin/main and one would fail with
-    // "cannot lock ref".
+    // Remote advances after the clone; without the mutex three concurrent fetches into
+    // the same shared clone would race on refs/remotes/origin/main and at least one would fail with
+    // "cannot lock ref" (issue #84). The mutex serializes the fetches, so all three succeed.
     writeFileSync(join(remote, "file.txt"), "v2\n");
     git(remote, "commit", "-aqm", "v2");
 
     const wt1 = join(root, "worktrees", "branch-a");
     const wt2 = join(root, "worktrees", "branch-b");
+    const wt3 = join(root, "worktrees", "branch-c");
 
-    // Both effects share the SAME TestLayer (same ExecGitClient instance, same mutex map)
+    // All three effects share the SAME TestLayer (same ExecGitClient instance, same mutex map)
     // because Effect.provide is called once on the combined Effect.all.
-    const [p1, p2] = await Effect.runPromise(
+    const [p1, p2, p3] = await Effect.runPromise(
       Effect.all(
         [
           Effect.gen(function* () {
@@ -228,6 +229,15 @@ describe("GitClient (ExecGitClient layer)", () => {
               remoteBase: "main",
             });
           }),
+          Effect.gen(function* () {
+            const gitClient = yield* GitClient;
+            return yield* gitClient.addWorktree({
+              repoPath: clone,
+              worktreePath: wt3,
+              branch: "feat/C",
+              remoteBase: "main",
+            });
+          }),
         ],
         { concurrency: "unbounded" },
       ).pipe(Effect.provide(TestLayer)),
@@ -235,9 +245,12 @@ describe("GitClient (ExecGitClient layer)", () => {
 
     expect(p1).toBe(wt1);
     expect(p2).toBe(wt2);
-    // Both worktrees must hold v2 (fetched from origin), not the clone's stale v1.
+    expect(p3).toBe(wt3);
+    // All three worktrees must hold v2 (fetched from origin), not the clone's stale v1.
+    // None should fail with "cannot lock ref".
     expect(readFileSync(join(wt1, "file.txt"), "utf8")).toBe("v2\n");
     expect(readFileSync(join(wt2, "file.txt"), "utf8")).toBe("v2\n");
+    expect(readFileSync(join(wt3, "file.txt"), "utf8")).toBe("v2\n");
   });
 
   it("fails a worktree add with GitWorktreeError carrying git's stderr", async () => {
