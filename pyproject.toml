@@ -9,6 +9,9 @@
 # expected to grow onto the shared lib's models). workflow-agent joined the workspace
 # so it can consume agent-core (it is now a thin wrapper over the shared orchestration
 # machinery). claude-managed-agent (diagrid) stays standalone with its own uv.lock.
+[tool.pytest.ini_options]
+testpaths = ["cli/h/tests"]
+
 [tool.uv.workspace]
 members = [
   "packages/py/agent-server",

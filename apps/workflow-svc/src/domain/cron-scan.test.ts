@@ -310,16 +310,11 @@ describe("scanCronsEffect", () => {
 
 describe("disarmCron", () => {
   const disarm = (cs: CronStoreService, id: string) =>
-    Effect.runPromise(
-      disarmCron(id).pipe(Effect.provide(Layer.succeed(CronStore, cs))),
-    );
+    Effect.runPromise(disarmCron(id).pipe(Effect.provide(Layer.succeed(CronStore, cs))));
 
   const disarmFail = (cs: CronStoreService, id: string) =>
     Effect.runPromise(
-      disarmCron(id).pipe(
-        Effect.flip,
-        Effect.provide(Layer.succeed(CronStore, cs)),
-      ),
+      disarmCron(id).pipe(Effect.flip, Effect.provide(Layer.succeed(CronStore, cs))),
     );
 
   it("disarms an active cron: sets inactive+disabled, bumps epoch, stamps note, bumps ledger", async () => {
@@ -385,6 +380,8 @@ describe("disarmEventEffect (cron-disarm pub/sub — D6 chain teardown)", () => 
   it("tolerates a raw (un-enveloped) payload", async () => {
     const cs = memoryCronStore();
     cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow());
-    expect(await runEvent(cs.service, identity)).toEqual({ disarmed: "stiproot/h:pi-agent:revise-pr" });
+    expect(await runEvent(cs.service, identity)).toEqual({
+      disarmed: "stiproot/h:pi-agent:revise-pr",
+    });
   });
 });

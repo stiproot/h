@@ -475,7 +475,11 @@ describe("POST /workflow/run/:key", () => {
     expect(savedSched[0]!.status).toBe("armed");
     expect(savedSched[0]!.origin).toBe("at");
     expect(savedSched[0]!.source).toMatchObject({ mode: "saved", key: "feature" });
-    expect(savedSched[0]!.wf).toEqual({ repo: "stiproot/h", slug: "pi-agent", workflow: "feature" });
+    expect(savedSched[0]!.wf).toEqual({
+      repo: "stiproot/h",
+      slug: "pi-agent",
+      workflow: "feature",
+    });
     expect((res.json() as { scheduled: string }).scheduled).toBe(savedSched[0]!.id);
   });
 
@@ -484,7 +488,9 @@ describe("POST /workflow/run/:key", () => {
       stubInvoker(),
       stubStore({
         get: () =>
-          Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }], params: { repo: "r", slug: "s" } })),
+          Effect.succeed(
+            Option.some({ steps: [{ activity: "run-claude" }], params: { repo: "r", slug: "s" } }),
+          ),
       }),
     );
     const res = await app.inject({
@@ -498,7 +504,9 @@ describe("POST /workflow/run/:key", () => {
   it("400s a bad `in` duration on a scheduled run", async () => {
     const app = await makeApp(
       stubInvoker(),
-      stubStore({ get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })) }),
+      stubStore({
+        get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })),
+      }),
     );
     const res = await app.inject({
       method: "POST",
@@ -605,7 +613,9 @@ describe("POST /workflow/pause/:instanceId", () => {
   it("400s a bad `in` duration", async () => {
     const app = await makeApp(
       stubInvoker(),
-      stubStore({ get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })) }),
+      stubStore({
+        get: () => Effect.succeed(Option.some({ steps: [{ activity: "run-claude" }] })),
+      }),
     );
     const res = await app.inject({
       method: "POST",
