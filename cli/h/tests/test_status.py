@@ -214,8 +214,8 @@ def test_status_open_prs_fetch_failure() -> None:
 
 
 @respx.mock
-def test_status_open_prs_missing_token() -> None:
-    """Missing GH_TOKEN produces ATTENTION flag without nonzero exit."""
+def test_status_open_prs_unauthenticated() -> None:
+    """Missing GH_TOKEN still allows unauthenticated GitHub API access (lower rate limit)."""
     import os
     # Save and clear GH_TOKEN
     original_token = os.environ.get("GH_TOKEN")
@@ -223,16 +223,80 @@ def test_status_open_prs_missing_token() -> None:
         del os.environ["GH_TOKEN"]
 
     try:
+        prs_data = [
+            {"number": 10, "title": "Unauthenticated PR", "user": {"login": "guest"}},
+        ]
         respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
         respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
         respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=_cron_payload()))
+        # Unauthenticated request to GitHub API (no Authorization header)
+        respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=prs_data))
 
-        result = runner.invoke(app, ["status"])
+        result = runner.invoke(app, ["status", "--json"])
         assert result.exit_code == 0, _all_output(result)
-        out = _all_output(result)
-        assert "ATTENTION" in out
-        assert "open_prs" in out
+        parsed = json.loads(result.output.strip())
+        assert len(parsed["prs"]["open"]) == 1
+        assert parsed["prs"]["open"][0]["number"] == 10
+        assert parsed["verdict"] == "OK"  # Should still be OK without authentication
     finally:
         # Restore GH_TOKEN
         if original_token:
             os.environ["GH_TOKEN"] = original_token
+
+
+@respx.mock
+def test_status_disabled_heartbeat_flag() -> None:
+    """A fresh but disabled heartbeat produces ATTENTION flag for disarmed engine."""
+    disabled_cron_payload = {
+        "heartbeat": _heartbeat(30, enabled=False),
+        "crons": [],
+        "discover": [],
+        "sched": [],
+    }
+    respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
+    respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
+    respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=disabled_cron_payload))
+    respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=[]))
+
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0, _all_output(result)
+    out = _all_output(result)
+    assert "ATTENTION" in out
+    assert "disabled" in out.lower()
+
+
+@respx.mock
+def test_status_parallel_chain_stages() -> None:
+    """A chain with parallel members (stages [0, 0, 1]) reports 2 distinct stages, not 3 members."""
+    chains = [
+        {
+            "chainId": "parallel-chain",
+            "status": "running",
+            "cursor": 0,
+            "outcome": None,
+            "members": [
+                {"id": "m1", "stage": 0, "key": "wf1"},
+                {"id": "m2", "stage": 0, "key": "wf2"},
+                {"id": "m3", "stage": 1, "key": "wf3"},
+            ],
+            "loop": None,
+            "data": None,
+        }
+    ]
+    respx.get(f"{WORKFLOW_URL}/chain/list").mock(
+        return_value=Response(200, json=_chain_payload(chains))
+    )
+    respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
+    respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=_cron_payload()))
+    respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=[]))
+
+    result = runner.invoke(app, ["status", "--json"])
+    assert result.exit_code == 0, _all_output(result)
+    parsed = json.loads(result.output.strip())
+    # Two distinct stages (0 and 1), not three members
+    assert parsed["chains"]["active"][0]["total"] == 2
+    assert parsed["chains"]["active"][0]["cursor"] == 0
+    # Should render as "1/2" not "1/3"
+    result_rich = runner.invoke(app, ["status"])
+    assert result_rich.exit_code == 0, _all_output(result_rich)
+    assert "1/2" in _all_output(result_rich)

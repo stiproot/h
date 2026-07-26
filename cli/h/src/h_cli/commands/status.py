@@ -69,7 +69,7 @@ def _fetch_all() -> (
 
     try:
         prs = workflow_svc.open_prs()
-    except (httpx.HTTPError, ValueError) as err:
+    except httpx.HTTPError as err:
         fetch_errors.append(f"open_prs unavailable: {err}")
 
     return chain_data, watch_data, cron_data, prs, fetch_errors
@@ -108,12 +108,15 @@ def _analyze(
             loop = c.get("loop")
             iteration = loop.get("iterations") if isinstance(loop, dict) else None
             fc = _findings_count(c.get("data"))
+            # Normalize stages: absent stage equals member index (sequential, not explicit 0)
+            stages = frozenset(m.get("stage", i) for i, m in enumerate(members))
+            total_stages = len(stages)
             active_chains.append(
                 {
                     "chainId": c.get("chainId", ""),
                     "status": status,
                     "cursor": cursor,
-                    "total": len(members),
+                    "total": total_stages,
                     "iteration": iteration,
                     "findings": fc,
                 }
@@ -141,10 +144,13 @@ def _analyze(
             return {"name": name, "age": None, "stale": True, "enabled": False}
         age = _heartbeat_age_seconds(hb.get("at"))
         stale = age is None or age > STALE_AFTER_SECONDS
+        enabled = bool(hb.get("enabled"))
         if stale:
             shown = "unparseable" if age is None else _format_age(age)
             flags.append(f"{name} tick stale {shown}")
-        return {"name": name, "age": age, "stale": stale, "enabled": bool(hb.get("enabled"))}
+        if not enabled:
+            flags.append(f"{name} engine disabled")
+        return {"name": name, "age": age, "stale": stale, "enabled": enabled}
 
     heartbeats = [
         _hb_entry("chain", chain_data),

@@ -281,12 +281,13 @@ def terminate(instance_id: str) -> Any:
 
 def open_prs() -> list[dict[str, Any]]:
     """Fetch open PRs from the h repository via GitHub API. Returns a list of PR objects with
-    number, title, and author fields. Read-only; network failures raise httpx.HTTPError."""
+    number, title, and author fields. Read-only; network failures raise httpx.HTTPError.
+    Supports unauthenticated access (lower rate limit) when GH_TOKEN is absent."""
     import os
     gh_token = os.environ.get("GH_TOKEN", "")
-    if not gh_token:
-        raise ValueError("GH_TOKEN environment variable required for open_prs()")
-    headers = {"Authorization": f"token {gh_token}"}
+    headers = {}
+    if gh_token:
+        headers["Authorization"] = f"token {gh_token}"
     resp = httpx.get(
         "https://api.github.com/repos/stiproot/h/pulls?state=open&per_page=50",
         headers=headers,
