@@ -156,6 +156,27 @@ revise leg correctly lands on the PR's branch without the explicit override. An 
 gates validated 2026-07-25; run end-to-end 2026-07-26 — PR #80's arc found the slug trap,
 fixed by #82.)*
 
+## Validate an existing PR against its ORIGINAL spec — review loop as merge gate
+
+```sh
+h chain run --slug val-43 -p repo=stiproot/trxy-v2 -p prNumber=43 \
+  -p slug=trxy-arch-lint-2r -p spec=@orig-spec.md \
+  -p clonePath=/path/to/pre-clone \
+  --strategy loop-until-clean --max-iterations 3 \
+  -- -w review-pr --agent claude codex --inline --input pr=prNumber \
+     -t revise-pr --kind revise-pr --agent claude --inline
+```
+
+The chain-seeded `spec` reaches the panel automatically (the review-pr kind contract's
+optional passthrough), so the reviewers audit the diff against the ORIGINAL task — not the
+PR's self-description — and the evidence rule demands test runs proportionate to the diff.
+`slug` must be the PR's OWN branch token (the revise leg rebases `feature/<slug>` onto main
+and re-verifies under the deduced acceptance). Recover a trial run's original spec from its
+chain row (`data.spec`). Serialize loops over PRs that share files — merge each before firing
+the next. *(Validated 2026-07-26 ×5 — trxy PRs #42–#46 driven to merge; val-43's panel drew
+the exact missing-test-evidence finding the verify-eval-loop-tightening plan was built for,
+and val-44/45 caught wrong-side rebase resolutions in shared files.)*
+
 ## Inspect the engines
 
 ```sh
