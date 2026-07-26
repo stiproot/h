@@ -725,6 +725,17 @@
              (PRRT_...), and comments with numeric ids and file/line anchors.
           3. For each unresolved thread, implement the requested change in the worktree. If a comment
              is a question or you disagree, make no change — you will explain in the reply (step 6).
+          3b. ACCEPTANCE GATE — before you commit or push anything, prove the FINAL worktree (the
+             rebased base plus any review-thread edits).
+             Read the target repo's own acceptance context (CLAUDE.md or steering docs, README.md,
+             scripts/, Makefile) and run the full applicable suite for the change you made. If the
+             change is non-code (docs, config only), the floor (when set) is sufficient — justify it
+             explicitly. A code-touching revision that runs no tests must explicitly justify why none
+             apply. If the checks fail, diagnose, fix forward, and re-run — up to 3 attempts; never
+             weaken the check. If the checks STILL fail, STOP: do not commit, do not push, do not
+             resolve any thread — report the failure in the `skipped` field of your final json block
+             (goal stays PENDING). A revise run must never push a change it has not verified.
+             Report what you ran and why that is sufficient.
           4. Commit the review-thread edits you made (if any), on branch feature/{{params.slug}}, with a
              concise conventional commit message. Add files individually (never `git add -A` or
              `git commit -a`). Restore the runner's MCP merge with `git checkout -- .mcp.json` (when the

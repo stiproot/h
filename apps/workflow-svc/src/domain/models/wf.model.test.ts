@@ -19,11 +19,13 @@ describe("wfKey", () => {
 
 describe("wfIdentityFrom", () => {
   it("builds an identity when repo + slug are present (workflow name = the leaf)", () => {
-    expect(wfIdentityFrom({ repo: "stiproot/h", slug: "pi-agent", pr: "30" }, "revise-pr")).toEqual({
-      repo: "stiproot/h",
-      slug: "pi-agent",
-      workflow: "revise-pr",
-    });
+    expect(wfIdentityFrom({ repo: "stiproot/h", slug: "pi-agent", pr: "30" }, "revise-pr")).toEqual(
+      {
+        repo: "stiproot/h",
+        slug: "pi-agent",
+        workflow: "revise-pr",
+      },
+    );
   });
 
   it("is opt-in — undefined when repo or slug is missing or blank", () => {

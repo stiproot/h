@@ -57,7 +57,11 @@ describe("genericWorkflow — wf: bracketing", () => {
 
     expect(calls[0].activity).toBe(writeWfRow);
     expect(calls[0].input).toMatchObject({ status: "running", instanceId: "inst-1" });
-    expect(calls[0].input.wf).toEqual({ repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" });
+    expect(calls[0].input.wf).toEqual({
+      repo: "stiproot/h",
+      slug: "pi-agent",
+      workflow: "revise-pr",
+    });
     // the real step fires in the middle
     expect(calls[1].activity).toBe(getActivity("copy-session"));
     // done bracket last, carrying the output
