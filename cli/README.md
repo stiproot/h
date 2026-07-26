@@ -106,6 +106,7 @@ uv run h watch list|get|delete            # the watcher registry
 uv run h cron list                        # the cron registry — recur crons + discovery/fan-out crons, with the scan heartbeat
 uv run h cron rm <repo> <slug> <workflow>  # disarm a recur cron: set inactive+disabled, keep row for audit (idempotent; calls POST /cron/disarm — single-writer)
 uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
+uv run h status [--json]                  # one-screen driver check-in: active chains, engine heartbeats (stale >5m flagged), verdict OK / ATTENTION
 ```
 
 Helm is invoked as a subprocess (arg-list, no shell) — the established wrapper pattern

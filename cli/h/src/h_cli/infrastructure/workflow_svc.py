@@ -277,3 +277,31 @@ def terminate(instance_id: str) -> Any:
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/terminate/{instance_id}", json={}, timeout=30)
     resp.raise_for_status()
     return resp.json()
+
+
+def open_prs() -> list[dict[str, Any]]:
+    """Fetch open PRs from the h repository via GitHub API. Returns a list of PR objects with
+    number, title, and author fields. Read-only; network failures raise httpx.HTTPError.
+    Supports unauthenticated access (lower rate limit) when GH_TOKEN is absent."""
+    import os
+    gh_token = os.environ.get("GH_TOKEN", "")
+    headers = {}
+    if gh_token:
+        headers["Authorization"] = f"token {gh_token}"
+    resp = httpx.get(
+        "https://api.github.com/repos/stiproot/h/pulls?state=open&per_page=50",
+        headers=headers,
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, list):
+        return []
+    return [
+        {
+            "number": pr.get("number", 0),
+            "title": pr.get("title", ""),
+            "author": pr.get("user", {}).get("login", "unknown"),
+        }
+        for pr in data
+    ]

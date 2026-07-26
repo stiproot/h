@@ -147,6 +147,9 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
   only by its own budget while the discovery cron's serialize waits it out.
 - Inspect any run: `analyze-workflow-run` / `/observe` / `h watch get <instanceId>`; the join key is
   the `workflowInstanceId` (`feature-issue-<n>` / `revise-issue-<n>`).
+- **One-screen check-in**: `h status [--json]` reports active chains (stage cursor, loop iteration,
+  findings count), engine heartbeats (stale >5m flagged), and a verdict line (OK / ATTENTION) — the
+  low-token driver signal for "is h doing what it should".
 
 ## Named residual risks
 
