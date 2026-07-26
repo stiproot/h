@@ -1,7 +1,7 @@
 import { Command } from "@effect/platform";
 import type { CommandExecutor } from "@effect/platform";
 import type { PlatformError } from "@effect/platform/Error";
-import { Context, Data, Effect, Layer, Stream } from "effect";
+import { Context, Data, Duration, Effect, Layer, Stream } from "effect";
 
 /**
  * How git authenticates to the remote. Strategies are *named* in workflow/step config; the
@@ -319,6 +319,9 @@ const addWorktreeEffect = (
   );
 };
 
+const isLockRefError = (err: GitWorktreeError): boolean =>
+  causeText(err.cause).includes("cannot lock ref");
+
 /**
  * Adapter: git over `@effect/platform` `Command` (non-blocking subprocesses). The layer captures
  * `CommandExecutor` at build time so the port methods stay `R = never`; the consuming composition
@@ -329,10 +332,42 @@ export const ExecGitClient: Layer.Layer<GitClient, never, CommandExecutor.Comman
     GitClient,
     Effect.gen(function* () {
       const executor = yield* Effect.context<CommandExecutor.CommandExecutor>();
+      // In-process mutex per repo path: all worktree cuts for a given repo go through one
+      // agent-service process, so a permit-1 semaphore per path serializes concurrent
+      // addWorktree calls and eliminates `cannot lock ref` races on the shared pre-clone's
+      // ref files. Assumption: every caller runs inside the same process; cross-process
+      // callers are protected by the one-shot retry below instead.
+      const mutexMap = new Map<string, Effect.Semaphore>();
+      const getOrCreateMutex = (repoPath: string): Effect.Effect<Effect.Semaphore> =>
+        Effect.suspend(() => {
+          const existing = mutexMap.get(repoPath);
+          if (existing !== undefined) return Effect.succeed(existing);
+          // Effect.makeSemaphore is backed by Ref.make (Effect.sync) — no yield point —
+          // so the check-and-set completes without interleaving with other fibers.
+          return Effect.map(Effect.makeSemaphore(1), (sem) => {
+            mutexMap.set(repoPath, sem);
+            return sem;
+          });
+        });
       return {
         clone: (opts: CloneOptions) => cloneEffect(opts).pipe(Effect.provide(executor)),
-        addWorktree: (opts: WorktreeOptions) =>
-          addWorktreeEffect(opts).pipe(Effect.provide(executor)),
+        addWorktree: (opts: WorktreeOptions) => {
+          const attempt = addWorktreeEffect(opts).pipe(Effect.provide(executor));
+          return getOrCreateMutex(opts.repoPath).pipe(
+            Effect.flatMap((sem) =>
+              sem.withPermits(1)(
+                // Belt-and-braces retry for cross-process callers: if a concurrent fetch from
+                // another process still wins the lock, back off 200 ms and retry once before
+                // propagating loudly.
+                attempt.pipe(
+                  Effect.catchIf(isLockRefError, () =>
+                    Effect.zipRight(Effect.sleep(Duration.millis(200)), attempt),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       };
     }),
   );

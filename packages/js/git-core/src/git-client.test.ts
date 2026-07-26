@@ -182,6 +182,64 @@ describe("GitClient (ExecGitClient layer)", () => {
     expect(() => readFileSync(join(second, "README.md"), "utf8")).toThrow();
   });
 
+  it("serializes concurrent addWorktree calls so both succeed when the remote has moved", async () => {
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, stdio: "pipe" });
+    const remote = join(root, "remote");
+    git(root, "init", "-q", "-b", "main", "remote");
+    git(remote, "config", "user.email", "test@example.com");
+    git(remote, "config", "user.name", "test");
+    writeFileSync(join(remote, "file.txt"), "v1\n");
+    git(remote, "add", "file.txt");
+    git(remote, "commit", "-qm", "v1");
+
+    const clone = join(root, "clone");
+    git(root, "clone", "-q", remote, "clone");
+
+    // Remote advances after the clone; without the mutex the two concurrent fetches into
+    // the same shared clone would race on refs/remotes/origin/main and one would fail with
+    // "cannot lock ref".
+    writeFileSync(join(remote, "file.txt"), "v2\n");
+    git(remote, "commit", "-aqm", "v2");
+
+    const wt1 = join(root, "worktrees", "branch-a");
+    const wt2 = join(root, "worktrees", "branch-b");
+
+    // Both effects share the SAME TestLayer (same ExecGitClient instance, same mutex map)
+    // because Effect.provide is called once on the combined Effect.all.
+    const [p1, p2] = await Effect.runPromise(
+      Effect.all(
+        [
+          Effect.gen(function* () {
+            const gitClient = yield* GitClient;
+            return yield* gitClient.addWorktree({
+              repoPath: clone,
+              worktreePath: wt1,
+              branch: "feat/A",
+              remoteBase: "main",
+            });
+          }),
+          Effect.gen(function* () {
+            const gitClient = yield* GitClient;
+            return yield* gitClient.addWorktree({
+              repoPath: clone,
+              worktreePath: wt2,
+              branch: "feat/B",
+              remoteBase: "main",
+            });
+          }),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(Effect.provide(TestLayer)),
+    );
+
+    expect(p1).toBe(wt1);
+    expect(p2).toBe(wt2);
+    // Both worktrees must hold v2 (fetched from origin), not the clone's stale v1.
+    expect(readFileSync(join(wt1, "file.txt"), "utf8")).toBe("v2\n");
+    expect(readFileSync(join(wt2, "file.txt"), "utf8")).toBe("v2\n");
+  });
+
   it("fails a worktree add with GitWorktreeError carrying git's stderr", async () => {
     // The branch checked out in the source repo cannot also be checked out in a worktree.
     const git = (cwd: string, ...args: string[]) =>
