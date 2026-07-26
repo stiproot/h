@@ -199,7 +199,7 @@ def test_status_open_prs() -> None:
 
 @respx.mock
 def test_status_open_prs_fetch_failure() -> None:
-    """PR fetch failure produces ATTENTION flag without nonzero exit."""
+    """PR fetch failure (network error) produces ATTENTION flag without nonzero exit."""
     err = httpx.ConnectError("GitHub API unavailable")
     respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
     respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
@@ -211,3 +211,28 @@ def test_status_open_prs_fetch_failure() -> None:
     out = _all_output(result)
     assert "ATTENTION" in out
     assert "open_prs" in out
+
+
+@respx.mock
+def test_status_open_prs_missing_token() -> None:
+    """Missing GH_TOKEN produces ATTENTION flag without nonzero exit."""
+    import os
+    # Save and clear GH_TOKEN
+    original_token = os.environ.get("GH_TOKEN")
+    if "GH_TOKEN" in os.environ:
+        del os.environ["GH_TOKEN"]
+
+    try:
+        respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
+        respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
+        respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=_cron_payload()))
+
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0, _all_output(result)
+        out = _all_output(result)
+        assert "ATTENTION" in out
+        assert "open_prs" in out
+    finally:
+        # Restore GH_TOKEN
+        if original_token:
+            os.environ["GH_TOKEN"] = original_token

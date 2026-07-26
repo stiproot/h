@@ -69,8 +69,8 @@ def _fetch_all() -> (
 
     try:
         prs = workflow_svc.open_prs()
-    except httpx.HTTPError as err:
-        fetch_errors.append(f"open_prs unreachable: {err}")
+    except (httpx.HTTPError, ValueError) as err:
+        fetch_errors.append(f"open_prs unavailable: {err}")
 
     return chain_data, watch_data, cron_data, prs, fetch_errors
 
