@@ -34,20 +34,34 @@ steps:
     input:
       task: |-
         ===ACCEPTANCE CHECK===
-        Before you finish, prove the change with the acceptance check. Run exactly this
-        command in the worktree root:
+        Before you finish, prove the change with the acceptance check. Run at minimum
+        this floor command in the worktree root:
 
             {{ include "h.token" "params.verifyCmd" }}
 
-        If it fails, diagnose the failure, fix the code, and re-run the command. Repeat
-        until it passes or you have made 3 fix attempts. Do not weaken the check (no
+        That is the FLOOR — the minimum command that must run. Do not stop there.
+        Read the target repo's own acceptance context (CLAUDE.md, README.md, steering
+        docs, and any scripts under `scripts/` or `Makefile`) and determine the FULL
+        set of checks that apply to the change you made: lint, type-check, unit tests,
+        integration tests, golden updates, or other suites. Run every check that is
+        applicable. For each command you run, note what it is and why it covers the
+        change.
+
+        If your change touches code and you are skipping all test suites, you MUST
+        state that explicitly and justify it — "no tests exist for this module" or
+        "the change is documentation-only" are examples of valid justifications; mere
+        convenience is not.
+
+        If any command fails, diagnose the failure, fix the code, and re-run. Repeat
+        until it passes or you have made 3 fix attempts. Do not weaken any check (no
         skipping tests, no suppressing errors).
 
-        This check GATES everything below it. If the command STILL fails after your
+        This check GATES everything below it. If the commands STILL fail after your
         attempts, STOP here: do not commit, do not push, do not open a pull request —
         and report the failure in your final json block: `"verify": "FAIL"` plus a
         `skipped` field summarizing the failing command output as evidence.
 
-        If it passes, include `"verify": "PASS"` in your final json block, then carry
-        out any remaining instructions below.
+        If it passes, include `"verify": "PASS"` in your final json block along with
+        a brief summary of what you ran and why that is sufficient, then carry out any
+        remaining instructions below.
 {{- end }}

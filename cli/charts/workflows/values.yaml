@@ -136,6 +136,10 @@ bootstrapRepo:
 reviewPr:
   # Target GitHub repo (owner/name) whose PR is reviewed. Required.
   repo: ""
+  # Optional: the original feature spec the PR was implementing. When set, the review checks
+  # the diff satisfies THE SPEC, not merely the PR's self-description. Empty = spec-less review
+  # (identical render to the no-spec default — the chain passes this through when present).
+  spec: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     review: ""

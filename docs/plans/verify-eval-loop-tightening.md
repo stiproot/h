@@ -1,6 +1,6 @@
 # Verify & eval loop tightening — acceptance deduced, review evidence-checked
 
-Status: Planning — scoped 2026-07-26 from the trxy cross-repo trial; not started
+Status: Implemented — 2026-07-26
 Established: 2026-07-26
 
 ## Origin
@@ -50,10 +50,15 @@ the definition of done) and too PERMISSIVE about evidence (no one checks that do
 
 - A code-touching run against a repo whose steering demands integration tests runs them (or
   loudly justifies not doing so) with only the floor command supplied.
-- A chain-seeded spec appears in the review prose; a spec-less review renders identically to
-  today.
-- A PR body without test evidence on a code diff draws a review FINDING (fixture-proven via a
-  panel run).
+- A chain-seeded spec reaches the review prose at FIRE time: the `spec` param is an
+  always-open runtime slot rendered like the existing `focus` param (token always present,
+  section inert when empty). A spec-less review's BEHAVIOR is unchanged, but the render is
+  deliberately NOT byte-identical to the pre-change template (the empty section exists) —
+  the accepted cost of runtime threading. Chart-time gating was rejected: it silences
+  fire-time specs (PR #80's round-1 review finding).
+- A PR body without test evidence on a code diff draws a review FINDING (validated
+  post-merge in a live panel run — an operational check, deliberately not provable inside
+  this diff).
 - Goldens re-blessed deliberately; template guards stay green.
 
 ## Log
@@ -62,3 +67,18 @@ the definition of done) and too PERMISSIVE about evidence (no one checks that do
   disobedience) after hand-validating PR #43 (654/654 integration green). Sibling plan on the
   trxy side covers the target-repo half (verify script includes tests; mobile e2e mandatory on
   mobile-consumed changes).
+- 2026-07-26 — Implemented all three seams: (1) verify.tmpl.yaml re-framed to floor + deduce-full
+  acceptance; (2) review-pr.tmpl.yaml + values.yaml gain optional spec param;
+  chain-members.ts threads spec from chain data; two unit tests added; (3) review-pr
+  checklist gains test-evidence bullet. Goldens re-blessed after reviewing .ambr diff.
+  Test evidence: bun run lint (23/23), bun run build (16/16), bun run test (319 tests);
+  uv run --package h-cli pytest — 260 pass, 2 FAILURES in test_chain.py (non-hermetic tests
+  needing the gitignored values.local.yaml; pre-existing on base, tracked as issue #81, fixed
+  by PR #85 — NOT green, just not this PR's breakage).
+- 2026-07-26 — The PR #80 review loop (3 panel rounds) exposed a contradiction in this plan's
+  original acceptance: "runtime spec threading" and "byte-identical spec-less render" cannot
+  both hold. Resolved for runtime threading via the focus-param pattern (always-rendered
+  token, inert when empty); acceptance above amended to match. The loop also demanded the
+  test-evidence wording in this log be exact (it was: "pytest green" hid two failures) —
+  the eval loop tightening this plan ships caught its own PR's evidence imprecision, which
+  is the point.
