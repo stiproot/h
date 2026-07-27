@@ -65,14 +65,24 @@ listed in the session-state paragraph (below), waiting for the returning primary
      (all green — the suite is hermetic since #85).
    - trxy-v2: **this sweep is the ONLY pre-merge gate** — trxy CI no longer runs on pull
      requests (main + dispatch only since 2026-07-27, Actions rate limit); nothing catches
-     a bad merge before it lands, so never merge on a loop's word alone.
-     `bun run verify` fully green — 31/31 since trxy PR #49 (2026-07-26) killed
-     the TS2503 hoisting flake; there are NO accepted pre-existing failures anymore, and
-     a run claiming one must prove it on base. Service-file changes additionally need
+     a bad merge before it lands, so never merge on a loop's word alone. THE SEQUENCE IS
+     LOAD-BEARING — in a fresh worktree always:
+     `bun install && bun run build && bun install && bun run verify`
+     (build-then-REINSTALL; `install:all` does NOT do it). Skipping the reinstall yields
+     TS2591/TS2503 errors in untouched packages — build-architecture.md failure mode 1,
+     NOT a pre-existing failure. `verify` is fully green (31/31 + 25/25); there are NO
+     accepted pre-existing failures, and a run claiming one must prove it on base.
+     Service-file changes additionally need
      `test:core` GREEN — if a run claims "Supabase unavailable", derive the env first:
      `supabase status -o env | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)' | sed 's/^API_URL/SUPABASE_URL/; s/^ANON_KEY/SUPABASE_ANON_KEY/; s/^SERVICE_ROLE_KEY/SUPABASE_SERVICE_ROLE_KEY/' > packages/core/.env`
 3. Squash-merge; commit message records what the loop caught and the verification
    evidence. Resolve any threads your close-out addressed (reply with the sha).
+
+**Read exit codes, not grepped output.** `cmd | grep …` / `| tail …` returns the PIPE's
+status, so `cmd | tail -2 && git commit` commits even when `cmd` FAILED (bit us
+2026-07-27: a format:check failure sailed through a `&&` chain; only the pre-commit hook
+saved the push). When a check gates an action, run it unpiped or capture `${PIPESTATUS[0]}`
+— especially now that trxy CI cannot catch what the sweep misses.
 
 ## Recovery drawer
 
