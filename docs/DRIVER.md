@@ -104,6 +104,16 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 ## Standing conventions
 
+- **Verify a plan doc's CLAIMS against the repo before scoping a spec from it.** Plan docs
+  drift: on 2026-07-27 two of the four docs used to scope a batch were stale —
+  `architecture-lint-rules.md` listed four backlog sections already fixed and enforced at
+  `error`, and `e2e-flow-backlog.md` claimed "Covered: auth, challenge, spot" while the
+  tree held nine flows including the two the doc called un-built. A spec scoped from the
+  latter produced a PR that redid finished work and had to be closed unmerged. Cheap
+  check, seconds long: for each claim the spec will rest on, look at the tree (does the
+  file/rule/flow exist? is the config already flipped?). Spec-aware review CANNOT catch
+  this — the panel checks the diff against the spec, so a spec built on a false premise
+  passes clean.
 - **The verify FLOOR must be green on base before a batch fires.** Prove the exact floor
   command passes on the target repo's main (fresh worktree) BEFORE registering chains on
   it — a floor that is red on base walls every honest run (2026-07-26: game-visibility
