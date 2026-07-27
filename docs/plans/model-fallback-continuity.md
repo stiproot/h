@@ -174,19 +174,22 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight (batch 2, registered 2026-07-27 ~08:00): h `fix-91-unfulfilled` (issue #91,
-  the between-tasks hardening) + four trxy arcs, each with an --after review loop:
-  `e2e-batch-a` (now), `team-skate-design` (now — DESIGN ONLY, doc deliverable, no DB so
-  it runs beside e2e), `gemini-augment` (--in 2h), `spot-ownership` (--in 4h).
-  Staggered because all DB-touching trxy chains share one local Supabase stack.
-- Merge queue: empty.
-- Recent: trxy CI now main-only (#35e2d903); schema-in-000-core-schema rule encoded +
-  two stray ledger tables moved (29ef101c); arch-lint backlog reconciled — four sections
-  were done but the doc still claimed them (2c1aef2b).
-- Blocked: trxy CD/CI cannot run (GitHub Actions quota) — the ig-promo/ai-challenge
-  migrations are unapplied in prod until that clears; needs the operator's billing action.
-- Next: merge as loops finalize (trxy floor = install → build → install:all → verify);
-  read team-skate-design's output WITH the operator before any implementation follows.
+- In flight: `gemini-augment-review2` (PR #56, claude+openhands panel — first DeepSeek use
+  inside h's review machinery); `spot-ownership` fires 12:15Z on the CLAUDE executor with
+  `spot-ownership-review` (claude+openhands) gated behind it.
+- **Provider status: OpenAI/codex quota EXHAUSTED (2026-07-27).** Do not roster codex in
+  implement legs or panels until it clears. Live: claude (Anthropic), openhands (DeepSeek).
+- Merge queue: empty. Merged today: h #93 (unfulfilled preflight), h #94 (review
+  independent judgement), trxy #55 (team S.K.A.T.E. design, all four product questions now
+  answered — PR 1 unblocked). Closed unmerged: trxy #54 (stale-premise churn).
+- Zombie to clean: chain `spot-ownership-review2` is a PARKED DUPLICATE gated to
+  2026-08-26 — h has no chain-disarm (issue #95); kill it before that date or when #95
+  lands.
+- Blocked: trxy CD/CI still down on the Actions quota, so ig-promo/ai-challenge migrations
+  remain unapplied in prod (needs operator billing action).
+- Next: merge #56 when its loop clears; then spot-ownership's arc. Team S.K.A.T.E. PR 1
+  (database foundation) is ready to queue on request — DB-heavy, so sequence it after the
+  current batch clears the shared Supabase stack.
 
 ## Log
 
