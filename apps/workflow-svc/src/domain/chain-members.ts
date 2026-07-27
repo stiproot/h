@@ -81,13 +81,16 @@ function requireStructured(output: string | undefined, what: string): Record<str
 
 /**
  * Capture the PR a run produced from its validated structured output: `pr` (number) + `url`, or
- * `skipped` when no PR exists. A skip sets nothing, so the next workflow's buildParams fails loud
- * with its own hint — a chain must never fire a review of a PR that was never opened.
+ * `skipped` when no PR exists. A skip sets nothing in data but DOES preserve the `skipped` reason
+ * so an --after child can report why the parent didn't produce a PR. The child's buildParams will
+ * still fail loud with its own hint (a chain must never fire a review of a PR that was never opened),
+ * but the parent's skip reason enriches the unfulfilled note.
  */
 export function capturePr(output: string | undefined, data: ChainData): void {
   const s = requireStructured(output, "capturePr");
   if (s.pr !== undefined && s.pr !== null) data.prNumber = String(s.pr);
   if (typeof s.url === "string" && s.url) data.prUrl = s.url;
+  if (typeof s.skipped === "string" && s.skipped) data.skipped = s.skipped;
 }
 
 /**

@@ -1295,4 +1295,59 @@ describe("--after unfulfilled activation (issue #91)", () => {
     expect(row?.outcome).toBe("failed");
     expect(row?.outcome).not.toBe("unfulfilled");
   });
+
+  it("parent completed via capturePr with skipped reason → child unfulfilled preserves that reason", async () => {
+    const mem = memoryChainStore();
+    // Parent workflow completes with structured output carrying skipped reason
+    const statuses: Record<string, WorkflowStatus> = {
+      "p-w0": { instanceId: "p-w0", runtimeStatus: "RUNNING" },
+    };
+    const inv = recordingInvoker(statuses);
+    const layer = env(mem.service, inv.service);
+    // Register parent: captures `skipped` reason from its output via capturePr
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "p",
+          members: [{ kind: "implement-pr", key: "implement-pr" }],
+          data: { slug: "p", spec: "parent work" },
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(layer),
+      ),
+    );
+    // Parent completed with skipped reason (no PR opened)
+    statuses["p-w0"] = {
+      instanceId: "p-w0",
+      runtimeStatus: "COMPLETED",
+      output: JSON.stringify({
+        implement: { structured: { skipped: "verify gate failed" } },
+      }),
+    };
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    expect(mem.rows.get("p")?.outcome).toBe("completed");
+    expect(mem.rows.get("p")?.data.skipped).toBe("verify gate failed");
+
+    // Register child: will read the skipped reason from parent's finalized data
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "c",
+          members: [{ kind: "review-pr", key: "review-pr" }],
+          data: { slug: "c" },
+          after: "p",
+        },
+        undefined,
+      ).pipe(Effect.provide(layer)),
+    );
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const child = mem.rows.get("c");
+    expect(child?.status).toBe("finalized");
+    expect(child?.outcome).toBe("unfulfilled");
+    // The unfulfilled note should include the parent's skip reason from capturePr
+    expect(child?.note).toContain("verify gate failed");
+    expect(inv.invokes).toHaveLength(1); // only parent fired
+  });
 });
