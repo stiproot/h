@@ -59,7 +59,10 @@ listed in the session-state paragraph (below), waiting for the returning primary
 
 ## Merge protocol (primary driver only)
 
-1. Loop finalized CLEAN (or operator-verified equivalent after an exhausted loop).
+1. Loop finalized CLEAN (or operator-verified equivalent after an exhausted loop). **A
+   first-round CLEAN deserves a spot-check, not trust** — verify the diff against the
+   spec's key demand yourself. Two 2026-07-27 cases: trxy #54 was clean churn on a stale
+   premise, and #56's clean verdict rested on one real panelist plus a hollow one.
 2. Branch updated against main; verify sweep AT HEAD in a worktree:
    - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest`
      (all green — the suite is hermetic since #85).
