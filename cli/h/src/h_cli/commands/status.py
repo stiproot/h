@@ -18,7 +18,7 @@ console = Console()
 
 STALE_AFTER_SECONDS = 5 * 60
 RECENT_WINDOW_SECONDS = 24 * 3600
-NON_OK_OUTCOMES = frozenset({"failed", "terminated", "budget-terminated", "orphaned"})
+NON_OK_OUTCOMES = frozenset({"failed", "terminated", "budget-terminated", "orphaned", "unfulfilled"})
 
 
 def _heartbeat_age_seconds(at: Any) -> float | None:
