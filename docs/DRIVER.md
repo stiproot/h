@@ -90,9 +90,17 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 - **Re-fire a failed chain:** same registration + `--fresh` on the failed member
   (attach-by-default returns a terminal instance as-is — CLAUDE.md gotcha).
-- **Usage-limited run:** the limit message states the reset time. Either re-fire under a
-  fallback executor (`--agent codex`, deepseek when landed) or park: re-register the
-  chain `--in <duration-to-reset>`.
+- **Usage-limited run / exhausted provider quota:** the limit message states the reset
+  time when it is a session limit. Re-fire under an executor on a DIFFERENT provider, or
+  park (`--in <duration-to-reset>`). The three executors sit on three providers, so a
+  quota outage never blocks everything:
+  `claude` (Anthropic) · `codex` (OpenAI/ChatGPT) · `openhands` (DeepSeek, via
+  `LLM_API_KEY`/`LLM_BASE_URL` — the same key the DeepSeek driver fallback uses).
+  **A dead provider must be dropped from PANEL ROSTERS too**, not just implement legs: a
+  panel is a parallel step group joined with whenAll, so one dead panelist fails the whole
+  review member (observed 2026-07-27 — OpenAI quota ran out mid-batch; the codex implement
+  leg had finished but the codex panelist took the review chain down with it). Re-fire the
+  review with a roster on live providers, e.g. `--agent claude openhands`.
 - **Mid-step death (state not landed):** the full session transcript is on disk —
   `~/code/h-workspace/.runs/<instanceId>/<agent>-<ts>/events.jsonl`; splice its tail into
   the continuation task.
