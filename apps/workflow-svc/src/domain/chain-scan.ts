@@ -864,8 +864,9 @@ function runtimeStatusOf(outcome: ChainOutcome): string {
     case "completed":
       return "COMPLETED";
     case "failed":
-    case "unfulfilled":
       return "FAILED";
+    case "unfulfilled":
+      return "UNFULFILLED";
     case "terminated":
     case "budget-terminated":
       return "TERMINATED";
