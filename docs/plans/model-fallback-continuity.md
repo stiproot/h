@@ -174,20 +174,24 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight: `ai-challenge` (gate 22:31Z) + its review loop — fires off a main carrying
-  BOTH merged features (#50 game-visibility, #51 ig-promo incl. the shared edge-fn
-  machinery its spec reuses) and the fully green floor.
-- Merge queue: (empty — #50 and #51 merged ~20:40Z with full evidence).
-- Done tonight: h #90 (revise body-updates) + #92 (worktree fetch-race mutex, agents
-  redeployed ~20:45Z) merged; trxy #49 (TS2503 fix, verify 31/31), #50, #51 merged;
-  h issue #91 filed (--after fires into certain failure on missing capture); trxy issue
-  #52 filed (bun link nondeterminism / TS2591 flake — reinstall is the interim remedy).
-- Blocked: nothing.
-- Next: ai-challenge arc → merge; then Phase 2/3 design pass with tonight's live-fire
-  evidence (usage-limit never hit — codex executors sidestepped it entirely).
+- In flight: nothing. Board clear.
+- Merge queue: empty — the overnight batch is fully merged (trxy #49/#50/#51/#53, h #90/#92).
+- Open follow-ups: h #91 (--after fires into certain failure on a missing parent capture),
+  h #84-adjacent none, trxy #52 (bun link nondeterminism / TS2591 flake).
+- Next: Phase 2/3 design pass (deepseek executor identity; chain-level --fallback-agent;
+  chain park-on-usage-limited) — with the caveat below.
 
 ## Log
 
+- 2026-07-27 (overnight) — Phase 4 live-fire ran but did NOT exercise the fallback: the
+  limit-immune posture (codex executors, claude only in panels) meant no usage-limited
+  outcome occurred across 8 chains / 4 merged trxy PRs. So Phase 2/3 remain
+  UNVALIDATED-IN-ANGER; the posture itself is the working mitigation today. What the night
+  DID prove: the durable-state continuity story (three separate runs died at a gate —
+  TS2503 floor, Supabase 502 — and each resumed from its preserved worktree via a recovery
+  addendum with zero lost work, exactly the mechanism a model fallback would use). Design
+  note for Phase 3: the park/fallback trigger should cover ANY gate-stop with preserved
+  work, not just usage-limited — the recovery addendum pattern is the template.
 - 2026-07-26 (evening, later) — Phase 1 validation ladder COMPLETE. The DeepSeek key was
   already in .env as LLM_API_KEY (the openhands BYOK pair; operator remembered, the grep
   didn't). Validated: (1) wire — api.deepseek.com/anthropic returns Anthropic-shaped
