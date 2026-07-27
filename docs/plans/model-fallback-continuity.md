@@ -174,22 +174,32 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight: `gemini-augment-review2` (PR #56, claude+openhands panel — first DeepSeek use
-  inside h's review machinery); `spot-ownership` fires 12:15Z on the CLAUDE executor with
-  `spot-ownership-review` (claude+openhands) gated behind it.
+_Last updated 2026-07-27 at session handoff. Read this first._
+
+- **In flight: nothing.** Board clear apart from the parked zombie below.
+- **Merge queue: empty.** All of batch 2 is merged: trxy #55 (team S.K.A.T.E. design, fully
+  decided), #56 (spot-image terrain suggestions), #57 (spot ownership), plus h #93/#94.
+  trxy #54 was CLOSED unmerged (stale-premise churn — see the standing rule in DRIVER.md).
 - **Provider status: OpenAI/codex quota EXHAUSTED (2026-07-27).** Do not roster codex in
-  implement legs or panels until it clears. Live: claude (Anthropic), openhands (DeepSeek).
-- Merge queue: empty. Merged today: h #93 (unfulfilled preflight), h #94 (review
-  independent judgement), trxy #55 (team S.K.A.T.E. design, all four product questions now
-  answered — PR 1 unblocked). Closed unmerged: trxy #54 (stale-premise churn).
-- Zombie to clean: chain `spot-ownership-review2` is a PARKED DUPLICATE gated to
-  2026-08-26 — h has no chain-disarm (issue #95); kill it before that date or when #95
-  lands.
-- Blocked: trxy CD/CI still down on the Actions quota, so ig-promo/ai-challenge migrations
-  remain unapplied in prod (needs operator billing action).
-- Next: merge #56 when its loop clears; then spot-ownership's arc. Team S.K.A.T.E. PR 1
-  (database foundation) is ready to queue on request — DB-heavy, so sequence it after the
-  current batch clears the shared Supabase stack.
+  implement legs OR panels until it clears. Live: claude (Anthropic), openhands (DeepSeek) —
+  but openhands is implement-only, NOT a review panelist (h #96: it returned a bare verdict
+  with zero tool calls).
+- **Open h issues, none blocking:** #84 done, #95 (no `h chain rm` — the reason for the
+  zombie), #96 (hollow panelist). Open trxy issue: #58 (leaderboard rank gaps, found by
+  hands-on exploration; root-caused with a before/after — read-side fix suggested).
+- **Zombie to clean:** chain `spot-ownership-review2` is a PARKED DUPLICATE gated to
+  2026-08-26. Kill it before then, or when #95 lands.
+- **Still needs the operator:** trxy CI/CD is down on the GitHub Actions quota, so every
+  migration merged since 2026-07-26 (ig-promo, ai-challenge, spot-ownership) is UNAPPLIED in
+  prod. Nothing automated will apply them.
+- **Environment left running:** local Supabase up; Android emulator `trxy-emulator`
+  (adb `localhost:5555`) with a local-stack APK installed and a logged-in seeded user
+  (`explore1785162251@trxy.test` / `Explore123!`). Tear down with
+  `apps/mobile/scripts/android-emulator.sh stop` if not needed.
+- **Next candidates:** team S.K.A.T.E. PR 1 (database foundation) is unblocked and specced —
+  its spec is the merged plan doc, so it is the natural first user of the in-repo spec
+  pointer (docs/plans/spec-review-pipeline.md); and that pipeline's own build (a
+  `review-spec` template) is unstarted.
 
 ## Log
 
