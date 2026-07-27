@@ -434,6 +434,28 @@ const processRow = (
             startedAt: activatedAt,
           }
         : { ...row, data: { ...defaults, ...row.data }, unknownStreak: 0, startedAt: activatedAt };
+      // Issue #91: for --after chains, pre-flight stage 0's required inputs against the seeded data.
+      // A missing required input means the parent completed without producing what this child needs
+      // (e.g. an implement chain skipped opening a PR). Finalize unfulfilled instead of firing into
+      // certain failure — the distinct outcome tells the operator what actually happened.
+      if (row.after !== undefined) {
+        const missing = checkStage0Inputs(seeded);
+        if (missing.length > 0) {
+          const skippedReason =
+            typeof seeded.data.skipped === "string" ? seeded.data.skipped : undefined;
+          const noteParts = [
+            `stage 0 required inputs not produced by parent '${row.after}': ${missing.join("; ")}`,
+          ];
+          if (skippedReason) noteParts.push(`parent skipped: ${skippedReason}`);
+          yield* executeFinalize(
+            { ...seeded, note: noteParts.join(" — ") },
+            "unfulfilled",
+            nowMs,
+            report,
+          );
+          return;
+        }
+      }
       yield* fireStage(seeded, seeded.cursor, traceparent).pipe(
         Effect.matchEffect({
           onFailure: (err) =>
@@ -842,6 +864,7 @@ function runtimeStatusOf(outcome: ChainOutcome): string {
     case "completed":
       return "COMPLETED";
     case "failed":
+    case "unfulfilled":
       return "FAILED";
     case "terminated":
     case "budget-terminated":
@@ -849,6 +872,22 @@ function runtimeStatusOf(outcome: ChainOutcome): string {
     case "orphaned":
       return "UNKNOWN";
   }
+}
+
+/** Issue #91: check stage 0's required inputs against the chain data before firing.
+ *  Returns one error message per member that throws ChainThreadError from buildParams. */
+function checkStage0Inputs(row: ChainRow): string[] {
+  const messages: string[] = [];
+  for (const i of membersInStage(row.members, 0)) {
+    const member = row.members[i];
+    if (!member) continue;
+    try {
+      contractFor(member).buildParams(row.data);
+    } catch (err) {
+      messages.push(err instanceof ChainThreadError ? err.message : String(err));
+    }
+  }
+  return messages;
 }
 
 function messageOf(err: unknown): string {

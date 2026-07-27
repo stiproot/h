@@ -266,6 +266,36 @@ def test_status_disabled_heartbeat_flag() -> None:
 
 
 @respx.mock
+def test_status_unfulfilled_chain_flag() -> None:
+    """A chain finalized 'unfulfilled' within 24h → ATTENTION flag with 'unfulfilled' in output."""
+    ended = (datetime.now(UTC) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    chains = [
+        {
+            "chainId": "review-x",
+            "status": "finalized",
+            "outcome": "unfulfilled",
+            "members": [],
+            "cursor": 0,
+            "endedAt": ended,
+            "startedAt": ended,
+        }
+    ]
+    respx.get(f"{WORKFLOW_URL}/chain/list").mock(
+        return_value=Response(200, json=_chain_payload(chains))
+    )
+    respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
+    respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=_cron_payload()))
+    respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=[]))
+
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0, _all_output(result)
+    out = _all_output(result)
+    assert "ATTENTION" in out
+    assert "review-x" in out
+    assert "unfulfilled" in out
+
+
+@respx.mock
 def test_status_parallel_chain_stages() -> None:
     """A chain with parallel members (stages [0, 0, 1]) reports 2 distinct stages, not 3 members."""
     chains = [

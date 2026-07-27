@@ -1161,3 +1161,138 @@ describe("--after slug precedence (issue #82)", () => {
     expect(fired?.params?.slug).toBe("x");
   });
 });
+
+// ---------------------------------------------------------------------------
+// --after unfulfilled activation (issue #91)
+// ---------------------------------------------------------------------------
+
+describe("--after unfulfilled activation (issue #91)", () => {
+  const now = new Date().toISOString();
+
+  /** Seed a finalized parent row directly (no scan cycle needed for the parent half). */
+  function seedFinalizedParent(mem: MemoryChainStore, data: Record<string, unknown>): void {
+    const row: ChainRow = {
+      chainId: "parent",
+      epoch: 1,
+      slug: "parent",
+      members: [{ kind: "implement-pr", key: "implement-pr" }],
+      strategy: "sequential",
+      cursor: 0,
+      data,
+      status: "finalized",
+      outcome: "completed",
+      lastStatus: "COMPLETED",
+      unknownStreak: 0,
+      startedAt: now,
+      updatedAt: now,
+      endedAt: now,
+    };
+    mem.rows.set("parent", row);
+  }
+
+  it("parent completed with no prNumber + child review-pr → unfulfilled, note names missing key, no member fired", async () => {
+    const mem = memoryChainStore();
+    // Parent finished without opening a PR (verify gate reported skipped).
+    seedFinalizedParent(mem, { slug: "feat", spec: "do it" });
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "review",
+          members: [{ kind: "review-pr", key: "review-pr" }],
+          data: { slug: "review" },
+          after: "parent",
+        },
+        undefined,
+      ).pipe(Effect.provide(layer)),
+    );
+    // One scan: parent is finalized/completed → activation fires, pre-flight catches missing prNumber.
+    const report = await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    expect(report.finalized).toEqual(["review:unfulfilled"]);
+    const child = mem.rows.get("review");
+    expect(child?.status).toBe("finalized");
+    expect(child?.outcome).toBe("unfulfilled");
+    // Note names the parent and the missing input (review-pr's error says "PR number").
+    expect(child?.note).toContain("parent");
+    expect(child?.note).toContain("PR number");
+    // No member was ever fired.
+    expect(inv.invokes).toHaveLength(0);
+  });
+
+  it("parent data carries skipped reason → unfulfilled note includes that reason", async () => {
+    const mem = memoryChainStore();
+    // Parent data includes skipped explaining why no PR was opened.
+    seedFinalizedParent(mem, { slug: "feat", spec: "do it", skipped: "verify gate failed" });
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "review",
+          members: [{ kind: "review-pr", key: "review-pr" }],
+          data: { slug: "review" },
+          after: "parent",
+        },
+        undefined,
+      ).pipe(Effect.provide(layer)),
+    );
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const child = mem.rows.get("review");
+    expect(child?.outcome).toBe("unfulfilled");
+    expect(child?.note).toContain("verify gate failed");
+    expect(inv.invokes).toHaveLength(0);
+  });
+
+  it("parent WITH prNumber → child fires stage 0 exactly as before", async () => {
+    const mem = memoryChainStore();
+    // Parent produced a PR — the happy path must be unaffected.
+    seedFinalizedParent(mem, { slug: "feat", spec: "do it", prNumber: "42" });
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "review",
+          members: [{ kind: "review-pr", key: "review-pr" }],
+          data: { slug: "review" },
+          after: "parent",
+        },
+        undefined,
+      ).pipe(Effect.provide(layer)),
+    );
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const child = mem.rows.get("review");
+    expect(child?.status).toBe("running");
+    expect(child?.outcome).toBeUndefined();
+    // Stage 0 fired with prNumber threaded in.
+    expect(inv.invokes).toHaveLength(1);
+    expect(inv.invokes[0].instanceId).toBe("review-w0");
+    expect(inv.invokes[0].params).toMatchObject({ pr: "42" });
+  });
+
+  it("standalone chain (no --after) with missing stage 0 inputs → fires then fails (not unfulfilled)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+    // A review-pr chain registered without a parent and without prNumber — the pre-flight does
+    // NOT run (no `after`). The fire proceeds, buildParams throws inside fireWorkflow, and the
+    // chain finalizes "failed" via finalizeFailed (the existing path), never "unfulfilled".
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "standalone",
+          members: [{ kind: "review-pr", key: "review-pr" }],
+          data: { slug: "standalone" },
+          // no `after` — standalone chain
+        },
+        undefined,
+      ).pipe(Effect.provide(layer)),
+    );
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const row = mem.rows.get("standalone");
+    expect(row?.status).toBe("finalized");
+    expect(row?.outcome).toBe("failed");
+    expect(row?.outcome).not.toBe("unfulfilled");
+  });
+});
