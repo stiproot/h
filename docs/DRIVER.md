@@ -63,7 +63,10 @@ listed in the session-state paragraph (below), waiting for the returning primary
 2. Branch updated against main; verify sweep AT HEAD in a worktree:
    - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest`
      (all green — the suite is hermetic since #85).
-   - trxy-v2: `bun run verify` fully green — 31/31 since trxy PR #49 (2026-07-26) killed
+   - trxy-v2: **this sweep is the ONLY pre-merge gate** — trxy CI no longer runs on pull
+     requests (main + dispatch only since 2026-07-27, Actions rate limit); nothing catches
+     a bad merge before it lands, so never merge on a loop's word alone.
+     `bun run verify` fully green — 31/31 since trxy PR #49 (2026-07-26) killed
      the TS2503 hoisting flake; there are NO accepted pre-existing failures anymore, and
      a run claiming one must prove it on base. Service-file changes additionally need
      `test:core` GREEN — if a run claims "Supabase unavailable", derive the env first:
