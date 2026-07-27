@@ -174,12 +174,19 @@ chain PARKS instead.
 
 ## Driver state
 
-- In flight: nothing. Board clear.
-- Merge queue: empty — the overnight batch is fully merged (trxy #49/#50/#51/#53, h #90/#92).
-- Open follow-ups: h #91 (--after fires into certain failure on a missing parent capture),
-  h #84-adjacent none, trxy #52 (bun link nondeterminism / TS2591 flake).
-- Next: Phase 2/3 design pass (deepseek executor identity; chain-level --fallback-agent;
-  chain park-on-usage-limited) — with the caveat below.
+- In flight (batch 2, registered 2026-07-27 ~08:00): h `fix-91-unfulfilled` (issue #91,
+  the between-tasks hardening) + four trxy arcs, each with an --after review loop:
+  `e2e-batch-a` (now), `team-skate-design` (now — DESIGN ONLY, doc deliverable, no DB so
+  it runs beside e2e), `gemini-augment` (--in 2h), `spot-ownership` (--in 4h).
+  Staggered because all DB-touching trxy chains share one local Supabase stack.
+- Merge queue: empty.
+- Recent: trxy CI now main-only (#35e2d903); schema-in-000-core-schema rule encoded +
+  two stray ledger tables moved (29ef101c); arch-lint backlog reconciled — four sections
+  were done but the doc still claimed them (2c1aef2b).
+- Blocked: trxy CD/CI cannot run (GitHub Actions quota) — the ig-promo/ai-challenge
+  migrations are unapplied in prod until that clears; needs the operator's billing action.
+- Next: merge as loops finalize (trxy floor = install → build → install:all → verify);
+  read team-skate-design's output WITH the operator before any implementation follows.
 
 ## Log
 
