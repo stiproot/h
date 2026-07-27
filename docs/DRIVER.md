@@ -83,6 +83,13 @@ listed in the session-state paragraph (below), waiting for the returning primary
 3. Squash-merge; commit message records what the loop caught and the verification
    evidence. Resolve any threads your close-out addressed (reply with the sha).
 
+**A COLD e2e run lies — never merge or file on its first result.** In a fresh worktree the
+bundler compiles on demand, the earliest specs blow their timeout on a loading screen, and
+the screenshots look like a broken app. Live 2026-07-27: a cold trxy web-e2e run reported
+9 failed / 7 passed with every failure in the alphabetically-early specs; re-running the
+same specs warm passed them all. Re-run failures once before treating them as evidence —
+this cuts both ways, since a run REPORTING e2e failures may just have been cold.
+
 **Read exit codes, not grepped output.** `cmd | grep …` / `| tail …` returns the PIPE's
 status, so `cmd | tail -2 && git commit` commits even when `cmd` FAILED (bit us
 2026-07-27: a format:check failure sailed through a `&&` chain; only the pre-commit hook
