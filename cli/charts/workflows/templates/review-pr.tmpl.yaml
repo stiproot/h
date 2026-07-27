@@ -125,9 +125,18 @@ steps:
              read the comment before flagging style.
            - Original spec: when the ===ORIGINAL SPEC=== section below is non-empty, check
              that the diff satisfies THE SPEC — not merely the PR's self-description. An
-             unimplemented spec requirement is a FINDING. When the section is empty, no spec
-             was supplied — review the diff on its own terms (this is the default, and
-             sometimes the diff IS the subject).
+             unimplemented spec requirement is a FINDING. Spec conformance is NECESSARY BUT
+             NOT SUFFICIENT — full independent review judgement always applies on top of it.
+             When the section is empty, no spec was supplied — review the diff on its own
+             terms (this is the default, and sometimes the diff IS the subject).
+           - Duplicate work: does this change implement something that already exists in the
+             repo? Verify before accepting that something needed building — a faithful
+             implementation of a redundant spec is not correct (this is the #54 case).
+           - Worth making: does this change improve on what was there, or does it trade
+             laterally / regress coverage? A lateral conversion is a FINDING.
+           - Spec integrity: is the ===ORIGINAL SPEC=== itself mistaken, stale, or
+             self-contradicting? A finding that the spec is wrong is a FIRST-CLASS finding
+             — report it naming the spec, not the diff.
         {{- $focus := include "h.token" "params.focus" }}
            Optional focus steer (empty = ignore): {{ $focus }}
 
