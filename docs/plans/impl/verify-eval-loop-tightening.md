@@ -1,6 +1,6 @@
 # Verify & eval loop tightening — acceptance deduced, review evidence-checked
 
-Status: Implemented — 2026-07-26
+Status: Complete — implemented 2026-07-26 (PR #80), live-validated same day; archived
 Established: 2026-07-26
 
 ## Origin
@@ -82,3 +82,12 @@ the definition of done) and too PERMISSIVE about evidence (no one checks that do
   test-evidence wording in this log be exact (it was: "pytest green" hid two failures) —
   the eval loop tightening this plan ships caught its own PR's evidence imprecision, which
   is the point.
+- 2026-07-26 — LIVE-VALIDATED end-to-end and archived. Seam 1: trxy PR #47's implement run
+  deduced the unit suite + justified skipping test:core via the rule it was itself adding;
+  val-43's revise ran test:core 655/655 under only the lint floor. Seam 2: every val-4x panel
+  reviewed against the chain-seeded original spec (caught scope omissions the PR bodies hid).
+  Seam 3: val-43 drew the exact missing-test-evidence FINDING on the PR whose silent test skip
+  originated this plan — the acceptance's "fixture-proven panel run", proven in production.
+  Lifted: the validation shape → docs/cookbook.md ("Validate an existing PR against its
+  ORIGINAL spec"); prose duties live in the templates; follow-up gaps filed as issues #84
+  (worktree fetch race) and #88 (revise-pr never updates the PR body).
