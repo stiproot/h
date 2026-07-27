@@ -67,8 +67,10 @@ listed in the session-state paragraph (below), waiting for the returning primary
      requests (main + dispatch only since 2026-07-27, Actions rate limit); nothing catches
      a bad merge before it lands, so never merge on a loop's word alone. THE SEQUENCE IS
      LOAD-BEARING — in a fresh worktree always:
-     `bun install && bun run build && bun install && bun run verify`
-     (build-then-REINSTALL; `install:all` does NOT do it). Skipping the reinstall yields
+     `bun install && bun run build && bun run install:all && bun run verify`
+     (build BETWEEN the two installs; the second must be `install:all` — a bare
+     `bun install` skips mobile's yarn install and `lint:mobile` then fails inside
+     `verify`). Skipping the rebuild+reinstall yields
      TS2591/TS2503 errors in untouched packages — build-architecture.md failure mode 1,
      NOT a pre-existing failure. `verify` is fully green (31/31 + 25/25); there are NO
      accepted pre-existing failures, and a run claiming one must prove it on base.
