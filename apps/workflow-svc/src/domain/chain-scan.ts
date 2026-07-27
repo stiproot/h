@@ -875,7 +875,8 @@ function runtimeStatusOf(outcome: ChainOutcome): string {
 }
 
 /** Issue #91: check stage 0's required inputs against the chain data before firing.
- *  Returns one error message per member that throws ChainThreadError from buildParams. */
+ *  Returns one error message per member that throws ChainThreadError from buildParams.
+ *  Propagates all other exceptions (real programming/runtime errors). */
 function checkStage0Inputs(row: ChainRow): string[] {
   const messages: string[] = [];
   for (const i of membersInStage(row.members, 0)) {
@@ -884,7 +885,11 @@ function checkStage0Inputs(row: ChainRow): string[] {
     try {
       contractFor(member).buildParams(row.data);
     } catch (err) {
-      messages.push(err instanceof ChainThreadError ? err.message : String(err));
+      if (err instanceof ChainThreadError) {
+        messages.push(err.message);
+      } else {
+        throw err;
+      }
     }
   }
   return messages;

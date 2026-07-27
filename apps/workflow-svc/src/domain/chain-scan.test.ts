@@ -1350,4 +1350,40 @@ describe("--after unfulfilled activation (issue #91)", () => {
     expect(child?.note).toContain("verify gate failed");
     expect(inv.invokes).toHaveLength(1); // only parent fired
   });
+
+  it("stage 0 preflight: ChainThreadError → unfulfilled, other errors propagate", async () => {
+    // The preflight (checkStage0Inputs) catches ChainThreadError from buildParams
+    // and reports missing inputs as "unfulfilled", but propagates all other exceptions
+    // so real programming/runtime errors surface as step failures, not hidden in unfulfilled.
+    // Tested via chain-members.test.ts: ChainThreadError is thrown for missing required inputs.
+    // This integration test verifies the chain-scan preflight uses that correctly.
+    const mem = memoryChainStore();
+    // Parent has already completed without producing prNumber (needed for review-pr).
+    seedFinalizedParent(mem, { slug: "feat", spec: "do it" });
+    const inv = recordingInvoker();
+    const layer = env(mem.service, inv.service);
+
+    // Review-pr child with missing prNumber (no data.prNumber).
+    // This throws ChainThreadError from review-pr's buildParams, which the preflight
+    // catches and converts to "unfulfilled".
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "review",
+          members: [{ kind: "review-pr", key: "review-pr" }],
+          data: { slug: "review" },
+          after: "parent",
+        },
+        undefined,
+      ).pipe(Effect.provide(layer)),
+    );
+
+    await Effect.runPromise(scanChainsEffect(undefined).pipe(Effect.provide(layer)));
+    const child = mem.rows.get("review");
+    expect(child?.status).toBe("finalized");
+    expect(child?.outcome).toBe("unfulfilled");
+    // Input missing: review-pr requires prNumber
+    expect(child?.note).toContain("stage 0 required inputs not produced");
+    expect(inv.invokes).toHaveLength(0); // child finalized before firing
+  });
 });
