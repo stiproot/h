@@ -66,6 +66,14 @@ h/
 │   ├── scripts/          # Run, test, and utility scripts (shell + payload strategy)
 │   ├── charts/           # Helm-templated workflow definitions (client-side helm template)
 │   └── h/                # The `h` command — Python (Typer + rich), uv workspace member
+├── skills/               # Harness agent skills, copied into an agent's ~/.claude/skills at setup
+│                         #   (linear, analyze-workflow-run, workflow-orchestrator, h-issues,
+│                         #    author-workflow-template) — see CLAUDE.md "h skills"
+├── docs/                 # Plans discipline (docs/plans/, archived under docs/plans/impl/),
+│                         #   the h-builds-h runbook, DRIVER.md, and the validated-command cookbook
+├── web/                  # EXPERIMENTAL runtime-viz sandbox (D3). Deliberately OUTSIDE the apps/*
+│                         #   workspace glob — own package.json, `bun install` inside it. See web/README.md
+├── scripts/              # Repo content guards run by `bun run lint` (check-*.mjs)
 ├── Tiltfile              # Tilt dev stack definition (k8s mode)
 ├── Makefile              # Lifecycle commands — see `make help`
 ├── turbo.json            # Turborepo pipeline (build ordering for workspace packages)

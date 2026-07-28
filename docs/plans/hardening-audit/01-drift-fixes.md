@@ -6,6 +6,43 @@ Parent: [hardening-audit index](./README.md) — read its context + executing-ag
 
 Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mechanical, high confidence — do these first. Items A1/A18/A28 overlap on codex: treat them as one work item (the codex wiring) plus its guard.
 
+---
+
+## ⚠️ RE-VERIFICATION SWEEP, 2026-07-28 — most of this phase is STALE
+
+Every open item was re-checked against the tree before scheduling work on it. **The audit
+itself had drifted**: the codex wiring and the vocabulary/roster items were fixed by later
+work without this doc being updated, so an agent working the list top-to-bottom would have
+spent the night re-fixing done things.
+
+| Item | Re-verified state | Evidence |
+| --- | --- | --- |
+| A0 | **OPEN — and the most valuable item here** | No `.github/workflows/`, no git hooks. The whole guard surface runs only on a manual `bun run lint`. |
+| A1 | Mostly STALE | `AGENT_IDENTITY` has codex (`config.py:57`); the proposed guard EXISTS as `cli/h/tests/test_agent_identity_sync.py`. |
+| A18 | STALE | codex appears 5× in README.md, 6× in CLAUDE.md. |
+| A20 | STALE | `check-vocabulary.mjs` passes clean over 13 long-lived prose files. |
+| A21 | PARTLY OPEN | Most commands covered; **`h workflow pause`/`resume` is absent** from cli/README.md. |
+| A22 | STALE | `run-pi` and `run-codex` are both in `skills/workflow-orchestrator/SKILL.md`. |
+| A23 | STALE | Both `packages/js/telemetry` and `packages/js/git-core` appear in CLAUDE.md's package listing. |
+| A24 | **OPEN** | `apps/claude-agent/CLAUDE.md` still carries 8 `dapr-claude-loop` references. |
+| A28 | Parts 1–2 STALE, part 3 DONE | See the item's own note. |
+| A29 | DONE 2026-07-28 | See the item. |
+| A30 | **OPEN** | README's tree block contains none of `skills/`, `docs/`, `web/`. |
+
+**Why A0 is now the priority, with fresh evidence.** On 2026-07-28 an agent-authored PR
+(#98) reported "✅ `bun run test`: all 24 tasks pass" and listed five guards as green — while
+`bun run lint` FAILED on `check-steering` (a newly added `run-kimi` activity missing from
+`skills/workflow-orchestrator/SKILL.md`). Nothing in the repo would have caught that except a
+human running lint by hand. Every guard this audit adds is only as good as something that
+runs it. **A0 is the multiplier on the entire audit** — do it first.
+
+*Caveat to check before relying on CI:* per `docs/DRIVER.md`, the trxy repo lost PR-triggered
+Actions to a rate limit on 2026-07-27. Confirm h's Actions quota actually runs the workflow,
+or the guard surface will be green-by-absence — which is worse than knowingly manual. A local
+`pre-push` hook is the fallback that cannot be rate-limited.
+
+---
+
 ## [x] A16. dapr-agent / dapr-claude-loop-agent tools.py: write_file escapes the workspace and nothing pins containment
 
 *Severity: medium · effort: small*
