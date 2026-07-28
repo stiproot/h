@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+from agent_core.workspace_paths import contained_path, safe_name
+
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -78,13 +80,20 @@ def make_tool_fns(cwd: Path) -> dict:
         return result.stdout or "Installed successfully."
 
     def read_skill(skill_name: str) -> str:
-        skill_path = cwd / ".tessl" / "skills" / skill_name / "SKILL.md"
+        try:
+            safe = safe_name(skill_name, kind="skill name")
+        except ValueError as err:
+            return f"Error: {err}"
+        skill_path = cwd / ".tessl" / "skills" / safe / "SKILL.md"
         if not skill_path.exists():
             return f"Skill file not found: {skill_path}"
         return skill_path.read_text()
 
     def write_file(path: str, content: str) -> str:
-        target = cwd / path
+        try:
+            target = contained_path(cwd, path)
+        except ValueError as err:
+            return f"Error: {err}"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
         return f"Written: {target}"

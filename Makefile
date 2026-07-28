@@ -105,6 +105,10 @@ test-js: ## Run the JS/TS unit tests (turbo → vitest)
 test-py: ## Run the Python unit tests (pytest)
 	uv run --package agent-core pytest packages/py/agent-core
 	uv run --package langgraph-agent pytest apps/langgraph-agent/tests
+	# The LLM-invoked tool surface (write_file / read_skill) takes a MODEL-supplied path, so its
+	# workspace-containment tests are not optional — these two apps had ZERO tests before.
+	uv run --package dapr-agent pytest apps/dapr-agent/tests
+	uv run --package dapr-claude-loop-agent pytest apps/dapr-claude-loop-agent/tests
 
 # -----------------------------------------------------------------------------
 # Lint — hygiene AND architecture. `lint-js` runs tsc + oxfmt/oxlint and, on the

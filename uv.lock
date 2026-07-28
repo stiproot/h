@@ -584,6 +584,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pytest" },
     { name = "ruff" },
 ]
 
@@ -596,7 +597,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.9" }]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.9" },
+]
 
 [[package]]
 name = "dapr-agents"
@@ -654,6 +658,7 @@ name = "dapr-claude-loop-agent"
 version = "0.1.0"
 source = { virtual = "apps/dapr-claude-loop-agent" }
 dependencies = [
+    { name = "agent-core" },
     { name = "agent-server" },
     { name = "anthropic" },
     { name = "fastapi" },
@@ -662,11 +667,13 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "agent-core", editable = "packages/py/agent-core" },
     { name = "agent-server", editable = "packages/py/agent-server" },
     { name = "anthropic", specifier = ">=0.40" },
     { name = "fastapi", specifier = ">=0.115" },
@@ -674,7 +681,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.9" }]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.9" },
+]
 
 [[package]]
 name = "dapr-ext-fastapi"
@@ -1470,6 +1480,7 @@ name = "langgraph-agent"
 version = "0.1.0"
 source = { virtual = "apps/langgraph-agent" }
 dependencies = [
+    { name = "agent-core" },
     { name = "agent-server" },
     { name = "fastapi" },
     { name = "langchain-anthropic" },
@@ -1486,6 +1497,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agent-core", editable = "packages/py/agent-core" },
     { name = "agent-server", editable = "packages/py/agent-server" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "langchain-anthropic", specifier = ">=1.0" },

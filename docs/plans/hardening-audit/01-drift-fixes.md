@@ -1,12 +1,12 @@
 # Phase 1 — Live drift & bug fixes
 
-Status: Active — 11 item(s), none started
+Status: Active — 11 item(s), 1 complete (A16, 2026-07-28)
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
 Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mechanical, high confidence — do these first. Items A1/A18/A28 overlap on codex: treat them as one work item (the codex wiring) plus its guard.
 
-## [ ] A16. dapr-agent / dapr-claude-loop-agent tools.py: write_file escapes the workspace and nothing pins containment
+## [x] A16. dapr-agent / dapr-claude-loop-agent tools.py: write_file escapes the workspace and nothing pins containment
 
 *Severity: medium · effort: small*
 
@@ -16,9 +16,22 @@ Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mecha
 
 **Do:** Add a shared containment helper and apply it in all THREE copies, not two: (1) apps/dapr-agent/src/infrastructure/tools.py (write_file at :86, read_skill at :81), (2) apps/dapr-claude-loop-agent/src/infrastructure/tools.py (write_file at :83, read_skill at :78), (3) apps/langgraph-agent/src/infrastructure/tools.py (write_file at :38). In each: `target = (cwd / path).resolve()` then `if not target.is_relative_to(cwd.resolve()): return "Error: path escapes workspace"` (mirror PresetStore._path's fail-loud style; for read_skill, reject skill_name containing '/', '\\', or '..' as preset_store.py:16 does). Since the duplication is deliberate (thin apps), the cleanest home for the helper + one test suite is packages/py/agent-core (already a shared uv workspace member with a pytest suite run via `uv run --package agent-core pytest`), e.g. agent_core/workspace_paths.py `contained_path(cwd, path) -> Path` raising ValueError — then each app's tools.py calls it. Add tests: packages/py/agent-core/tests/test_workspace_paths.py pinning (a) relative writes inside tmp_path succeed, (b) '../x' rejected, (c) absolute '/etc/x' rejected, (d) symlink-inside-pointing-out resolved and rejected; plus per-app tests/test_tools.py in apps/dapr-agent, apps/dapr-claude-loop-agent, apps/langgraph-agent asserting write_file refuses escape and read_skill rejects traversal skill_names (these apps currently have zero tests; wire them into make lint/test the same way agent-core's pytest runs). Also update docs/plans/agent-process-identity.md's 'narrow tool surface' clause to note containment is now enforced, keeping the trust-model claim true.
 
+**DONE 2026-07-28.** `agent_core.workspace_paths` (`contained_path`, `safe_name`) + 13 unit
+tests; applied in all THREE apps — including dapr-claude-loop-agent, which dispatches by tool name
+inside `execute_tool` rather than defining `write_file`, so a `def write_file` grep misses it.
+`agent-core` was added as a dependency of the two apps that lacked it (they would have
+ImportError'd otherwise). Both zero-test apps gained a pytest suite, wired into `make test-py`
+(5 tests each). Verified at runtime, not just by test: an absolute path and a `../../..` traversal
+are both refused and the victim file is never created, while legitimate writes still land.
+
 ## [ ] A1. AGENT_IDENTITY table has already drifted from activity-registry (codex missing) and nothing checks the sync
 
 *Severity: medium · effort: small*
+
+> **Verified 2026-07-28 — PARTLY STALE.** `AGENT_IDENTITY` now HAS the codex entry
+> (`cli/h/src/h_cli/config.py:57-58`), so the "`--agent codex` fails with unknown-agent" half no
+> longer reproduces. The *unchecked-sync* half stands: nothing pins the table against the activity
+> registry, which is what let it drift in the first place. Re-scope before implementing.
 
 **Gap:** The stated rule on AGENT_IDENTITY — 'only agents whose run activity takes the shared {cwd,model,task} input belong here — extend as more agents earn a run-* activity' — is unchecked, and drift has already happened: run-codex exists in the engine's activity registry with the shared input shape and a full codex-agent service, but AGENT_IDENTITY has no 'codex' entry, so `h workflow run --agent codex` / `h chain run --agent codex` fail with unknown-agent even though the runtime fully supports it.
 

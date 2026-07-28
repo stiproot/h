@@ -61,7 +61,13 @@ It exists because there's a subprocess to put it on.
   privilege, undropped** — you cannot drop privilege within a single address space. This is
   acceptable because their tool surface (`search_skills`/`install_skill`/`read_skill`/`write_file`)
   is far narrower than the CLI agents' arbitrary shell, but it is a genuine distinction, not a
-  uniform guarantee. Strong drop-isolation is a property of subprocess-spawning agents only; giving a
+  uniform guarantee. **That narrowness is now ENFORCED, not merely assumed** (2026-07-28, audit
+  item A16): `write_file`/`read_skill` take a MODEL-supplied path, and `cwd / path` is not
+  containment — an absolute path or `..` walked straight out of the workspace. All three apps now
+  route through `agent_core.workspace_paths.contained_path` / `safe_name`, which resolve (so a
+  symlink pointing out is caught too) and fail loud. Without it, "narrower tool surface" was doing
+  load-bearing work in this trust argument while the tools could write anywhere the service uid
+  could reach. Strong drop-isolation is a property of subprocess-spawning agents only; giving a
   Python agent the strong boundary would mean moving its tool execution into a subprocess — a
   separate, larger change.
 
