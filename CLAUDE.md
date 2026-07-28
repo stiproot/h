@@ -184,7 +184,7 @@ apps/codex-agent/src/                    # codex-agent — OpenAI Codex CLI codi
 └── infrastructure/codex-runner.ts        # IAgentRunner impl using CodexInvokerLive (agent-cli); honours optional cwd/model; /run, /setup, /dapr/subscribe come from agent-server
 
 apps/kimi-agent/src/                      # kimi-agent — Claude Code CLI × Moonshot Anthropic-compat endpoint (Fastify + Dapr sidecar)
-├── index.ts                              # composition root – registers shared agent-server routes, starts Fastify; uses makeTracingLive("kimi-agent")
+├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("kimi-agent")
 └── infrastructure/kimi-runner.ts         # IAgentRunner impl using ClaudeInvokerLive (agent-cli); custom runner bypasses LiteLLM preflight; /run, /setup, /dapr/subscribe come from agent-server
 
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
