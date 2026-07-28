@@ -12,6 +12,8 @@ type Input = {
   workspaceId?: string;
   cwd?: string;
   model?: string;
+  // "plan" runs the kimi CLI read-only (--permission-mode plan).
+  permissionMode?: "plan";
   outputContract?: Record<string, unknown>;
   traceparent?: string;
 };
@@ -20,8 +22,16 @@ export async function runKimiActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<AgentResult> {
-  const { task, workflowInstanceId, workspaceId, cwd, model, outputContract, traceparent } =
-    input as Input;
+  const {
+    task,
+    workflowInstanceId,
+    workspaceId,
+    cwd,
+    model,
+    permissionMode,
+    outputContract,
+    traceparent,
+  } = input as Input;
   const result = await runActivity(
     Effect.gen(function* () {
       const invoker = yield* DaprInvokerTag;
@@ -31,13 +41,18 @@ export async function runKimiActivity(
         workspaceId,
         cwd,
         model,
+        permissionMode,
       });
       return {
         sessionId: response.sessionId,
         output: response.output,
         workspacePath: response.workspacePath,
       };
-    }),
+    }).pipe(
+      Effect.withSpan("activity run-kimi", {
+        attributes: { "workflow.instance_id": workflowInstanceId },
+      }),
+    ),
     traceparent,
   );
   return applyOutputContract(result, outputContract);
