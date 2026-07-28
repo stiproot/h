@@ -24,9 +24,10 @@ const kimiRunnerConfig = Config.all({
   ),
   runsDir: Config.option(Config.string("AGENT_RUNS_DIR")),
   mcpConfigSrc: Config.option(Config.string("MCP_CONFIG_SRC")),
-  mcpConfigMode: Config.literal("merge", "replace")("MCP_CONFIG_MODE").pipe(
-    Config.withDefault("merge" as const),
-  ),
+  mcpConfigMode: Config.literal(
+    "merge",
+    "replace",
+  )("MCP_CONFIG_MODE").pipe(Config.withDefault("merge" as const)),
   runTimeoutMs: Config.number("AGENT_RUN_TIMEOUT_MS").pipe(
     Config.withDefault(DEFAULT_RUN_TIMEOUT_MS),
   ),
