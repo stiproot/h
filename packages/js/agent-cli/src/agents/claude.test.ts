@@ -34,7 +34,9 @@ describe("claudeStrategy.validateEnvironment", () => {
   });
 
   it("passes when CLAUDE_CODE_OAUTH_TOKEN is set in processEnv", () => {
-    expect(claudeStrategy.validateEnvironment({}, { CLAUDE_CODE_OAUTH_TOKEN: "tok-test" })).toBeNull();
+    expect(
+      claudeStrategy.validateEnvironment({}, { CLAUDE_CODE_OAUTH_TOKEN: "tok-test" }),
+    ).toBeNull();
   });
 
   it("passes when ANTHROPIC_AUTH_TOKEN is set in processEnv", () => {
@@ -52,7 +54,9 @@ describe("claudeStrategy.validateEnvironment", () => {
   });
 
   it("still passes with CLAUDE_CODE_OAUTH_TOKEN alone (regression guard)", () => {
-    expect(claudeStrategy.validateEnvironment({}, { CLAUDE_CODE_OAUTH_TOKEN: "tok-test" })).toBeNull();
+    expect(
+      claudeStrategy.validateEnvironment({}, { CLAUDE_CODE_OAUTH_TOKEN: "tok-test" }),
+    ).toBeNull();
   });
 });
 

@@ -33,7 +33,10 @@ export const claudeStrategy: AgentStrategy = {
     // (e.g. Moonshot AI) that authenticate via Authorization: Bearer header.
     const hasAuthToken = resolveEnvValue(processEnv, "ANTHROPIC_AUTH_TOKEN");
     if (!hasApiKey && !hasOAuthToken && !hasAuthToken) {
-      return createMissingEnvResult("Claude", "ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN");
+      return createMissingEnvResult(
+        "Claude",
+        "ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN",
+      );
     }
     return null;
   },
