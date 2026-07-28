@@ -82,8 +82,15 @@ listed in the session-state paragraph (below), waiting for the returning primary
      against the branch before acting on it** — on 2026-07-28 both #98 and #99 capped with
      "residual" findings that were fully resolved. Trusting the note would have meant
      re-doing settled work or wrongly blocking a good merge.
-   - **Conversely, a cap is not a pass.** Each round tends to surface NEW findings rather
-     than re-report old ones, so "capped" means "unknown", not "clean".
+   - **Conversely, a cap is not a pass — and the cheap resolution is one more round, not
+     adjudication from the note.** Each round tends to surface NEW findings rather than
+     re-report old ones, so "capped" means UNKNOWN. Demonstrated in both directions on PR #98
+     (2026-07-28): round 3's recorded findings were already fixed on the branch, AND a fourth
+     round then found two real defects three rounds had missed — an unwired `permissionMode`
+     and a missing `Effect.withSpan`, the latter silently breaking trace correlation.
+     Verify-at-head was fully green throughout; **no build/lint/test gate can catch a missing
+     span or an unwired param.** Firing another review round costs ~30 min and is the only
+     thing that answers the question.
    - **With a thorough panel, `loop-until-clean` effectively never returns CLEAN on a
      substantial PR** — it always finds something, so it terminates on the cap. CLEAN is
      therefore not a realistic merge gate by itself; expect to adjudicate residuals, and
