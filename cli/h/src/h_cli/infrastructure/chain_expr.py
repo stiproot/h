@@ -17,13 +17,15 @@ a parallel group has an implied join barrier. Typer must never declare these fla
 their position.
 
 `--agent` consumes operands greedily (the `-t` atom idiom): ONE name is the identity flag as
-before; SEVERAL are a panel ROSTER (docs/plans/impl/panels-as-a-modifier.md — the member is panelized:
+before; SEVERAL are a panel ROSTER
+(docs/plans/impl/panels-as-a-modifier.md — the member is panelized:
 each roster agent answers concurrently, a judge synthesizes under the member's own contract). A
 roster is per-workflow only — a panel is one member's shape — so a multi-name prefix is rejected
 while a single-name prefix stays a chain-wide default.
 
 --capture/--input/--until are the declarative structured-output mappings
-(docs/plans/impl/structured-workflow-outputs.md §4-5): per-workflow ONLY (like --kind — a mapping is a
+(docs/plans/impl/structured-workflow-outputs.md §4-5): per-workflow ONLY
+(like --kind — a mapping is a member’s contract, never a chain-wide default),
 member's contract, never a chain-wide default), repeatable for --capture/--input, assignment-
 ordered destination=source.
 """
@@ -69,13 +71,15 @@ class WorkflowConfig:
     """Per-workflow config carried by FLAGs; every field optional (None/False = not given)."""
 
     # The --agent operands: () = not given, one name = identity, several = a panel ROSTER
-    # (docs/plans/impl/panels-as-a-modifier.md — cardinality is the panel dimension, not a new flag).
+    # (docs/plans/impl/panels-as-a-modifier.md — cardinality is the panel dimension,
+    # not a new flag).
     agents: tuple[str, ...] = ()
     model: str | None = None
     budget: str | None = None  # raw duration token, validated against _BUDGET_RE
     fresh: bool = False
     kind: str | None = None
-    # Phase-6 composition (docs/plans/impl/inline-chain-cron-composition.md): stage = explicit stage idx
+    # Phase-6 composition (docs/plans/impl/inline-chain-cron-composition.md):
+    # stage = explicit stage idx
     # (str; else positional); cron = cadence (member self-arms a recurrence, forces inline);
     # max_fires = cron budget; id = the member's chain data namespace (D5); inline = embed the
     # composed steps in the chain row instead of publishing under <slug>-w<N>.

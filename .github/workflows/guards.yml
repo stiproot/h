@@ -49,12 +49,18 @@ jobs:
       - name: Sync Python dependencies
         run: uv sync --frozen
 
-      - name: Test (Python agent-core unit tests)
+      - name: Lint (Python ruff + import-linter hex contracts)
+        run: make lint-py
+
+      - name: Test (Python: agent-core, langgraph-agent, dapr-agent, dapr-claude-loop-agent)
         run: |
           uv run --package agent-core pytest packages/py/agent-core
           uv run --package langgraph-agent pytest apps/langgraph-agent/tests
           uv run --package dapr-agent pytest apps/dapr-agent/tests
           uv run --package dapr-claude-loop-agent pytest apps/dapr-claude-loop-agent/tests
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
 
       - name: Test (h CLI pytest, scoped to cli/h/tests)
         run: uv run --package h-cli pytest cli/h/tests

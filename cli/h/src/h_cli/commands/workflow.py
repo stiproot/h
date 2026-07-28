@@ -534,7 +534,8 @@ def run(
         merged = {**(definition.get("params") or {}), **params}
         # --inline --cron: recur these very steps over an EMBEDDED source (nothing published to
         # re-hydrate). The cron key mirrors the wf: coords, so it needs repo+slug params + the
-        # wf-identity, exactly like a saved --cron (docs/plans/impl/inline-chain-cron-composition.md D1).
+        # wf-identity, exactly like a saved --cron
+        # (docs/plans/impl/inline-chain-cron-composition.md D1).
         arm_cron: dict[str, Any] | None = None
         wf: dict[str, Any] | None = None
         if cron_policy:

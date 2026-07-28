@@ -16,12 +16,23 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-echo "━━━ pre-push: running content guards (bun run lint) ━━━"
+echo "━━━ pre-push: running content guards (bun run lint && make lint-py) ━━━"
 echo ""
 
 if ! bun run lint; then
   echo ""
   echo "✖ pre-push: one or more guards FAILED — push blocked."
+  echo "  To bypass (emergency only): git push --no-verify"
+  exit 1
+fi
+
+echo ""
+echo "━━━ pre-push: running Python lint (make lint-py) ━━━"
+echo ""
+
+if ! make lint-py; then
+  echo ""
+  echo "✖ pre-push: Python lint FAILED — push blocked."
   echo "  To bypass (emergency only): git push --no-verify"
   exit 1
 fi

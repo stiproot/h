@@ -22,7 +22,8 @@ wherever they sit; everything workflow-scoped is positional in the expression:
 
 A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
 chain-scoped key `<slug>-w<N>` by default, or EMBEDDED in the chain row with `--inline` (D1).
-Concurrency is stages (docs/plans/impl/inline-chain-cron-composition.md D3): --parallel (or an explicit
+Concurrency is stages (docs/plans/impl/inline-chain-cron-composition.md D3): --parallel
+(or an explicit --stage N) groups members into one concurrent stage the engine joins
 --stage N) groups members into one concurrent stage the engine joins before advancing. A `--cron`
 member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:resolved (D2/D4);
 `--id` gives a member a chain data namespace so a downstream reads its capture via a dotted
@@ -108,8 +109,9 @@ KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
 }
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
 # (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER
-# is the explicit relaxation (docs/plans/impl/panels-as-a-modifier.md decision 7): the panelists run as
-# named, the pin migrates to the synthesis judge (panelize.JUDGE_ACTIVITY, claude).
+# is the explicit relaxation (docs/plans/impl/panels-as-a-modifier.md decision 7):
+# the panelists run as named, the pin migrates to the synthesis judge
+# (panelize.JUDGE_ACTIVITY, claude).
 FROZEN_EXECUTOR_KINDS = {"review-pr"}
 # Write kinds share ONE branch/worktree per member — a roster of N writers would clobber it; the
 # isolated form of "N implementations" is --parallel stage composition (the two-substrate table,
