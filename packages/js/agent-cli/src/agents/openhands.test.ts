@@ -5,8 +5,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   extractAgentMessageText,
-  extractConversationError,
-  isOpenhandsActionEvent,
+  isActionEvent,
+  isConversationError,
+  parseOpenhandsEvent,
   openhandsJsonlParser,
   openhandsStrategy,
 } from "./openhands.ts";
@@ -103,11 +104,16 @@ describe("openhands fatal-error events (its own shape, not claude's)", () => {
   });
 
   it("extracts the error the CLI reports while still exiting 0", () => {
-    const failure = extractConversationError(errLine);
-    expect(failure?.code).toBe("LLMBadRequestError");
-    expect(failure?.detail).toContain("you passed claude-sonnet-4-6");
-    expect(extractConversationError(JSON.stringify({ kind: "ActionEvent" }))).toBeNull();
-    expect(extractConversationError("│ a banner line │")).toBeNull();
+    const failure = parseOpenhandsEvent(errLine);
+    expect(isConversationError(failure)).toBe(true);
+    if (isConversationError(failure)) {
+      expect(failure.code).toBe("LLMBadRequestError");
+      expect(failure.detail).toContain("you passed claude-sonnet-4-6");
+    }
+    expect(isConversationError(parseOpenhandsEvent(JSON.stringify({ kind: "ActionEvent" })))).toBe(
+      false,
+    );
+    expect(isConversationError(parseOpenhandsEvent("│ a banner line │"))).toBe(false);
   });
 
   it("VETOES success so a fatal error is not recorded as a completed empty run", () => {
@@ -131,7 +137,12 @@ describe("openhands fatal-error events (its own shape, not claude's)", () => {
 describe("openhandsStrategy.tallyToolCalls (ActionEvent is its unit of tool use)", () => {
   const tally = (lines: string[]): number =>
     lines.reduce(
-      (n, text) => openhandsStrategy.tallyToolCalls?.call(openhandsStrategy, n, { text }) ?? n,
+      (n, line) =>
+        openhandsStrategy.tallyToolCalls?.call(
+          openhandsStrategy,
+          n,
+          parseOpenhandsEvent(line) as unknown as Record<string, unknown>,
+        ) ?? n,
       0,
     );
 
@@ -153,10 +164,12 @@ describe("openhandsStrategy.tallyToolCalls (ActionEvent is its unit of tool use)
   });
 
   it("classifies Action kinds without mistaking Observation/Message for tool use", () => {
-    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "ActionEvent" }))).toBe(true);
-    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "TaskAction" }))).toBe(true);
-    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "ObservationEvent" }))).toBe(false);
-    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "ThinkObservation" }))).toBe(false);
-    expect(isOpenhandsActionEvent("not json at all")).toBe(false);
+    const action = (kind: string) => isActionEvent(parseOpenhandsEvent(JSON.stringify({ kind })));
+    expect(action("ActionEvent")).toBe(true);
+    expect(action("TaskAction")).toBe(true);
+    expect(action("FileEditorAction")).toBe(true);
+    expect(action("ObservationEvent")).toBe(false);
+    expect(action("ThinkObservation")).toBe(false);
+    expect(isActionEvent(parseOpenhandsEvent("not json at all"))).toBe(false);
   });
 });

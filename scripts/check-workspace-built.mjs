@@ -21,6 +21,11 @@
 //
 // This guard is the check-tsc.mjs of the test path: it names the real cause and the exact fix.
 // Deliberately no skip flag — a misdiagnosed red wastes more time than a fast red.
+//
+// WIRED INTO the per-package `test` scripts ONLY, deliberately not the root lint/test chains:
+// every turbo task already declares `dependsOn: ["^build"]`, so turbo builds before it runs. A
+// root-chain copy runs BEFORE turbo gets that chance and reports staleness turbo is about to
+// resolve itself — a false failure in the one place the guard is not needed.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

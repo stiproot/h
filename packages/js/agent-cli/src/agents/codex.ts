@@ -1,13 +1,93 @@
 import { Effect } from "effect";
 
-import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
+import type {
+  AgentStreamParser,
+  AgentStrategy,
+  InvocationResult,
+  RawLineEvent,
+  StreamEvent,
+} from "./types.ts";
+import { rawLineEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
+
+// ---------------------------------------------------------------------------------------------
+// Codex's own event vocabulary — what the run ledger records, so events.jsonl is the agent's shape
+// rather than a re-wrapping of it. Discriminated on `type`; open by design, so an unmodelled type
+// keeps its `type` under CodexOtherEvent instead of being coerced or dropped.
+// ---------------------------------------------------------------------------------------------
+
+interface CodexEventBase {
+  type: string;
+}
+
+/** Thread announcement — `thread_id` is the session id. */
+export interface CodexThreadStartedEvent extends CodexEventBase {
+  type: "thread.started";
+  thread_id?: string;
+}
+
+/**
+ * One completed item. `item.type` says what it was: `agent_message`/`message` (assistant text) or
+ * `function_call`/`mcp_tool_call` (a TOOL CALL — codex's unit of tool use).
+ */
+export interface CodexItemCompletedEvent extends CodexEventBase {
+  type: "item.completed";
+  item?: {
+    type?: string;
+    role?: string;
+    text?: string;
+    content?: Array<{ type?: string; text?: string }>;
+  };
+}
+
+/** End of a turn, carrying token usage. */
+export interface CodexTurnCompletedEvent extends CodexEventBase {
+  type: "turn.completed";
+  usage?: { prompt_tokens?: number; cached_tokens?: number; output_tokens?: number };
+}
+
+/** A JSON event whose `type` we do not model yet — preserved verbatim. */
+export type CodexOtherEvent = CodexEventBase;
+
+export type CodexEvent =
+  | CodexThreadStartedEvent
+  | CodexItemCompletedEvent
+  | CodexTurnCompletedEvent
+  | CodexOtherEvent
+  | RawLineEvent;
+
+/** Item types codex uses for a tool call — its unit of tool use. */
+const CODEX_TOOL_ITEMS = new Set(["function_call", "mcp_tool_call"]);
+
+/** True when this event is a completed TOOL CALL. */
+export function isCodexToolCall(event: CodexEvent): event is CodexItemCompletedEvent {
+  const ev = event as CodexItemCompletedEvent;
+  return ev.type === "item.completed" && CODEX_TOOL_ITEMS.has(ev.item?.type ?? "");
+}
+
+/** One stdout line → codex's native event, or a `raw` event when the line is not its JSON. */
+export function parseCodexEvent(line: string): CodexEvent {
+  try {
+    const parsed = JSON.parse(line) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { type?: unknown }).type === "string"
+    ) {
+      return parsed as CodexEvent;
+    }
+  } catch {
+    // Not JSON — codex interleaves plain lines with its JSONL stream.
+  }
+  return rawLineEvent(line);
+}
 
 // Codex streams JSONL events. Map each known event type to the standard StreamEvent vocabulary.
 const codexJsonlParser: AgentStreamParser = {
   parseLine(line, events, onEvent) {
     if (!line.trim()) return;
-    onEvent?.({ type: "output", text: line });
+    // The LEDGER gets codex's OWN event — parsed, typed, verbatim (not `{type:"output", text}`).
+    onEvent?.(parseCodexEvent(line) as unknown as Record<string, unknown>);
 
     try {
       const ev = JSON.parse(line) as {
@@ -133,19 +213,10 @@ export const codexStrategy: AgentStrategy = {
     };
   },
 
-  // Codex's verified shape: the LEDGER sees the raw stdout line ({type:"output", text}), not the
-  // `tool_use` this parser pushes into `events` — so count codex's own completed tool items.
-  // (See event-shape.ts: a tally must read the stream the ledger actually receives.)
+  // Codex's verified shape: a completed function_call/mcp_tool_call item is one tool call. Reads
+  // the TYPED native event the parser emits — NOT the `tool_use` pushed into `events`, which is
+  // internal to buildInvocationResult and never reaches the ledger.
   tallyToolCalls(current, event) {
-    const text = (event as { text?: unknown }).text;
-    if (typeof text !== "string") return current;
-    try {
-      const ev = JSON.parse(text) as { type?: unknown; item?: { type?: unknown } };
-      if (ev.type !== "item.completed") return current;
-      const itemType = ev.item?.type;
-      return itemType === "function_call" || itemType === "mcp_tool_call" ? current + 1 : current;
-    } catch {
-      return current;
-    }
+    return isCodexToolCall(event as unknown as CodexEvent) ? current + 1 : current;
   },
 };

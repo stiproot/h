@@ -1,7 +1,61 @@
 import { Effect } from "effect";
 
-import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
+import type {
+  AgentStreamParser,
+  AgentStrategy,
+  InvocationResult,
+  RawLineEvent,
+  StreamEvent,
+} from "./types.ts";
+import { rawLineEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
+
+// ---------------------------------------------------------------------------------------------
+// pi's own event vocabulary (`pi --mode json`) — what the run ledger records, so events.jsonl is
+// the agent's shape rather than a re-wrapping of it. Discriminated on `type`; open by design, so
+// an unmodelled type keeps its `type` under PiOtherEvent instead of being coerced or dropped.
+// ---------------------------------------------------------------------------------------------
+
+interface PiEventBase {
+  type: string;
+}
+
+/** Session announcement — `id` is the session id the strategy resumes from. */
+export interface PiSessionEvent extends PiEventBase {
+  type: "session";
+  id?: string;
+}
+
+/** A tool execution. pi emits `tool_execution_start` / `tool_execution_end` (its unit of tool use). */
+export type PiToolExecutionEvent = PiEventBase;
+
+/** A JSON event whose `type` we do not model yet — preserved verbatim. */
+export type PiOtherEvent = PiEventBase;
+
+export type PiEvent = PiSessionEvent | PiToolExecutionEvent | PiOtherEvent | RawLineEvent;
+
+/** True when this event is a pi tool execution — its unit of tool use. */
+export function isPiToolExecution(event: PiEvent): event is PiToolExecutionEvent {
+  const type = (event as PiEventBase).type;
+  return typeof type === "string" && type.startsWith("tool_execution_");
+}
+
+/** One stdout line → pi's native event, or a `raw` event when the line is not its JSON. */
+export function parsePiEvent(line: string): PiEvent {
+  try {
+    const parsed = JSON.parse(line) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { type?: unknown }).type === "string"
+    ) {
+      return parsed as PiEvent;
+    }
+  } catch {
+    // Not JSON — pi interleaves plain lines with its JSONL stream.
+  }
+  return rawLineEvent(line);
+}
 
 // pi --mode json streams JSONL. The agent's final text arrives as
 // message_update/text_delta events concatenated on the ledger side.
@@ -47,7 +101,8 @@ function resolvePiModel(model?: string): { provider: PiProvider; modelId: string
 const piJsonlParser: AgentStreamParser = {
   parseLine(line, events, onEvent) {
     if (!line.trim()) return;
-    onEvent?.({ type: "output", text: line });
+    // The LEDGER gets pi's OWN event — parsed, typed, verbatim (not `{type:"output", text}`).
+    onEvent?.(parsePiEvent(line) as unknown as Record<string, unknown>);
 
     try {
       const ev = JSON.parse(line) as { type?: string; id?: string };
@@ -127,18 +182,11 @@ export const piStrategy: AgentStrategy = {
     return {};
   },
 
-  // pi's verified shape: the LEDGER sees the raw stdout line ({type:"output", text}), not the
-  // `tool_use` this parser pushes into `events` — so count pi's own `tool_execution_*` lines.
-  // (Reading them off `events` would miss them entirely; that mismatch is what made a shared
-  // claude-shaped tally report a fictional number for pi. See event-shape.ts.)
+  // pi's verified shape: a `tool_execution_*` event is its unit of tool use. Reads the TYPED
+  // native event the parser emits. NOTE it must NOT read the `tool_use` this parser pushes into
+  // `events` — that array is internal to buildInvocationResult and the ledger never sees it;
+  // conflating the two is what made a shared claude-shaped tally report a fictional number.
   tallyToolCalls(current, event) {
-    const text = (event as { text?: unknown }).text;
-    if (typeof text !== "string") return current;
-    try {
-      const type = (JSON.parse(text) as { type?: unknown }).type;
-      return typeof type === "string" && type.startsWith("tool_execution_") ? current + 1 : current;
-    } catch {
-      return current;
-    }
+    return isPiToolExecution(event as unknown as PiEvent) ? current + 1 : current;
   },
 };
