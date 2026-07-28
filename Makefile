@@ -48,6 +48,13 @@ WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
 # Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
 TARGET_REPO_DIR ?= repo
 
+# k3d cluster backing the Tilt path (see the k3d section below). The registry is REQUIRED:
+# Tilt detects it via the standard local-registry-hosting ConfigMap and pushes there instead of
+# trying to push to Docker Hub.
+K3D_CLUSTER       ?= h
+K3D_REGISTRY      ?= h-registry
+K3D_REGISTRY_PORT ?= 5111
+
 # ── Default target ────────────────────────────────────────────────────────────
 
 .DEFAULT_GOAL := help
@@ -57,7 +64,7 @@ TARGET_REPO_DIR ?= repo
 .PHONY: help
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} \
-		/^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 # ── Local infra (Docker Compose) ────────────────────────────────────────────────
 #
@@ -176,10 +183,13 @@ pods-dapr: ## Show pods in the dapr-system namespace (Helm-managed control plane
 #
 # Daily start/stop for the dev stack.
 #
-# Prerequisites for `tilt-up`:
-#   1. Kubernetes enabled in Rancher Desktop
+# Prerequisites for `tilt-up` — `make k3d-up` does 1 for you on Linux:
+#   1. A Kubernetes cluster (Rancher Desktop on macOS, or `make k3d-up`)
 #   2. `make dapr-install` completed
 #   3. `cli/scripts/gen-k8s-secrets.sh` run (creates k8s/secrets/app-secrets.yaml)
+#
+# From nothing to a running stack:
+#   make k3d-up && make dapr-install && cli/scripts/gen-k8s-secrets.sh && make tilt-up
 
 .PHONY: tilt-up tilt-down tilt-trigger
 tilt-up: ## Start the Tilt dev stack (opens Tilt UI at http://localhost:10350)
@@ -190,6 +200,50 @@ tilt-down: ## Stop the Tilt dev stack and remove its Kubernetes resources
 
 tilt-trigger: ## Force-rebuild and redeploy one service (usage: make tilt-trigger SERVICE=workflow)
 	tilt trigger $(SERVICE)
+
+# ── k3d cluster (the Tilt path's Kubernetes, Linux-friendly) ────────────────────
+#
+# Rancher Desktop supplies the cluster on macOS; on Linux this creates an equivalent one in
+# Docker. The `--registry-create` is LOAD-BEARING, not a convenience: Tilt detects a
+# cluster-attached registry through the standard local-registry-hosting ConfigMap and pushes
+# images there. WITHOUT it Tilt falls back to pushing `h/workflow-svc` to Docker Hub and every
+# build dies with `push access denied` — even though it correctly reports `Env: k3d`.
+#
+# kubectl/k3d/tilt are single static binaries; none needs root:
+#   curl -sLo ~/.local/bin/kubectl "https://dl.k8s.io/release/$$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x ~/.local/bin/kubectl
+
+.PHONY: k3d-up k3d-down
+k3d-up: ## Create the k3d cluster + local registry that the Tilt path needs (idempotent)
+	@if k3d cluster list $(K3D_CLUSTER) >/dev/null 2>&1; then \
+	  echo "k3d cluster '$(K3D_CLUSTER)' already exists — starting it if stopped"; \
+	  k3d cluster start $(K3D_CLUSTER) || true; \
+	else \
+	  k3d cluster create $(K3D_CLUSTER) --servers 1 --agents 0 \
+	    --registry-create $(K3D_REGISTRY):0.0.0.0:$(K3D_REGISTRY_PORT) --wait --timeout 240s; \
+	fi
+	kubectl cluster-info
+
+k3d-down: ## Delete the k3d cluster and its registry
+	k3d cluster delete $(K3D_CLUSTER) || true
+
+# ── Tear everything down ───────────────────────────────────────────────────────
+#
+# One entry point for "stop whatever I started", across all three modes — host-local services,
+# Docker Compose infra, and the Tilt/k8s path. Every step tolerates the thing not being there,
+# so it is safe to run from any state (that is the point: you should not have to remember which
+# mode you were in). Use the granular targets when you want to keep part of the stack.
+
+.PHONY: down
+down: ## Tear down EVERYTHING (host-local services, compose infra, Tilt, k3d cluster)
+	-$(MAKE) down-local MODE=dev
+	-$(MAKE) down-local MODE=h-builds-h
+	-tilt down 2>/dev/null || true
+	-$(MAKE) k3d-down
+	-$(MAKE) infra-down
+	@echo ""
+	@echo "==> all h services torn down."
+	@echo "    Remaining by design: the shared workspace ($(WORKSPACE_DIR)) and the bun/turbo caches."
+	@echo "    Worktrees cut by chains: make worktrees-purge"
 
 # ── Local dev session (zellij) ──────────────────────────────────────────────────
 #

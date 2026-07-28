@@ -322,7 +322,9 @@ def test_compose_implement_create_pr_extends_implement() -> None:
 def test_arm_revise_golden(snapshot) -> None:
     """arm-revise overlay (§10, Job 2): a lone register-cron step arming a revise-until-merged
     cron."""
-    rendered = helm.render_workflow("arm-revise-pr", values={"publish": "true"}, include_local=False)
+    rendered = helm.render_workflow(
+        "arm-revise-pr", values={"publish": "true"}, include_local=False
+    )
     assert rendered == snapshot
 
 

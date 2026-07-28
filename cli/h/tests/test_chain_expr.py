@@ -93,7 +93,8 @@ def test_effective_config_member_overrides_default_field_by_field() -> None:
 
 def test_effective_config_kind_never_inherits_from_defaults() -> None:
     assert (
-        effective_config(WorkflowConfig(), WorkflowConfig(kind="implement-pr")).kind == "implement-pr"
+        effective_config(WorkflowConfig(), WorkflowConfig(kind="implement-pr")).kind
+        == "implement-pr"
     )
     assert effective_config(WorkflowConfig(), WorkflowConfig()).kind is None
 

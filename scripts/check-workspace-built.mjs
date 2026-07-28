@@ -22,7 +22,7 @@
 // This guard is the check-tsc.mjs of the test path: it names the real cause and the exact fix.
 // Deliberately no skip flag — a misdiagnosed red wastes more time than a fast red.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /** Walk up from `start` to the repo root (the package.json that declares `workspaces`). */
@@ -59,8 +59,19 @@ if (!root) {
   process.exit(1);
 }
 
+/** Newest mtime under `dir` (recursive), or 0 when it has no files. */
+function newestMtime(dir) {
+  let newest = 0;
+  for (const item of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, item.name);
+    newest = Math.max(newest, item.isDirectory() ? newestMtime(full) : statSync(full).mtimeMs);
+  }
+  return newest;
+}
+
 const packagesDir = join(root, "packages", "js");
 const unbuilt = [];
+const stale = [];
 for (const name of existsSync(packagesDir) ? readdirSync(packagesDir) : []) {
   const pkgDir = join(packagesDir, name);
   const manifestPath = join(pkgDir, "package.json");
@@ -74,20 +85,52 @@ for (const name of existsSync(packagesDir) ? readdirSync(packagesDir) : []) {
   // Only packages that are BUILT (entry under dist/) can be unbuilt; source-entry ones cannot.
   const entry = entryFile(pkgDir, manifest);
   if (!entry || !entry.includes("dist")) continue;
-  if (!existsSync(entry)) unbuilt.push({ name: manifest.name ?? name, entry });
+  if (!existsSync(entry)) {
+    unbuilt.push({ name: manifest.name ?? name, entry });
+    continue;
+  }
+  // STALE is worse than missing: a missing dist fails loudly, but a dist older than its source
+  // silently tests the PREVIOUS build — green on code that no longer exists. (Hit live while
+  // adding per-agent tool-call tallies: a runner kept reading the old dist and the new tally
+  // "did not work".) turbo's `test dependsOn ^build` rebuilds for a ROOT run; a per-package
+  // `bun run test` does not, which is the same gap that makes the missing-dist case bite.
+  const srcDir = join(pkgDir, "src");
+  if (!existsSync(srcDir)) continue;
+  const srcMtime = newestMtime(srcDir);
+  const distMtime = statSync(entry).mtimeMs;
+  if (srcMtime > distMtime) {
+    stale.push({ name: manifest.name ?? name, entry });
+  }
 }
 
-if (unbuilt.length > 0) {
-  console.error("\ncheck-workspace-built: workspace packages are NOT BUILT\n");
+if (unbuilt.length > 0 || stale.length > 0) {
+  const kind = unbuilt.length > 0 ? "NOT BUILT" : "STALE";
+  console.error(`\ncheck-workspace-built: workspace packages are ${kind}\n`);
   for (const { name, entry } of unbuilt) {
     console.error(`  ${name} — missing ${entry.slice(root.length + 1)}`);
   }
+  for (const { name, entry } of stale) {
+    console.error(`  ${name} — ${entry.slice(root.length + 1)} is OLDER than its src/`);
+  }
+  if (unbuilt.length > 0) {
+    console.error(
+      "\nConsumers import these through their built entry, so without a build every suite that\n" +
+        "imports one fails with a MISLEADING error:\n" +
+        '  Error: Failed to resolve entry for package "core". The package may have incorrect\n' +
+        "  main/module/exports specified in its package.json\n" +
+        "\nThat is not a package.json problem and not an ESM quirk.",
+    );
+  }
+  if (stale.length > 0) {
+    console.error(
+      "\nThese built entries are OLDER than their source, so consumers are importing the\n" +
+        "PREVIOUS build: tests can pass green against code that no longer exists, and a change\n" +
+        "you just made will look like it 'did nothing'. Worse than the missing case, which at\n" +
+        "least fails loudly.",
+    );
+  }
   console.error(
-    "\nConsumers import these through their built entry, so without a build every suite that\n" +
-      "imports one fails with a MISLEADING error:\n" +
-      '  Error: Failed to resolve entry for package "core". The package may have incorrect\n' +
-      "  main/module/exports specified in its package.json\n" +
-      "\nThat is not a package.json problem and not an ESM quirk. Build first:\n" +
+    "\nBuild first:\n" +
       "  bun run build                             # whole workspace\n" +
       "  bunx turbo build --filter=<pkg>...        # just this package's dependency graph\n" +
       "\n(A ROOT `bun run test` builds automatically — turbo's test task dependsOn ^build. Running\n" +

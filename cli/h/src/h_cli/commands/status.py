@@ -4,7 +4,7 @@ Read-only, zero writes, zero agent invocations. Four independent fetches (chain/
 each failure is recorded and surfaced in the verdict rather than exiting non-zero.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -18,7 +18,9 @@ console = Console()
 
 STALE_AFTER_SECONDS = 5 * 60
 RECENT_WINDOW_SECONDS = 24 * 3600
-NON_OK_OUTCOMES = frozenset({"failed", "terminated", "budget-terminated", "orphaned", "unfulfilled"})
+NON_OK_OUTCOMES = frozenset(
+    {"failed", "terminated", "budget-terminated", "orphaned", "unfulfilled"}
+)
 
 
 def _heartbeat_age_seconds(at: Any) -> float | None:
@@ -43,7 +45,13 @@ def _format_age(seconds: float) -> str:
 
 
 def _fetch_all() -> (
-    tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]], list[str]]
+    tuple[
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        list[dict[str, Any]],
+        list[str],
+    ]
 ):
     """Fetch chain/watch/cron/PRs independently; records errors rather than raising."""
     fetch_errors: list[str] = []
@@ -226,7 +234,9 @@ def status(
         t2 = Table("chainId", "outcome", "endedAt", title=f"finalized last 24h ({len(recent)})")
         for row in recent:
             outcome = row["outcome"]
-            outcome_cell = f"[bold red]{outcome}[/bold red]" if outcome in NON_OK_OUTCOMES else outcome
+            outcome_cell = (
+                f"[bold red]{outcome}[/bold red]" if outcome in NON_OK_OUTCOMES else outcome
+            )
             t2.add_row(row["chainId"], outcome_cell, row["endedAt"])
         console.print(t2)
 

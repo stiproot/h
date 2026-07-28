@@ -2,7 +2,7 @@
 // package and stays quiet on a built one — a guard that cannot fail is decoration.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +76,27 @@ test("finds the repo root from INSIDE a package dir (the path that bypasses turb
     const { status, stderr } = runGuard(join(root, "packages", "js", "core"));
     assert.equal(status, 1, "must fire regardless of which directory tests were started from");
     assert.match(stderr, /NOT BUILT/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("fails when dist is OLDER than src — the silent-wrong-results case", () => {
+  const root = makeWorkspace({ built: true });
+  try {
+    // Touch a source file so it is newer than the built entry.
+    const src = join(root, "packages", "js", "core", "src");
+    mkdirSync(src, { recursive: true });
+    const future = Date.now() + 10_000;
+    writeFileSync(join(src, "index.ts"), "export {};\n");
+    utimesSync(join(src, "index.ts"), future / 1000, future / 1000);
+
+    const { status, stderr } = runGuard(root);
+    assert.equal(status, 1);
+    assert.match(stderr, /STALE/);
+    assert.match(stderr, /core — packages\/js\/core\/dist\/index\.js is OLDER than its src\//);
+    // The stale symptom differs from the missing one and must be explained as such.
+    assert.match(stderr, /PREVIOUS build/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

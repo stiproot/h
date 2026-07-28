@@ -80,8 +80,14 @@ Runs `workflow` and `claude-agent` in a local Kubernetes cluster (Rancher Deskto
 
 ### Prerequisites (one-time)
 
-1. Enable Kubernetes in Rancher Desktop (Settings → Kubernetes)
-2. Install [Tilt](https://docs.tilt.dev/install.html): `brew install tilt`
+1. A Kubernetes cluster:
+   - **macOS** — enable Kubernetes in Rancher Desktop (Settings → Kubernetes)
+   - **Linux** — `make k3d-up` creates an equivalent k3d cluster in Docker. It also creates a
+     cluster-attached **registry**, which is load-bearing: Tilt detects it via the standard
+     `local-registry-hosting` ConfigMap and pushes images there. Without one, Tilt tries to push
+     to Docker Hub and every build fails with `push access denied`.
+2. Install [Tilt](https://docs.tilt.dev/install.html): `brew install tilt` (Linux: the release
+   tarball; `kubectl`, `k3d` and `tilt` are all single static binaries needing no root)
 3. Install Dapr control plane:
    ```sh
    make dapr-install
@@ -117,8 +123,18 @@ See `make help` for all available targets.
 ### Full teardown
 
 ```sh
-make tilt-down
+make down             # tears down EVERYTHING, whichever mode you started
+```
+
+`make down` is mode-agnostic and safe to re-run from any state — host-mode services, Compose
+infra, Tilt and the k3d cluster. Use it when you do not want to remember what you started.
+The granular targets remain for partial teardown:
+
+```sh
+make tilt-down        # app stack only (Dapr control plane and cluster stay up)
+make k3d-down         # delete the k3d cluster + its registry
 make dapr-uninstall   # removes Dapr control plane + CRDs
+make worktrees-purge  # remove worktrees cut by chain runs
 ```
 
 ## Running locally (host-side dapr CLI)

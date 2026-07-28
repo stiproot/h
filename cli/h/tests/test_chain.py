@@ -63,7 +63,8 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
     assert body["strategy"] == "sequential"
     assert [h["kind"] for h in body["members"]] == ["implement-pr", "review-pr", "revise-pr"]
     workflow = {h["kind"]: h for h in body["members"]}
-    # implement-pr + revise-pr share the branch instance; review-pr has its own; revise-pr re-runs fresh.
+    # implement-pr + revise-pr share the branch instance; review-pr has its own;
+    # revise-pr re-runs fresh.
     assert workflow["implement-pr"]["instanceId"] == "implement-demo"
     assert workflow["implement-pr"]["fresh"] is False
     assert workflow["revise-pr"]["instanceId"] == "implement-demo"
@@ -313,8 +314,9 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path, monkeypatch) 
         "instanceId": "implement-x",
         "fresh": False,
     }
-    # revise-pr is its own first-class workflow — it fires the published `revise` key (NOT the composed
-    # implement-pr definition), sharing the branch instance so it operates on the same feature/<slug>.
+    # revise-pr is its own first-class workflow — it fires the published `revise` key (NOT
+    # the composed implement-pr definition), sharing the branch instance so it operates on
+    # the same feature/<slug>.
     assert body["members"][2]["kind"] == "revise-pr"
     assert body["members"][2]["key"] == "revise-pr"
     assert body["members"][2]["instanceId"] == "implement-x"
@@ -861,7 +863,8 @@ def test_chain_run_activation_gates_ride_the_body(tmp_path: Path) -> None:
     body = json.loads(route.calls[0].request.content)
     assert body["after"] == "p"
     assert body["notBefore"] == "2027-01-01T00:00:00Z"
-    assert "activates" in _all_output(result) and "chain 'p'" in _all_output(result).replace(chr(10), " ")
+    out = _all_output(result)
+    assert "activates" in out and "chain 'p'" in out.replace(chr(10), " ")
 
 
 @respx.mock

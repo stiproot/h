@@ -132,4 +132,20 @@ export const codexStrategy: AgentStrategy = {
       // costUsd is intentionally omitted — Codex does not report it.
     };
   },
+
+  // Codex's verified shape: the LEDGER sees the raw stdout line ({type:"output", text}), not the
+  // `tool_use` this parser pushes into `events` — so count codex's own completed tool items.
+  // (See event-shape.ts: a tally must read the stream the ledger actually receives.)
+  tallyToolCalls(current, event) {
+    const text = (event as { text?: unknown }).text;
+    if (typeof text !== "string") return current;
+    try {
+      const ev = JSON.parse(text) as { type?: unknown; item?: { type?: unknown } };
+      if (ev.type !== "item.completed") return current;
+      const itemType = ev.item?.type;
+      return itemType === "function_call" || itemType === "mcp_tool_call" ? current + 1 : current;
+    } catch {
+      return current;
+    }
+  },
 };

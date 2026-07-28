@@ -76,9 +76,10 @@ _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
 KNOWN_KINDS = ("implement-pr", "review-pr", "revise-pr", "answer")
 # Well-known -w names → (kind, saved key fired). Each is a first-class standalone workflow with its
-# own saved definition — `revise-pr` fires the `revise-pr` template (which reads the PR's review threads
-# itself), no longer a re-fire of implement-pr's definition. `answer` is the bare "answer this task"
-# member (the panelizable degenerate case, docs/plans/panels-as-a-modifier.md — successor of the
+# own saved definition — `revise-pr` fires the `revise-pr` template (which reads the PR's
+# review threads itself), no longer a re-fire of implement-pr's definition. `answer` is the
+# bare "answer this task" member (the panelizable degenerate case,
+# docs/plans/panels-as-a-modifier.md — successor of the
 # retired agent-panel): reads `task` off the chain data, captures `answer`; an --agent roster
 # panelizes it at fire time. Coded threading contracts live in
 # workflow-svc/domain/chain-members.ts (a novel kind is added on both sides, per chain.model.ts).

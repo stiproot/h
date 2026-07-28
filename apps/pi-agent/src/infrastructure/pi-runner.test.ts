@@ -65,7 +65,10 @@ function ledgerSummary(runsDir: string, group: string): Record<string, unknown> 
 describe("PiRunnerLive", () => {
   it("maps the invocation result onto the AgentResponse and writes the run ledger", async () => {
     const { runtime, baseDir, runsDir, logs } = makeHarness((params) => {
-      params.onEvent?.({ type: "tool_use" });
+      // pi's REAL ledger stream: raw stdout lines. Its own tool events are `tool_execution_*`
+      // (piJsonlParser translates those into `tool_use` for the INTERNAL events array only, which
+      // the ledger never sees) — so the tally must count these lines, not a synthetic `tool_use`.
+      params.onEvent?.({ type: "output", text: JSON.stringify({ type: "tool_execution_start" }) });
       params.onEvent?.({ type: "output", text: "hello" });
       return Effect.succeed({
         success: true,

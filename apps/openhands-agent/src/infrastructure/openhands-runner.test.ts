@@ -69,7 +69,10 @@ function ledgerSummary(runsDir: string, group: string): Record<string, unknown> 
 describe("OpenhandsRunnerLive", () => {
   it("maps the invocation result onto the AgentResponse and writes the run ledger", async () => {
     const { runtime, baseDir, runsDir, logs } = makeHarness((params) => {
-      params.onEvent?.({ type: "tool_use" });
+      // openhands' REAL ledger stream: raw stdout lines. Its unit of tool use is an ActionEvent
+      // (the parser's normalised `tool_use` goes only into the INTERNAL events array, which the
+      // ledger never sees) — so the tally counts these lines, not a synthetic `tool_use`.
+      params.onEvent?.({ type: "output", text: JSON.stringify({ kind: "ActionEvent" }) });
       params.onEvent?.({ type: "output", text: "hello" });
       return Effect.succeed({
         success: true,

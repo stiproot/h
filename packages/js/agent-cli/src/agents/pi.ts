@@ -126,4 +126,19 @@ export const piStrategy: AgentStrategy = {
     // Do NOT invent a fake $0 — the watcher handles a costGap.
     return {};
   },
+
+  // pi's verified shape: the LEDGER sees the raw stdout line ({type:"output", text}), not the
+  // `tool_use` this parser pushes into `events` — so count pi's own `tool_execution_*` lines.
+  // (Reading them off `events` would miss them entirely; that mismatch is what made a shared
+  // claude-shaped tally report a fictional number for pi. See event-shape.ts.)
+  tallyToolCalls(current, event) {
+    const text = (event as { text?: unknown }).text;
+    if (typeof text !== "string") return current;
+    try {
+      const type = (JSON.parse(text) as { type?: unknown }).type;
+      return typeof type === "string" && type.startsWith("tool_execution_") ? current + 1 : current;
+    } catch {
+      return current;
+    }
+  },
 };

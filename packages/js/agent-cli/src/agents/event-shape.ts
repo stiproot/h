@@ -74,8 +74,16 @@ const STRATEGIES: Record<AgentType, AgentStrategy> = {
  * The tool-call tally an agent implements for its OWN stream, or `undefined` when that strategy
  * has not verified its shape yet — the caller then records `null` (unknown), never 0.
  *
- * Adding one belongs on the strategy (beside its `streamParser`), written from the `eventShape`
- * captured on real runs. Never from assumption.
+ * All four strategies now implement one, each read off the stream the LEDGER actually receives:
+ * claude's nested `tool_use` content blocks; openhands' `ActionEvent`; pi's `tool_execution_*`
+ * lines; codex's `item.completed` + `function_call`/`mcp_tool_call`. Note the three non-claude
+ * CLIs hand the ledger a raw `{type:"output", text:<json>}` line and push their normalised
+ * `tool_use` only into the INTERNAL events array — so a tally reading `type === "tool_use"`
+ * sees nothing. That mismatch is exactly what made one shared claude-shaped tally report a
+ * confident 0 for openhands and a fictional count for pi.
+ *
+ * Adding one for a NEW agent belongs on its strategy (beside its `streamParser`), written from
+ * that strategy's own parser and the `eventShape` captured on real runs. Never from assumption.
  */
 export function toolCallTallyFor(agent: AgentType): ToolCallTally | undefined {
   const strategy = STRATEGIES[agent];
