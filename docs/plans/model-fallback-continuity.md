@@ -196,21 +196,24 @@ limit does not stop work — it kills the claude branch of a review panel, and b
 is a `whenAll` parallel group, one dead panelist fails the whole review member (DRIVER.md's
 recovery section). The recovery is to re-fire that review with an openhands-only roster.
 
-- **⚠ AGENT-INITIATED RUNS BYPASSED THE BATCH'S EXECUTOR POLICY (2026-07-28).** An
-  implementing agent (openhands, on PR #99 — whose subject is `--model` with ROSTERS) tested
-  its change by running `h chain run` against the LIVE workflow-svc. Consequences, all
-  observed: it wrote durable rows to two production registries (`chain:sub:x` and the saved
-  workflow `x-w0`, now the registry's only entry); it recurred (chain `x` reached **epoch 4**);
-  and it fired a live `review-pr` panel **including codex** — the executor the operator had
-  explicitly excluded for the night on exhausted OpenAI quota. That codex run completed with
-  3 tool calls and a real verdict, so it reached the model and spent quota. Every chain the
-  DRIVER fired honoured the exclusion; the agent's side channel bypassed it.
-  **An executing agent holds the full workflows/dapr MCP surface plus the `h` CLI pointed at
-  production — so it can fire workflows, pick ANY executor, terminate live chains, disarm
-  crons, and overwrite saved workflows, none of it subject to the batch's policy.** This
-  REFUTES the premise on which `reviewer-identity-security` was parked ("revisit when
-  untrusted repos appear"): the exposure is on repos we own, and it is accidental rather than
-  malicious. See task #8; that plan should move Deferred → Active.
+- **⚠ THE TEST SUITE FIRES REAL CHAINS AGAINST A LIVE STACK (2026-07-28).** Durable rows
+  appeared in two production registries overnight (`chain:sub:x`, saved workflow `x-w0` —
+  the registry's only entry), the chain epoch climbed to **4**, and a live `review-pr` panel
+  ran **including codex**, the executor excluded for the night on exhausted quota; that run
+  completed with 3 tool calls, so it spent quota.
+  **Root cause (corrected — the first attribution to an agent running commands was WRONG):**
+  `test_chain_roster_accepts_model`, new in PR #99, invokes
+  `chain run --slug x -w review-pr --agent claude codex --model opus` with **no
+  `@respx.mock`**, so it makes a real HTTP call to whatever workflow-svc is reachable. That
+  explains every observation exactly — the chain id is the test's `--slug`, `x-w0` is its
+  compose-on-fire publish, the epoch increments once per suite run, and codex is literally in
+  the test's roster. **The driver's own verify-at-head runs were among the triggers.**
+  So the exposure is not agency but a property of the suite: **running the CLI tests on any
+  machine with a live stack fires real chains, publishes real workflows, and invokes real
+  agents on real providers, silently.** Harmless only by luck here (dispatch failed). The
+  immediate fix (the missing mock) was caught independently by #99's review panel; the class
+  needs a guard, and an engine-enforced executor allowlist so an exclusion cannot be bypassed
+  by ANY path. See task #8 and reviewer-identity-security (moved Deferred → Active).
 - **In flight:** `kimi-int3` (openhands implementing the Moonshot Kimi integration from a
   panel-vetted spec) → `kimi-int3-review` gated behind it (claude+openhands review panel →
   openhands revise, loop-until-clean ×3).
