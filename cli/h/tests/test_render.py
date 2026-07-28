@@ -521,7 +521,7 @@ def test_bootstrap_repo_contract_in_three_places() -> None:
 def test_answer_publish_golden(snapshot) -> None:
     """answer publish mode: the bare panelizable task template
     (docs/plans/impl/panels-as-a-modifier.md -- successor of the retired hand-built agent-panel;
-    — successor of the retired hand-built agent-panel; a roster panelizes it at fire time)."""
+    a roster panelizes it at fire time)."""
     rendered = helm.render_workflow("answer", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 

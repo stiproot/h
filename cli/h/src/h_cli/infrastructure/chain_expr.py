@@ -26,7 +26,7 @@ while a single-name prefix stays a chain-wide default.
 --capture/--input/--until are the declarative structured-output mappings
 (docs/plans/impl/structured-workflow-outputs.md §4-5): per-workflow ONLY
 (like --kind — a mapping is a member’s contract, never a chain-wide default),
-member's contract, never a chain-wide default), repeatable for --capture/--input, assignment-
+repeatable for --capture/--input, assignment-
 ordered destination=source.
 """
 

@@ -24,7 +24,7 @@ A `-t` group composes-on-fire: the templates overlay into ONE workflow, publishe
 chain-scoped key `<slug>-w<N>` by default, or EMBEDDED in the chain row with `--inline` (D1).
 Concurrency is stages (docs/plans/impl/inline-chain-cron-composition.md D3): --parallel
 (or an explicit --stage N) groups members into one concurrent stage the engine joins
---stage N) groups members into one concurrent stage the engine joins before advancing. A `--cron`
+before advancing. A `--cron`
 member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:resolved (D2/D4);
 `--id` gives a member a chain data namespace so a downstream reads its capture via a dotted
 `--input PARAM=id.field` (D5). Identity flags become fire-time params (§1.9): --agent maps to
