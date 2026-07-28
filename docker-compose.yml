@@ -487,8 +487,9 @@ services:
       context: .
       dockerfile: apps/kimi-agent/Dockerfile
     environment:
-      # Moonshot auth — this is consumed as ANTHROPIC_AUTH_TOKEN by the kimi-runner.
+      # Moonshot auth — the runner reads ANTHROPIC_AUTH_TOKEN directly.
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - ANTHROPIC_AUTH_TOKEN=${MOONSHOT_API_KEY:-}
       - KIMI_ANTHROPIC_URL=${KIMI_ANTHROPIC_URL:-https://api.moonshot.ai/anthropic}
       - AGENT_MODEL=${AGENT_MODEL:-kimi-k3[1m]}
       # ANTHROPIC_API_KEY is intentionally absent — the runner's env: { ANTHROPIC_API_KEY: "" }

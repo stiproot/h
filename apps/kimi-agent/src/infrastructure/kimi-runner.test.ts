@@ -1,68 +1,79 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { mergeMcpConfig } from "./mcp-config.ts";
+import { NodeContext } from "@effect/platform-node";
+import { Cause, Effect, Exit } from "effect";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const servers = (json: string) => JSON.parse(json).mcpServers as Record<string, unknown>;
+import { provisionMcpConfig } from "./kimi-runner.ts";
 
-const H = JSON.stringify({
-  mcpServers: {
-    dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
-    obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
-  },
+const H_SERVERS = JSON.stringify({
+  mcpServers: { github: { type: "http", url: "https://api.githubcopilot.com/mcp/" } },
 });
 
-describe("mergeMcpConfig", () => {
-  it("returns the incoming config verbatim when there is no existing file", () => {
-    expect(servers(mergeMcpConfig(null, H))).toEqual({
-      dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
-      obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
-    });
+const CWD_SERVERS = JSON.stringify({
+  mcpServers: { dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" } },
+  someProjectSetting: true,
+});
+
+describe("provisionMcpConfig", () => {
+  let cwd: string;
+  let srcDir: string;
+
+  beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), "prov-cwd-"));
+    srcDir = mkdtempSync(join(tmpdir(), "prov-src-"));
+  });
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(srcDir, { recursive: true, force: true });
   });
 
-  it("unions h's servers with the project's own", () => {
-    const existing = JSON.stringify({
-      mcpServers: { tessl: { type: "stdio", command: "tessl", args: ["mcp", "start"] } },
-    });
-    expect(servers(mergeMcpConfig(existing, H))).toEqual({
-      tessl: { type: "stdio", command: "tessl", args: ["mcp", "start"] },
-      dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
-      obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
-    });
+  const run = (src: string, mode: "merge" | "replace") =>
+    Effect.runPromiseExit(
+      provisionMcpConfig(cwd, src, mode).pipe(Effect.provide(NodeContext.layer)),
+    );
+
+  it("replace mode overwrites the cwd config with only the source's servers", async () => {
+    const src = join(srcDir, ".mcp.src.json");
+    writeFileSync(src, H_SERVERS);
+    writeFileSync(join(cwd, ".mcp.json"), CWD_SERVERS);
+    const exit = await run(src, "replace");
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const result = JSON.parse(readFileSync(join(cwd, ".mcp.json"), "utf8"));
+    expect(Object.keys(result.mcpServers)).toEqual(["github"]);
+    expect(result.someProjectSetting).toBeUndefined();
   });
 
-  it("lets h's server win on a name conflict", () => {
-    const existing = JSON.stringify({ mcpServers: { dapr: { type: "stdio", command: "old" } } });
-    expect(servers(mergeMcpConfig(existing, H)).dapr).toEqual({
-      type: "sse",
-      url: "http://dapr-mcp:8000/sse",
-    });
+  it("replace mode FAILS CLOSED when the source file is missing", async () => {
+    writeFileSync(join(cwd, ".mcp.json"), CWD_SERVERS);
+    const exit = await run(join(srcDir, "nope.json"), "replace");
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Cause.pretty(exit.cause)).toContain("MCP_CONFIG_MODE=replace requires");
+      expect(Cause.pretty(exit.cause)).toContain("nope.json");
+    }
+    const untouched = JSON.parse(readFileSync(join(cwd, ".mcp.json"), "utf8"));
+    expect(untouched.mcpServers.dapr).toBeDefined();
   });
 
-  it("preserves other top-level keys in the existing file", () => {
-    const existing = JSON.stringify({ mcpServers: {}, someProjectSetting: true });
-    expect(JSON.parse(mergeMcpConfig(existing, H)).someProjectSetting).toBe(true);
+  it("merge mode keeps the skip behavior when the source is missing", async () => {
+    writeFileSync(join(cwd, ".mcp.json"), CWD_SERVERS);
+    const exit = await run(join(srcDir, "nope.json"), "merge");
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const untouched = JSON.parse(readFileSync(join(cwd, ".mcp.json"), "utf8"));
+    expect(untouched.mcpServers.dapr).toBeDefined();
   });
 
-  it("falls back to the incoming config when the existing file is unparseable", () => {
-    expect(servers(mergeMcpConfig("{ not json", H))).toEqual({
-      dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
-      obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
-    });
-  });
-
-  it("replace mode yields only the incoming servers regardless of cwd content", () => {
-    const existing = JSON.stringify({
-      mcpServers: {
-        dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
-        tessl: { type: "stdio", command: "tessl", args: ["mcp", "start"] },
-      },
-      someProjectSetting: true,
-    });
-    const result = mergeMcpConfig(existing, H, "replace");
-    expect(servers(result)).toEqual({
-      dapr: { type: "sse", url: "http://dapr-mcp:8000/sse" },
-      obs: { type: "sse", url: "http://obs-mcp:8000/sse" },
-    });
-    expect(JSON.parse(result).someProjectSetting).toBeUndefined();
+  it("merge mode preserves the cwd's servers and top-level keys (h's servers win)", async () => {
+    const src = join(srcDir, ".mcp.json");
+    writeFileSync(src, H_SERVERS);
+    writeFileSync(join(cwd, ".mcp.json"), CWD_SERVERS);
+    const exit = await run(src, "merge");
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const result = JSON.parse(readFileSync(join(cwd, ".mcp.json"), "utf8"));
+    expect(Object.keys(result.mcpServers).sort()).toEqual(["dapr", "github"]);
+    expect(result.someProjectSetting).toBe(true);
   });
 });

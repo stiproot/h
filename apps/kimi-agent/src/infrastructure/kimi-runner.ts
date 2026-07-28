@@ -3,11 +3,9 @@ import { join } from "path";
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
-import { AgentRunError } from "core";
+import { AgentRunError, mergeMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
 import { Cause, Config, Effect, Layer, Option } from "effect";
-
-import { mergeMcpConfig } from "./mcp-config.ts";
 
 const AGENT_ID = "kimi-agent";
 

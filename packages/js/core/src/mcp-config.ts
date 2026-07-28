@@ -1,5 +1,7 @@
 type McpConfig = { mcpServers?: Record<string, unknown>; [key: string]: unknown };
 
+const serialize = (cfg: McpConfig) => JSON.stringify(cfg, null, 2) + "\n";
+
 /**
  * Produces the .mcp.json content to write into a run's cwd, per `mode`:
  *
@@ -22,7 +24,6 @@ export function mergeMcpConfig(
   mode: "merge" | "replace" = "merge",
 ): string {
   const incomingJson = JSON.parse(incoming) as McpConfig;
-  const serialize = (cfg: McpConfig) => JSON.stringify(cfg, null, 2) + "\n";
 
   if (existing === null || mode === "replace") return serialize(incomingJson);
 
@@ -36,6 +37,6 @@ export function mergeMcpConfig(
 
   return serialize({
     ...existingJson,
-    mcpServers: { ...(existingJson.mcpServers ?? {}), ...(incomingJson.mcpServers ?? {}) },
+    mcpServers: { ...existingJson.mcpServers, ...incomingJson.mcpServers },
   });
 }

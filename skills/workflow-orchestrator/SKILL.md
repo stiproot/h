@@ -44,7 +44,7 @@ earlier outputs with `{"$ref": "stepId.field"}` or `"{{stepId.field}}"`.
   the shared pre-cloned target repo; use it to investigate or change a repo on an isolated checkout that
   every agent in the run shares
 - `run-claude` / `run-codex` / `run-openhands` / `run-pi` / `run-dapr-agent` / `run-dapr-claude-loop` / `run-claude-managed` /
-  `run-langgraph` — each runs that agent, input `{ task }`. `run-claude` also takes an optional `cwd`
+  `run-langgraph` / `run-kimi` — each runs that agent, input `{ task }`. `run-claude` also takes an optional `cwd`
   (e.g. `"{{create-worktree.worktreePath}}"`) to run in the worktree, an optional `model` to override
   the LLM for that step (e.g. a Sonnet model id for a plan step, a Haiku model id for an implement
   step), and an optional `permissionMode: "plan"` to run the agent read-only — it researches and emits a
