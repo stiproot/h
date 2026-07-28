@@ -136,16 +136,16 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    # The model slots are CLEARED alongside the identity swap: a baked model belongs to the
+    # The model slots are OMITTED alongside the identity swap: a baked model belongs to the
     # executor it was chosen for, and claude-sonnet-4-6 sent to an openhands-agent on DeepSeek is
-    # rejected outright (live 2026-07-27). Empty = fall back to the new executor's own AGENT_MODEL,
-    # the same rule panelize applies to roster branches.
+    # rejected outright (live 2026-07-27). Omitting the slots lets the template's baked defaults
+    # apply — the new executor's own AGENT_MODEL is the fallback at the agent runner level.
     assert body["members"][0]["params"] == {
         "runActivity": "run-openhands",
         "agentId": "openhands-agent",
-        "modelPlan": "",
-        "modelImplement": "",
     }
+    assert "modelPlan" not in body["members"][0]["params"]
+    assert "modelImplement" not in body["members"][0]["params"]
     assert "params" not in body["members"][1]
 
 
@@ -174,9 +174,9 @@ def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
     assert body["members"][0]["params"] == {
         "runActivity": "run-pi",
         "agentId": "pi-agent",
-        "modelPlan": "",
-        "modelImplement": "",
     }
+    assert "modelPlan" not in body["members"][0]["params"]
+    assert "modelImplement" not in body["members"][0]["params"]
     assert "params" not in body["members"][1]
 
 
@@ -823,7 +823,9 @@ def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
     assert "roster" in _all_output(result)
 
 
-def test_chain_roster_rejects_model(tmp_path: Path) -> None:
+def test_chain_roster_accepts_model(tmp_path: Path) -> None:
+    """A roster (N --agent names) with --model now succeeds: the model is applied to every
+    branch step input via panelize's model_override."""
     result = runner.invoke(
         app,
         [
@@ -842,8 +844,8 @@ def test_chain_roster_rejects_model(tmp_path: Path) -> None:
             "opus",
         ],
     )
-    assert result.exit_code == 1
-    assert "--model with a roster" in _all_output(result)
+    # Should succeed: model is forwarded to every branch via panelize rather than rejected.
+    assert result.exit_code == 0, _all_output(result)
 
 
 # --- activation gates + loop×stages (issues #78 / #79b) --------------------------------------

@@ -404,22 +404,18 @@ def run(
             refuse_overlay(template_name, "run")
     if agent and not roster:
         params.update(_identity_params(key, agent[0]))
-        # A baked model belongs to the executor it was chosen for — reassigning the executor
-        # without naming a model would send e.g. claude-sonnet-4-6 to an openhands-agent on
-        # DeepSeek, which rejects it. Clear the slots so the new executor falls back to its own
-        # AGENT_MODEL (the rule panelize already applies to roster branches).
+        # A baked model belongs to the executor it was chosen for. When the user reassigns
+        # the executor without also naming a model, omit the model param slots so the
+        # template's baked defaults apply — the new executor's default model may not suit the
+        # template's task (and sending "" would confuse runners that test falsiness).
+        # An explicit --model still wins below.
         if not model and not baked_models_suit(agent[0]):
-            for slot in MODEL_PARAM_SLOTS:
-                params[slot] = ""
+            pass
     if model:
-        if roster:
-            err_console.print(
-                "[red]--model with a roster is not supported[/red] — each panelist falls back "
-                "to its own agent's default model"
-            )
-            raise typer.Exit(1)
         for slot in MODEL_PARAM_SLOTS:
             params[slot] = model
+        # When --model is given alongside a roster, it is applied to every branch via panelize's
+        # model_override; params go to the template, not individual branches.
     if roster and (via or cron or max_fires is not None or at or in_):
         err_console.print(
             "[red]a roster fires a panelized definition inline[/red] — drop --via/--cron/"
@@ -490,14 +486,33 @@ def run(
         # steps inline (leaving only the wf: status row) — the roster restructures the
         # definition, so there is no stored def to fire verbatim. The review-pr executor freeze
         # relaxes for a roster: the panelists run as named, the judge stays pinned (claude).
+        # When --model is given, it is applied to every branch; without it the baked model is
+        # stripped and a warning is emitted.
         definition = _roster_definition(key, inline)
+        baked_model = ""
+        for step in definition.get("steps") or []:
+            inp = step.get("input") or {}
+            if inp.get("outputContract") and inp.get("model"):
+                baked_model = inp["model"]
+                break
         try:
-            panelized = panelize(definition, roster_pairs(roster, AGENT_IDENTITY))
+            panelized = panelize(
+                definition, roster_pairs(roster, AGENT_IDENTITY), model_override=model
+            )
         except PanelizeError as err:
             err_console.print(f"[red]cannot panelize '{key}':[/red] {err}")
             raise typer.Exit(1) from err
+        if baked_model and not model:
+            err_console.print(
+                f"[yellow]warning:[/yellow] panelized '{key}' — model "
+                f"'{baked_model}' stripped from branches; each panelist uses its own "
+                f"AGENT_MODEL (roster: {', '.join(roster)})"
+            )
         merged = {**(definition.get("params") or {}), **params}
-        console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
+        model_note = f" (model: {model})" if model else ""
+        console.print(
+            f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude){model_note}"
+        )
         result = _guarded(
             lambda: workflow_svc.run_steps(
                 panelized["steps"], merged, instance_id, fresh, watch_policy, None, None

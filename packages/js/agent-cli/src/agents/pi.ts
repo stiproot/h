@@ -84,7 +84,7 @@ type PiProvider = "deepseek" | "anthropic" | "openai";
 // mapped by name (deepseek-* / claude-* have native pi providers; anything else → openai). pi's
 // deepseek + anthropic providers use their NATIVE endpoints; only openai honors a custom base URL.
 function resolvePiModel(model?: string): { provider: PiProvider; modelId: string } {
-  const m = model ?? "deepseek-v4-flash";
+  const m = model || "deepseek-v4-flash";
   const slash = m.indexOf("/");
   if (slash !== -1) {
     const prov = m.slice(0, slash);

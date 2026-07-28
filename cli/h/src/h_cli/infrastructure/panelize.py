@@ -100,9 +100,14 @@ def _strip_epilogue(task: str) -> str:
 def panelize(
     definition: dict[str, Any],
     roster: list[tuple[str, str]],
+    model_override: str | None = None,
 ) -> dict[str, Any]:
     """A rendered workflow definition + a roster of (agent name, run activity) pairs → the
     panelized definition. Pure: the input definition is not mutated.
+
+    When *model_override* is set (e.g. from `--model` with a roster), it is applied to every
+    branch step input. Omit to strip the baked model (each branch falls back to its own
+    AGENT_MODEL).
 
     Raises PanelizeError on any shape violation — no (or several) contract-carrying steps, a
     contract step without task prose, duplicate roster entries, or a branch/step id collision.
@@ -145,17 +150,22 @@ def panelize(
     roster_line = ", ".join(branch_ids)
     preamble = _PREAMBLE.format(n=len(roster), roster=roster_line)
 
+    # Capture the baked model before stripping — used by callers to warn about downgrade.
+    baked_model = subject["input"].get("model", "") or ""
+
     branches: list[dict[str, Any]] = []
     for (name, activity), bid in zip(roster, branch_ids):
         # Contract stripped (branches answer in prose; the retained epilogue text in the task is
-        # harmless — an unvalidated json ending just makes synthesis easier). Model stripped: a
-        # baked model belongs to the original executor; each branch falls back to its own
-        # AGENT_MODEL (decision 8 — --model with a roster is rejected upstream).
+        # harmless — an unvalidated json ending just makes synthesis easier). Model behaviour:
+        # when model_override is set it is applied to every branch; otherwise the baked model is
+        # stripped so each branch falls back to its own AGENT_MODEL.
         branch_input = {
             key: copy.deepcopy(value)
             for key, value in subject["input"].items()
             if key not in ("outputContract", "model")
         }
+        if model_override:
+            branch_input["model"] = model_override
         branch_input["task"] = f"{preamble}\n\n{task}"
         branches.append({"id": bid, "activity": activity, "input": branch_input})
 

@@ -224,14 +224,16 @@ def test_agent_roster_refuses_overlay_templates(template: str) -> None:
 
 
 @needs_helm
-def test_agent_roster_rejects_model_and_routing() -> None:
+def test_agent_roster_accepts_model_but_rejects_routing() -> None:
+    """--model with a roster is now accepted (option b — model applied to all branches).
+    --via with a roster is still rejected."""
     result = runner.invoke(
         app,
         ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
          "--model", "opus"],
     )
-    assert result.exit_code == 1
-    assert "roster" in _all_output(result)
+    # Now succeeds: model is forwarded to every branch via panelize.
+    assert result.exit_code == 0, _all_output(result)
     result = runner.invoke(
         app,
         ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",

@@ -45,4 +45,11 @@ describe("claudeStrategy.buildInvocation permission mode", () => {
 
     expect(args[args.indexOf("--model") + 1]).toBe("claude-sonnet-4-6");
   });
+
+  it("falls back to the default model when model is an empty string", async () => {
+    // Regression guard: empty-string model must not defeat the default (|| vs ??).
+    const { args } = await buildInvocation(baseRequest({ model: "" }));
+
+    expect(args[args.indexOf("--model") + 1]).not.toBe("");
+  });
 });
