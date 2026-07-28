@@ -1,0 +1,53 @@
+# ─── Content guards (CI) ──────────────────────────────────────────────────────
+#
+# Runs the full guard surface — lint, build, test — on every pull request and
+# push to main.  Every action version below is pinned to a release tag so CI
+# behaviour does not drift when upstream publishes a new major.
+#
+# See also: scripts/hooks/pre-push (local hook that runs only the fast lint
+# guards, no quota, no rate limit).
+
+name: guards
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
+
+env:
+  BUN_VERSION: "1"
+
+jobs:
+  guards:
+    name: Guard surface (lint → build → test → pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install JS dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint (13 content guards + turbo lint)
+        run: bun run lint
+
+      - name: Build (Turborepo)
+        run: bun run build
+
+      - name: Test (JS vitest + Python agent-core pytest)
+        run: bun run test
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync Python dependencies
+        run: uv sync --frozen
+
+      - name: Test (h CLI pytest, scoped to cli/h/tests)
+        run: uv run --package h-cli pytest cli/h/tests
