@@ -824,9 +824,15 @@ def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
     assert "roster" in _all_output(result)
 
 
+@needs_helm
+@respx.mock
 def test_chain_roster_accepts_model(tmp_path: Path) -> None:
     """A roster (N --agent names) with --model now succeeds: the model is applied to every
     branch step input via panelize's model_override."""
+    route = _mock_run()
+    respx.post(f"{WORKFLOW_URL}/workflow/save").mock(
+        return_value=Response(200, json={"key": "x-w0"})
+    )
     result = runner.invoke(
         app,
         [
@@ -847,6 +853,7 @@ def test_chain_roster_accepts_model(tmp_path: Path) -> None:
     )
     # Should succeed: model is forwarded to every branch via panelize rather than rejected.
     assert result.exit_code == 0, _all_output(result)
+    assert route.called
 
 
 # --- activation gates + loop×stages (issues #78 / #79b) --------------------------------------

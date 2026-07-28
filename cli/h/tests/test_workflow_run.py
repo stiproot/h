@@ -224,9 +224,13 @@ def test_agent_roster_refuses_overlay_templates(template: str) -> None:
 
 
 @needs_helm
+@respx.mock
 def test_agent_roster_accepts_model_but_rejects_routing() -> None:
     """--model with a roster is now accepted (option b — model applied to all branches).
     --via with a roster is still rejected."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "x", "watching": False})
+    )
     result = runner.invoke(
         app,
         ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
@@ -234,6 +238,7 @@ def test_agent_roster_accepts_model_but_rejects_routing() -> None:
     )
     # Now succeeds: model is forwarded to every branch via panelize.
     assert result.exit_code == 0, _all_output(result)
+    assert route.called
     result = runner.invoke(
         app,
         ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
