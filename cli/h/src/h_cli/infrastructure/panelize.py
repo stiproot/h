@@ -8,8 +8,9 @@ What it does:
 - locates the PANEL STEP — the one carrying `outputContract`; the contract-carrying step IS the
   workflow's voice (the one-declarer composition rule, overlay.py);
 - replicates it into a parallel step group (`generic.workflow.ts` whenAll) with one branch per
-  roster agent — contract and model STRIPPED (branches answer in prose and fall back to each
-  agent's own AGENT_MODEL), the shared-workspace concurrency preamble prepended (this module is
+  roster agent — contract STRIPPED; model applied from *model_override* when set, otherwise
+  stripped (branches answer in prose and fall back to each agent's own AGENT_MODEL), the
+  shared-workspace concurrency preamble prepended (this module is
   the SINGLE author of panel-branch prose, so the sync steering lives here, once);
 - appends a synthesis step under the ORIGINAL step id, carrying the ORIGINAL contract and run by
   the pinned judge — so the workflow's output signature, and every seam that reads it
