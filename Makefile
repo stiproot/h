@@ -309,3 +309,12 @@ up-local-wait: up-local ## Start the stack detached, then block until it is read
 
 down-local: ## Stop all host-mode services for MODE (leaves infra up; use infra-down for that)
 	cli/scripts/down-local.sh $(MODE)
+
+# ── Git hooks ──────────────────────────────────────────────────────────────────
+
+.PHONY: install-hooks
+install-hooks: ## Install the pre-push hook (sets core.hooksPath = scripts/hooks)
+	git config core.hooksPath scripts/hooks
+	@echo "Installed hooksPath = scripts/hooks — pre-push will run 'bun run lint' before every push."
+	@echo "  To remove: git config --unset core.hooksPath"
+	@echo "  To skip (emergency): git push --no-verify"
