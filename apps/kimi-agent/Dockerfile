@@ -45,6 +45,6 @@ RUN chown -R agent-svc:agent /app
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD which claude
+  CMD curl -fsS http://localhost:8000/dapr/subscribe
 
 CMD ["bun", "run", "src/index.ts"]
