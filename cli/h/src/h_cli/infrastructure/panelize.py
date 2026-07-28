@@ -150,9 +150,6 @@ def panelize(
     roster_line = ", ".join(branch_ids)
     preamble = _PREAMBLE.format(n=len(roster), roster=roster_line)
 
-    # Capture the baked model before stripping — used by callers to warn about downgrade.
-    baked_model = subject["input"].get("model", "") or ""
-
     branches: list[dict[str, Any]] = []
     for (name, activity), bid in zip(roster, branch_ids):
         # Contract stripped (branches answer in prose; the retained epilogue text in the task is

@@ -136,16 +136,17 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
-    # The model slots are OMITTED alongside the identity swap: a baked model belongs to the
+    # Force-clearing model slots alongside the identity swap: a baked model belongs to the
     # executor it was chosen for, and claude-sonnet-4-6 sent to an openhands-agent on DeepSeek is
-    # rejected outright (live 2026-07-27). Omitting the slots lets the template's baked defaults
-    # apply — the new executor's own AGENT_MODEL is the fallback at the agent runner level.
+    # rejected outright (live 2026-07-27). Clearing the slots with "" overrides the saved
+    # default — the runner-side `||` fixes handle "" correctly, and the new executor's own
+    # AGENT_MODEL is the fallback at the agent runner level.
     assert body["members"][0]["params"] == {
         "runActivity": "run-openhands",
         "agentId": "openhands-agent",
+        "modelPlan": "",
+        "modelImplement": "",
     }
-    assert "modelPlan" not in body["members"][0]["params"]
-    assert "modelImplement" not in body["members"][0]["params"]
     assert "params" not in body["members"][1]
 
 
@@ -174,9 +175,9 @@ def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
     assert body["members"][0]["params"] == {
         "runActivity": "run-pi",
         "agentId": "pi-agent",
+        "modelPlan": "",
+        "modelImplement": "",
     }
-    assert "modelPlan" not in body["members"][0]["params"]
-    assert "modelImplement" not in body["members"][0]["params"]
     assert "params" not in body["members"][1]
 
 

@@ -169,12 +169,13 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
                 raise AssertionError("unreachable")
             params.update(identity)
             # A baked model belongs to the executor it was chosen for. When the user reassigns
-            # the executor without also naming a model, omit the model param slots so the
-            # template's baked defaults apply — the new executor's default model may not suit the
-            # template's task (and sending "" would confuse runners that test falsiness).
+            # the executor without also naming a model, clear the model param slots so the
+            # saved default is overridden — the new executor's default model may not suit the
+            # template's task, and the runner-side `||` fixes handle "" correctly.
             # An explicit --model still wins below.
             if not cfg.model and not baked_models_suit(agent):
-                pass
+                for name in KIND_MODEL_PARAMS[kind]:
+                    params[name] = ""
     if cfg.model:
         for name in KIND_MODEL_PARAMS[kind]:
             params[name] = cfg.model
@@ -508,7 +509,8 @@ def run(
       --agent A B C...  SEVERAL names are a panel ROSTER: the member is panelized — each roster
                         agent answers concurrently, a pinned judge (claude) synthesizes under the
                         member's own output contract, so downstream seams are unchanged. Read/
-                        judge kinds only (write kinds: use --parallel members); no --model.
+                        judge kinds only (write kinds: use --parallel members); --model applies
+                        the specified model to every panelized branch.
 
       --stage N         the member's concurrency STAGE (members sharing a stage run concurrently,
                         joined before the next); the alternative to --parallel grouping
