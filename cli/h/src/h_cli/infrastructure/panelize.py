@@ -8,8 +8,9 @@ What it does:
 - locates the PANEL STEP — the one carrying `outputContract`; the contract-carrying step IS the
   workflow's voice (the one-declarer composition rule, overlay.py);
 - replicates it into a parallel step group (`generic.workflow.ts` whenAll) with one branch per
-  roster agent — contract and model STRIPPED (branches answer in prose and fall back to each
-  agent's own AGENT_MODEL), the shared-workspace concurrency preamble prepended (this module is
+  roster agent — contract STRIPPED; model applied from *model_override* when set, otherwise
+  stripped (branches answer in prose and fall back to each agent's own AGENT_MODEL), the
+  shared-workspace concurrency preamble prepended (this module is
   the SINGLE author of panel-branch prose, so the sync steering lives here, once);
 - appends a synthesis step under the ORIGINAL step id, carrying the ORIGINAL contract and run by
   the pinned judge — so the workflow's output signature, and every seam that reads it
@@ -100,9 +101,14 @@ def _strip_epilogue(task: str) -> str:
 def panelize(
     definition: dict[str, Any],
     roster: list[tuple[str, str]],
+    model_override: str | None = None,
 ) -> dict[str, Any]:
     """A rendered workflow definition + a roster of (agent name, run activity) pairs → the
     panelized definition. Pure: the input definition is not mutated.
+
+    When *model_override* is set (e.g. from `--model` with a roster), it is applied to every
+    branch step input. Omit to strip the baked model (each branch falls back to its own
+    AGENT_MODEL).
 
     Raises PanelizeError on any shape violation — no (or several) contract-carrying steps, a
     contract step without task prose, duplicate roster entries, or a branch/step id collision.
@@ -148,14 +154,16 @@ def panelize(
     branches: list[dict[str, Any]] = []
     for (name, activity), bid in zip(roster, branch_ids):
         # Contract stripped (branches answer in prose; the retained epilogue text in the task is
-        # harmless — an unvalidated json ending just makes synthesis easier). Model stripped: a
-        # baked model belongs to the original executor; each branch falls back to its own
-        # AGENT_MODEL (decision 8 — --model with a roster is rejected upstream).
+        # harmless — an unvalidated json ending just makes synthesis easier). Model behaviour:
+        # when model_override is set it is applied to every branch; otherwise the baked model is
+        # stripped so each branch falls back to its own AGENT_MODEL.
         branch_input = {
             key: copy.deepcopy(value)
             for key, value in subject["input"].items()
             if key not in ("outputContract", "model")
         }
+        if model_override:
+            branch_input["model"] = model_override
         branch_input["task"] = f"{preamble}\n\n{task}"
         branches.append({"id": bid, "activity": activity, "input": branch_input})
 

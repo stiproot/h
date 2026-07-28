@@ -85,14 +85,15 @@ used here. This section is the terse runtime-facing index.
   (compose-on-fire; at most ONE atom per composition declares `outputs`). `--agent` takes a ROSTER
   (greedy operands, the `-t` idiom): SEVERAL names PANELIZE the member (docs/plans/impl/panels-as-a-modifier.md
   — panel as cardinality, 2026-07-24): a pure CLI-side transform (`infrastructure/panelize.py`) replicates
-  the member's contract-carrying step into a parallel step group (one branch per agent, contract+model
-  stripped, concurrency preamble injected) and appends a pinned-judge (claude) synthesis under the
+  the member's contract-carrying step into a parallel step group (one branch per agent, contract stripped
+  (model from `--model` applies to every branch, else stripped to each agent's own AGENT_MODEL),
+  concurrency preamble injected) and appends a pinned-judge (claude) synthesis under the
   member's ORIGINAL id+contract — so every downstream seam (loop-until-clean, captures, watcher) is
   unchanged and the engine needs nothing new. Read/judge kinds only (write kinds share one worktree —
-  compose N `--parallel` members instead); no `--model` with a roster; a roster forces compose-on-fire
-  (a `-w` key renders its chart template — `panelSynthesis:`, the template's optional join-rule prose,
-  flows from the render — else the stored def); the review-pr executor freeze relaxes to the named
-  roster, the pin migrating to the judge. `h chain list` inspects.
+  compose N `--parallel` members instead); `--model` with a roster applies the model to every panelized
+  branch; a roster forces compose-on-fire (a `-w` key renders its chart template — `panelSynthesis:`,
+  the template's optional join-rule prose, flows from the render — else the stored def); the review-pr
+  executor freeze relaxes to the named roster, the pin migrating to the judge. `h chain list` inspects.
   Strategies: `sequential`, `loop-until-clean`. Loop × stages is RECONCILED (2026-07-25): `loop.startCursor`
   is the review member's **STAGE**, not its member index — stages before the loop segment may be concurrent
   (the panels shape), stages inside the segment (`startCursor`..last) must be SINGLE-MEMBER, refused loud at

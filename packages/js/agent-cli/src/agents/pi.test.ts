@@ -88,6 +88,14 @@ describe("piStrategy.buildInvocation", () => {
     expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("deepseek-v4-flash");
   });
 
+  it("defaults an empty-string model to the deepseek provider (regression guard)", async () => {
+    // Empty-string must not defeat the default (|| vs ??).
+    const invocation = await buildInvocation(baseRequest({ model: "" }));
+
+    expect(invocation.args[invocation.args.indexOf("--provider") + 1]).toBe("deepseek");
+    expect(invocation.args[invocation.args.indexOf("--model") + 1]).toBe("deepseek-v4-flash");
+  });
+
   it("passes the task via stdin (E2BIG-safe), not a temp file", async () => {
     const invocation = await buildInvocation(baseRequest({ taskPrompt: "implement X" }));
 

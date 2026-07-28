@@ -45,6 +45,12 @@ describe("openhandsStrategy.prepareEnvironment LLM_MODEL routing", () => {
     expect(deepseek["LLM_MODEL"]).toBe("deepseek/deepseek-v4-flash");
   });
 
+  it("omits LLM_MODEL when model is an empty string (defence in depth)", () => {
+    const env = openhandsStrategy.prepareEnvironment!(baseRequest({ model: "" }));
+
+    expect(env["LLM_MODEL"]).toBeUndefined();
+  });
+
   it("forwards the LLM api key and base url", () => {
     const env = openhandsStrategy.prepareEnvironment!(baseRequest({ model: "deepseek-v4-flash" }));
 

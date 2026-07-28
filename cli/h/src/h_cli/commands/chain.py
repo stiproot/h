@@ -168,10 +168,11 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
                 )
                 raise AssertionError("unreachable")
             params.update(identity)
-            # A baked model belongs to the executor it was chosen for. Reassigning the executor
-            # without also naming a model would send e.g. claude-sonnet-4-6 to an openhands-agent
-            # on DeepSeek, which rejects it outright. Clear the slots so the new executor falls
-            # back to its own AGENT_MODEL — the same rule panelize applies to roster branches.
+            # A baked model belongs to the executor it was chosen for. When the user reassigns
+            # the executor without also naming a model, clear the model param slots so the
+            # saved default is overridden — the new executor's default model may not suit the
+            # template's task, and the runner-side `||` fixes handle "" correctly.
+            # An explicit --model still wins below.
             if not cfg.model and not baked_models_suit(agent):
                 for name in KIND_MODEL_PARAMS[kind]:
                     params[name] = ""
@@ -196,11 +197,29 @@ def _panel_definition(key: str) -> dict[str, Any]:
     return stored
 
 
-def _apply_roster(merged: dict[str, Any], roster: tuple[str, ...], label: str) -> dict[str, Any]:
+def _apply_roster(
+    merged: dict[str, Any], roster: tuple[str, ...], label: str, model_override: str | None = None
+) -> dict[str, Any]:
     """Panelize the composed definition with the roster: each name resolves through
-    AGENT_IDENTITY to its run activity; any shape violation fails loud at registration."""
+    AGENT_IDENTITY to its run activity; any shape violation fails loud at registration.
+
+    When *model_override* is set (from `--model`), it is applied to every branch step input.
+    Otherwise the baked model is stripped and a warning is emitted noting the fallback."""
     try:
-        return panelize(merged, roster_pairs(roster, AGENT_IDENTITY))
+        baked_model = ""
+        for step in merged.get("steps") or []:
+            inp = step.get("input") or {}
+            if inp.get("outputContract") and inp.get("model"):
+                baked_model = inp["model"]
+                break
+        result = panelize(merged, roster_pairs(roster, AGENT_IDENTITY), model_override=model_override)
+        if baked_model and not model_override:
+            roster_str = ", ".join(roster)
+            _warn(
+                f"panelized '{label}' — model '{baked_model}' stripped from branches; "
+                f"each panelist uses its own AGENT_MODEL (roster: {roster_str})"
+            )
+        return result
     except PanelizeError as err:
         _fail(f"cannot panelize '{label}': {err}")
         raise AssertionError("unreachable")
@@ -293,7 +312,8 @@ def _resolve_workflow(
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
     # A roster (several --agent names) panelizes the member (docs/plans/impl/panels-as-a-modifier.md):
-    # read/judge kinds only, no --model (per-branch models fall to each agent's own AGENT_MODEL).
+    # read/judge kinds only. When --model is given alongside a roster, it is applied to every
+    # branch step input; without it each panelist falls back to its own AGENT_MODEL.
     roster = cfg.agents if len(cfg.agents) > 1 else ()
     if roster:
         if kind in WRITE_KINDS:
@@ -301,11 +321,6 @@ def _resolve_workflow(
                 f"a roster on '{member.label}' ({kind}) is not supported — write kinds share "
                 "one branch/worktree, so N writers would clobber it; compose N members with "
                 "--parallel (isolated instances) instead"
-            )
-        if cfg.model:
-            _fail(
-                f"--model with a roster on '{member.label}' is not supported — each panelist "
-                "falls back to its own agent's default model"
             )
 
     # A cron member self-arms an embedded recurrence (D1/D2), so it MUST be inline; --inline opts
@@ -333,10 +348,11 @@ def _resolve_workflow(
         merged = _panel_definition(key)
     if merged is not None:
         if roster:
-            merged = _apply_roster(merged, roster, member.label)
+            merged = _apply_roster(merged, roster, member.label, model_override=cfg.model)
             judge_note = " (judge: claude-agent)" if kind in FROZEN_EXECUTOR_KINDS else ""
+            model_note = f" (model: {cfg.model})" if cfg.model else ""
             console.print(
-                f"==> panelized '{member.label}' — roster: {', '.join(roster)}{judge_note}"
+                f"==> panelized '{member.label}' — roster: {', '.join(roster)}{judge_note}{model_note}"
             )
         source = " ⊕ ".join(member.templates) if member.key is None else member.key
         declared_outputs = merged.get("outputs")
@@ -493,7 +509,8 @@ def run(
       --agent A B C...  SEVERAL names are a panel ROSTER: the member is panelized — each roster
                         agent answers concurrently, a pinned judge (claude) synthesizes under the
                         member's own output contract, so downstream seams are unchanged. Read/
-                        judge kinds only (write kinds: use --parallel members); no --model.
+                        judge kinds only (write kinds: use --parallel members); --model applies
+                        the specified model to every panelized branch.
 
       --stage N         the member's concurrency STAGE (members sharing a stage run concurrently,
                         joined before the next); the alternative to --parallel grouping
