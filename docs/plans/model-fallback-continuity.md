@@ -180,7 +180,21 @@ _Last updated 2026-07-28, ~22:30, start of an unattended overnight batch. Read t
 merge PRs that are review-clean AND pass a driver verify-at-head. Order: harness fixes →
 hardening-audit items → doc/steering drift. Executors: claude + openhands (DeepSeek);
 **codex EXCLUDED — OpenAI quota exhausted**; pi is implement-only (no MCP, cannot own a
-PR-flow stage). DeepSeek fallback armed for usage limits.
+PR-flow stage).
+
+**CORRECTION — the usage-limit fallback is NOT armed, and cannot be.** The driver intended
+to arm it and said so; verifying afterwards showed `h chain run` has **no `--fallback-*`
+flags at all** — they exist only on `h workflow run`. This is exactly Phase 2 item 2 of this
+plan ("chains carry fallback by default … today it's `h workflow run`-only"), still unbuilt,
+now with a concrete cost: an entire unattended batch ran with no fallback because the surface
+does not exist on the shape the batch uses. **Every real batch runs as chains, so a
+workflow-run-only fallback is effectively no fallback.** Promote Phase 2 item 2.
+
+*Actual mitigation in force tonight (posture, not machinery):* openhands/DeepSeek does all
+writing (implement + revise); claude appears ONLY as a review panelist. So a Claude usage
+limit does not stop work — it kills the claude branch of a review panel, and because a panel
+is a `whenAll` parallel group, one dead panelist fails the whole review member (DRIVER.md's
+recovery section). The recovery is to re-fire that review with an openhands-only roster.
 
 - **In flight:** `kimi-int3` (openhands implementing the Moonshot Kimi integration from a
   panel-vetted spec) → `kimi-int3-review` gated behind it (claude+openhands review panel →
