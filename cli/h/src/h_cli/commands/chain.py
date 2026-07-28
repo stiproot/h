@@ -214,7 +214,9 @@ def _apply_roster(
             if inp.get("outputContract") and inp.get("model"):
                 baked_model = inp["model"]
                 break
-        result = panelize(merged, roster_pairs(roster, AGENT_IDENTITY), model_override=model_override)
+        result = panelize(
+            merged, roster_pairs(roster, AGENT_IDENTITY), model_override=model_override
+        )
         if baked_model and not model_override:
             roster_str = ", ".join(roster)
             _warn(
@@ -313,7 +315,8 @@ def _resolve_workflow(
     if kind not in KNOWN_KINDS:
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
-    # A roster (several --agent names) panelizes the member (docs/plans/impl/panels-as-a-modifier.md):
+    # A roster (several --agent names) panelizes the member
+    # (docs/plans/impl/panels-as-a-modifier.md):
     # read/judge kinds only. When --model is given alongside a roster, it is applied to every
     # branch step input; without it each panelist falls back to its own AGENT_MODEL.
     roster = cfg.agents if len(cfg.agents) > 1 else ()
@@ -354,7 +357,8 @@ def _resolve_workflow(
             judge_note = " (judge: claude-agent)" if kind in FROZEN_EXECUTOR_KINDS else ""
             model_note = f" (model: {cfg.model})" if cfg.model else ""
             console.print(
-                f"==> panelized '{member.label}' — roster: {', '.join(roster)}{judge_note}{model_note}"
+                f"==> panelized '{member.label}' — roster: {', '.join(roster)}"
+                f"{judge_note}{model_note}"
             )
         source = " ⊕ ".join(member.templates) if member.key is None else member.key
         declared_outputs = merged.get("outputs")
