@@ -174,7 +174,42 @@ chain PARKS instead.
 
 ## Driver state
 
-_Last updated 2026-07-27 at session handoff. Read this first._
+_Last updated 2026-07-28, ~22:30, start of an unattended overnight batch. Read this first._
+
+**OVERNIGHT BATCH IN PROGRESS (2026-07-28 → 29).** Operator asleep; authority granted:
+merge PRs that are review-clean AND pass a driver verify-at-head. Order: harness fixes →
+hardening-audit items → doc/steering drift. Executors: claude + openhands (DeepSeek);
+**codex EXCLUDED — OpenAI quota exhausted**; pi is implement-only (no MCP, cannot own a
+PR-flow stage). DeepSeek fallback armed for usage limits.
+
+- **In flight:** `kimi-int3` (openhands implementing the Moonshot Kimi integration from a
+  panel-vetted spec) → `kimi-int3-review` gated behind it (claude+openhands review panel →
+  openhands revise, loop-until-clean ×3).
+- **Four harness defects found tonight, all real, none yet fixed** — see the task list and
+  the notes below. Two of them BREAK CHAINS and have live workarounds:
+  1. *Empty-string model params.* `--agent X` without `--model` emits `modelImplement: ""`;
+     `openhands.ts:184` sets `LLM_MODEL` only `if (request.model)` → the CLI dies. Claude is
+     masked by `DEFAULT_CLAUDE_MODEL`. **Workaround: always pass `--model` explicitly on a
+     single-agent member.**
+  2. *Unsatisfiable member inputs fail late.* `-w plan --kind answer` drops `slug` →
+     `fatal: 'feature/' is not a valid branch name` inside an activity. Registration checks
+     declared `--capture` against the outputs schema but never checks inputs.
+     **Workaround: declare `--input slug=slug` explicitly.**
+  3. *Panelize silently downgrades the model* — `panelize.py:157` strips `model`, so branches
+     fall back to `AGENT_MODEL`; `--model` with a roster is rejected, so there is no override.
+     **Workaround applied: `.env` `AGENT_MODEL` raised haiku → `claude-sonnet-4-6`** (backup
+     at `/tmp/env.bak.*`; this is a global change worth reverting or making deliberate).
+  4. *No first-class `plan` member kind* — carried-followups §2, now with a concrete failure.
+- **Environment left changed:** `.env` `AGENT_MODEL=claude-sonnet-4-6` (was haiku);
+  claude-agent restarted to pick it up. Host-mode stack UP via `make infra-up` +
+  `MODE=dev up-local` (8 services).
+- **Litter to clean:** six finalized dead chain rows (`kimi-agent`, `kimi-agent-review`,
+  `kimi-integration`, `kimi-integration-review`, `kimi-int2`, `kimi-int2-review`) and a stale
+  `feature/kimi-integration` worktree. `h chain rm` is PR #97, still open — the reason this
+  cannot be cleaned properly yet.
+- **Open PR not from this batch:** #97 (`h chain rm` / `POST /chain/disarm`).
+
+### Prior state (2026-07-27 session handoff), still true unless superseded above
 
 - **In flight: nothing.** Board clear apart from the parked zombie below.
 - **Merge queue: empty.** All of batch 2 is merged: trxy #55 (team S.K.A.T.E. design, fully
