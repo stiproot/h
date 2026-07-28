@@ -72,6 +72,29 @@ listed in the session-state paragraph (below), waiting for the returning primary
    it did (h #96). The tally is now per-strategy and `toolCalls` is `number | null`, where
    **`null` means "not measurable for this agent", never zero** — and every run records its
    observed `eventShape`. Treat `null` as no-signal and read the output instead.
+
+   **Reading a CAPPED loop — `"stopped after N iterations (findings may remain)"`.** Do not
+   take that note at face value in either direction.
+
+   - **`reviewFindings` records the last REVIEW, not the last REVISE.** The revise that
+     follows the final review still runs; it just never gets re-reviewed. So a capped loop
+     routinely lists findings that are ALREADY FIXED on the branch. **Check each finding
+     against the branch before acting on it** — on 2026-07-28 both #98 and #99 capped with
+     "residual" findings that were fully resolved. Trusting the note would have meant
+     re-doing settled work or wrongly blocking a good merge.
+   - **Conversely, a cap is not a pass.** Each round tends to surface NEW findings rather
+     than re-report old ones, so "capped" means "unknown", not "clean".
+   - **With a thorough panel, `loop-until-clean` effectively never returns CLEAN on a
+     substantial PR** — it always finds something, so it terminates on the cap. CLEAN is
+     therefore not a realistic merge gate by itself; expect to adjudicate residuals, and
+     merge on *verify-at-head green + every recorded finding confirmed resolved*.
+
+   **A panel cannot catch a build failure.** It reviews the DIFF and accepts the PR body's
+   evidence claims. On 2026-07-28 PR #98 passed 3 full review rounds while `bun run lint`
+   failed on TWO separate `oxfmt` violations — no number of further rounds would have found
+   them. Always run the guard surface yourself (below), and feed what you find back as a PR
+   comment: the revise leg reads PR comments, so that is the working channel for a driver
+   finding.
 2. Branch updated against main; verify sweep AT HEAD in a worktree:
    - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest`
      (all green — the suite is hermetic since #85).
