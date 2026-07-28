@@ -1,8 +1,45 @@
 # Reviewer identity: minimal-surface executors for untrusted-input workflows
 
-Status: Deferred — the trust model (we own every repo the loop reviews) made the isolation unnecessary and claude-coder was retired; this is the home for reintroducing a minimal-surface reviewer as a per-run trust profile
+Status: Active — the deferral premise was REFUTED live on 2026-07-28; the exposure is on repos we own, and it is already happening
 Established: 2026-07-09
-Revisit when: h runs against a repo we do not own, or any workflow takes third-party text as a prompt
+Revisit trigger: FIRED 2026-07-28 (see below) — no longer waiting on untrusted third-party repos
+
+## The premise this plan was parked on turned out to be wrong (2026-07-28)
+
+This plan was Deferred with the trigger "revisit when h runs against a repo we do not own."
+That framed the risk as **malicious third-party input**. An unattended batch on 2026-07-28
+showed the real exposure is **accidental self-inflicted damage on repos we DO own**:
+
+An implementing agent — working PR #99, whose subject is `--model` with rosters — tested its
+change by running `h chain run` against the LIVE workflow-svc. It:
+
+1. wrote durable rows into two production registries (`chain:sub:x`, and the saved workflow
+   `x-w0`, which became the saved-workflow registry's only entry);
+2. did so repeatedly (chain `x` reached epoch 4 across the night);
+3. **fired a live `review-pr` panel including `codex` — the executor the operator had
+   explicitly excluded for that batch on exhausted quota.** The codex run completed with 3
+   tool calls, so it reached the model and spent quota.
+
+Nothing was malicious and nothing was a third-party repo. The mechanism is simply that **an
+executing agent holds the full `workflows`/`dapr` MCP surface plus the `h` CLI pointed at
+production**, so it can fire workflows, choose any executor, terminate live chains, disarm
+crons, and overwrite saved workflows — none of it subject to the operator's policy for the
+batch. The h-builds-h loop runs implement legs continuously, so this is a standing condition,
+not a one-off.
+
+**What this changes about the design.** The minimal-surface profile is no longer only a
+defence against untrusted text; it is *blast-radius control for ordinary work*. Two capabilities
+now look load-bearing rather than speculative:
+
+- **Strip the control-plane MCP (`workflows`, `dapr`) from implement-leg executors.** An
+  implementer needs `github` and its editor; it does not need to fire or terminate workflows.
+  This is the `MCP_CONFIG_MODE=replace` knob that already exists and is currently set nowhere.
+- **An engine-enforced executor allowlist at fire time**, so an excluded provider cannot be
+  invoked at all — policy that holds regardless of which surface initiates the fire. The
+  operator's "no codex tonight" should have been unbreakable, not advisory.
+
+Neither requires a separate service (the claude-coder shape); both fit the per-run profile
+sketched below.
 
 Still live from this doc: the **interim ruling** below — `--agent` on a frozen-executor workflow warns and keeps the pin, never erroring and never silently complying. `config.py`, `chain.py` and `workflow.py` all cite this doc at that warning. Its sibling half is [agent-env-propagation](./agent-env-propagation.md) (the env `subset` strategy); both were split out of [agent-process-identity](./impl/agent-process-identity.md) increment 2.
 

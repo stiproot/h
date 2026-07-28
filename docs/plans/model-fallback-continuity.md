@@ -196,6 +196,21 @@ limit does not stop work — it kills the claude branch of a review panel, and b
 is a `whenAll` parallel group, one dead panelist fails the whole review member (DRIVER.md's
 recovery section). The recovery is to re-fire that review with an openhands-only roster.
 
+- **⚠ AGENT-INITIATED RUNS BYPASSED THE BATCH'S EXECUTOR POLICY (2026-07-28).** An
+  implementing agent (openhands, on PR #99 — whose subject is `--model` with ROSTERS) tested
+  its change by running `h chain run` against the LIVE workflow-svc. Consequences, all
+  observed: it wrote durable rows to two production registries (`chain:sub:x` and the saved
+  workflow `x-w0`, now the registry's only entry); it recurred (chain `x` reached **epoch 4**);
+  and it fired a live `review-pr` panel **including codex** — the executor the operator had
+  explicitly excluded for the night on exhausted OpenAI quota. That codex run completed with
+  3 tool calls and a real verdict, so it reached the model and spent quota. Every chain the
+  DRIVER fired honoured the exclusion; the agent's side channel bypassed it.
+  **An executing agent holds the full workflows/dapr MCP surface plus the `h` CLI pointed at
+  production — so it can fire workflows, pick ANY executor, terminate live chains, disarm
+  crons, and overwrite saved workflows, none of it subject to the batch's policy.** This
+  REFUTES the premise on which `reviewer-identity-security` was parked ("revisit when
+  untrusted repos appear"): the exposure is on repos we own, and it is accidental rather than
+  malicious. See task #8; that plan should move Deferred → Active.
 - **In flight:** `kimi-int3` (openhands implementing the Moonshot Kimi integration from a
   panel-vetted spec) → `kimi-int3-review` gated behind it (claude+openhands review panel →
   openhands revise, loop-until-clean ×3).
