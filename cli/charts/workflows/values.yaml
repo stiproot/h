@@ -152,3 +152,26 @@ answer:
     # Model for a single-executor run (opens the modelAnswer slot); empty = the agent's
     # AGENT_MODEL. A panel run strips per-branch models (each panelist uses its own default).
     answer: ""
+
+# plan workflow (templates/plan.tmpl.yaml): implement's planning half, split out so the plan is a
+# chain-visible artifact — a distinct planning agent, and a panel review of the plan before it
+# becomes a prompt (docs/plans/chain-plan-atom.md, docs/plans/spec-review-pipeline.md).
+plan:
+  # Git-branch-safe token; the run reads a worktree on branch feature/<slug>. Required at render.
+  slug: ""
+  # The Markdown spec to plan against. Required — pass with --set-file plan.spec=<path.md>.
+  spec: ""
+  # GitHub repo (owner/name) — the wf-registry identity segment. Identity only; does NOT drive
+  # the clone (that is clonePath). Empty = no identity row (opt-in).
+  repo: ""
+  # Local path of the pre-cloned target repo. LEAVE EMPTY — see implement.clonePath above for why
+  # baking a mode-specific path breaks host⇄compose interchangeability.
+  clonePath: ""
+  # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
+  remoteBase: ""
+  # Git auth strategy NAME for the worktree step; "" = the agent's default (GIT_AUTH env).
+  gitAuth: ""
+  # Per-step model overrides; empty = the agent's AGENT_MODEL. Planning is the reasoning-heavy
+  # half, so it defaults to the stronger model — same choice implement.models.plan makes.
+  models:
+    plan: claude-sonnet-4-6

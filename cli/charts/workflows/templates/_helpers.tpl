@@ -18,7 +18,7 @@ and the workflow engine (this is exactly the class of token that made envsubst n
 allowlist; here it needs nothing).
 */}}
 {{- define "h.setupSteps" -}}
-- cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
+- cmd: "mkdir -p ~/.claude/skills && cp -r \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
 - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
 {{- end }}
 

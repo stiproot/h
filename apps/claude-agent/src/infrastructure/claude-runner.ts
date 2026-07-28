@@ -1,7 +1,7 @@
 import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
-import { AgentInvoker } from "agent-cli";
+import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
 import { AgentRunError } from "core";
 import type { AgentRequest, AgentResponse } from "core";
@@ -158,6 +158,10 @@ const runClaude = (
       workspacePath: cwd,
       input,
       daprHttpPort: cfg.daprHttpPort,
+      // This agent's OWN tool-call tally — the claude CLI's shape is verified, so the ledger
+      // may report a real number. Agents without a verified shape pass nothing and record
+      // `toolCalls: null` (unknown) rather than a misleading 0.
+      tallyToolCalls: toolCallTallyFor("claude"),
     });
 
     // From here on a failure records a failed ledger entry before surfacing (the same scope as

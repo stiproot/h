@@ -40,6 +40,11 @@ RUN --mount=type=cache,id=bun-store,target=/root/.bun/install/cache \
 COPY packages/js/ ./packages/js/
 COPY apps/claude-agent/ ./apps/claude-agent/
 
+# h skills at the agent-neutral path H_SKILLS_DIR points at. Compose bind-mounts ./skills
+# over this for live editing; k8s has no such mount, so the image must carry them —
+# without it the setup step's `cp -r $H_SKILLS_DIR/.` has no source.
+COPY skills/ /h-skills/
+
 RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
     bunx turbo build --filter=claude-agent...
 

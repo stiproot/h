@@ -10,6 +10,9 @@ k8s_yaml([
     'k8s/dapr/claude.yaml',
     'k8s/dapr/resiliency.yaml',
     'k8s/dapr/appconfig.yaml',
+    # Drives the watch/chain/cron/discover/sched scans on workflow-svc. Without it the
+    # engines never tick, so chains never advance.
+    'k8s/dapr/workflow-cron.yaml',
 ])
 
 # Secrets (gitignored — generate with: cli/scripts/gen-k8s-secrets.sh)
@@ -45,10 +48,18 @@ docker_build(
     ignore=IGNORE,
 )
 
+docker_build(
+    'h/openhands-agent',
+    '.',
+    dockerfile='apps/openhands-agent/Dockerfile',
+    ignore=IGNORE,
+)
+
 # App manifests
 k8s_yaml([
     'k8s/apps/workflow-svc.yaml',
     'k8s/apps/claude-agent.yaml',
+    'k8s/apps/openhands-agent.yaml',
 ])
 
 # Resource grouping and port forwards
@@ -69,5 +80,12 @@ k8s_resource(
     'claude-agent',
     labels=['agents'],
     port_forwards=['8002:8000'],
+    resource_deps=['redis'],
+)
+
+k8s_resource(
+    'openhands-agent',
+    labels=['agents'],
+    port_forwards=['8004:8000'],
     resource_deps=['redis'],
 )

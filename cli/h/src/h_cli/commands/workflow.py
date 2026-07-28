@@ -21,6 +21,7 @@ from h_cli.config import (
     FROZEN_EXECUTOR_KEYS,
     MODEL_PARAM_SLOTS,
     agent_identity_params,
+    baked_models_suit,
     resolve_agent_url,
 )
 from h_cli.infrastructure import agent_service, helm, workflow_svc
@@ -403,6 +404,13 @@ def run(
             refuse_overlay(template_name, "run")
     if agent and not roster:
         params.update(_identity_params(key, agent[0]))
+        # A baked model belongs to the executor it was chosen for — reassigning the executor
+        # without naming a model would send e.g. claude-sonnet-4-6 to an openhands-agent on
+        # DeepSeek, which rejects it. Clear the slots so the new executor falls back to its own
+        # AGENT_MODEL (the rule panelize already applies to roster branches).
+        if not model and not baked_models_suit(agent[0]):
+            for slot in MODEL_PARAM_SLOTS:
+                params[slot] = ""
     if model:
         if roster:
             err_console.print(

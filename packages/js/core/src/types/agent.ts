@@ -31,8 +31,13 @@ export const AgentResponse = Schema.Struct({
   workspacePath: Schema.optional(Schema.String),
   /** Total LLM cost for the run, in USD, when the agent reports it. */
   costUsd: Schema.optional(Schema.Number),
-  /** Number of tool calls the agent made during the run (best-effort). */
-  toolCalls: Schema.optional(Schema.Number),
+  /**
+   * Tool calls the agent made during the run. `null` means UNKNOWN — this agent's event-stream
+   * shape is not one the run ledger can count — and must not be read as "made no tool calls".
+   * See agent-cli's `toolCallTallyFor`; the run summary's `eventShape` records what the stream
+   * actually looked like so a real per-agent tally can be added from evidence.
+   */
+  toolCalls: Schema.optional(Schema.NullOr(Schema.Number)),
   /** Identifier of the run-ledger record for this run (see the run ledger). */
   runId: Schema.optional(Schema.String),
 });

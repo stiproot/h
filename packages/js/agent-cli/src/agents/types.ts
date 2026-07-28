@@ -214,4 +214,16 @@ export interface AgentStrategy {
   extractSessionId(events: StreamEvent[]): string | undefined;
 
   extractMetrics(events: StreamEvent[], request: AgentInvocationRequest): Partial<InvocationResult>;
+
+  /**
+   * This agent's OWN tool-call tally, folded over its raw event stream — the sibling of
+   * `streamParser`, because only the strategy knows its CLI's event vocabulary.
+   *
+   * OMIT IT until this agent's shape has actually been verified against captured events: the run
+   * ledger then records `toolCalls: null` (unknown) instead of 0, and a 0 reads as a measured
+   * zero. That mistake is not hypothetical — a busy openhands run was misread as a "hollow
+   * panelist" on 2026-07-27 because a claude-shaped tally was applied to it. Every run's
+   * observed `eventShape` is logged, so a tally is added from evidence, never from assumption.
+   */
+  tallyToolCalls?(current: number, event: Record<string, unknown>): number;
 }

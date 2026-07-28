@@ -47,7 +47,12 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
-from h_cli.config import AGENT_IDENTITY, CHARTS_DIR, agent_identity_params
+from h_cli.config import (
+    AGENT_IDENTITY,
+    CHARTS_DIR,
+    agent_identity_params,
+    baked_models_suit,
+)
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
@@ -162,6 +167,13 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
                 )
                 raise AssertionError("unreachable")
             params.update(identity)
+            # A baked model belongs to the executor it was chosen for. Reassigning the executor
+            # without also naming a model would send e.g. claude-sonnet-4-6 to an openhands-agent
+            # on DeepSeek, which rejects it outright. Clear the slots so the new executor falls
+            # back to its own AGENT_MODEL — the same rule panelize applies to roster branches.
+            if not cfg.model and not baked_models_suit(agent):
+                for name in KIND_MODEL_PARAMS[kind]:
+                    params[name] = ""
     if cfg.model:
         for name in KIND_MODEL_PARAMS[kind]:
             params[name] = cfg.model

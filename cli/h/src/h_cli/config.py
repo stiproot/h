@@ -75,6 +75,30 @@ MODEL_PARAM_SLOTS: tuple[str, ...] = (
 FROZEN_EXECUTOR_KEYS: frozenset[str] = frozenset({"review-pr"})
 
 
+# The executor a chart template's BAKED models were chosen for — `agentId` in
+# cli/charts/workflows/values.yaml. Templates bake claude model ids (implement.models.plan =
+# claude-sonnet-4-6, …) because claude is the chart's default executor.
+DEFAULT_TEMPLATE_AGENT_ID = "claude-agent"
+
+
+def baked_models_suit(agent: str) -> bool:
+    """True when `agent` is the executor a template's baked models were chosen for.
+
+    A baked model BELONGS TO its executor: `claude-sonnet-4-6` is meaningless to an
+    openhands-agent pointed at DeepSeek, which rejects it outright
+    (`LLMBadRequestError: … but you passed claude-sonnet-4-6`, hit live 2026-07-27 — the run
+    exited 0 with empty output, so the cause was invisible). `--agent` and `--model` are
+    independent axes, so switching executor without also switching model is a guaranteed
+    failure that LOOKS like a valid command.
+
+    panelize.py already encodes this rule for roster branches ("a baked model belongs to the
+    original executor; each branch falls back to its own AGENT_MODEL"); this is the same rule
+    for a SINGLE `--agent`.
+    """
+    identity = AGENT_IDENTITY.get(agent)
+    return identity is not None and identity[1] == DEFAULT_TEMPLATE_AGENT_ID
+
+
 def agent_identity_params(agent: str) -> dict[str, str] | None:
     """A user-facing `--agent` name → the {runActivity, agentId} fire-time params a published
     template's identity slots consume, or None if the name is unknown. The single expansion both

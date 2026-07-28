@@ -135,9 +135,15 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
+    # The model slots are CLEARED alongside the identity swap: a baked model belongs to the
+    # executor it was chosen for, and claude-sonnet-4-6 sent to an openhands-agent on DeepSeek is
+    # rejected outright (live 2026-07-27). Empty = fall back to the new executor's own AGENT_MODEL,
+    # the same rule panelize applies to roster branches.
     assert body["members"][0]["params"] == {
         "runActivity": "run-openhands",
         "agentId": "openhands-agent",
+        "modelPlan": "",
+        "modelImplement": "",
     }
     assert "params" not in body["members"][1]
 
@@ -167,8 +173,68 @@ def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
     assert body["members"][0]["params"] == {
         "runActivity": "run-pi",
         "agentId": "pi-agent",
+        "modelPlan": "",
+        "modelImplement": "",
     }
     assert "params" not in body["members"][1]
+
+
+@respx.mock
+def test_chain_run_claude_agent_keeps_the_baked_models(tmp_path: Path) -> None:
+    """The clearing rule must be TARGETED: claude is the executor the templates' models were
+    tuned for (sonnet to plan, haiku to implement), so selecting it must not wipe them."""
+    route = _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "implement-pr",
+                "steps": [],
+                "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "implement-pr", "--agent", "claude", "-w", "review-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    params = json.loads(route.calls[0].request.content)["members"][0]["params"]
+    assert params == {"runActivity": "run-claude", "agentId": "claude-agent"}
+    assert "modelPlan" not in params
+
+
+@respx.mock
+def test_chain_run_explicit_model_wins_over_the_clearing_rule(tmp_path: Path) -> None:
+    """--model is the explicit override: naming one alongside a foreign --agent must set it,
+    not clear it."""
+    route = _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "implement-pr",
+                "steps": [],
+                "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "implement-pr", "--agent", "openhands", "--model", "deepseek-v4-flash",
+            "-w", "review-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    params = json.loads(route.calls[0].request.content)["members"][0]["params"]
+    assert params["agentId"] == "openhands-agent"
+    assert params["modelPlan"] == "deepseek-v4-flash"
+    assert params["modelImplement"] == "deepseek-v4-flash"
 
 
 @respx.mock

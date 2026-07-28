@@ -41,6 +41,9 @@ data:
   TESSL_API_KEY: "$(b64 "${TESSL_API_KEY:-}")"
   GH_TOKEN: "$(b64 "${GH_TOKEN:-}")"
   NOTION_API_KEY: "$(b64 "${NOTION_API_KEY:-}")"
+  # openhands-agent's BYOK leg: its own model id (LLM_API_KEY/LLM_BASE_URL above are shared).
+  OPENHANDS_MODEL: "$(b64 "${OPENHANDS_MODEL:-deepseek-v4-flash}")"
+  LINEAR_API_KEY: "$(b64 "${LINEAR_API_KEY:-}")"
 EOF
 
 echo "Written: $OUT_FILE"

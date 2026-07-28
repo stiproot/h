@@ -3,7 +3,13 @@ import { existsSync } from "node:fs";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { extractAgentMessageText, openhandsStrategy } from "./openhands.ts";
+import {
+  extractAgentMessageText,
+  extractConversationError,
+  isOpenhandsActionEvent,
+  openhandsJsonlParser,
+  openhandsStrategy,
+} from "./openhands.ts";
 import type { AgentInvocationRequest } from "./types.ts";
 
 function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvocationRequest {
@@ -83,5 +89,74 @@ describe("extractAgentMessageText", () => {
     expect(extractAgentMessageText(userMsg)).toBeNull();
     expect(extractAgentMessageText(action)).toBeNull();
     expect(extractAgentMessageText("│ - github_list_tags: List git tags │")).toBeNull();
+  });
+});
+
+describe("openhands fatal-error events (its own shape, not claude's)", () => {
+  const errLine = JSON.stringify({
+    kind: "ConversationErrorEvent",
+    source: "environment",
+    code: "LLMBadRequestError",
+    detail:
+      "litellm.BadRequestError: OpenAIException - The supported API model names are " +
+      "deepseek-v4-pro or deepseek-v4-flash, but you passed claude-sonnet-4-6.",
+  });
+
+  it("extracts the error the CLI reports while still exiting 0", () => {
+    const failure = extractConversationError(errLine);
+    expect(failure?.code).toBe("LLMBadRequestError");
+    expect(failure?.detail).toContain("you passed claude-sonnet-4-6");
+    expect(extractConversationError(JSON.stringify({ kind: "ActionEvent" }))).toBeNull();
+    expect(extractConversationError("│ a banner line │")).toBeNull();
+  });
+
+  it("VETOES success so a fatal error is not recorded as a completed empty run", () => {
+    // Regression (2026-07-27): openhands 400'd on a claude model id, exited 0, and the run was
+    // stored `completed` with 26 bytes of output — the cause invisible to every consumer.
+    const events: Parameters<typeof openhandsStrategy.extractMetrics>[0] = [];
+    openhandsJsonlParser.parseLine(errLine, events, undefined);
+
+    const metrics = openhandsStrategy.extractMetrics(events, baseRequest());
+    expect(metrics.success).toBe(false);
+    expect(metrics.stdout).toContain("LLMBadRequestError");
+    expect(metrics.stdout).toContain("deepseek-v4-flash");
+  });
+
+  it("leaves success alone on a healthy stream", () => {
+    const events: Parameters<typeof openhandsStrategy.extractMetrics>[0] = [];
+    expect(openhandsStrategy.extractMetrics(events, baseRequest()).success).toBeUndefined();
+  });
+});
+
+describe("openhandsStrategy.tallyToolCalls (ActionEvent is its unit of tool use)", () => {
+  const tally = (lines: string[]): number =>
+    lines.reduce(
+      (n, text) => openhandsStrategy.tallyToolCalls?.call(openhandsStrategy, n, { text }) ?? n,
+      0,
+    );
+
+  it("counts agent actions, ignoring observations, messages and banner noise", () => {
+    expect(
+      tally([
+        JSON.stringify({ kind: "ActionEvent", tool_name: "file_editor" }),
+        JSON.stringify({ kind: "ObservationEvent" }),
+        JSON.stringify({ kind: "TaskAction" }),
+        JSON.stringify({ kind: "ThinkAction" }),
+        JSON.stringify({ kind: "MessageEvent", source: "agent" }),
+        "│ a Rich banner line │",
+      ]),
+    ).toBe(3);
+  });
+
+  it("is exposed so the ledger records a real number, not the claude-shaped 0", () => {
+    expect(typeof openhandsStrategy.tallyToolCalls).toBe("function");
+  });
+
+  it("classifies Action kinds without mistaking Observation/Message for tool use", () => {
+    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "ActionEvent" }))).toBe(true);
+    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "TaskAction" }))).toBe(true);
+    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "ObservationEvent" }))).toBe(false);
+    expect(isOpenhandsActionEvent(JSON.stringify({ kind: "ThinkObservation" }))).toBe(false);
+    expect(isOpenhandsActionEvent("not json at all")).toBe(false);
   });
 });

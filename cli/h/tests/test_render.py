@@ -536,3 +536,29 @@ def test_answer_is_one_contract_step_with_panel_synthesis() -> None:
     assert definition["outputs"]["required"] == ["answer"]
     assert "answer" in definition["panelSynthesis"]
     assert "disagreements" in definition["panelSynthesis"]
+
+
+def test_plan_publish_golden(snapshot) -> None:
+    """plan publish mode: implement's planning half, split out so the plan is a chain-visible
+    artifact (docs/plans/chain-plan-atom.md, docs/plans/spec-review-pipeline.md)."""
+    rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_plan_stops_at_the_plan_and_declares_it() -> None:
+    """Structure contract: worktree → setup → plan and STOP — the split from `implement` is the
+    whole point, so an implement step appearing here would silently defeat it. The plan step is
+    read-only (permissionMode) and reports through the declared contract."""
+    rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+    assert [step["id"] for step in definition["steps"]] == ["worktree", "setup", "plan"]
+
+    plan_step = definition["steps"][-1]
+    assert plan_step["activity"] == "{{params.runActivity}}"
+    assert plan_step["input"]["permissionMode"] == "plan"
+    assert plan_step["input"]["cwd"] == "{{worktree.worktreePath}}"
+    assert plan_step["input"]["outputContract"] == definition["outputs"]
+    assert "===OUTPUT CONTRACT===" in plan_step["input"]["task"]
+    assert definition["outputs"]["required"] == ["plan"]
+    # Panelizable like `answer`: one contract-carrying step plus a join rule for roster runs.
+    assert "plan" in definition["panelSynthesis"]

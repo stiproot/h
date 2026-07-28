@@ -73,6 +73,20 @@ export const claudeStrategy: AgentStrategy = {
       numTurns: resultEvent?.num_turns,
     };
   },
+
+  // The claude CLI's verified shape: it never emits a top-level `tool_use` — calls arrive as
+  // content blocks nested in an assistant message. `stats.tool_calls` is trusted when reported.
+  tallyToolCalls(current, event) {
+    let next = current;
+    if ((event as { type?: string }).type === "tool_use") next += 1;
+    const content = (event as { message?: { content?: unknown } }).message?.content;
+    if (Array.isArray(content)) {
+      next += content.filter((block) => (block as { type?: string })?.type === "tool_use").length;
+    }
+    const reported = (event as { stats?: { tool_calls?: number } }).stats?.tool_calls;
+    if (typeof reported === "number") next = Math.max(next, reported);
+    return next;
+  },
 };
 
 function buildClaudeInvocation(

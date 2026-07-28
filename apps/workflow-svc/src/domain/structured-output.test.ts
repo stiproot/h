@@ -33,6 +33,26 @@ describe("lastFencedJson", () => {
   it("ignores fenced blocks of other languages", () => {
     expect(lastFencedJson("```ts\nconst x = 1;\n```")).toBeUndefined();
   });
+
+  it("does not end the block at a code fence INSIDE a json string value", () => {
+    // Regression: a contract field carrying markdown with embedded code fences (a plan, a spec,
+    // a review quoting code) truncated at the inner fence and failed as "Unterminated string".
+    // Found live 2026-07-27 by a `plan` workflow whose plan embedded ```typescript examples.
+    const plan = "# Plan\\n\\n```typescript\\nconst x = 1;\\n```\\n\\nthen more prose.";
+    const output = `prose before\n\`\`\`json\n{"plan": "${plan}"}\n\`\`\`\n`;
+
+    const raw = lastFencedJson(output);
+    expect(raw).toBeDefined();
+    expect(JSON.parse(raw as string)).toEqual({
+      plan: "# Plan\n\n```typescript\nconst x = 1;\n```\n\nthen more prose.",
+    });
+  });
+
+  it("still takes the last block when an inner fence precedes it", () => {
+    const first = `\`\`\`json\n{"v": "has \\\\n\`\`\`ts fence"}\n\`\`\`\n`;
+    const output = `${first}\nprose\n\`\`\`json\n{"v": 2}\n\`\`\`\n`;
+    expect(JSON.parse(lastFencedJson(output) as string)).toEqual({ v: 2 });
+  });
 });
 
 describe("unsupportedContractKeywords (fail-closed subset)", () => {

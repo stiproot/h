@@ -70,9 +70,12 @@ export function buildInvocationResult({
   });
 
   return {
-    success: exitCode === 0,
+    // A strategy may VETO success from its own event stream: some CLIs report a fatal error as an
+    // event and still exit 0 (openhands' ConversationErrorEvent — e.g. a rejected model id). Without
+    // this, such a run is recorded `completed` with empty output and the real cause is lost.
+    success: metrics?.success ?? exitCode === 0,
     stopReason,
-    stdout: textOutput || exitDescription,
+    stdout: metrics?.stdout ?? (textOutput || exitDescription),
     stderr: stderr || undefined,
     exitCode: exitCode ?? undefined,
     tokenUsage: metrics?.tokenUsage,
