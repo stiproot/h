@@ -181,9 +181,18 @@ _Last updated 2026-07-27 at session handoff. Read this first._
   decided), #56 (spot-image terrain suggestions), #57 (spot ownership), plus h #93/#94.
   trxy #54 was CLOSED unmerged (stale-premise churn — see the standing rule in DRIVER.md).
 - **Provider status: OpenAI/codex quota EXHAUSTED (2026-07-27).** Do not roster codex in
-  implement legs OR panels until it clears. Live: claude (Anthropic), openhands (DeepSeek) —
-  but openhands is implement-only, NOT a review panelist (h #96: it returned a bare verdict
-  with zero tool calls).
+  implement legs OR panels until it clears. Live: claude (Anthropic), openhands (DeepSeek).
+  **CORRECTED 2026-07-28 — the "openhands is implement-only" rule is WITHDRAWN.** It rested
+  on h #96's `toolCalls: 0`, which was a measurement artifact: the ledger tallied only the
+  claude CLI's event shape, so every non-claude agent scored a confident `0` regardless of
+  work done. Fixed in `868d080` (per-strategy tally; `toolCalls` is now `number | null`,
+  null = not measurable). Counter-evidence the same day: a panelized `plan` member
+  (claude + openhands) shows openhands at **14** real tool calls — `ActionEvent`,
+  `FileEditorAction`, `TerminalAction` — producing a 27KB plan citing real paths and line
+  numbers. So openhands IS a viable panelist for plan/answer work. The **bare-verdict**
+  observation on PR review specifically is a separate claim and remains unverified — roster
+  openhands on reviews, but judge its branch by whether it produced a substantive summary,
+  not by a tool count.
 - **Open h issues, none blocking:** #84 done, #95 (no `h chain rm` — the reason for the
   zombie), #96 (hollow panelist). Open trxy issue: #58 (leaderboard rank gaps, found by
   hands-on exploration; root-caused with a before/after — read-side fix suggested).

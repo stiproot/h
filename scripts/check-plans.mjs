@@ -150,9 +150,11 @@ const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" 
   .filter((f) => !f.startsWith("docs/plans/") && !SKIP_EXT.test(f));
 
 // Two citation shapes, both of which broke when plans were archived:
-//   - a repo-root-style path in prose or a code comment: `docs/plans/foo.md`
+//   - a repo-root-style path in prose or a code comment: docs/plans/<name>.md
 //   - a RELATIVE markdown link, which never contains the literal "docs/plans/":
-//     docs/h-builds-h-runbook.md cited `](./plans/foo.md)` and rotted invisibly.
+//     docs/h-builds-h-runbook.md cited ](./plans/<name>.md) and rotted invisibly.
+// (Both spellings above use the <name> placeholder deliberately — a literal example path
+// here would be a citation this very guard then demands resolve. It caught exactly that.)
 // So resolve markdown links too, and check any whose resolved target lands under docs/plans/.
 const PLAN_PATH = /docs\/plans\/[A-Za-z0-9._/-]*\.md/g;
 const MD_LINK = /\]\((\.{0,2}\/?[A-Za-z0-9._/-]*\.md)(?:#[^)]*)?\)/g;

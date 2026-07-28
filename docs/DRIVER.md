@@ -62,7 +62,16 @@ listed in the session-state paragraph (below), waiting for the returning primary
 1. Loop finalized CLEAN (or operator-verified equivalent after an exhausted loop). **A
    first-round CLEAN deserves a spot-check, not trust** — verify the diff against the
    spec's key demand yourself. Two 2026-07-27 cases: trxy #54 was clean churn on a stale
-   premise, and #56's clean verdict rested on one real panelist plus a hollow one.
+   premise, and #56's clean verdict rested on one real panelist plus one that returned a
+   bare `{"verdict":"CLEAN"}` with no summary.
+
+   **How to judge a panelist as hollow (corrected 2026-07-28).** Use the *content* of the
+   branch — a verdict with no summary and no cited findings is not a review. Do NOT judge
+   by `toolCalls == 0` alone: until `868d080` the ledger tallied only the claude CLI's
+   event shape, so EVERY non-claude agent recorded a confident `0` no matter how much work
+   it did (h #96). The tally is now per-strategy and `toolCalls` is `number | null`, where
+   **`null` means "not measurable for this agent", never zero** — and every run records its
+   observed `eventShape`. Treat `null` as no-signal and read the output instead.
 2. Branch updated against main; verify sweep AT HEAD in a worktree:
    - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest`
      (all green — the suite is hermetic since #85).
