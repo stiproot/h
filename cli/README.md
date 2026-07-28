@@ -93,10 +93,19 @@ uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow
 uv run h feature run <spec> --agent claude-agent   # render to RUN on that agent + submit (babysat, non-blocking)
 uv run h template compose t1 t2 ... [--save key]   # overlay templates → ONE definition (spatial)
 uv run h template list|get <t>            # the chart templates (overlay atoms)
+uv run h agents list                      # the workflow-invokable agents + their {runActivity, agentId}
+                                          # identities — i.e. what `--agent <name>` accepts
 uv run h workflow list|get|status         # read-side views over workflow-svc
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
 uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name] [--cron CADENCE] [--max-fires N]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing); --cron arms a recur cron on the RUN (§10 arm-* activity, not the handler)
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
+uv run h workflow run <key> --at <iso> | --in <dur>  # SCHEDULE the fire instead of firing now (arms a cron:sched one-shot)
+uv run h workflow pause <instanceId> <key> --in <dur>  # terminate the run + arm a continuation reusing its workspaceId
+uv run h workflow resume <schedId>        # fire a paused/scheduled continuation NOW
+                                          # pause/resume is stop-and-continue: the continuation re-enters the
+                                          # workflow FROM STEP 1 on the preserved worktree — not a frozen fiber
+uv run h workflow run <key> --fallback-agent A [--fallback-model M] [--fallback-after DUR] [--fallback-max N]
+                                          # on a usage-limited outcome, arm a deferred continuation under another identity
 uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); values ride -p; EXPR: -w KEY | -t ATOMS...
                                           #   with per-workflow --agent/--model/--fresh/--kind flags and structured-output
                                           #   threading mappings --capture BB=FIELD / --input PARAM=BB / --until PATH=VALUE
