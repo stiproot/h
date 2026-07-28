@@ -15,7 +15,7 @@
     "build": "tsc --project tsconfig.build.json",
     "lint": "oxlint src && oxfmt --check src",
     "format": "oxfmt src",
-    "test": "vitest run"
+    "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
