@@ -117,7 +117,84 @@ for (const activity of runActivities) {
 // Report
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 3. SKILL SCRIPT CHECK — a skill that tells an agent to run a script must name a path that
+//    actually exists.
+//
+//    Skills are copied wholesale into an agent's `~/.claude/skills/`, so a SKILL.md instructs
+//    with an installed path (`~/.claude/skills/<skill>/<rest>`) that maps 1:1 onto this repo's
+//    `skills/<skill>/<rest>`. Nothing checked that mapping, and it had rotted: the `linear`
+//    skill — the ONLY way h reads/writes Linear, since the hosted MCP cannot authenticate
+//    unattended — pointed every one of its invocations at
+//    `~/.claude/skills/linear/cli/scripts/…`, an extra `cli/` segment. The scripts live at
+//    `skills/linear/scripts/`. Any agent following that skill ran a nonexistent file.
+//
+//    This is the worst class of steering drift: it fails at the agent, mid-task, as a
+//    "no such file" the agent then has to work around or silently skip.
+// ---------------------------------------------------------------------------
+
+const SKILL_PATH_RE = /~\/\.claude\/skills\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._/-]+)/g;
+const skillViolations = [];
+
+function skillMarkdownFiles(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = readdirSync(join(root, dir));
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    const rel = `${dir}/${entry}`;
+    let st;
+    try {
+      st = statSync(join(root, rel));
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) out.push(...skillMarkdownFiles(rel));
+    else if (entry.endsWith(".md")) out.push(rel);
+  }
+  return out;
+}
+
+for (const file of skillMarkdownFiles("skills")) {
+  const text = readText(file) ?? "";
+  const seen = new Set();
+  for (const m of text.matchAll(SKILL_PATH_RE)) {
+    const [, skill, rest] = m;
+    // Skip placeholders — a doc may illustrate with <ISSUE_ID>-style tokens.
+    if (rest.includes("<") || rest.includes("*")) continue;
+    // Only check things that look like an invocable file, not a directory reference.
+    if (!/\.[a-z0-9]+$/i.test(rest)) continue;
+    const key = `${skill}/${rest}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      statSync(join(root, "skills", skill, rest));
+    } catch {
+      skillViolations.push({ file, ref: `~/.claude/skills/${key}`, expected: `skills/${key}` });
+    }
+  }
+}
+
 let failed = false;
+
+if (skillViolations.length > 0) {
+  failed = true;
+  console.error("✗ check-steering: skill scripts referenced at paths that do not exist.\n");
+  console.error(
+    "  A `~/.claude/skills/<skill>/<rest>` reference in a SKILL.md maps 1:1 onto this repo's",
+  );
+  console.error(
+    "  `skills/<skill>/<rest>` — skills are copied wholesale into the agent's home. A wrong",
+  );
+  console.error("  path fails at the AGENT, mid-task, as a 'no such file'.\n");
+  for (const v of skillViolations) {
+    console.error(`  ${v.file}  →  ${v.ref}  (expected on disk at ${v.expected})`);
+  }
+  console.error("");
+}
 
 if (dirViolations.length > 0) {
   failed = true;
