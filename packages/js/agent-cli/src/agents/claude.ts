@@ -29,8 +29,11 @@ export const claudeStrategy: AgentStrategy = {
     // (`claude setup-token` → CLAUDE_CODE_OAUTH_TOKEN), inherited from the process
     // env, instead of an API key. Either one satisfies the requirement.
     const hasOAuthToken = resolveEnvValue(processEnv, "CLAUDE_CODE_OAUTH_TOKEN");
-    if (!hasApiKey && !hasOAuthToken) {
-      return createMissingEnvResult("Claude", "ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN");
+    // ANTHROPIC_AUTH_TOKEN supports third-party Anthropic-compatible endpoints
+    // (e.g. Moonshot AI) that authenticate via Authorization: Bearer header.
+    const hasAuthToken = resolveEnvValue(processEnv, "ANTHROPIC_AUTH_TOKEN");
+    if (!hasApiKey && !hasOAuthToken && !hasAuthToken) {
+      return createMissingEnvResult("Claude", "ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN");
     }
     return null;
   },

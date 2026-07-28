@@ -479,6 +479,62 @@ services:
     depends_on:
       - codex-agent
 
+  # --- Kimi agent (Moonshot AI — opt-in via kimi-agent profile) ---
+  kimi-agent:
+    container_name: kimi-agent
+    profiles: [kimi-agent]
+    build:
+      context: .
+      dockerfile: apps/kimi-agent/Dockerfile
+    environment:
+      # Moonshot auth — this is consumed as ANTHROPIC_AUTH_TOKEN by the kimi-runner.
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - KIMI_ANTHROPIC_URL=${KIMI_ANTHROPIC_URL:-https://api.moonshot.ai/anthropic}
+      - AGENT_MODEL=${AGENT_MODEL:-kimi-k3[1m]}
+      # ANTHROPIC_API_KEY is intentionally absent — the runner's env: { ANTHROPIC_API_KEY: "" }
+      # overrides any compose-level value, but we don't set it here to avoid shadowing risk.
+      - GH_TOKEN=${GH_TOKEN:-}
+      - H_SKILLS_DIR=/h-skills
+      - AGENT_BASE_DIR=/workspace/kimi-agent
+      - MCP_CONFIG_SRC=/workspace/kimi-agent/.mcp.json
+    volumes:
+      - ../h-workspace:/workspace
+      - ./skills:/h-skills:ro
+      - ./apps/kimi-agent/.mcp.json:/workspace/kimi-agent/.mcp.json:ro
+    ports:
+      - "8017:8000"
+      - "3517:3500"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "which claude"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  kimi-agent-dapr:
+    container_name: kimi-agent-dapr
+    profiles: [kimi-agent]
+    image: daprio/daprd:edge
+    restart: on-failure
+    user: "0:0"
+    command:
+      - "./daprd"
+      - "--app-id=kimi-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+      - dapr-nr:/nr
+    network_mode: "service:kimi-agent"
+    depends_on:
+      - kimi-agent
+
   # --- Dapr Agents SDK agent ---
   dapr-agent:
     container_name: dapr-agent

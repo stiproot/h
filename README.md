@@ -20,6 +20,7 @@ composition stack, and the design principles.
 | `langgraph-agent` | LangChain / LangGraph | Config-driven ReAct graph (`create_react_agent`) via `ChatAnthropic` → LiteLLM proxy; no Dapr Agents SDK |
 | `workflow-agent` | Dapr Agents SDK | Cron-triggered orchestrator; builds/tests/persists/runs workflows via the workflows MCP |
 | `codex-agent` | OpenAI Codex CLI | Lean coding agent; same Fastify + Dapr sidecar contract as claude-agent |
+| `kimi-agent` | Claude Code CLI (Moonshot) | Anthropic-compat endpoint; claude CLI routed to Moonshot AI; opt-in profile |
 
 ## Workspace layout
 
@@ -39,6 +40,7 @@ h/
 │   ├── dapr-mcp/               # dapr-mcp — MCP server for Dapr state-store inspection
 │   ├── obs-mcp/                # obs-mcp — read-only observability MCP (traces, logs, run ledger)
 │   └── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
+│   └── kimi-agent/             # kimi-agent — Claude Code CLI × Moonshot (Fastify + Dapr sidecar)
 ├── packages/            # shared libs, partitioned by language ecosystem
 │   ├── js/              # TypeScript (npm workspace — root package.json)
 │   │   ├── agent-cli/        # Shared agent invocation logic (CLI strategies, stream parsing)
@@ -304,6 +306,7 @@ cli/scripts/compose.sh --profile all down -v
 | `openhands-agent` | local build | `8004` (app), `3504` (sidecar) | OpenHands CLI agent |
 | `pi-agent` | local build | `8015` (app), `3515` (sidecar) | pi CLI coding agent |
 | `codex-agent` | local build | `8016` (app), `3516` (sidecar) | OpenAI Codex CLI agent |
+| `kimi-agent` | local build | `8017` (app), `3517` (sidecar) | Claude Code CLI × Moonshot AI |
 | `dapr-agent` | local build | `8006` (app), `3506` (sidecar) | Dapr Agents SDK ReAct loop |
 | `dapr-claude-loop-agent` | local build | `8007` (app), `3507` (sidecar) | Anthropic SDK agentic loop |
 | `claude-managed-agent` | local build | `8008` (app), `3508` (sidecar) | Claude Managed Agents |
@@ -327,6 +330,7 @@ cli/scripts/compose.sh --profile all down -v
 | `workflow-agent` | 8010 | 3510 | 36010 | 61012 |
 | `pi-agent` | 8015 | 3515 | 36015 | 61016 |
 | `codex-agent` | 8016 | 3516 | 36016 | 61017 |
+| `kimi-agent` | 8017 | 3517 | 36017 | 61018 |
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 

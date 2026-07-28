@@ -6,6 +6,7 @@ import { runClaudeManagedActivity } from "./activities/run-claude-managed.activi
 import { runCodexActivity } from "./activities/run-codex.activity.ts";
 import { runDaprAgentActivity } from "./activities/run-dapr-agent.activity.ts";
 import { runDaprClaudeLoopActivity } from "./activities/run-dapr-claude-loop.activity.ts";
+import { runKimiActivity } from "./activities/run-kimi.activity.ts";
 import { runLanggraphActivity } from "./activities/run-langgraph.activity.ts";
 import { runOpenhandsActivity } from "./activities/run-openhands.activity.ts";
 import { registerCronActivity } from "./activities/register-cron.activity.ts";
@@ -22,6 +23,7 @@ export const activities = [
   runClaudeManagedActivity,
   runCodexActivity,
   runDaprClaudeLoopActivity,
+  runKimiActivity,
   runLanggraphActivity,
   runOpenhandsActivity,
   runPiActivity,
@@ -48,6 +50,8 @@ export function getActivity(name: string) {
       return runCodexActivity;
     case "run-dapr-claude-loop":
       return runDaprClaudeLoopActivity;
+    case "run-kimi":
+      return runKimiActivity;
     case "run-langgraph":
       return runLanggraphActivity;
     case "run-openhands":

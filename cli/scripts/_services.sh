@@ -6,6 +6,7 @@
 #
 # Sourced, not executed. Ports and app-ids are NOT duplicated here — they are parsed from each
 # run-*.sh on demand (service_health_port / service_stopspec), so this file only owns the membership.
+# kimi-agent is opt-in via the 'kimi-agent' docker-compose profile (not in dev or h-builds-h).
 set -u
 
 # services_for_mode <mode> — echo the run-script basenames for a mode, one per line.
