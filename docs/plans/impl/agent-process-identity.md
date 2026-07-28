@@ -1,20 +1,16 @@
 # Agent process identity & workspace permissions
 
-Status: **increment 1 landed + validated** (2026-07-14). Every agent image is on the model (CLI agents
-full split, Python agents baseline); the CLI fleet is validated end-to-end — a full
-feature→pr-review→revise chain completed with openhands AND claude-coder both running their servers
-non-root as `agent-svc` (10001) and dropping the untrusted CLI to `agent-cli` (10002). Local mode
-verified inert. Supersedes the per-agent claude entrypoint merged in #38. The Python images are wired
-but build-verify only (not in the running stack).
+Status: Complete — increment 1 (the fleet-wide OS process-identity model) landed and was validated end to end 2026-07-14; increment 2 was resolved by simplification rather than built, and its two halves are parked as their own Deferred plans
+Established: 2026-07-13
 
-**Increment 2 — resolved by SIMPLIFICATION, not built (2026-07-14).** Rather than build the per-run
-trust profile, the user chose to **embrace the trust model** (we own the repos the fleet works in and
-don't run h against third-party repos soon) and **retire claude-coder outright** — pr-review + the
-h-builds-h loop now run on the trusted claude-agent (full tools, full env). The per-run trust profile
-(and the env `subset` strategy) are **deferred to stubs** — docs/plans/reviewer-identity-security.md
-and docs/plans/agent-env-propagation.md — to revisit if/when untrusted repos actually appear. The OS
-process-identity model (this plan's core, increment 1) is unchanged and still carries the untrusted
-CLI's file/UID isolation.
+Lifted to:
+- The non-root fleet model (`AGENT_UID` server / `SUB_AGENT_UID` dropped CLI / shared `AGENT_GID`) → the CLAUDE.md host⇄compose workspace-interchangeability gotcha + the auto-memory `agent-process-identity`.
+- The one-time provisioning step and the group self-heal → `cli/scripts/setup-agent-workspace.sh` and `cli/scripts/_lib.sh`, both citing this doc; operator steps in [docs/h-builds-h-runbook.md](../../h-builds-h-runbook.md).
+- The privilege-drop spawn path and its env consequences → `packages/js/agent-cli/src/agents/run-process.ts` + `docker/agent-entrypoint.sh`, both citing this doc.
+- The per-uid bun-cache isolation this surfaced → the CLAUDE.md toolchain-guard gotcha.
+- Increment 2's two halves → [reviewer-identity-security](../reviewer-identity-security.md) (the capability binding) and [agent-env-propagation](../agent-env-propagation.md) (the env `subset` strategy), both Deferred with the same revisit trigger.
+
+**Increment 2 — resolved by SIMPLIFICATION, not built (2026-07-14).** Rather than build the per-run trust profile, the user chose to embrace the trust model (we own the repos the fleet works in) and **retire claude-coder outright** — review-pr and the h-builds-h loop now run on the trusted claude-agent. The OS process-identity model (this plan's core) is unchanged and still carries the untrusted CLI's file/UID isolation.
 
 ## Problem
 

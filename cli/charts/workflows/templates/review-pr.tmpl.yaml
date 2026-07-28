@@ -173,7 +173,7 @@ steps:
 outputs:
   {{- include "h.contract.review-pr" . | nindent 2 }}
 {{- /*
-panelSynthesis — "how to synthesize a panel of me" (docs/plans/panels-as-a-modifier.md decision
+panelSynthesis — "how to synthesize a panel of me" (docs/plans/impl/panels-as-a-modifier.md decision
 5): spliced into the judge's task when this workflow runs under an --agent roster; inert
 otherwise. The join SHAPE is the outputs contract above; this block is only the join RULE.
 */}}

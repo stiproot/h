@@ -4,7 +4,7 @@ import { WatchPolicy } from "./watch.model.ts";
 import { WorkflowParams } from "./workflow.model.ts";
 
 /**
- * The DISCOVERY cron's data shapes (docs/plans/workflow-watcher-registry.md §9) — the fan-out sibling
+ * The DISCOVERY cron's data shapes (docs/plans/impl/workflow-watcher-registry.md §9) — the fan-out sibling
  * of the recur cron (cron.model.ts). Where a recur cron RE-FIRES one workflow (fixed `wf:` identity)
  * until its goal resolves, a discovery cron ENUMERATES a source each due tick and fires ONE workflow
  * PER newly-discovered item, deduping against the `wf:*` keys. It has no single `wf:` identity and no
@@ -54,7 +54,7 @@ export const DiscoverRow = Schema.Struct({
   // Extra params merged into every fire (e.g. fire-time identity: runActivity/agentId/model). `slug`,
   // `repo`, and `issueNumber` are supplied per-issue by the engine and win over these.
   fireParams: Schema.optional(WorkflowParams),
-  // Watch policy attached to every fired run (docs/plans/watcher-primitive.md): supervises each
+  // Watch policy attached to every fired run (docs/plans/impl/watcher-primitive.md): supervises each
   // feature-pr so a hung run is terminated by the watcher engine rather than stalling the discovery
   // cron on its serialize (in-flight) guard forever. Optional — omit to fire unsupervised.
   watch: Schema.optional(WatchPolicy),

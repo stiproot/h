@@ -1,6 +1,6 @@
 # Phase 1 — Live drift & bug fixes
 
-Status: Active — 11 item(s), 1 complete (A16, 2026-07-28)
+Status: Active — 11 item(s), 2 complete (A16, A29 — both 2026-07-28)
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
@@ -52,6 +52,22 @@ are both refused and the victim file is never created, while legitimate writes s
 ## [ ] A28. agent-integration-playbook was not updated by the newest agent integration (codex)
 
 *Severity: medium · effort: small*
+
+> **Verified 2026-07-28 — PART 3 DONE, parts 1–2 STALE, re-scope before implementing.**
+> Part 3 landed with the plans-grooming pass: the playbook was never a plan (it is durable
+> operational how-to, so the plan-management lift table puts it in a skill), and it is now
+> **`.claude/skills/integrate-agent/`** with frontmatter and a codex worked example written as
+> *what happens when you skip the checklist* — the missing `AGENT_IDENTITY` rows, the
+> under-wired compose env (the missing `H_SKILLS_DIR` that turned setup into `cp -r /. …`),
+> the global-config MCP model and its SSE gap, the explicit auth-mode contract, and the
+> container-private `CODEX_HOME` requirement. Every `docs/plans/agent-integration-playbook.md`
+> citation was repointed.
+> Parts 1–2 no longer reproduce: `AGENT_IDENTITY`/`AGENT_URLS` carry codex
+> (`config.py:57`), README mentions it, and the proposed guard EXISTS as
+> `cli/h/tests/test_agent_identity_sync.py` (source-derived exclusion set, as specified) —
+> all landed via [codex-chatgpt-auth](../impl/codex-chatgpt-auth.md). What remains open is the
+> overlap with **A22** (skill rosters still omit `run-pi`/`run-codex`), which this item's
+> relocation does not address.
 
 **Gap:** docs/plans/agent-integration-playbook.md is the designated integration recipe (memory: 'seed of an integrate-agent skill'), but the codex-agent integration — the first Effect-composition-root agent, first telemetry-package consumer, OpenAI-keyed — left no trace in it (grep 'codex' across docs/plans/ and skills/ returns nothing), so the playbook's lessons stop at pi and the newest integration pattern is captured nowhere durable.
 
@@ -109,7 +125,18 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** Delete the `## dapr-claude-loop-agent` section (apps/claude-agent/CLAUDE.md:21-74) outright rather than moving it: every accurate piece already has a long-lived home (root CLAUDE.md App layouts + hex-lint gotcha for the no-import-linter rationale; README.md rows 18/178/192/226/258/274 for run script, compose profile, and ports), and the section's unique claims are wrong (port 8005 vs actual 8007; obsolete `docker compose --profile claude-managed` vs `cli/scripts/compose.sh --profile dapr-claude-loop-agent`). Leave apps/claude-agent/CLAUDE.md as the two workspace rules + code-review output format, matching the shape of apps/openhands-agent/.openhands/skills/steering-rules.md. Optionally add a stanza to scripts/check-templates.mjs (or a new scripts/check-steering.mjs wired into root `lint`) asserting per-app agent steering files (apps/*/CLAUDE.md, apps/openhands-agent/.openhands/skills/steering-rules.md) contain no `## <other-app-name>` headings, encoding the rules-only invariant.
 
-## [ ] A29. h-builds-h.md carries an actively false status line
+## [x] A29. h-builds-h.md carries an actively false status line
+
+**DONE 2026-07-28** — fixed as part of a full plans-grooming pass, and hardened beyond what
+this item asked. `h-builds-h.md` now reads `Status: Complete` with both supersessions stated
+up front (the `issue-sweep` agent tick retired 2026-07-12; `claude-coder` retired 2026-07-14),
+its phase-4 leftovers lifted to `docs/plans/carried-followups.md` §16–§18, and it is archived
+to `docs/plans/impl/` — as is `workflow-watcher-registry.md`, per this item's note, plus 17
+other completed plans. The generalization: `scripts/check-plans.mjs` (wired into `bun run
+lint`) now enforces the status vocabulary, `Established:`, `Lifted to:` on archived plans, and
+that every `docs/plans/**.md` citation from outside `docs/plans/` resolves. As this item
+predicted, a headline-word regex would have been the wrong guard — the check validates that a
+plan's claim is *well-formed*, never that it *should* be archived.
 
 *Severity: low · effort: small*
 

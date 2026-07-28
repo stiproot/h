@@ -1,7 +1,15 @@
 # Verify & eval loop tightening — acceptance deduced, review evidence-checked
 
-Status: Complete — implemented 2026-07-26 (PR #80), live-validated same day; archived
+Status: Complete — all three seams implemented 2026-07-26 (PR #80) and live-validated end to end the same day
 Established: 2026-07-26
+
+Lifted to:
+- Seam 1, deduce-the-full-acceptance verify (the supplied `verifyCmd` is the FLOOR, not the definition of done) → the prose in `cli/charts/workflows/templates/verify.tmpl.yaml`, where the duty is carried.
+- Seam 2, spec-aware review → the optional `spec` param on `review-pr.tmpl.yaml` + `values.yaml`, threaded from chain data by `chain-members.ts`.
+- Seam 3, the review test-evidence check → the `review-pr` checklist.
+- The always-open runtime slot pattern (token always rendered, section inert when empty) that resolved this plan's own contradiction → the `focus`/`spec` params in `review-pr.tmpl.yaml`; chart-time gating was rejected because it silences fire-time specs.
+- The validation shape → [docs/cookbook.md](../../cookbook.md) ("Validate an existing PR against its ORIGINAL spec").
+- Follow-up gaps → GitHub issues #84 (worktree fetch race) and #88 (revise-pr never updates the PR body).
 
 ## Origin
 

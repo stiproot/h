@@ -2,7 +2,7 @@
 
 Every list render leads with the `watch:__tick__` heartbeat: a missing or stale (>5 min)
 heartbeat means the scan engine is not running and the rows are not truth — the same
-staleness guard the sweep applies (docs/plans/watcher-primitive.md).
+staleness guard the sweep applies (docs/plans/impl/watcher-primitive.md).
 """
 
 from datetime import UTC, datetime

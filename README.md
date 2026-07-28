@@ -222,7 +222,7 @@ make down-local               # stop them (leaves infra up; `make infra-down` st
 process groups, logs → `.local-logs/<service>.log`); `make wait-local` gates readiness by
 TCP-probing each service's app port. Service membership per mode lives in `cli/scripts/_services.sh`
 (the single source of truth the launcher and the zellij layouts share — kept in step by
-`scripts/check-services.mjs` at lint time). See docs/plans/agent-local-mode-bringup.md.
+`scripts/check-services.mjs` at lint time). See docs/plans/impl/agent-local-mode-bringup.md.
 
 ### 5. Run a test
 

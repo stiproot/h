@@ -1,7 +1,15 @@
 # Codex on a ChatGPT subscription — host + container auth
 
-Status: Active — Phase 1 (host mode) DONE + validated live on Plus; Phase 2 (container mode) code done, live-validated in the container e2e; CLI `--agent codex` wired
+Status: Complete — Phase 1 (host) and Phase 2 (container) both landed and were live-validated on a ChatGPT Plus plan; the container app-server blocker was root-caused and fixed 2026-07-24, and `--agent codex` is wired end to end
 Established: 2026-07-23
+
+Lifted to:
+- Running codex on a ChatGPT subscription — `CODEX_AUTH_MODE=chatgpt`, the empty-`--model` requirement, and the auth-file properties → the CLAUDE.md gotcha "Codex on a ChatGPT subscription (not only an API key)".
+- The gate itself → `packages/js/agent-cli/src/agents/codex.ts`, which cites this doc.
+- The container CODEX_HOME isolation (why it must be container-private, not the host-shared workspace) → `cli/scripts/run-codex-agent.sh` + `cli/scripts/seed-codex-auth.sh`, both citing this doc.
+- The `.mcp.json` → codex TOML translation and its sse-skip → `apps/codex-agent/src/infrastructure/codex-mcp-config.ts`, which cites this doc.
+- The per-agent wiring checklist codex should have followed → the `integrate-agent` skill (`.claude/skills/integrate-agent/`), which now carries codex as a worked example.
+- Open questions 2–4 (container concurrency, k8s creds, the Enterprise token path) and the SSE-MCP parity gap → [carried-followups](../carried-followups.md) §3–§4.
 
 ## Goal
 

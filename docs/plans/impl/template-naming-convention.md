@@ -1,7 +1,13 @@
 # Template naming convention — verb grammar, .tmpl.yaml, declared roles
 
-Status: DONE — all phases complete 2026-07-25 (phase 4 executed locally with the vocab wire change)
+Status: Complete — all phases landed 2026-07-25; the verb grammar, the `.tmpl.yaml` file marker, declared+guarded roles, and the kind renames all shipped with the vocabulary flag day
 Established: 2026-07-25
+
+Lifted to:
+- The naming rules an author must follow (imperative kebab-case verb phrase, the `.tmpl.yaml` marker, the template gate, the declared `role:`) → the `author-workflow-template` skill, which is the authoring home.
+- The gate + role invariants → `scripts/check-templates.mjs`, wired into `bun run lint` — the guard IS the durable form of this plan.
+- The template-gate requirement for new templates → the CLAUDE.md gotcha "Chart template gate and role".
+- The member-kind trio (`implement-pr` / `review-pr` / `revise-pr`) and the both-sides rule for adding one → the Chain bullet in [CLAUDE.md](../../../CLAUDE.md) + `chain.model.ts`'s `MEMBER_KINDS`, guarded by the kind-sync test.
 
 ## Why
 

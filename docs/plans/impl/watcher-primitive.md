@@ -1,7 +1,16 @@
-**Status:** SHIPPED (2026-07-05) — the engine-in-workflow-svc shape, the closed action vocabulary (including `escalate`), and the h-primitives vocabulary are adopted and implemented in one atomic cutover (Decision 7; see the Progress log). The spike ladder (§8) is retained for the record only. Outstanding: first live end-to-end exercise against the running stack.
-**Living doc** — update the Decisions section and the Progress log as things land.
-
 # The watcher primitive: decoupling supervision from invocation
+
+Status: Complete — the watcher shipped as a durable registry + pure `decide` + cron-tick scan in workflow-svc; both babysitter loops deleted, live-exercised end to end, and the shape became the template the chain and cron primitives were built from
+Established: 2026-07-05
+
+Lifted to:
+- The primitive itself, its closed action vocabulary, and the registry/`decide`/tick shape → [ARCHITECTURE.md](../../../ARCHITECTURE.md) (Primitives, Glossary) + the terse index in [CLAUDE.md](../../../CLAUDE.md).
+- The h-primitives frame (workflow / watcher / trigger / registry) → ARCHITECTURE.md Glossary — the canonical dictionary.
+- Single-writer registries, "machines loop, agents judge", and fail-loud → ARCHITECTURE.md Principles.
+- Runtime behaviour (kill switch, epoch fencing, cost tally, `h watch list`) → the CLAUDE.md standard-`POST /workflow` gotcha.
+- Code-level rationale → `apps/workflow-svc/src/domain/models/watch.model.ts` and `watch-scan.ts`, which cite this doc by section.
+
+The spike ladder (§8) is retained below for the record only.
 
 ## Context
 

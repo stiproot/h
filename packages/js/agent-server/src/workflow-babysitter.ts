@@ -1,5 +1,5 @@
 /**
- * The workflow babysitter, post-watcher-cutover (docs/plans/watcher-primitive.md): submit and
+ * The workflow babysitter, post-watcher-cutover (docs/plans/impl/watcher-primitive.md): submit and
  * FORWARD, not submit-and-supervise. Supervision is durable and engine-owned in workflow-svc —
  * the submit translates the caller's policy into a `watch` field on the run body, workflow-svc
  * writes a `watch:sub:<instanceId>` row in the same handler that schedules, and its cron-tick

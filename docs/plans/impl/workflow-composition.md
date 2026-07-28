@@ -1,10 +1,16 @@
-**Status:** EXPLORATORY (2026-07-07) — design locked, not yet implemented. This plan tightens h's
-workflow architecture by dissolving the "family" concept into a clean primitive stack (template →
-workflow → chain) and adding two composition operators. It supersedes the flag-driven,
-template-conditional style (`feature --pr`) with explicit composition.
-**Living doc** — update Decisions as they resolve and append to the Progress log as phases land.
-
 # Workflow composition: templates, overlays, and chains
+
+Status: Complete — all five phases landed; "family" retired for "template", the overlay operator and the durable chain engine shipped, and `parallel` (deferred here) landed as chain STAGES via [inline-chain-cron-composition](./inline-chain-cron-composition.md) D3
+Established: 2026-07-07
+
+Lifted to:
+- The composition stack (templates —overlay→ definition —run→ workflow —chain→ chain) and the Chain primitive → [ARCHITECTURE.md](../../../ARCHITECTURE.md) (Composition, Glossary) + the CLAUDE.md primitives index.
+- "Compose, don't fuse" and "atomic cutovers" → ARCHITECTURE.md Principles.
+- Overlay's merge-by-step-id semantics (incl. the additive `input.setup` concat) → the module docstring on `cli/h/src/h_cli/infrastructure/overlay.py`.
+- The chart template gate, render modes, and the publish flow → the CLAUDE.md chart gotchas + the `author-workflow-template` skill.
+- Chain-agnostic workflows threading via the row's `data` (no chain actor) → `apps/workflow-svc/src/domain/models/chain.model.ts`, which cites this doc.
+
+§3 and Decisions 4/6 describe a **chain actor that was never built** — Phase 4 reversed it. They are kept struck-through for the record.
 
 ## Framing
 
@@ -23,8 +29,8 @@ operators, "family" dissolves into "template", and the architecture tightens.
 
 ## 1. Vocabulary (adopt into core docs)
 
-These terms replace "family" and must land in [CLAUDE.md](../../CLAUDE.md),
-[README.md](../../README.md), and [WORKFLOWS.md](../../WORKFLOWS.md) as part of this work.
+These terms replace "family" and must land in [CLAUDE.md](../../../CLAUDE.md),
+[README.md](../../../README.md), and `WORKFLOWS.md` (since retired -- its content lives in ARCHITECTURE.md + cli/README.md) as part of this work.
 
 - **Template** — the authored, parameterized, composable unit (what a "family" pretended to be). A
   blueprint. A helm chart is *one way to author a template*; it is not the template itself.

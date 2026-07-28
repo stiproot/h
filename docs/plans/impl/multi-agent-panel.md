@@ -1,10 +1,15 @@
 # Multi-agent panel — parallel step groups in the generic workflow
 
-> **2026-07-24 — superseded at the authoring level by [[panels-as-a-modifier]]:** the engine's
-> parallel step group (this plan's deliverable) is unchanged and load-bearing, but panels are no
-> longer HAND-AUTHORED — the CLI's `panelize` transform generates the group from an `--agent`
-> roster on any read/judge workflow. The `agent-panel` template + chain kind this plan shipped
-> are retired, subsumed by the `answer` template/kind (the bare panelizable task member).
+Status: Complete — the parallel step group shipped and is load-bearing; the hand-authored `agent-panel` template + chain kind it introduced were retired 2026-07-24, subsumed by `answer` + the `panelize` transform
+Established: 2026-07-17
+
+Lifted to:
+- "Augment agents, never replace them" → [ARCHITECTURE.md](../../../ARCHITECTURE.md) Principles, which cites this doc.
+- The parallel step group construct (`{id?, parallel: [steps]}`, one `whenAll`, branch results + a group map, no nesting) → [ARCHITECTURE.md](../../../ARCHITECTURE.md) Composition + the `generic.workflow.ts` line in [CLAUDE.md](../../../CLAUDE.md)'s app layout.
+- Its semantics and replay-safety rationale → `apps/workflow-svc/src/infrastructure/workflows/generic.workflow.ts` + `workflow.model.ts`, both citing this doc.
+- How a panel is composed today → [panels-as-a-modifier](./panels-as-a-modifier.md), which superseded the authoring half.
+
+**Superseded at the authoring level (2026-07-24):** the engine's parallel step group — this plan's deliverable — is unchanged, but panels are no longer HAND-AUTHORED. The CLI's `panelize` transform generates the group from an `--agent` roster on any read/judge workflow.
 
 ## Position: augment agents, never replace them
 

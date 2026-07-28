@@ -45,7 +45,7 @@ the helper always emits this step; fire-time params control which plugins instal
 
 {{/*
 h.outputContractEpilogue — the per-step INSTANCE of the output contract
-(docs/plans/structured-workflow-outputs.md §2): rendered from the template's declared schema so
+(docs/plans/impl/structured-workflow-outputs.md §2): rendered from the template's declared schema so
 instruction and contract cannot drift. The shared PROTOCOL rule lives in h-runtime.md (installed by
 h.setupSteps); this block supplies the schema adjacent to the task it governs. The declaring
 template appends it to its final agent step's task (nindent to the block scalar), sets the SAME

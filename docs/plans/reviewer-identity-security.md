@@ -1,10 +1,10 @@
-**Status:** STUB (2026-07-09) — a placeholder to be fleshed out.
-**RELAXED under the trust model (2026-07-14):** claude-coder was retired and pr-review now runs on
-the trusted claude-agent — see "Current posture" below. This doc is now the home for reintroducing a
-minimal-surface reviewer as a **per-run trust profile** if/when untrusted third-party repos appear.
-**Living doc** — flesh out when reviewer-identity flexibility is actually needed.
-
 # Reviewer identity: minimal-surface executors for untrusted-input workflows
+
+Status: Deferred — the trust model (we own every repo the loop reviews) made the isolation unnecessary and claude-coder was retired; this is the home for reintroducing a minimal-surface reviewer as a per-run trust profile
+Established: 2026-07-09
+Revisit when: h runs against a repo we do not own, or any workflow takes third-party text as a prompt
+
+Still live from this doc: the **interim ruling** below — `--agent` on a frozen-executor workflow warns and keeps the pin, never erroring and never silently complying. `config.py`, `chain.py` and `workflow.py` all cite this doc at that warning. Its sibling half is [agent-env-propagation](./agent-env-propagation.md) (the env `subset` strategy); both were split out of [agent-process-identity](./impl/agent-process-identity.md) increment 2.
 
 ## Current posture (2026-07-14) — trust model
 

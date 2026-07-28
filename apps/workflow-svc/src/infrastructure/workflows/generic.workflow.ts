@@ -13,7 +13,7 @@ export async function* genericWorkflow(
   const results: Record<string, unknown> = { params: input.params ?? {} };
   const workflowInstanceId = ctx.getWorkflowInstanceId();
 
-  // Registry self-reporting (docs/plans/workflow-watcher-registry.md §3): when the run carries a
+  // Registry self-reporting (docs/plans/impl/workflow-watcher-registry.md §3): when the run carries a
   // wf-identity, bracket its steps with the write-wf-row activity so it writes its OWN status row —
   // `running` before the steps, `done`/`failed` after. Deterministic in the generator (the row's
   // timestamp is stamped inside the non-deterministic activity); best-effort (the activity swallows
@@ -36,7 +36,7 @@ export async function* genericWorkflow(
   try {
     for (const step of input.steps) {
       if ("parallel" in step) {
-        // Parallel step group (docs/plans/multi-agent-panel.md): every branch's input resolves
+        // Parallel step group (docs/plans/impl/multi-agent-panel.md): every branch's input resolves
         // against the results map as it stood BEFORE the group — branches cannot reference each
         // other, which is what makes them parallelizable — then ONE whenAll fans out. A single
         // deterministic decision point in the generator, replay-safe; any branch failure fails
@@ -87,7 +87,7 @@ export async function* genericWorkflow(
       const result = yield ctx.callActivity(activity, resolvedInput);
       results[step.id ?? step.activity] = result;
     }
-    // --cron closing bracket (docs/plans/workflow-watcher-registry.md §10): a run that carries an
+    // --cron closing bracket (docs/plans/impl/workflow-watcher-registry.md §10): a run that carries an
     // armCron registers its OWN recurrence AFTER the work, via the register-cron activity (idempotent
     // ensure-exists, so a re-fired run's re-arm is a no-op). LOUD — a failed arm throws into the catch
     // below and records wf:failed. repo/slug come from the run's params; it recurs under THIS run's
@@ -95,7 +95,7 @@ export async function* genericWorkflow(
     if (input.armCron) {
       const params = (input.params ?? {}) as Record<string, unknown>;
       // Inline (embedded) recurrence recurs THIS run's own steps verbatim — nothing published to
-      // re-hydrate by key (docs/plans/inline-chain-cron-composition.md D1).
+      // re-hydrate by key (docs/plans/impl/inline-chain-cron-composition.md D1).
       yield ctx.callActivity(getActivity("register-cron"), {
         workflow: input.armCron.workflow,
         repo: params.repo,
@@ -121,10 +121,10 @@ export async function* genericWorkflow(
 }
 
 /**
- * The goal handshake (docs/plans/workflow-watcher-registry.md §6): a wf-identified workflow may
+ * The goal handshake (docs/plans/impl/workflow-watcher-registry.md §6): a wf-identified workflow may
  * report whether its SUBJECT is resolved (e.g. the PR merged) — distinct from run-status `done`
  * (the steps finished) — via a `goal: "RESOLVED"` field in its validated structured output
- * (docs/plans/structured-workflow-outputs.md; e.g. the revise template's declared contract). We
+ * (docs/plans/impl/structured-workflow-outputs.md; e.g. the revise template's declared contract). We
  * scan the step envelopes for it so write-wf-row records `resolved`, the flag the cron engine
  * reads to stop recurring. Pure, replay-safe. Absent ⇒ false (not resolved; keep recurring).
  */

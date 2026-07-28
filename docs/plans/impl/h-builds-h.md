@@ -1,12 +1,15 @@
 # h builds h: labeled GitHub issues → feature PRs, on cron
 
-**Status:** design complete (2026-07-05); phase 0 not started
-**Living doc** — update the Progress log as phases land.
-**Superseded detail (2026-07-14):** the `claude-coder` split described below (the stripped,
-github-only executor) was **retired** — under the trust model the loop's executor is the trusted
-`claude-agent` (docs/plans/agent-process-identity.md increment 2 + reviewer-identity-security.md).
-Read the claude-coder references below as historical design; the operational companion is
-docs/h-builds-h-runbook.md.
+Status: Complete — the loop runs live as two pure-engine crons (no sweep agent); validated 2026-07-20 (PR #52) and 2026-07-21 (PR #53), and it has produced merged PRs continuously since
+Established: 2026-07-05
+
+Lifted to:
+- The operational home — how to run, arm, disarm and kill-switch the loop → [docs/h-builds-h-runbook.md](../../h-builds-h-runbook.md).
+- The mechanism that replaced the agent sweep (discovery cron fanning out supervised `implement-pr`, plus a per-PR revise-until-merged cron) → [workflow-watcher-registry](./workflow-watcher-registry.md) §9–§10 + the Cron bullet in [CLAUDE.md](../../../CLAUDE.md).
+- The trust gates that survive — a maintainer's `agent-approved` label admits the text, a human PR review admits the code → the runbook.
+- Remaining phase-4 backlog items (worktree GC, template drift-check, k8s cron leader guard) → [carried-followups](../carried-followups.md) §16–§18.
+
+**Two supersessions to read the body through.** (1) The `issue-sweep` agent tick this plan designs was **retired** 2026-07-12 — sweeping is now engine code on the cron tick, and only the fired run holds agent judgment. Read §1–§4's checklist, gates and rulings as the reasoning that *produced* the engine's behaviour, not as live machinery. (2) The `claude-coder` split (the stripped, github-only executor) was **retired** 2026-07-14 — under the trust model the executor is the trusted `claude-agent` ([agent-process-identity](./agent-process-identity.md) increment 2 + [reviewer-identity-security](../reviewer-identity-security.md)).
 
 ## Context
 

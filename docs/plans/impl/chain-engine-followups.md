@@ -1,7 +1,14 @@
 # Chain engine follow-ups — issues #76–#79, implemented locally
 
-Status: DONE — implemented + unit-tested 2026-07-25 (wire smoke green; the full zero-glue pipeline is the next batch's natural shape)
+Status: Complete — all four issues (#76–#79) implemented and unit-tested in one change set 2026-07-25; wire smoke green
 Established: 2026-07-25
+
+Lifted to:
+- Chain activation gates (`--after <chainId>`, `--at`/`--in`) and persist-only registration → the Chain bullet in [CLAUDE.md](../../../CLAUDE.md) + `chain.model.ts`.
+- Terminal-stage captures landing on the finalized row → `chain-scan.ts`'s shared capture step.
+- The loop × stages resolution (`startCursor` is a STAGE; loop-segment stages must be single-member) → `chain_expr.py` / `chain.py`'s registration validation, and recorded on [inline-chain-cron-composition](./inline-chain-cron-composition.md), whose open sub-question it closed.
+- Worktree reuse-by-branch → `packages/js/git-core/src/git-client.ts` `addWorktree`.
+- The zero-glue two-chain pattern it unlocked → [docs/cookbook.md](../../cookbook.md).
 
 ## Scope
 

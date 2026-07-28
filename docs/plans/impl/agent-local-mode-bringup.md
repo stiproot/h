@@ -1,7 +1,13 @@
 # Agent-friendly local-mode bring-up
 
-Status: Active — Phases 1–2 landed + validated e2e (ground-up host-mode rebuild, all 7 services UP); Phase 3 docs done, `make check-env-local` deferred
+Status: Complete — Phases 1–2 landed and were validated by a genuine ground-up host-mode rebuild (all 7 services UP); Phase 3's docs shipped and its one remaining item is carried
 Established: 2026-07-23
+
+Lifted to:
+- The headless bring-up sequence (`make infra-up` → `up-local-wait` → `down-local`) and the true-from-scratch reset (incl. that `./dapr-etcd` is a BIND mount `compose down -v` misses, and that `down` ignores profile-gated services without `--profile all`) → the CLAUDE.md gotcha "Headless host-mode bring-up" + README §4.
+- The per-mode service list as a single source of truth → `cli/scripts/_services.sh`, guarded against `.zellij/*.kdl` drift by `scripts/check-services.mjs` (wired into `bun run lint`) — the guard IS the durable form of open question #2.
+- The one-time `sudo cli/scripts/setup-agent-workspace.sh` provisioning step → [docs/h-builds-h-runbook.md](../../h-builds-h-runbook.md).
+- `make check-env-local` (the `.env` contract check) → [carried-followups](../carried-followups.md) §5.
 
 ## Goal
 

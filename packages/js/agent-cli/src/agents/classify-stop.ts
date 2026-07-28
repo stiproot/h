@@ -1,6 +1,6 @@
 /**
  * Classify WHY an agent CLI run stopped — orthogonal to `success` (which stays `exitCode === 0`).
- * The one signal the runtime lacked (docs/plans/schedule-and-fallback.md): a usage/rate limit is
+ * The one signal the runtime lacked (docs/plans/impl/schedule-and-fallback.md): a usage/rate limit is
  * today indistinguishable from a crash, and a limited Claude run can even exit 0 (emitting a
  * `{type:"result", is_error:true}` event with the limit text). This heuristic reads the exit code,
  * the kill signal, stderr, AND the terminal result event so the watcher can arm a delayed fallback

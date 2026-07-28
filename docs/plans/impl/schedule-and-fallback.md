@@ -1,9 +1,15 @@
-**Status:** SHIPPED (2026-07-18) — all five phases landed in one change set (commit `2d2eedf`);
-Features 2 & 3 + the `cron:sched` engine validated end-to-end against live Dapr+Redis. Outstanding:
-the usage-limit fallback (Feature 1) is unit-tested but not yet live-exercised (needs an agent to
-actually hit a limit), and 4b (active self-report) is deferred. **Living doc** — see the Progress log.
-
 # Schedule at a time, pause/resume, and usage-limit fallback — the `cron:sched` variant
+
+Status: Complete — all five phases landed 2026-07-18 (commit `2d2eedf`) and were validated end to end against live Dapr+Redis; the fallback path's in-anger validation and 4b (active self-report) carry to the successor plan
+Established: 2026-07-18
+
+Lifted to:
+- The `cron:sched` one-shot as the cron family's THIRD variant, and its three consumers (`--at`/`--in`, pause/resume, the usage-limit fallback) → the Cron bullet in [CLAUDE.md](../../../CLAUDE.md) + [ARCHITECTURE.md](../../../ARCHITECTURE.md) Primitives.
+- Per-decision rationale → cited inline by `schedule.model.ts`, `schedule-engine.ts`, `schedule-scan.ts`, `watch.model.ts`, and `classify-stop.ts`.
+- The outcome-inversion trap (a usage-limited run is Dapr-`COMPLETED`, so the watcher refines outcome from the ledger and NOT from `decide()`) → a comment at `refineUsageLimited` in `watch-scan.ts`, where it must not be folded back in.
+- `h schedule list|rm` and the `--fallback-*` flags → the CLI command help + [docs/cookbook.md](../../cookbook.md).
+- 4b (active usage-limit self-report) → [carried-followups](../carried-followups.md) §14, to be built as part of [model-fallback-continuity](../model-fallback-continuity.md).
+- Driving the fallback in anger → [model-fallback-continuity](../model-fallback-continuity.md), the successor plan that owns the end-to-end story.
 
 ## Context
 

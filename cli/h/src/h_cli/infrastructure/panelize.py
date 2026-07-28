@@ -1,4 +1,4 @@
-"""Panelize — the `--agent` roster transform (docs/plans/panels-as-a-modifier.md).
+"""Panelize — the `--agent` roster transform (docs/plans/impl/panels-as-a-modifier.md).
 
 Pure and dependency-free (sibling of overlay.py): a rendered workflow definition in, a panelized
 one out — no helm, no network, no config. A panel is `--agent` being PLURAL: this transform turns
@@ -28,7 +28,7 @@ import json
 from typing import Any
 
 # The synthesis judge — pinned (the pr-review executor pin migrates to the judge:
-# docs/plans/reviewer-identity-security.md via docs/plans/panels-as-a-modifier.md decision 7).
+# docs/plans/reviewer-identity-security.md via docs/plans/impl/panels-as-a-modifier.md decision 7).
 JUDGE_ACTIVITY = "run-claude"
 
 PANEL_GROUP_ID = "panel"

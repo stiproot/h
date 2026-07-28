@@ -24,7 +24,7 @@ import type { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
 /**
  * Everything an activity effect may yield from the shared runtime. Includes the registry stores
  * (`WfStore`, `CronStore`) and the invoker/store the cron registration touches, because registry
- * state is written by ACTIVITIES (docs/plans/workflow-watcher-registry.md §10 — the `arm-*` pattern):
+ * state is written by ACTIVITIES (docs/plans/impl/workflow-watcher-registry.md §10 — the `arm-*` pattern):
  * `write-wf-row` writes `wf:`, `register-cron` writes `cron:` via `registerCronForFire`. The shared
  * runtime is built from the app layer, which provides all of these.
  */

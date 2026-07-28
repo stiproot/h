@@ -1,4 +1,4 @@
-"""panelize()'s contract (docs/plans/panels-as-a-modifier.md): pure transform, shape + errors.
+"""panelize()'s contract (docs/plans/impl/panels-as-a-modifier.md): pure transform, shape + errors.
 
 The transform is the single author of panel-branch prose, so these tests are also the spec of
 the sync steering (the concurrency preamble) and of the seam invariant: the synthesis carries

@@ -1,9 +1,15 @@
-**Status:** BUILT — all six phases landed 2026-07-19 (D1–D6 + CLI); green in workflow-svc (304 tests)
-and the `h` CLI (205 tests). NOT yet live-validated end-to-end (the issue-#51 run needs the agent
-fleet up — stack currently down). The only deferred item is loop-until-clean × stages (an open
-sub-question below). **Living doc** — see the Progress log.
-
 # Inline chain composition + independent workflow crons + concurrent stages
+
+Status: Complete — all six phases (D1–D6 + CLI) landed 2026-07-19 and were live-validated end to end 2026-07-20 (PR #52); the one deferred sub-question, loop-until-clean × stages, was resolved by [chain-engine-followups](./chain-engine-followups.md) #79b
+Established: 2026-07-19
+
+Lifted to:
+- Chain STAGES (D3), the two-level namespaced chain data (D5), inline members and cron members (D1/D2/D4), and atomic-failure teardown (D6) → the Chain bullet in [CLAUDE.md](../../../CLAUDE.md) + [ARCHITECTURE.md](../../../ARCHITECTURE.md) (Primitives, Composition).
+- Per-decision rationale → cited inline by `chain.model.ts`, `chain-engine.ts`, `chain-scan.ts`, `cron.model.ts`, `register-cron.activity.ts`, `generic.workflow.ts`, and `chain_expr.py`.
+- The `cron-disarm` topic contract (D6 teardown, single-writer disarm handler) → `cron.model.ts` + the cron router.
+- The `h chain run` stage/inline/cron grammar → the command docstring + [docs/cookbook.md](../../cookbook.md).
+
+Resolution of the open sub-question, for the record: `loop.startCursor` is the review member's **STAGE** (not member index); stages before the loop segment may be concurrent, stages inside it must be single-member, refused loud at registration. Fixed CLI-side; the engine was unchanged.
 
 ## Context
 

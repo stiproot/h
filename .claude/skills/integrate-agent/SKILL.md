@@ -1,8 +1,28 @@
-# Playbook: integrating a new agent into h
+---
+name: integrate-agent
+description: >
+  The repeatable recipe for adding a coding agent to h at parity with the existing
+  ones — the three pieces every agent is (a CLI strategy, a thin service, a workflow
+  activity) plus the identity/deploy/docs wiring, the touchpoint checklist to work
+  through in the order that lands green, and the CLI-agent gotchas (headless
+  invocation, large prompts, autonomy flags, auth/model mapping, MCP, cost, PATH).
+  Use whenever adding, removing, or bringing to parity an agent service in h —
+  `apps/<name>-agent/`, a `packages/js/agent-cli` strategy, a `run-<name>` activity,
+  or an `AGENT_IDENTITY` entry — and when auditing whether an existing agent is
+  fully wired. Applies to the h repo only.
+---
 
-Seed notes toward an `integrate-agent` skill. Captures the repeatable shape for adding a coding
-agent to h at parity with the existing ones, distilled from wiring `openhands-agent` and drafting
-the `pi` integration ([#24](https://github.com/stiproot/h/issues/24) — the first worked example).
+# Integrating a new agent into h
+
+The repeatable shape for adding a coding agent to h at parity with the existing ones,
+distilled from wiring `openhands-agent`, the `pi` integration
+([#24](https://github.com/stiproot/h/issues/24)), and `codex-agent` (the worked example at the
+bottom).
+
+**This checklist is machine-backed in one place:** `cli/h/tests/test_agent_identity_sync.py`
+asserts that every shared-input `run-*` activity in `activity-registry.ts` is reachable via
+`--agent`. If you add a strategy and an activity but forget `AGENT_IDENTITY`, that test fails.
+Nothing else on this list is guarded — work through it deliberately.
 
 ## The contract
 
@@ -73,6 +93,40 @@ Pick the closest existing agent as the template (a **CLI** agent → `openhands-
 
 Identity is fire-time params: a new agent is reachable per-fire via `-p runActivity=run-<name>
 -p agentId=<name>-agent` or `--agent <name>` with **no chart change**. Only touch
-`cli/charts/workflows/` if you want the agent selectable as a named chart default. The `pr-review`
-executor is deliberately NOT parameterized (untrusted-diff security invariant) — `--agent` is
-ignored there.
+`cli/charts/workflows/` if you want the agent selectable as a named chart default. The `review-pr`
+executor is deliberately NOT parameterized — `--agent` warns and keeps the pin there
+(docs/plans/reviewer-identity-security.md).
+
+## Worked example: codex-agent (2026-07-23/24)
+
+Codex followed the shape above — a `codex.ts` strategy parsing the CLI's JSONL `thread.*` events,
+a thin `apps/codex-agent/` service, a `run-codex` activity — and it is a useful example precisely
+because **the checklist's wiring half was skipped and the omissions each cost a debugging
+session**. Read it as a list of what happens when you don't finish the list.
+
+- **`AGENT_IDENTITY`/`AGENT_URLS` were never added**, so `--agent codex` didn't resolve at all
+  until they were backfilled. This is now the one guarded step
+  (`cli/h/tests/test_agent_identity_sync.py`).
+- **Compose env was under-wired**, and each gap surfaced only in a container run: missing
+  `GH_TOKEN` broke worktree fetch, the PR push, and the github-MCP bearer; a missing
+  `H_SKILLS_DIR` turned setup's `cp -r $H_SKILLS_DIR/. …` into `cp -r /. …` — a copy of the whole
+  root filesystem. **Diff your compose service against the nearest existing agent's, key by key.**
+- **MCP is not optional if the agent touches PRs.** Codex provisioned none, so `--agent codex` on
+  implement-pr/revise-pr would implement and then fail at every PR step. Codex configures MCP
+  *globally* (a `config.toml` in `CODEX_HOME`), not per-cwd like claude's `.mcp.json`, so the
+  runner translates h's `.mcp.json` into codex TOML each run. **Its `--url` is streamable-HTTP
+  only, so h's SSE servers (dapr/obs/workflows) are skipped** — codex is a coding/PR executor,
+  not an orchestrator.
+- **Auth mode is an explicit env contract, never a sniff.** `validateEnvironment` passes on
+  `OPENAI_API_KEY` *or* `CODEX_AUTH_MODE=chatgpt` *or* `CODEX_ACCESS_TOKEN` — fail-closed, the
+  same shape as `MCP_CONFIG_MODE`. And a ChatGPT-account plan **rejects explicit API model ids**,
+  so `buildInvocation` omits `--model` when none is set.
+- **A per-agent state dir must be container-private.** Pointing `CODEX_HOME` at the host-shared
+  workspace polluted codex's SQLite app-server state with cross-uid files (host uid 1000 wrote
+  them 0644; the container user then couldn't write → "readonly database" → fatal). The fix is a
+  dedicated in-image `/codex-home`, with the host credential mounted read-only and seeded in.
+
+Two general lessons worth carrying to the next agent: **any agent-owned state dir is subject to
+the same cross-uid hazard as the workspace** (see docs/plans/impl/agent-process-identity.md), and
+**a local e2e passing does not imply a container e2e passes** — codex was fully green locally
+while four container wiring bugs and one deep blocker were still live.

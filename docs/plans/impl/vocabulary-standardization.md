@@ -1,7 +1,13 @@
 # Vocabulary standardization — one dictionary across the repo
 
-Status: DONE — all tiers complete (Tier 3 wire executed 2026-07-25 with the template-naming flag day)
+Status: Complete — all tiers landed; the canonical glossary, the prose sweep, member-oriented identifiers, and the vocabulary guard shipped, and the Tier 3 wire rename executed 2026-07-25 with the template-naming flag day
 Established: 2026-07-24
+
+Lifted to:
+- The canonical dictionary → [ARCHITECTURE.md](../../../ARCHITECTURE.md)'s Glossary, which every other doc now defers to; the terse index is in [CLAUDE.md](../../../CLAUDE.md).
+- The banlist of retired terms and its glossary pointers → `scripts/check-vocabulary.mjs`, wired into `bun run lint` — the guard IS the durable form of this plan.
+- The rule that agents must use the canonical dictionary when writing about h → the user-global CLAUDE.md "Vocabulary" section.
+- The docs/plans/ exemption (plans are point-in-time records) → encoded in the guard's scan set.
 
 ## Why
 

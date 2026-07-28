@@ -20,7 +20,7 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 export type DisarmCronError = { readonly _tag: "NotFound" } | WorkflowError;
 
 /**
- * The effectful half of the cron engine (docs/plans/workflow-watcher-registry.md §5), sibling of
+ * The effectful half of the cron engine (docs/plans/impl/workflow-watcher-registry.md §5), sibling of
  * chain-scan.ts / watch-scan.ts: registration on the fire path, and the per-tick scan that reads each
  * active cron row, asks the pure engine (cron-engine.ts) what to do, and executes the closed vocabulary
  * — wait, FIRE (re-invoke the workflow, fresh, under its fixed instance), deactivate (goal resolved or
@@ -62,7 +62,7 @@ export type CronRegistration = {
 };
 
 /**
- * Registers a cron row — IDEMPOTENT ensure-exists (docs/plans/workflow-watcher-registry.md §10). Does
+ * Registers a cron row — IDEMPOTENT ensure-exists (docs/plans/impl/workflow-watcher-registry.md §10). Does
  * NOT invoke — a cron only recurs on the tick; the initial run, when `--cron` rides one, has already
  * fired (its instanceId + firedAt come in as `initial`).
  *

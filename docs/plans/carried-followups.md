@@ -1,0 +1,233 @@
+# Carried follow-ups — deferred items from archived plans
+
+Status: Deferred — the one home for open items carried out of plans archived to `impl/`; each has a named revisit trigger, none blocks current work
+Established: 2026-07-28
+
+## Why this doc exists
+
+A plan archives when its work is done and its durable context is lifted. But a finished
+plan often leaves one or two *deliberately deferred* items — too small to keep a whole plan
+active, too real to drop. Before this doc they either kept a completed plan artificially
+"Active" or vanished on archive.
+
+The convention, therefore: **an archived plan's remaining open items move here, and its
+`Lifted to:` line points at this file.** One greppable home, one status line, no
+proliferation of near-empty follow-up docs. An item leaves here by being built, by becoming
+a GitHub issue (the h-builds-h loop's queue — the route `panels-as-a-modifier` took for
+#76–#79), or by being explicitly dropped with a reason.
+
+This absorbs the former `workflow-registry-followups.md` (established 2026-07-12), whose
+items are §5–§10 below; its two resolved items are recorded as such rather than deleted, so
+the record of *why* they closed survives.
+
+---
+
+## From [chain-composition-surface](./impl/chain-composition-surface.md)
+
+### 1. Slice E — per-member `--budget` is parsed but not enforced
+
+`h chain run` accepts a per-member `--budget DUR` in the chain expression and validates its
+format, but `chain.py` then refuses it: *"per-workflow --budget on '<member>' is not yet
+enforced"*. The chain-wide wall clock (the prefix-position `--budget`) works; the
+per-member watch budget does not. Needs `ChainMember` to carry a watch policy and
+`chain-scan`'s fire path to register it per member fire.
+
+*Revisit when:* a chain has one member that legitimately needs a much tighter or looser
+budget than its siblings — today the chain-wide budget covers every observed case.
+
+---
+
+## From [chain-plan-atom](./impl/chain-plan-atom.md)
+
+### 2. No first-class `plan` member kind
+
+`-t plan` has no entry in the closed `MEMBER_KINDS` literal, so it rides `--kind answer`
+with both threading halves declared explicitly (`--capture plan=plan` /
+`--input spec=plan.plan`), which fully replaces the kind's coded contract. It works; it is
+just more ceremony than the other kinds need. A `plan` kind would carry the contract in
+code like its siblings — added on BOTH sides (engine `MEMBER_KINDS` + CLI tables), per the
+standing rule.
+
+*Revisit when:* plan-then-implement chains become routine enough that the explicit
+threading flags are noise (the spec-review pipeline would make this so).
+
+---
+
+## From [codex-chatgpt-auth](./impl/codex-chatgpt-auth.md)
+
+### 3. Codex cannot consume h's SSE MCP servers
+
+Codex's `--url` speaks **streamable-HTTP only**, so `mcpJsonToCodexToml` skips every `sse`
+entry — meaning `dapr`, `obs`, and `workflows` are unreachable from a codex run. Codex has
+full github-MCP parity (the PR layer works), so this only bites if codex ever needs to
+orchestrate rather than code.
+
+*Revisit when:* a codex run needs workflow/state/observability tools — or when h's MCP
+servers gain a streamable-HTTP transport beside SSE, which would close it for free.
+
+### 4. Codex container concurrency + k8s creds
+
+Two open questions the Phase-2 container work deliberately left: (a) `auth.json` is
+one-per-runner by OpenAI's own rule, so running host **and** container codex on one ChatGPT
+plan long-term can rotate each other's refresh token — currently handled by convention, not
+mechanism; (b) a k8s Secret is immutable, so a self-refreshing `auth.json` there needs a
+seeded writable volume, unbuilt. Also unbuilt: the Enterprise `CODEX_ACCESS_TOKEN` path
+(the gate already accepts it; nothing exercises it).
+
+*Revisit when:* codex runs concurrently at fleet scale, or codex is deployed to k8s.
+
+---
+
+## From [agent-local-mode-bringup](./impl/agent-local-mode-bringup.md)
+
+### 5. `make check-env-local` — the headless `.env` contract
+
+Phase 3 documented the one-time provisioning step but deferred the machine check: a target
+that fails loudly listing the `.env` keys a headless host-mode bring-up requires
+(`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `GH_TOKEN`, …)
+*before* launching, instead of each `run-*.sh` hard-failing one at a time.
+
+*Revisit when:* a bring-up fails on a missing key often enough to be annoying — or fold it
+into the hardening audit's `check-env-parity.mjs` idea, which overlaps.
+
+---
+
+## From [workflow-watcher-registry](./impl/workflow-watcher-registry.md) (the former `workflow-registry-followups.md`)
+
+### 6. `--cron` vs `--schedule` — unify or coexist?
+
+`h workflow publish --schedule "*/30…"` crons a *saved workflow by key* (fired by the
+workflow-cron-tick over saved schedules). The `--cron` primitive is *target-scoped* (a
+`cron:sub:<repo>:<slug>:<workflow>` row pointing at a `wf:` record + its goal). Two
+mechanisms that both "run a workflow on a clock." Decide: generalize into one, or keep them
+deliberately distinct (schedule = fire-a-template forever; cron = recur-until-goal).
+Leaning coexist, but worth an explicit call before either grows more surface.
+
+### 7. `--dynamic-cron` — an agent registers a cron mid-run
+
+We chose the deterministic `arm-revise`/`arm-cron` *step* over an agent deciding, mid-run,
+to register a cron. This remains open for the case where the follow-up work is *discovered
+by the agent* and can't be a fixed step. Semantics unresolved (recurrence of THIS workflow,
+or of discovered follow-up work, or both?), and it needs a `register-cron` MCP tool — a
+surface expansion that must clear the executor's minimal-MCP review first.
+
+### 8. Liveness-on-death for `wf:` rows
+
+The build assumes clean self-reporting: a workflow writes its own `wf:running` then
+`done`/`failed`. A run that **dies before writing a terminal status** leaves a non-terminal
+row nothing else may write (single-writer). The fix is a READ concern: a reader (chain/cron
+engine) should treat a non-terminal row whose Dapr instance is gone as `orphaned` (the
+existing UNKNOWN-streak logic), with the watcher supervising the live instance as the
+backstop. Not wired yet.
+
+### 9. Cron source mode 3 — dynamic params
+
+A cron deriving its params **fresh each tick** rather than re-firing fixed params (mode 1)
+or a frozen definition (mode 2). Needs a param-source contract — where fresh values come
+from (a reader plugin, prior `wf:` output, a GitHub query). Modes 1 and 2 shipped; the
+discovery cron already covers the common "enumerate a source → fan out" shape without it.
+
+### 10. Compose-to-disk — authoring a new template file
+
+`h template compose … --save` persists the composed *definition to workflow-svc state*, not
+a new `.tmpl.yaml` on disk. Authoring a genuinely new reusable **template file** alongside
+the others (re-composable, git-trackable) is wanted but unspecced.
+
+### 11. Optional worktree for a workflow, and the `review-pr` case — security-gated
+
+A step should accept an optional `worktreePath`: reuse a prior chain member's, else create
+one. Clean for h-authored branches. The sharp part is **`review-pr` gaining a worktree**:
+reading the tree for context is one risk tier; *running commands* on a PR's code executes
+untrusted third-party code in a secret-bearing agent. Three lines to choose between:
+(1) read-only context, no execution; (2) full worktree + execution behind a
+no-secrets/egress-restricted posture; (3) keep the reviewer read-only via MCP and hand
+"needs to run" to a separate trusted validation workflow. Creation must be a conditional
+*workflow step* (a `withWorktree` param), never an agent tool. `review-pr` capabilities
+stay as-is until this is decided. See [reviewer-identity-security](./reviewer-identity-security.md).
+
+### Resolved since the list was written
+
+- **`h cron rm <id>`** — BUILT. `h cron rm REPO SLUG WORKFLOW` → `POST /cron/disarm`
+  (single-writer, epoch-fenced, keeps the row for audit).
+- **`loop-until-clean` chain strategy** — BUILT. The engine strategy shipped with the chain
+  engine; `--strategy loop-until-clean --max-iterations N` is live and e2e-validated. Its
+  one rough edge (loop × stages) was resolved CLI-side by
+  [chain-engine-followups](./impl/chain-engine-followups.md) #79b: `startCursor` is the
+  review member's STAGE, and stages inside the loop segment must be single-member, refused
+  loud at registration.
+
+---
+
+## From [h-builds-h](./impl/h-builds-h.md)
+
+The plan's phase-4 backlog, minus the items that its own supersession made moot (the
+`issue-sweep` promotion died with the sweep; the runner-side terminate listener shipped —
+`invoker.terminate` now reaches the subprocess through the run's scope finalizer).
+
+### 16. Worktree GC — the disk-leak half
+
+[chain-engine-followups](./impl/chain-engine-followups.md) #76 fixed the *collision* half by
+making `addWorktree` reuse an existing worktree for a branch. The **leak** half is untouched:
+a finalized chain never removes its worktrees, so `../h-workspace` grows without bound. Reuse
+makes this benign, which is why it was deferred — a lifecycle sweep (prune worktrees whose
+`feature/*` branch has a merged or closed PR) can follow.
+
+*Revisit when:* disk pressure appears.
+
+### 17. Template drift-check
+
+A workflow that diffs `get_workflow(<key>)` against a fresh publish render and alerts when
+they diverge — catching live-control-plane tampering, or simply a saved definition that has
+fallen behind its template. Cheap, and it composes from existing pieces.
+
+### 18. k8s cron leader guard
+
+A hard prerequisite before the loop can ever run on Kubernetes: the cron binding double-fires
+across replicas. Until this exists, the loop is deliberately local/compose only.
+
+---
+
+## From [panels-as-a-modifier](./impl/panels-as-a-modifier.md)
+
+### 12. Panelist attribution and expression cosmetics
+
+Two minor findings from the panel e2e that were never filed: posted PR reviews carry no
+`[panel:<agent>]` prefix (design Q4 called for one; `panelize`'s preamble doesn't inject
+posting-attribution prose), and two console/grammar papercuts — rich markup swallows a
+`[label]`-shaped member label in a chain-run line, and `--strategy`/`--max-iterations` must
+precede the `--` separator, which deserves a hint in the `ExprError` for known Typer flag
+names.
+
+### 13. Panel shape extensions
+
+Deferred by design, not by accident: `--panel N` / same-agent perspective assignment (a
+prompt-engineering slice), positional per-branch `--model` mirroring the roster, write-panel
+sugar over `--parallel` stage composition, and per-branch worktree isolation if the advisory
+read-only concurrency preamble proves insufficient.
+
+---
+
+## From [schedule-and-fallback](./impl/schedule-and-fallback.md)
+
+### 14. Active usage-limit self-report (4b)
+
+The passive classifier (`classify-stop`) ships and covers the common case. The active half —
+a template declaring `status: {enum:[COMPLETE, STOPPED_EARLY, USAGE_LIMITED]}` plus a
+`stoppedEarly(results)` reader in `generic.workflow.ts` mirroring `goalResolved` — was
+deferred because it needs the structured signal surfaced to where the watcher reads (the
+`run:` mirror or `wf:` row).
+
+*Revisit as part of* [model-fallback-continuity](./model-fallback-continuity.md) Phase 2/3,
+which owns the fallback story end to end and is the natural consumer of a durable signal.
+
+---
+
+## From [structured-workflow-outputs](./impl/structured-workflow-outputs.md)
+
+### 15. Rung-3 extract — deferred with a tripwire
+
+Zero rung-2 validation failures across every contracted live run, so no speculative extract
+machinery was built (*build what's needed*). The tripwire is explicit: **the first
+expensive re-run burned by a tail-of-output validation failure.** The shape to build when it
+trips is pinned — a composition (a cheap-agent extract atom), never LLM credentials on
+workflow-svc.

@@ -755,7 +755,7 @@ def test_chain_run_answer_bad_capture_field_fails_loud(tmp_path: Path) -> None:
     assert "no field(s) notafield" in _all_output(result)
 
 
-# --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
+# --- the --agent roster (docs/plans/impl/panels-as-a-modifier.md) ---------------------------------
 
 
 @needs_helm

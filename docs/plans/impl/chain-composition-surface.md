@@ -1,13 +1,17 @@
-**Status:** IMPLEMENTED through slice D (2026-07-09, round 7) — the format, inline overlay in a
-chain (compose-on-fire), per-workflow flags, and fire-time identity are live; slices E (per-workflow
-watch budgets) and F (parallel strategy) remain. Vocabulary note: a chain's members are called
-**workflows** — the interim word "hop" was retired in round 7. This plan extends
-[workflow-composition.md](./workflow-composition.md): it designed the v2 items that plan deferred —
-**inline overlay inside a chain** and **per-workflow flag overrides** — and formalizes the CLI
-surface they live in.
-**Living doc** — update Decisions as they resolve and append to the Progress log.
-
 # The h CLI format: primitives, verbs, and the chain expression
+
+Status: Complete — slices A–D landed 2026-07-09 (the `h template` noun, the EXPR parser, fire-time identity params, the `h chain run` cutover); slice F (parallel) shipped as chain STAGES via [inline-chain-cron-composition](./inline-chain-cron-composition.md) D3; only slice E remains, carried
+Established: 2026-07-09
+
+Lifted to:
+- The `h <primitive> <verb>` grid and the chain EXPR grammar → the `h chain run` docstring + [cli/README.md](../../../cli/README.md); worked examples in [docs/cookbook.md](../../cookbook.md).
+- The EXPR grammar's normative spec → `cli/h/src/h_cli/infrastructure/chain_expr.py` (module docstring) and `cli/h/tests/test_chain_expr.py`, which IS the grammar's test-of-record.
+- Fire-time identity (identity-as-params) → the CLAUDE.md gotcha of that name + the `AGENT_IDENTITY` table in `cli/h/src/h_cli/config.py`.
+- Content-values vs machinery (`-p` vs the closed flag set) → the CLAUDE.md publish-mode/templates gotcha.
+- The frozen-executor ruling (`--agent` warns and keeps the pin) → [reviewer-identity-security](../reviewer-identity-security.md), still the live home.
+- Slice E (per-member `--budget` parsed but unenforced) → [carried-followups](../carried-followups.md) §1.
+
+Vocabulary note: a chain's members are called **members** — this doc's "workflows" and the earlier "hop" both predate [vocabulary-standardization](./vocabulary-standardization.md).
 
 ## Framing
 
@@ -254,7 +258,7 @@ Identity-as-params would let any fire re-point the reviewer at a full-tool agent
 pr-review the `modelReview` param only and left its executor frozen. **RULED (2026-07-09):**
 `--agent` on a frozen-executor workflow logs a warning and defaults to the hardcoded executor — never
 an error, never silent compliance. The future allowlist of minimal-surface reviewer agents is
-sketched in [reviewer-identity-security.md](./reviewer-identity-security.md) (stub, to flesh out).
+sketched in [reviewer-identity-security.md](../reviewer-identity-security.md) (stub, to flesh out).
 
 ---
 
@@ -536,7 +540,7 @@ no-migration-windows convention.
   (chain cutover) — blocked on that ruling only for the pr-review workflow; everything else is ready.
 - **2026-07-09 (ruling + slice D landed).** Frozen-executor ruling: `--agent` on such a workflow WARNS
   and keeps the published executor (never errors, never silently complies) — captured in the new
-  stub plan [reviewer-identity-security.md](./reviewer-identity-security.md). **Slice D:**
+  stub plan [reviewer-identity-security.md](../reviewer-identity-security.md). **Slice D:**
   `h chain run` is the EXPR surface — Typer keeps only chain-identity flags
   (`--slug/--spec/--issue/--strategy/--max-iterations`); the expression tokens fall through via
   `allow_extra_args`+`ignore_unknown_options` to `parse_expr`. `-w` resolves well-known names

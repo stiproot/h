@@ -1,7 +1,7 @@
 """The chain-expression parser's contract: grammar, positional scoping, and every error path.
 
 parse_expr is pure (tokens in, structure out), so these tests are the full spec of the EXPR
-grammar in docs/plans/chain-composition-surface.md §1.5 — no mocks, no CLI runner.
+grammar in docs/plans/impl/chain-composition-surface.md §1.5 — no mocks, no CLI runner.
 """
 
 import pytest
@@ -201,7 +201,7 @@ def test_duplicate_capture_destination_is_rejected() -> None:
         parse_expr(["-w", "implement-pr", "--capture", "prNumber=pr", "--capture", "prNumber=url"])
 
 
-# --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
+# --- the --agent roster (docs/plans/impl/panels-as-a-modifier.md) ---------------------------------
 
 
 def test_agent_roster_collects_operands_until_next_flag() -> None:
@@ -231,7 +231,7 @@ def test_agent_roster_is_per_workflow_only_in_the_prefix() -> None:
         parse_expr(["--agent", "claude", "codex", "-w", "review-pr"])
 
 
-# --- Phase-6 composition flags (docs/plans/inline-chain-cron-composition.md) -----------------
+# --- Phase-6 composition flags (docs/plans/impl/inline-chain-cron-composition.md) -----------------
 
 
 def test_stage_cron_max_fires_id_bind_per_workflow() -> None:

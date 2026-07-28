@@ -1,6 +1,6 @@
 """Overlay — spatial composition: merge several workflow definitions into one.
 
-Phase 2 of the workflow-composition plan (docs/plans/workflow-composition.md). Overlay is the
+Phase 2 of the workflow-composition plan (docs/plans/impl/workflow-composition.md). Overlay is the
 compose-file operator (`docker compose -f a -f b`): later layers extend earlier ones, producing a
 single workflow definition that runs as ONE workflow (one instanceId, one worktree, one agent
 context). It is how `feature --pr` becomes `-t implement -t create-pr` — `create-pr` extends the

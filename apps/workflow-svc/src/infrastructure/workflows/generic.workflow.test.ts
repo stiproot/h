@@ -162,7 +162,7 @@ describe("genericWorkflow — --cron closing bracket (§10)", () => {
   });
 });
 
-describe("genericWorkflow — parallel step groups (docs/plans/multi-agent-panel.md)", () => {
+describe("genericWorkflow — parallel step groups (docs/plans/impl/multi-agent-panel.md)", () => {
   // Its own driver: the shared `run` doesn't model whenAll. callActivity records the call and
   // returns its index; whenAll records which call-indices were grouped. The loop feeds each
   // yield's result back in: an array for a whenAll yield, a scalar for a plain activity yield.

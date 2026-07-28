@@ -1,7 +1,16 @@
 # Panels as a modifier: the `--agent` roster
 
-Status: DONE — v1 + agent-panel retirement + e2e validated 2026-07-24 (PR #64); follow-ups listed
-Established: 2026-07-23 · Designed: 2026-07-24 · Built: 2026-07-24 · Validated: 2026-07-24
+Status: Complete — v1, the agent-panel retirement, and the e2e validation all landed 2026-07-24 (PR #64); the substantive follow-ups became GitHub issues #76–#79 and shipped
+Established: 2026-07-23
+
+Lifted to:
+- Panel-as-cardinality (the `--agent` roster), the pure CLI-side `panelize` transform, and the read/judge-only rule → the Chain bullet in [CLAUDE.md](../../../CLAUDE.md) + the CLI layout line.
+- The transform's shape, the concurrency preamble, and the pinned judge → `cli/h/src/h_cli/infrastructure/panelize.py` (module docstring) + `cli/h/tests/test_panelize.py`.
+- Per-workflow synthesis guidance (`panelSynthesis:` beside `outputs:`) → the `author-workflow-template` skill + `review-pr.tmpl.yaml`, which declares one.
+- The two-substrate distinction (in-workflow parallel group vs chain parallel stage) → [ARCHITECTURE.md](../../../ARCHITECTURE.md) Composition.
+- Worked panel commands → [docs/cookbook.md](../../cookbook.md).
+- Findings 1–3 → GitHub issues #76 (worktree lifecycle), #77 (final-stage captures), #78 (chain-arms-chain), #79 (chain-run latency + loop×stages), all implemented by [chain-engine-followups](./chain-engine-followups.md).
+- Findings 4–5 (attribution, cosmetics) and the deferred panel-shape extensions → [carried-followups](../carried-followups.md) §12–§13.
 
 ## The idea
 

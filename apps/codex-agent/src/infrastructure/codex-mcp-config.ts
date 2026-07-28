@@ -2,7 +2,7 @@
 // `[mcp_servers.*]` section codex reads from $CODEX_HOME/config.toml. This is codex's parity path
 // with claude's mergeMcpConfig: claude auto-discovers a per-cwd `.mcp.json`; codex has only a GLOBAL
 // config in CODEX_HOME, so the runner writes a fresh config.toml into a dedicated h-managed
-// CODEX_HOME (never the user's ~/.codex). See docs/plans/codex-chatgpt-auth.md.
+// CODEX_HOME (never the user's ~/.codex). See docs/plans/impl/codex-chatgpt-auth.md.
 //
 // Server type mapping (verified against `codex mcp add` output):
 //   - http  → Streamable HTTP via [mcp_servers.<name>] url + bearer_token_env_var (extracted from a

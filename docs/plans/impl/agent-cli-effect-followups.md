@@ -1,10 +1,13 @@
-**Status:** STUB — not started. Two deferred follow-ups from the `agent-cli` Effect/simplification
-pass (the pass itself landed: dead code removed, dual Promise/Effect build API unified to one
-`buildInvocation → Effect`, `AgentStreamParser` collapsed to `parseLine`, `Stream.mkString` +
-`Effect.timed` in the runner; −122 LOC, 39 tests green). Both items below are **behaviour-changing**,
-which is why they were held back for a deliberate call. **Living doc** — see the Progress log.
-
 # agent-cli — Effect follow-ups (command-existence check + logging)
+
+Status: Complete — both follow-ups have since landed in the tree, though not under this plan; verified 2026-07-28 against `packages/js/agent-cli`
+Established: 2026-07-21
+
+Lifted to:
+- Follow-up 1 (drop the pre-flight `which`) — DONE, and it took **option (a)**: `commandExists`/`resolveCommand` are gone from `agents/shared.ts`, and `run-process.ts` maps both a spawn `ENOENT` and sudo's own exit 127 to the same exit-127 result. The sudo-path detection is deliberately three-part (drop active + exit 127 + zero stream events, since a real agent exiting 127 would have emitted events first) and is commented at the code.
+- Follow-up 2 (retire the chalk logger) — DONE: `lib/logger.ts` is deleted, `chalk` is out of `package.json`, and the four diagnostic lines are `Effect.logDebug`/`logError`. The raw agent stdout/stderr passthrough was left untouched, as this plan required.
+
+**This doc's status line was stale, not its content** — it read "STUB — not started" while both items were already implemented. Kept as the record of the decision each item needed, and of why they were held back from the mechanical refactor.
 
 ## Context
 

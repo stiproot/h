@@ -2,7 +2,7 @@
 plan workflow — worktree → setup → plan, and STOP. The planning half of `implement`, split
 out so the plan can be reviewed before anything is built.
 
-Why it exists (docs/plans/chain-plan-atom.md): `implement` is worktree → setup → plan →
+Why it exists (docs/plans/impl/chain-plan-atom.md): `implement` is worktree → setup → plan →
 implement under ONE runActivity, so the planning and implementing agents are always the same
 one and the intermediate plan is never a chain-visible artifact. This template ends AT the
 plan and reports it through a declared output contract, which makes two things expressible

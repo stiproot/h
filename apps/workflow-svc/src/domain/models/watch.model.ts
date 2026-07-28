@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 /**
- * The watcher primitive's data shapes (docs/plans/watcher-primitive.md): a watch is a durable
+ * The watcher primitive's data shapes (docs/plans/impl/watcher-primitive.md): a watch is a durable
  * registration — a `watch:sub:<instanceId>` row — that the scan engine reads on the cron tick,
  * interprets against the row's typed policy, and acts on through a closed vocabulary. This is
  * deliberately NOT a rules DSL (ruling W3): the policy is a fixed struct, and every behavior
@@ -22,7 +22,7 @@ export const WatchOutcome = Schema.Literal(
   // A REFINEMENT of "completed"/"failed", not a run status: the engine reads the run:<id> mirror's
   // stopReason at finalize and upgrades the outcome when a run hit an LLM usage/rate limit (a
   // limited Claude run can even exit 0 → COMPLETED). Never produced by decide(); it is set only in
-  // executeFinalize and read by the fallback policy. See docs/plans/schedule-and-fallback.md.
+  // executeFinalize and read by the fallback policy. See docs/plans/impl/schedule-and-fallback.md.
   "usage-limited",
 );
 export type WatchOutcome = Schema.Schema.Type<typeof WatchOutcome>;
@@ -47,7 +47,7 @@ export const WatchEscalatePolicy = Schema.Struct({
 });
 export type WatchEscalatePolicy = Schema.Schema.Type<typeof WatchEscalatePolicy>;
 
-// The usage-limit fallback (docs/plans/schedule-and-fallback.md): on a matching outcome
+// The usage-limit fallback (docs/plans/impl/schedule-and-fallback.md): on a matching outcome
 // (typically ["usage-limited"]), arm a DEFERRED continuation — a cron:sched row that re-fires the
 // SAME steps after `after` ms under a DIFFERENT agent/model (the identity override), reusing the
 // workspace. Distinct from retry (same identity, immediate) and escalate (a different saved key,

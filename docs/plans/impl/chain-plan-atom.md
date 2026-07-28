@@ -1,8 +1,16 @@
 # A `plan` chain atom (distinct plan vs implement agents)
 
-Status: **BUILT 2026-07-28** — `cli/charts/workflows/templates/plan.tmpl.yaml` (commit 868d080).
-Captured 2026-07-13 as a stub, deferred in favour of testing the existing machinery first; built
-when the deferral's cost came due (see below).
+Status: Complete — `plan.tmpl.yaml` built 2026-07-28 (commit 868d080) and validated live the same day (a plan → panelized plan → implement chain produced stiproot/h#97)
+Established: 2026-07-13
+
+Lifted to:
+- The `plan` template itself (worktree → setup → plan, stopping AT the plan under an output contract, panelizable via `panelSynthesis`) → `cli/charts/workflows/templates/plan.tmpl.yaml`, which cites this doc.
+- Its golden + structure coverage → `cli/h/tests/test_render.py`.
+- The threading correction this proved — a plan rides the chain DATA (`--capture plan=plan` → `--input spec=plan.plan`), NOT a file handoff, because a member's worktree is not guaranteed to be the next member's → recorded on the template and in [docs/cookbook.md](../../cookbook.md).
+- The rough edge (no first-class `plan` member kind, so it rides `--kind answer` with explicit threading) → [carried-followups](../carried-followups.md) §2.
+- Reviewing a plan before it becomes a prompt → [spec-review-pipeline](../spec-review-pipeline.md), which owns that half.
+
+Captured 2026-07-13 as a stub and deferred in favour of testing the existing machinery first; built when the deferral's cost came due. The sketch below is the original design — see the deviation note.
 
 **What shipped:** `worktree → setup → plan`, stopping AT the plan and declaring it through an
 output contract (`plan` required), so the plan is a chain-VISIBLE artifact. Panelizable like

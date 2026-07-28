@@ -1,18 +1,17 @@
-**Status:** IMPLEMENTED + FULL MARKER CUTOVER (2026-07-15) — machinery, the template
-conversion, two live chain validations, and then the complete retirement of output markers, all in
-one day; see the Progress log. STRUCTURED-ONLY: every machine consumer (chain contracts,
-goalResolved, register-cron) reads the validated block exclusively; marker parsing is deleted.
-Output markers no longer exist in any template — `===X===` survives solely as prompt-section
-headings (input delimiters), which no code parses. D4 (rung-3 extract) closed 2026-07-16:
-deferred with a tripwire — nothing open.
-Extends [workflow-composition.md](./workflow-composition.md) (the chain's original marker-threading
-contracts) and [chain-composition-surface.md](./chain-composition-surface.md) (the chain
-expression). Grew out of re-evaluating the `===MARKER===` decision; the body below is the design
-as first written (coexistence framing) — the Decisions and Progress log carry the same-day
-supersession to structured-only.
-**Living doc** — update Decisions as they resolve and append to the Progress log.
-
 # Structured workflow outputs: typed I/O signatures (né "beside the markers")
+
+Status: Complete — machinery, template conversion, two live chain validations and the full marker cutover all landed 2026-07-15; D4 (rung-3 extract) closed 2026-07-16, deferred with a tripwire
+Established: 2026-07-15
+
+Lifted to:
+- The structured-output contract as the chain's threading seam (declared `outputs:` + a validated fenced json block) → [ARCHITECTURE.md](../../../ARCHITECTURE.md) Glossary + the Chain bullet in [CLAUDE.md](../../../CLAUDE.md).
+- The rung-2 validator's behaviour (fail-closed JSON-Schema subset, last-fenced-json extraction) → `apps/workflow-svc/src/domain/structured-output.ts`, which cites this doc by section.
+- Authoring a contract (the three places it appears, the one-declarer composition rule) → the `author-workflow-template` skill.
+- The agent-facing protocol rule (`===OUTPUT CONTRACT===` → a trailing fenced json block) → `apps/claude-agent/steering/h-runtime.md`, copied into every agent's `~/.claude/CLAUDE.md` at setup.
+- The `outputContract` step input on every `run-*` activity → cited inline by each activity file.
+- D4's tripwire and the shape to build when it trips → [carried-followups](../carried-followups.md) §15.
+
+Extends [workflow-composition](./workflow-composition.md) (the chain's original marker-threading contracts) and [chain-composition-surface](./chain-composition-surface.md) (the chain expression). The body below is the design as first written (a coexistence framing); the Decisions and Progress log carry the same-day supersession to structured-only.
 
 ## Framing
 

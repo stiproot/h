@@ -24,7 +24,7 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 import { decide, settle } from "./watch-engine.ts";
 
 /**
- * The effectful half of the watch engine (docs/plans/watcher-primitive.md §4): registration on
+ * The effectful half of the watch engine (docs/plans/impl/watcher-primitive.md §4): registration on
  * the fire paths, and the per-tick scan that reads every active row, asks the pure engine
  * (watch-engine.ts) what to do, and executes the closed action vocabulary — terminate (own
  * subject only), record (own watch:* row only), publish (workflow-events), retry (re-fire the

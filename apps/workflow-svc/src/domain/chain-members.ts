@@ -5,7 +5,7 @@ import type { ChainMemberKind } from "./models/chain.model.ts";
  * chain data (the row's `data`). This is the durable, machine-code home of what Phase 1 proved live
  * as the CLI's `CHAIN_TEMPLATES` closures (cli/h/src/h_cli/commands/chain.py): `buildParams(data)`
  * reads the chain data for a workflow's fire-params, `capture(output, data)` reads the workflow's
- * validated STRUCTURED output back into it (docs/plans/structured-workflow-outputs.md — the marker
+ * validated STRUCTURED output back into it (docs/plans/impl/structured-workflow-outputs.md — the marker
  * parsing this file once did was retired 2026-07-15; every chained template declares an outputs
  * contract). Threading is engine code, never a config DSL (mirrors the watcher's ruling W3), and it
  * reads the workflow's output — NOT a chain actor — so the members it chains stay chain-agnostic
@@ -74,7 +74,7 @@ function requireStructured(output: string | undefined, what: string): Record<str
   if (!structured)
     throw new ChainThreadError(
       `${what}: the completed workflow emitted no structured output — its template must declare ` +
-        "an outputs contract (docs/plans/structured-workflow-outputs.md)",
+        "an outputs contract (docs/plans/impl/structured-workflow-outputs.md)",
     );
   return structured;
 }
@@ -296,7 +296,7 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
     capture: capturePr,
   },
   // A bare "answer this task" member (templates/answer.yaml) — the panelizable degenerate case
-  // (docs/plans/panels-as-a-modifier.md): identity is ordinary fire-time params, and an --agent
+  // (docs/plans/impl/panels-as-a-modifier.md): identity is ordinary fire-time params, and an --agent
   // ROSTER turns the one answer step into a multi-agent panel (parallel panelists + a judge
   // synthesis under this same contract) — the retired hand-built `agent-panel` template/kind,
   // subsumed 2026-07-24. Reads a `task` from the chain data; captures the structured `answer` so

@@ -111,7 +111,7 @@ def run_steps(
 
     `arm_cron` ({cadence, workflow, budget?, inline:true}) makes the run register its OWN recurrence
     over an EMBEDDED source built from these very steps — the inline sibling of `run_saved`'s cron,
-    for a definition that was never published (docs/plans/inline-chain-cron-composition.md D1). It
+    for a definition that was never published (docs/plans/impl/inline-chain-cron-composition.md D1). It
     needs `wf` ({repo, slug, workflow}) so the recurring runs write the goal-handshake status row
     the cron engine reads to stop."""
     body: dict[str, Any] = {"steps": steps}

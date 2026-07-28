@@ -198,7 +198,7 @@ def _render_template(name: str) -> dict[str, Any]:
 
 
 def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
-    """A roster fires a PANELIZED definition (docs/plans/panels-as-a-modifier.md), so it must
+    """A roster fires a PANELIZED definition (docs/plans/impl/panels-as-a-modifier.md), so it must
     compose-on-fire: render the chart template of that name when one exists (`outputs` AND
     `panelSynthesis` flow from the render; --inline forces the template reading), else fall back
     to the stored definition (generic synthesis prose)."""
@@ -486,7 +486,7 @@ def run(
             )
             raise typer.Exit(1)
     if roster:
-        # Panel path (docs/plans/panels-as-a-modifier.md): panelize the definition and fire the
+        # Panel path (docs/plans/impl/panels-as-a-modifier.md): panelize the definition and fire the
         # steps inline (leaving only the wf: status row) — the roster restructures the
         # definition, so there is no stored def to fire verbatim. The review-pr executor freeze
         # relaxes for a roster: the panelists run as named, the judge stays pinned (claude).
@@ -518,7 +518,7 @@ def run(
         merged = {**(definition.get("params") or {}), **params}
         # --inline --cron: recur these very steps over an EMBEDDED source (nothing published to
         # re-hydrate). The cron key mirrors the wf: coords, so it needs repo+slug params + the
-        # wf-identity, exactly like a saved --cron (docs/plans/inline-chain-cron-composition.md D1).
+        # wf-identity, exactly like a saved --cron (docs/plans/impl/inline-chain-cron-composition.md D1).
         arm_cron: dict[str, Any] | None = None
         wf: dict[str, Any] | None = None
         if cron_policy:

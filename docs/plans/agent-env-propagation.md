@@ -1,8 +1,10 @@
-**Status:** STUB (2026-07-14) — captures a strategy the user asked for while retiring claude-coder
-(docs/plans/agent-process-identity.md). The "propagate everything" half is the current behaviour;
-the "subset" half is the deferred follow-up. Not yet designed in detail.
-
 # Agent env propagation: service → CLI subprocess
+
+Status: Deferred — `all` (propagate everything) is the current, deliberate behaviour under the trust model; the `subset` strategy is designed only in outline
+Established: 2026-07-14
+Revisit when: h runs against a repo we do not own — env-subsetting is the secrets half of containing an untrusted spec, and should bind together with the capability half in one per-run trust profile
+
+Sibling of [reviewer-identity-security](./reviewer-identity-security.md) (the capability half); both were split out of [agent-process-identity](./impl/agent-process-identity.md) increment 2, whose UID split already isolates files and process.
 
 ## The two strategies
 

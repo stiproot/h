@@ -1,7 +1,15 @@
 # Workflow unification: families, triggers-as-data, and the babysitter
 
-**Status:** phases 1–6 complete (2026-07-04); deferred items below remain open
-**Living doc** — update the Progress log and Learnings as work lands.
+Status: Complete — all six phases landed 2026-07-04 (params, verify step, publish flow, triggers-as-data, the standard `POST /workflow`, CLI `--agent`); every deferred item has since been done or superseded
+Established: 2026-07-04
+
+Lifted to:
+- Triggers-as-data + the single `workflow-trigger` topic → the CLAUDE.md gotcha of that name.
+- The babysitter contract → superseded 2026-07-05 by the durable watcher engine ([watcher-primitive](./watcher-primitive.md)); what survives is `packages/js/agent-server/src/workflow-babysitter.ts` (submit-and-forward) and the CLAUDE.md standard-`POST /workflow` gotcha.
+- "Machines run loops, agents make judgments" and "every workflow that changes code carries a verify step" → [ARCHITECTURE.md](../../../ARCHITECTURE.md) Principles; verification is now the `verify` overlay atom.
+- Silent MCP degradation → the CLAUDE.md "MCP servers are agent-runtime dependencies" gotcha.
+- Reusable workspaces / idempotent `/setup` → the CLAUDE.md `workspaceId` gotcha.
+- The families→templates vocabulary → retired by [workflow-composition](./workflow-composition.md); the dictionary is ARCHITECTURE.md's Glossary.
 
 ## Context
 

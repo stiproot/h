@@ -1,14 +1,18 @@
 # Plan: standalone workflows, rich registry keys, watchers as cron-invokers
 
-**Status: ✅ DONE (2026-07-12).** All items (1–7) and the foundational §10 shipped on `main`. The
-h-builds-h loop is now two pure-engine crons — a discovery cron (Job 1) fanning out supervised
-`feature-pr` per labeled issue, and a per-PR revise-until-merged cron (Job 2) armed at PR birth — with
-agent judgment ONLY inside each fired run. `issue-sweep` is retired (atomic, complete cutover). §10
-locked the registry-creation cut: crons are registered by workflow ACTIVITIES (the `arm-*` pattern,
-idempotent, `wf:`-audited); the WATCHER alone stays persist-then-invoke in the fire handler
-(mark-before-fire). Deferred follow-ups carried to
-[workflow-registry-followups.md](./workflow-registry-followups.md). This doc is the durable design
-record; the sections below are as-built. Captures the 2026-07-11/12 design + build sessions.
+Status: Complete — all items (1–7) and the foundational §10 shipped 2026-07-12; the h-builds-h loop became two pure-engine crons and `issue-sweep` was retired in one atomic cutover
+Established: 2026-07-11
+
+Lifted to:
+- The Cron primitive (recur / discovery-fan-out / one-shot variants) → [ARCHITECTURE.md](../../../ARCHITECTURE.md) (Primitives, Glossary) + the CLAUDE.md primitives index.
+- The §10 `arm-*` pattern — registry rows are created by ACTIVITIES, the watcher alone registering in the fire handler → ARCHITECTURE.md Principles ("Registry rows are created by activities") + the CLAUDE.md registration paragraph.
+- Rich registry keys (`wf:<repo>:<slug>:<workflow>`, single-writer by key structure) → the CLAUDE.md statestore-keyspace gotcha; the percent-encoding trap it surfaced is its own gotcha there.
+- Standalone workflows reading their subject from durable state → the doc comment on `cli/charts/workflows/templates/revise-pr.tmpl.yaml`.
+- Section-level rationale → cited inline by `cron-scan.ts`, `discover-*.ts`, `wf.model.ts`, `register-cron.activity.ts`, `write-wf-row.activity.ts`.
+- The operational runbook → [docs/h-builds-h-runbook.md](../../h-builds-h-runbook.md).
+- Deferred follow-ups → [carried-followups](../carried-followups.md) §6–§11 (which absorbed the former `workflow-registry-followups.md`).
+
+This doc is the durable design record; the sections below are as-built.
 
 ## North star
 
@@ -224,7 +228,7 @@ the referenced records' state → `done` → deactivate.
 
 ## Deferred (follow-up PRs)
 
-Extracted to **[workflow-registry-followups.md](./workflow-registry-followups.md)** when this plan
+Extracted to **[carried-followups.md](../carried-followups.md)** when this plan
 closed (nothing here blocks the shipped loop): `h cron rm` per-cron deactivate; `--cron` vs
 `--schedule` unification (Open Q2); `--dynamic-cron` (Open Q4); the `loop-until-clean` chain strategy
 stub (Open Q5 — the *revise loop itself* is resolved as the per-PR arm-at-birth cron); liveness-on-
