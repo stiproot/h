@@ -41,6 +41,7 @@ export const ChainOutcome = Schema.Literal(
   "budget-terminated",
   "orphaned",
   "unfulfilled",
+  "disarmed",
 );
 export type ChainOutcome = Schema.Schema.Type<typeof ChainOutcome>;
 

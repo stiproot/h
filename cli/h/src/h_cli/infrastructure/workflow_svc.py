@@ -271,6 +271,18 @@ def chain_list() -> Any:
     return resp.json()
 
 
+def chain_disarm(chain_id: str) -> Any:
+    """Deactivate a chain row (set finalized/disarmed; keep for audit). Idempotent when already
+    disarmed. Raises httpx.HTTPStatusError on 404 (unknown id) or 500 (concurrent modification)."""
+    resp = httpx.post(
+        f"{WORKFLOW_URL}/chain/disarm",
+        json={"chainId": chain_id},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def terminate(instance_id: str) -> Any:
     """Request termination of a running instance. The body must be `{}`, not empty —
     Fastify 400s an empty body when content-type is application/json."""

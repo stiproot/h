@@ -664,3 +664,27 @@ def list_() -> None:
         console.print(
             f"[dim]scan heartbeat: {heartbeat.get('at')} (enabled={heartbeat.get('enabled')})[/dim]"
         )
+
+
+@app.command("rm")
+def rm(
+    chain_id: str = typer.Argument(..., help="Chain id to disarm (e.g. spot-ownership-review)."),
+) -> None:
+    """Disarm a chain: set finalized+disarmed, keep the row for audit.
+
+    Calls workflow-svc's POST /chain/disarm — only workflow-svc writes chain:* rows (single-writer).
+    Idempotent: an already-disarmed chain is a success, not an error.
+
+    Prints the in-flight instanceId (if any) so you can terminate it:
+        h workflow terminate <instanceId>
+    """
+    result = _guarded(lambda: workflow_svc.chain_disarm(chain_id))
+    console.print(
+        f"[green]disarmed[/green] chain:sub:{chain_id} "
+        f"→ {result['status']} / {result.get('outcome', '')}"
+    )
+    if result.get("currentInstanceId"):
+        console.print(
+            f"[yellow]in-flight:[/yellow] {result['currentInstanceId']}"
+            f" — terminate with: h workflow terminate {result['currentInstanceId']}"
+        )
