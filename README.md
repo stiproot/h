@@ -39,7 +39,7 @@ h/
 │   ├── workflow-mcp/           # workflow-mcp — MCP server exposing workflow tools to agents
 │   ├── dapr-mcp/               # dapr-mcp — MCP server for Dapr state-store inspection
 │   ├── obs-mcp/                # obs-mcp — read-only observability MCP (traces, logs, run ledger)
-│   └── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
+│   ├── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
 │   └── kimi-agent/             # kimi-agent — Claude Code CLI × Moonshot (Fastify + Dapr sidecar)
 ├── packages/            # shared libs, partitioned by language ecosystem
 │   ├── js/              # TypeScript (npm workspace — root package.json)
@@ -204,6 +204,7 @@ profile silently shadow an edited `.env` on recreate — compose gives the proce
 ./cli/scripts/run-openhands-agent.sh
 ./cli/scripts/run-pi-agent.sh
 ./cli/scripts/run-codex-agent.sh
+./cli/scripts/run-kimi-agent.sh
 ./cli/scripts/run-dapr-agent.sh
 ./cli/scripts/run-dapr-claude-loop-agent.sh
 ./cli/scripts/run-claude-managed-agent.sh
@@ -277,6 +278,7 @@ exports for every key it defines (see §3). Use it for every compose invocation.
 | `cli/scripts/compose.sh --profile dapr-claude-loop-agent up --build` | dapr-claude-loop-agent only |
 | `cli/scripts/compose.sh --profile claude-managed-agent up --build` | claude-managed-agent only |
 | `cli/scripts/compose.sh --profile langgraph-agent up --build` | langgraph-agent only |
+| `cli/scripts/compose.sh --profile kimi-agent up --build` | kimi-agent only |
 | `cli/scripts/compose.sh --profile workflow-agent up --build` | workflow-agent only |
 | `cli/scripts/compose.sh --profile mcps up --build` | MCP servers only |
 

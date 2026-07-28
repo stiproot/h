@@ -498,6 +498,7 @@ services:
       - H_SKILLS_DIR=/h-skills
       - AGENT_BASE_DIR=/workspace/kimi-agent
       - MCP_CONFIG_SRC=/workspace/kimi-agent/.mcp.json
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
     volumes:
       - ../h-workspace:/workspace
       - ./skills:/h-skills:ro

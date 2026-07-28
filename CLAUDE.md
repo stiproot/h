@@ -316,7 +316,8 @@ packages/js/agent-server/src/                # shared HTTP contract for agent se
 └── runner.ts         # IAgentRunner port (run request → response)
 
 packages/js/core/src/
-├── index.ts               # re-exports
+├── index.ts               # re-exports (mergeMcpConfig, provisionMcpConfig, AgentRequest, AgentResponse, AgentRunError, …)
+├── mcp-config.ts          # mergeMcpConfig – deterministic merge of h's mcp servers into a project's .mcp.json; provisionMcpConfig – Effect that provisions the run cwd's .mcp.json from src per mode
 └── types/agent.ts         # AgentRequest (+ workspaceId), AgentResponse (+ costUsd, toolCalls, runId)
 
 packages/js/core-dapr/src/

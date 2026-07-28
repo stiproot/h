@@ -3,4 +3,4 @@
 // `Schema.decodeUnknown(AgentRequest)` validates a wire body against the same name.
 export { AgentRequest, AgentResponse } from "./types/agent.ts";
 export { AgentRunError, CloneError, DaprInvokeError, WorkflowError } from "./errors.ts";
-export { mergeMcpConfig } from "./mcp-config.ts";
+export { mergeMcpConfig, provisionMcpConfig } from "./mcp-config.ts";

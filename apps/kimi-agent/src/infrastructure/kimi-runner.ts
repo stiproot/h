@@ -3,7 +3,7 @@ import { join } from "path";
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
-import { AgentRunError, mergeMcpConfig } from "core";
+import { AgentRunError, mergeMcpConfig, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
 import { Cause, Config, Effect, Layer, Option } from "effect";
 
@@ -60,36 +60,6 @@ const resolveConfig = kimiRunnerConfig.pipe(
     }),
   ),
 );
-
-export const provisionMcpConfig = (
-  cwd: string,
-  src: string,
-  mode: "merge" | "replace",
-): Effect.Effect<void, unknown, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const mcpDest = join(cwd, ".mcp.json");
-    if (!(yield* fs.exists(src))) {
-      if (mode === "replace") {
-        return yield* Effect.dieMessage(
-          `MCP_CONFIG_MODE=replace requires MCP_CONFIG_SRC to exist; missing: ${src}`,
-        );
-      }
-      return;
-    }
-    const existing =
-      mode === "replace"
-        ? null
-        : (yield* fs.exists(mcpDest))
-          ? yield* fs.readFileString(mcpDest)
-          : null;
-    const incoming = yield* fs.readFileString(src);
-    const merged = yield* Effect.try({
-      try: () => mergeMcpConfig(existing, incoming, mode),
-      catch: (cause) => cause,
-    });
-    yield* fs.writeFileString(mcpDest, merged);
-  });
 
 // Custom run flow — injects credentials into child env dict, NOT into llmConfig.
 // llmConfig is intentionally absent so adaptToLiteLlmEffect returns immediately.
