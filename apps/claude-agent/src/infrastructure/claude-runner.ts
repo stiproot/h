@@ -3,7 +3,7 @@ import { join } from "path";
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
-import { AgentRunError, mergeMcpConfig, provisionMcpConfig } from "core";
+import { AgentRunError, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
 import { Cause, Config, Effect, Layer, Option } from "effect";
 
