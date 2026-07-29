@@ -19,9 +19,11 @@ set -euo pipefail
 # script is materialised to a temp dir and a worktree path is passed as $1.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 K3D_REGISTRY="${K3D_REGISTRY:-localhost:5111}"
-# In-cluster image reference — k3d's registry container is named k3d-h-registry and reachable
-# from inside the cluster at port 5000, not at the host-side localhost:5111 push address.
-K3D_REGISTRY_CLUSTER="${K3D_REGISTRY_CLUSTER:-k3d-h-registry:5000}"
+# In-cluster image reference — the registry container is named exactly `h-registry` (created by
+# `make k3d-up --registry-create h-registry:0.0.0.0:5111`), and the k3d nodes' registries.yaml
+# mirrors BOTH h-registry:5111 and h-registry:5000 to it. Use the :5111 form so the in-cluster
+# name matches the host push address's port and stays greppable as one registry.
+K3D_REGISTRY_CLUSTER="${K3D_REGISTRY_CLUSTER:-h-registry:5111}"
 EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
 # Allocate a free ephemeral port per run so concurrent gate runs don't collide on the port-forward.
 WF_SVC_PORT_LOCAL=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); p=s.getsockname()[1]; s.close(); print(p)")
@@ -225,12 +227,34 @@ echo "[itest] creating namespace ${NS}..."
 kubectl create namespace "${NS}" || { echo "[itest] ERROR: namespace create failed" >&2; exit 11; }
 
 echo "[itest] deploying overlay..."
-if ! kubectl apply -k "${OVERLAY_DIR}" 2>&1 | tee "${EVIDENCE_DIR}/apply.log"; then
+# Render with load restrictions relaxed: the checked-in base deliberately references the
+# shared manifests by ../.. FILE paths (reference, don't duplicate), which kustomize's
+# default LoadRestrictionsRootOnly forbids regardless of where the staged tree sits.
+# `kubectl apply -k` exposes no flag for this, so render and apply as two steps.
+if ! kubectl kustomize --load-restrictor LoadRestrictionsNone "${OVERLAY_DIR}" \
+    >"${EVIDENCE_DIR}/rendered.yaml" 2>"${EVIDENCE_DIR}/apply.log"; then
+  cat "${EVIDENCE_DIR}/apply.log" >&2
+  echo "[itest] ERROR: kustomize render failed" >&2
+  exit 11
+fi
+if ! kubectl apply -f "${EVIDENCE_DIR}/rendered.yaml" 2>&1 | tee -a "${EVIDENCE_DIR}/apply.log"; then
   echo "[itest] ERROR: kubectl apply failed" >&2
   exit 11
 fi
 
 echo "[itest] waiting for pods to be ready (120s)..."
+# `kubectl wait --all` errors out instantly ("no matching resources found") when it races the
+# Deployment controller and no pods exist yet — poll for pod existence first (3 deployments).
+PODS_EXIST_DEADLINE=$(( $(date +%s) + 60 ))
+while (( $(date +%s) < PODS_EXIST_DEADLINE )); do
+  POD_COUNT=$(kubectl get pods -n "${NS}" --no-headers 2>/dev/null | wc -l)
+  (( POD_COUNT >= 3 )) && break
+  sleep 2
+done
+if (( POD_COUNT < 3 )); then
+  echo "[itest] ERROR: pods never appeared (count=${POD_COUNT})" >&2
+  exit 11
+fi
 if ! kubectl wait --for=condition=ready pod --all -n "${NS}" --timeout=120s 2>&1 | tee "${EVIDENCE_DIR}/wait.log"; then
   echo "[itest] ERROR: pods not ready within 120s" >&2
   exit 11
@@ -312,7 +336,9 @@ if [[ -z "${REDIS_POD}" ]]; then
 fi
 
 WF_ROW_KEY="wf:h-itest:smoke:smoke"
-WF_ROW=$(kubectl exec -n "${NS}" "${REDIS_POD}" -- redis-cli GET "${WF_ROW_KEY}" 2>/dev/null || echo "")
+# Dapr's Redis state store persists each key as a HASH ({data, version}), not a plain string —
+# a GET returns WRONGTYPE. The row's JSON lives in the `data` field.
+WF_ROW=$(kubectl exec -n "${NS}" "${REDIS_POD}" -- redis-cli HGET "${WF_ROW_KEY}" data 2>/dev/null || echo "")
 echo "${WF_ROW}" >"${EVIDENCE_DIR}/wf-row.json"
 
 if [[ -z "${WF_ROW}" ]]; then

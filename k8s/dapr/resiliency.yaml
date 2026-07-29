@@ -10,8 +10,6 @@ spec:
   targets:
     apps:
       claude-agent:
-        outbound:
-          timeout: agentTimeout
+        timeout: agentTimeout
       workflow-svc:
-        outbound:
-          timeout: agentTimeout
+        timeout: agentTimeout

@@ -266,6 +266,38 @@ runs once the gate exists.
   `run-itest` activity is deployed — out of scope for this PR.
 - **watch-budget bump**: deferred with the recompose step (both go together).
 
+## Live validation (driver, 2026-07-29)
+
+Eight `make itest` rounds on the loop host (fresh `make k3d-up` + `make dapr-install`) drove the
+harness to its first GREEN, each round peeling one real defect:
+
+1–3 *(agent revisions)* — kustomize could not load the base: staging only `base/` orphaned its
+`../..` refs; staging the full `k8s/` tree then hit the actual rule — **kustomize's
+`LoadRestrictionsRootOnly` forbids FILE refs above a kustomization's own dir**, so the checked-in
+reference-don't-duplicate base can never load under `kubectl apply -k`. Driver fix: render via
+`kubectl kustomize --load-restrictor LoadRestrictionsNone` → apply the rendered manifest (also
+archives exactly-what-was-applied into the evidence dir).
+4 — the shared `k8s/dapr/resiliency.yaml` was invalid all along: `targets.apps.<app>.outbound`
+is not a Dapr Resiliency field; old CRDs accepted unknown fields silently, the fresh control
+plane strict-decodes and rejects. **The itest caught a pre-existing production-manifest bug on
+its first deploy** — the class of defect the gate exists for. Fixed (drop the `outbound` level).
+5 — in-cluster image address: the registry container is literally `h-registry` (nodes mirror
+both `:5111` and `:5000`); the revised `k3d-h-registry:5000` guess doesn't resolve →
+ImagePullBackOff. Fixed to `h-registry:5111`.
+6 — wf-row assertion read `redis-cli GET`, but Dapr's Redis state store persists keys as
+HASHes ({data, version}) → WRONGTYPE. Fixed to `HGET <key> data`.
+7 — flake: `kubectl wait --all` errors instantly when it races the Deployment controller
+(no pods yet). Fixed with a pod-existence poll before the readiness wait.
+8 — **GREEN**: run `20260729205023-2132543` — smoke COMPLETED through the real stub dispatch,
+`wf:` row `done`/`goal=RESOLVED`, watch finalized `completed` on the 5s tick, teardown clean.
+Warm path ~3 min (all image layers cache-hit).
+
+Seeded-red proof: impossible `goal` enum in the smoke contract → in-cluster rung-2 validation
+failed the step, workflow FAILED, harness exit 10 (`assertion`), no retry — evidence dir
+captured. Note: `make` wraps recipe failures in its own exit 2, so the 10/11 taxonomy is
+readable only from the harness script's exit — the activity execs the script directly (D7), so
+the gate's classification is unaffected; only humans eyeballing `make itest` see 2.
+
 ## Review trail
 
 - 2026-07-29 — panel run `plan-review-itest-gate` (workflow COMPLETED; 4 panelists + judge).

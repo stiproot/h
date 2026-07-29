@@ -7,5 +7,4 @@ spec:
   targets:
     apps:
       stub-agent:
-        outbound:
-          timeout: agentTimeout
+        timeout: agentTimeout
