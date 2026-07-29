@@ -4,12 +4,7 @@ metadata:
   name: resiliency
   namespace: default
 spec:
-  policies:
-    timeouts:
-      agentTimeout: 3600s
   targets:
     apps:
-      claude-agent:
-        timeout: agentTimeout
-      workflow-svc:
+      stub-agent:
         timeout: agentTimeout

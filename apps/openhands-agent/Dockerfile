@@ -30,6 +30,7 @@ COPY apps/workflow-mcp/package.json ./apps/workflow-mcp/
 COPY apps/dapr-mcp/package.json ./apps/dapr-mcp/
 COPY apps/obs-mcp/package.json ./apps/obs-mcp/
 COPY apps/kimi-agent/package.json ./apps/kimi-agent/
+COPY apps/stub-agent/package.json ./apps/stub-agent/
 
 RUN --mount=type=cache,id=bun-store,target=/root/.bun/install/cache \
     bun install --frozen-lockfile

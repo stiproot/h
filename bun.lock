@@ -146,6 +146,23 @@
         "tsx": "^4.19.0",
       },
     },
+    "apps/stub-agent": {
+      "name": "stub-agent",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/platform": "^0.96.2",
+        "@effect/platform-node": "^0.107.0",
+        "agent-server": "workspace:*",
+        "core": "workspace:*",
+        "effect": "^3.21.4",
+        "fastify": "^5.0.0",
+        "telemetry": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^24",
+        "tsx": "^4.19.0",
+      },
+    },
     "apps/workflow-mcp": {
       "name": "workflow-mcp",
       "version": "0.1.0",
@@ -219,6 +236,7 @@
       "name": "core",
       "version": "0.1.0",
       "dependencies": {
+        "@effect/platform": "^0.96.2",
         "effect": "^3.21.4",
       },
       "devDependencies": {
@@ -1212,6 +1230,8 @@
     "strip-bom": ["strip-bom@3.0.0", "", {}, "sha512-vavAMRXOgBVNF6nyEEmL3DBK19iRpDcoIwW+swQ+CbGiu7lju6t+JklA1MHweoWtadgt4ISVUsXLyDq34ddcwA=="],
 
     "strip-json-comments": ["strip-json-comments@5.0.3", "", {}, "sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw=="],
+
+    "stub-agent": ["stub-agent@workspace:apps/stub-agent"],
 
     "supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
