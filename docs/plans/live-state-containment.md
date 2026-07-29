@@ -139,6 +139,8 @@ passing through a `run-*` activity in workflow-svc.
   posture. Keep them distinct: this one is finishable, that one is a standing design question.
 - [local-ci-execution](./local-ci-execution.md) — owns the verification-integrity half
   (CI does not run; a panel cannot catch a build failure).
+- [usage-limit-auto-deny](./usage-limit-auto-deny.md) — the follow-on: the watcher writing
+  the §2.3 deny row itself when a run finalizes `usage-limited`. Spawned 2026-07-29.
 
 ## Log
 
