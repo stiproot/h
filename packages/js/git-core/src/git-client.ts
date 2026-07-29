@@ -209,10 +209,25 @@ const cloneEffect = (
   const { url, dir, cwd, branch, depth = 1 } = opts;
   const auth = normalizeAuth(opts.auth, opts.token);
   const token = authToken(auth);
+  const resolved = resolveUrl(url, auth);
   const args = ["clone", "--depth", String(depth)];
   if (branch) args.push("--branch", branch);
-  args.push(resolveUrl(url, auth), dir);
+  args.push(resolved, dir);
+  // `git clone` persists the URL it cloned from as the new clone's origin. When a token was
+  // injected, reset origin to the caller's clean URL afterwards so the credential never rests
+  // in the clone's config — injection is strictly per-operation (docs/plans/live-state-containment.md).
+  // The ssh rewrite is left as-is: it carries no credential, and ssh-mode callers expect the
+  // ssh-form origin.
+  const scrubOrigin: Effect.Effect<
+    unknown,
+    GitExitError | PlatformError,
+    CommandExecutor.CommandExecutor
+  > =
+    token !== undefined && resolved !== url
+      ? runGit(["-C", dir, "remote", "set-url", "origin", url], cwd)
+      : Effect.void;
   return runGit(args, cwd, authEnv(auth)).pipe(
+    Effect.zipRight(scrubOrigin),
     Effect.mapError(
       (failure) => new GitCloneError({ cause: redactedCause(failure, token), url, dir }),
     ),

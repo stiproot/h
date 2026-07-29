@@ -1,5 +1,5 @@
 /**
- * Structured workflow outputs (docs/plans/structured-workflow-outputs.md §3, rung 2): the
+ * Structured workflow outputs (docs/plans/impl/structured-workflow-outputs.md §3, rung 2): the
  * validation boundary that makes an agent's output contract deterministic. A step whose input
  * carries an `outputContract` (a JSON-Schema subset) requires the agent's final output to end with
  * a fenced ```json block matching it; the run activity validates the block here and FAILS THE STEP
@@ -122,7 +122,14 @@ export function contractViolations(value: unknown, schema: unknown, path = "$"):
 
 // The LAST fenced ```json block wins — the protocol rule (h-runtime.md) puts it at the very end,
 // and an agent quoting an earlier example block must not shadow its actual answer.
-const FENCED_JSON = /```json\s*\n([\s\S]*?)```/g;
+//
+// The CLOSING fence must sit at the start of its own line. An unanchored `...*?```' ends the block
+// at the first backtick-fence ANYWHERE, including one INSIDE a JSON string value — so any contract
+// whose field carries markdown with embedded code fences (a plan, a spec, a review quoting code)
+// was truncated mid-string and failed as "not valid JSON: Unterminated string". A real newline
+// cannot appear inside a valid JSON string (it must be escaped as \n), so requiring one before the
+// fence is safe: it can only match a genuine block terminator.
+const FENCED_JSON = /```json[ \t]*\r?\n([\s\S]*?)\r?\n```(?=[ \t]*(?:\r?\n|$))/g;
 
 /** Pull the raw text of the last fenced ```json block, or undefined when none exists. */
 export function lastFencedJson(output: string): string | undefined {

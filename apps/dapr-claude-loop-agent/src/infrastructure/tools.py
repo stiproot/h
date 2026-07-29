@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+from agent_core.workspace_paths import contained_path, safe_name
+
 TOOL_SCHEMAS = [
     {
         "name": "search_skills",
@@ -74,14 +76,23 @@ def execute_tool(name: str, args: dict, cwd: Path) -> str:
             return f"Error: {result.stderr}"
         return result.stdout or "Installed successfully."
 
+    # read_skill / write_file take a MODEL-supplied path segment. `cwd / arg` is not containment —
+    # an absolute value or `..` walks straight out (see agent_core.workspace_paths).
     if name == "read_skill":
-        skill_path = cwd / ".tessl" / "skills" / args["skill_name"] / "SKILL.md"
+        try:
+            safe = safe_name(args["skill_name"], kind="skill name")
+        except ValueError as err:
+            return f"Error: {err}"
+        skill_path = cwd / ".tessl" / "skills" / safe / "SKILL.md"
         if not skill_path.exists():
             return f"Skill file not found: {skill_path}"
         return skill_path.read_text()
 
     if name == "write_file":
-        target = cwd / args["path"]
+        try:
+            target = contained_path(cwd, args["path"])
+        except ValueError as err:
+            return f"Error: {err}"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(args["content"])
         return f"Written: {target}"

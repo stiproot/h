@@ -1,0 +1,18 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: workflow-cron-tick
+  namespace: default
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    # Heartbeat for the scheduler: Dapr POSTs to /workflow-cron-tick on workflow-svc on this
+    # schedule, which then fires any saved workflow whose own cron schedule is due AND runs
+    # the watch + chain + cron + discover + sched scans. Without this component the engines
+    # never scan, so chains never advance and watchers never enforce — the k8s copy of
+    # dapr/workflow-cron.yaml (compose) and dapr/local/workflow-cron.yaml (host mode).
+    - name: schedule
+      value: "@every 60s"
+scopes:
+  - workflow-svc

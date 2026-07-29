@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhands-agent
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: openhands-agent
+  template:
+    metadata:
+      labels:
+        app: openhands-agent
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "openhands-agent"
+        dapr.io/app-port: "8000"
+        dapr.io/log-level: "info"
+        dapr.io/config: "appconfig"
+    spec:
+      containers:
+        - name: openhands-agent
+          image: h/openhands-agent
+          env:
+            - name: APP_PORT
+              value: "8000"
+            - name: AGENT_BASE_DIR
+              value: /workspace/openhands-agent
+            - name: AGENT_APP_DIR
+              value: /app/apps/openhands-agent
+            # The h skills root. MUST be set: the shared setup step runs
+            # `cp -r $H_SKILLS_DIR/. ~/.claude/skills/`, so an unset value would copy /.
+            # Compose supplies this by bind mount; in k8s the skills ship in the image.
+            - name: H_SKILLS_DIR
+              value: /h-skills
+            # OpenHands is BYOK — the provider-neutral endpoint pair, pointed at DeepSeek.
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: LLM_API_KEY
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: LLM_BASE_URL
+            # OpenHands' own model id — distinct from claude-agent's AGENT_MODEL.
+            - name: AGENT_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: OPENHANDS_MODEL
+            - name: GH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: GH_TOKEN
+                  optional: true
+            - name: TESSL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: TESSL_TOKEN
+                  optional: true
+            # Consumed by OpenHands' built-in "linear" skill.
+            - name: LINEAR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: h-secrets
+                  key: LINEAR_API_KEY
+                  optional: true
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        # Matches claude-agent's workspace volume so both agents see the same shared root.
+        - name: workspace
+          hostPath:
+            path: /var/lib/h-workspace
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhands-agent
+  namespace: default
+spec:
+  selector:
+    app: openhands-agent
+  ports:
+    - port: 8000
+      targetPort: 8000

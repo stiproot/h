@@ -71,6 +71,11 @@ params:
   repo: {{ $p.repo | quote }}
   slug: ""
   spec: {{ $spec | quote }}
+  {{- /* focus is OPTIONAL (empty = full review) — declared here so registration-time input
+  validation (member-input-validation) reads it as author-sanctioned optional; an optional
+  param referenced in steps MUST appear in this block or chains naming this workflow are
+  refused for it. */}}
+  focus: ""
   {{- with $p.models.review }}
   modelReview: {{ . | quote }}
   {{- end }}
@@ -173,7 +178,7 @@ steps:
 outputs:
   {{- include "h.contract.review-pr" . | nindent 2 }}
 {{- /*
-panelSynthesis — "how to synthesize a panel of me" (docs/plans/panels-as-a-modifier.md decision
+panelSynthesis — "how to synthesize a panel of me" (docs/plans/impl/panels-as-a-modifier.md decision
 5): spliced into the judge's task when this workflow runs under an --agent roster; inert
 otherwise. The join SHAPE is the outputs contract above; this block is only the join RULE.
 */}}

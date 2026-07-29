@@ -1,12 +1,49 @@
 # Phase 1 — Live drift & bug fixes
 
-Status: Active — 11 item(s), none started
+Status: Active — 11 item(s), 2 complete (A16, A29 — both 2026-07-28)
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
 Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mechanical, high confidence — do these first. Items A1/A18/A28 overlap on codex: treat them as one work item (the codex wiring) plus its guard.
 
-## [ ] A16. dapr-agent / dapr-claude-loop-agent tools.py: write_file escapes the workspace and nothing pins containment
+---
+
+## ⚠️ RE-VERIFICATION SWEEP, 2026-07-28 — most of this phase is STALE
+
+Every open item was re-checked against the tree before scheduling work on it. **The audit
+itself had drifted**: the codex wiring and the vocabulary/roster items were fixed by later
+work without this doc being updated, so an agent working the list top-to-bottom would have
+spent the night re-fixing done things.
+
+| Item | Re-verified state | Evidence |
+| --- | --- | --- |
+| A0 | **OPEN — and the most valuable item here** | No `.github/workflows/`, no git hooks. The whole guard surface runs only on a manual `bun run lint`. |
+| A1 | Mostly STALE | `AGENT_IDENTITY` has codex (`config.py:57`); the proposed guard EXISTS as `cli/h/tests/test_agent_identity_sync.py`. |
+| A18 | STALE | codex appears 5× in README.md, 6× in CLAUDE.md. |
+| A20 | STALE | `check-vocabulary.mjs` passes clean over 13 long-lived prose files. |
+| A21 | PARTLY OPEN | Most commands covered; **`h workflow pause`/`resume` is absent** from cli/README.md. |
+| A22 | STALE | `run-pi` and `run-codex` are both in `skills/workflow-orchestrator/SKILL.md`. |
+| A23 | STALE | Both `packages/js/telemetry` and `packages/js/git-core` appear in CLAUDE.md's package listing. |
+| A24 | **OPEN** | `apps/claude-agent/CLAUDE.md` still carries 8 `dapr-claude-loop` references. |
+| A28 | Parts 1–2 STALE, part 3 DONE | See the item's own note. |
+| A29 | DONE 2026-07-28 | See the item. |
+| A30 | **OPEN** | README's tree block contains none of `skills/`, `docs/`, `web/`. |
+
+**Why A0 is now the priority, with fresh evidence.** On 2026-07-28 an agent-authored PR
+(#98) reported "✅ `bun run test`: all 24 tasks pass" and listed five guards as green — while
+`bun run lint` FAILED on `check-steering` (a newly added `run-kimi` activity missing from
+`skills/workflow-orchestrator/SKILL.md`). Nothing in the repo would have caught that except a
+human running lint by hand. Every guard this audit adds is only as good as something that
+runs it. **A0 is the multiplier on the entire audit** — do it first.
+
+*Caveat to check before relying on CI:* per `docs/DRIVER.md`, the trxy repo lost PR-triggered
+Actions to a rate limit on 2026-07-27. Confirm h's Actions quota actually runs the workflow,
+or the guard surface will be green-by-absence — which is worse than knowingly manual. A local
+`pre-push` hook is the fallback that cannot be rate-limited.
+
+---
+
+## [x] A16. dapr-agent / dapr-claude-loop-agent tools.py: write_file escapes the workspace and nothing pins containment
 
 *Severity: medium · effort: small*
 
@@ -16,9 +53,22 @@ Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mecha
 
 **Do:** Add a shared containment helper and apply it in all THREE copies, not two: (1) apps/dapr-agent/src/infrastructure/tools.py (write_file at :86, read_skill at :81), (2) apps/dapr-claude-loop-agent/src/infrastructure/tools.py (write_file at :83, read_skill at :78), (3) apps/langgraph-agent/src/infrastructure/tools.py (write_file at :38). In each: `target = (cwd / path).resolve()` then `if not target.is_relative_to(cwd.resolve()): return "Error: path escapes workspace"` (mirror PresetStore._path's fail-loud style; for read_skill, reject skill_name containing '/', '\\', or '..' as preset_store.py:16 does). Since the duplication is deliberate (thin apps), the cleanest home for the helper + one test suite is packages/py/agent-core (already a shared uv workspace member with a pytest suite run via `uv run --package agent-core pytest`), e.g. agent_core/workspace_paths.py `contained_path(cwd, path) -> Path` raising ValueError — then each app's tools.py calls it. Add tests: packages/py/agent-core/tests/test_workspace_paths.py pinning (a) relative writes inside tmp_path succeed, (b) '../x' rejected, (c) absolute '/etc/x' rejected, (d) symlink-inside-pointing-out resolved and rejected; plus per-app tests/test_tools.py in apps/dapr-agent, apps/dapr-claude-loop-agent, apps/langgraph-agent asserting write_file refuses escape and read_skill rejects traversal skill_names (these apps currently have zero tests; wire them into make lint/test the same way agent-core's pytest runs). Also update docs/plans/agent-process-identity.md's 'narrow tool surface' clause to note containment is now enforced, keeping the trust-model claim true.
 
+**DONE 2026-07-28.** `agent_core.workspace_paths` (`contained_path`, `safe_name`) + 13 unit
+tests; applied in all THREE apps — including dapr-claude-loop-agent, which dispatches by tool name
+inside `execute_tool` rather than defining `write_file`, so a `def write_file` grep misses it.
+`agent-core` was added as a dependency of the two apps that lacked it (they would have
+ImportError'd otherwise). Both zero-test apps gained a pytest suite, wired into `make test-py`
+(5 tests each). Verified at runtime, not just by test: an absolute path and a `../../..` traversal
+are both refused and the victim file is never created, while legitimate writes still land.
+
 ## [ ] A1. AGENT_IDENTITY table has already drifted from activity-registry (codex missing) and nothing checks the sync
 
 *Severity: medium · effort: small*
+
+> **Verified 2026-07-28 — PARTLY STALE.** `AGENT_IDENTITY` now HAS the codex entry
+> (`cli/h/src/h_cli/config.py:57-58`), so the "`--agent codex` fails with unknown-agent" half no
+> longer reproduces. The *unchecked-sync* half stands: nothing pins the table against the activity
+> registry, which is what let it drift in the first place. Re-scope before implementing.
 
 **Gap:** The stated rule on AGENT_IDENTITY — 'only agents whose run activity takes the shared {cwd,model,task} input belong here — extend as more agents earn a run-* activity' — is unchecked, and drift has already happened: run-codex exists in the engine's activity registry with the shared input shape and a full codex-agent service, but AGENT_IDENTITY has no 'codex' entry, so `h workflow run --agent codex` / `h chain run --agent codex` fail with unknown-agent even though the runtime fully supports it.
 
@@ -39,6 +89,22 @@ Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mecha
 ## [ ] A28. agent-integration-playbook was not updated by the newest agent integration (codex)
 
 *Severity: medium · effort: small*
+
+> **Verified 2026-07-28 — PART 3 DONE, parts 1–2 STALE, re-scope before implementing.**
+> Part 3 landed with the plans-grooming pass: the playbook was never a plan (it is durable
+> operational how-to, so the plan-management lift table puts it in a skill), and it is now
+> **`.claude/skills/integrate-agent/`** with frontmatter and a codex worked example written as
+> *what happens when you skip the checklist* — the missing `AGENT_IDENTITY` rows, the
+> under-wired compose env (the missing `H_SKILLS_DIR` that turned setup into `cp -r /. …`),
+> the global-config MCP model and its SSE gap, the explicit auth-mode contract, and the
+> container-private `CODEX_HOME` requirement. Every `docs/plans/agent-integration-playbook.md`
+> citation was repointed.
+> Parts 1–2 no longer reproduce: `AGENT_IDENTITY`/`AGENT_URLS` carry codex
+> (`config.py:57`), README mentions it, and the proposed guard EXISTS as
+> `cli/h/tests/test_agent_identity_sync.py` (source-derived exclusion set, as specified) —
+> all landed via [codex-chatgpt-auth](../impl/codex-chatgpt-auth.md). What remains open is the
+> overlap with **A22** (skill rosters still omit `run-pi`/`run-codex`), which this item's
+> relocation does not address.
 
 **Gap:** docs/plans/agent-integration-playbook.md is the designated integration recipe (memory: 'seed of an integrate-agent skill'), but the codex-agent integration — the first Effect-composition-root agent, first telemetry-package consumer, OpenAI-keyed — left no trace in it (grep 'codex' across docs/plans/ and skills/ returns nothing), so the playbook's lessons stop at pi and the newest integration pattern is captured nowhere durable.
 
@@ -96,7 +162,18 @@ Confirmed bugs/drift to fix directly: quick wins, no new machinery. Small, mecha
 
 **Do:** Delete the `## dapr-claude-loop-agent` section (apps/claude-agent/CLAUDE.md:21-74) outright rather than moving it: every accurate piece already has a long-lived home (root CLAUDE.md App layouts + hex-lint gotcha for the no-import-linter rationale; README.md rows 18/178/192/226/258/274 for run script, compose profile, and ports), and the section's unique claims are wrong (port 8005 vs actual 8007; obsolete `docker compose --profile claude-managed` vs `cli/scripts/compose.sh --profile dapr-claude-loop-agent`). Leave apps/claude-agent/CLAUDE.md as the two workspace rules + code-review output format, matching the shape of apps/openhands-agent/.openhands/skills/steering-rules.md. Optionally add a stanza to scripts/check-templates.mjs (or a new scripts/check-steering.mjs wired into root `lint`) asserting per-app agent steering files (apps/*/CLAUDE.md, apps/openhands-agent/.openhands/skills/steering-rules.md) contain no `## <other-app-name>` headings, encoding the rules-only invariant.
 
-## [ ] A29. h-builds-h.md carries an actively false status line
+## [x] A29. h-builds-h.md carries an actively false status line
+
+**DONE 2026-07-28** — fixed as part of a full plans-grooming pass, and hardened beyond what
+this item asked. `h-builds-h.md` now reads `Status: Complete` with both supersessions stated
+up front (the `issue-sweep` agent tick retired 2026-07-12; `claude-coder` retired 2026-07-14),
+its phase-4 leftovers lifted to `docs/plans/carried-followups.md` §16–§18, and it is archived
+to `docs/plans/impl/` — as is `workflow-watcher-registry.md`, per this item's note, plus 17
+other completed plans. The generalization: `scripts/check-plans.mjs` (wired into `bun run
+lint`) now enforces the status vocabulary, `Established:`, `Lifted to:` on archived plans, and
+that every `docs/plans/**.md` citation from outside `docs/plans/` resolves. As this item
+predicted, a headline-word regex would have been the wrong guard — the check validates that a
+plan's claim is *well-formed*, never that it *should* be archived.
 
 *Severity: low · effort: small*
 

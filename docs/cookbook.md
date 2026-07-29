@@ -8,7 +8,7 @@ surface changes, update or delete the entry in the same change — a stale examp
 none.
 
 Grammar refs: `h chain run --help` (the chain EXPRESSION), CLAUDE.md "h primitives",
-docs/plans/chain-composition-surface.md.
+docs/plans/impl/chain-composition-surface.md.
 
 ## Run a saved workflow, pick the executor
 
@@ -39,7 +39,7 @@ h workflow run answer -p task=@question.md --agent claude --agent codex --agent 
 A roster panelizes any read/judge workflow at fire time: one branch per agent in a parallel
 step group, a pinned judge (claude) synthesizes under the workflow's own output contract. On
 `h workflow run` the flag repeats (Typer); in a chain expression it's space-greedy (below).
-*(Validated 2026-07-24 — docs/plans/panels-as-a-modifier.md.)*
+*(Validated 2026-07-24 — docs/plans/impl/panels-as-a-modifier.md.)*
 
 ## The full parallelism tour — two panels ∥, then implement (container e2e, PR #64)
 
@@ -95,7 +95,7 @@ h workflow resume <schedId>                                      # ...or continu
 ```
 
 One-shot `cron:sched` rows; pause reuses the run's workspace so the worktree survives.
-*(Validated 2026-07-18 — docs/plans/schedule-and-fallback.md.)*
+*(Validated 2026-07-18 — docs/plans/impl/schedule-and-fallback.md.)*
 
 ## Usage-limit fallback — continue under another agent
 
@@ -185,3 +185,15 @@ h watch list      # durable watcher registrations
 h cron list       # recur + discovery + one-shot sched rows
 h schedule list   # the one-shot rows alone
 ```
+
+## Deny an executor engine-wide — "no codex tonight", enforced
+
+```sh
+h agents deny codex     # every fire path now REFUSES run-codex (chains, crons, panels, fallbacks)
+h agents list           # policy column shows DENIED
+h agents allow codex    # re-enable
+```
+
+Validated 2026-07-29: with codex denied, a fired `run-codex` workflow FAILED at the activity
+gate with `executor 'codex' is denied by the exec:config policy` — before any agent invoke, no
+quota spent (docs/plans/live-state-containment.md §2.3).

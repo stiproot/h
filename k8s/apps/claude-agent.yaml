@@ -63,6 +63,11 @@ spec:
               value: /workspace/claude-agent
             - name: AGENT_APP_DIR
               value: /app/apps/claude-agent
+            # The h skills root. MUST be set: the shared setup step runs
+            # `cp -r $H_SKILLS_DIR/. ~/.claude/skills/`, so an unset value would copy /.
+            # Compose supplies this by bind mount; in k8s the skills ship in the image.
+            - name: H_SKILLS_DIR
+              value: /h-skills
             # Auth is either/or: ANTHROPIC_API_KEY (pay-as-you-go) or a Claude Max/Pro
             # subscription token. Both are marked optional so a token-only or key-only
             # secret starts cleanly; the agent-cli claude strategy won't forward an
@@ -114,9 +119,13 @@ spec:
               mountPath: /workspace/claude-agent/.mcp.json
               subPath: mcp.json
       volumes:
+        # Shared agent workspace root, node-local. Was a hardcoded /Users/... macOS path,
+        # which only ever resolved on one machine — on any other host DirectoryOrCreate
+        # silently created an empty lookalike. openhands-agent mounts the same path so
+        # both agents see one root.
         - name: workspace
           hostPath:
-            path: /Users/stiproot/code/tessl/lab/h-workspace
+            path: /var/lib/h-workspace
             type: DirectoryOrCreate
         - name: mcp-config
           configMap:

@@ -1,7 +1,29 @@
 # h improves h: friction detection → issues → the existing apply loop
 
-**Status:** design in progress (2026-07-10); nothing built
-**Living doc** — iterate freely; this captures a design conversation, not a locked plan.
+Status: Planning — the fold-one design holds, but its apply-half references are two supersessions stale and fold two is still unwritten; nothing built
+Established: 2026-07-10
+
+**Re-groomed 2026-07-28 — read the body with these three corrections.**
+
+1. **`issue-sweep` no longer exists.** Every reference below to "cron-fired `issue-sweep` →
+   `feature` run" describes machinery retired 2026-07-12. The apply half is now a **discovery
+   cron** (`cron:discover:<repo>:<label>`) that reads open issues on a label and fires one
+   supervised `implement-pr` per newly-seen item, plus a per-PR revise-until-merged cron. This
+   does not weaken the design — it strengthens it. §2's whole argument was "don't build a new
+   engine, file an issue and let existing machinery apply it," and the machinery that consumes
+   the issue is now *more* mechanical than when this was written. The handoff contract is
+   unchanged: produce a well-formed, correctly-labeled issue.
+2. **The templates renamed.** `feature` → `implement`, `feature-pr` → `implement-pr`,
+   `pr-review` → `review-pr`, `revise` → `revise-pr`; `plugin-improvement` still exists.
+3. **Open question 4 is answered by the existing trust gate.** Friction issues should be
+   *filed* by the machine but still require a human `agent-approved` label before the discovery
+   cron picks them up — that is exactly how the gate already works, so it costs nothing and
+   preserves the h-builds-h trust boundary. The leaning in §6 was right.
+
+**What is genuinely still open**, and why this stays Planning: the miner step itself (nothing
+built), the cadence and window-scope questions (§6.1–6.2), and **fold two** — per-repo knowledge
+accumulation — which has never been laid out. Fold two is the more valuable half now that the
+apply loop is fully mechanical, and it is the natural place to start when this is picked up.
 
 ## Context
 
@@ -17,7 +39,7 @@ of this doc:
    pressure-tested.)
 
 This doc is the *detection front-half*. The *apply back-half* already exists and is
-live-proven: see [h-builds-h.md](./h-builds-h.md) — a labeled issue on the h repo →
+live-proven: see [h-builds-h.md](./impl/h-builds-h.md) — a labeled issue on the h repo →
 cron-fired `issue-sweep` → `feature` run → PR → human merge. The friction cycle's whole job
 is to **produce the well-formed issue** that the sweep already knows how to consume.
 
@@ -27,7 +49,7 @@ is to **produce the well-formed issue** that the sweep already knows how to cons
 
 Self-awareness is **not a new mechanism** — it is another instance of the shape h already
 trusts: a registry + a `decide`-on-a-clock + a closed vocabulary + "machines scan, agents
-judge" (the watcher and chain primitives; see [watcher-primitive.md](./watcher-primitive.md)).
+judge" (the watcher and chain primitives; see [watcher-primitive.md](./impl/watcher-primitive.md)).
 Point that shape inward.
 
 The load-bearing principle carries over directly: **the executing agent must not do the

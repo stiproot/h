@@ -18,7 +18,7 @@ and the workflow engine (this is exactly the class of token that made envsubst n
 allowlist; here it needs nothing).
 */}}
 {{- define "h.setupSteps" -}}
-- cmd: "mkdir -p ~/.claude/skills && cp -r $H_SKILLS_DIR/. ~/.claude/skills/"
+- cmd: "mkdir -p ~/.claude/skills && cp -r \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
 - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
 {{- end }}
 
@@ -45,7 +45,7 @@ the helper always emits this step; fire-time params control which plugins instal
 
 {{/*
 h.outputContractEpilogue — the per-step INSTANCE of the output contract
-(docs/plans/structured-workflow-outputs.md §2): rendered from the template's declared schema so
+(docs/plans/impl/structured-workflow-outputs.md §2): rendered from the template's declared schema so
 instruction and contract cannot drift. The shared PROTOCOL rule lives in h-runtime.md (installed by
 h.setupSteps); this block supplies the schema adjacent to the task it governs. The declaring
 template appends it to its final agent step's task (nindent to the block scalar), sets the SAME

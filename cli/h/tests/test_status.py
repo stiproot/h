@@ -156,7 +156,7 @@ def test_status_json_flag() -> None:
 
 @respx.mock
 def test_status_active_watches_excludes_finalized() -> None:
-    """Only watches in 'scheduling' or 'watching' status count as active; finalized rows are excluded."""
+    """Only 'scheduling'/'watching' watches count as active; finalized rows are excluded."""
     watches = [
         {"instanceId": "run-1", "status": "watching"},
         {"instanceId": "run-2", "status": "scheduling"},
@@ -185,7 +185,9 @@ def test_status_open_prs() -> None:
     respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
     respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
     respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=_cron_payload()))
-    respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=prs_data))
+    respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(
+        return_value=Response(200, json=prs_data)
+    )
 
     result = runner.invoke(app, ["status", "--json"])
     assert result.exit_code == 0, _all_output(result)
@@ -226,11 +228,19 @@ def test_status_open_prs_unauthenticated() -> None:
         prs_data = [
             {"number": 10, "title": "Unauthenticated PR", "user": {"login": "guest"}},
         ]
-        respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
-        respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
-        respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=_cron_payload()))
+        respx.get(f"{WORKFLOW_URL}/chain/list").mock(
+            return_value=Response(200, json=_chain_payload())
+        )
+        respx.get(f"{WORKFLOW_URL}/watch/list").mock(
+            return_value=Response(200, json=_watch_payload())
+        )
+        respx.get(f"{WORKFLOW_URL}/cron/list").mock(
+            return_value=Response(200, json=_cron_payload())
+        )
         # Unauthenticated request to GitHub API (no Authorization header)
-        respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=prs_data))
+        respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(
+            return_value=Response(200, json=prs_data)
+        )
 
         result = runner.invoke(app, ["status", "--json"])
         assert result.exit_code == 0, _all_output(result)
@@ -255,7 +265,9 @@ def test_status_disabled_heartbeat_flag() -> None:
     }
     respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
     respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
-    respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=disabled_cron_payload))
+    respx.get(f"{WORKFLOW_URL}/cron/list").mock(
+        return_value=Response(200, json=disabled_cron_payload)
+    )
     respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=[]))
 
     result = runner.invoke(app, ["status"])

@@ -14,7 +14,7 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 # (Plus/Pro/Team) subscription. CODEX_HOME is a DEDICATED h-managed dir (NOT the user's ~/.codex):
 # seed it once with `cli/scripts/seed-codex-auth.sh` (copies ~/.codex/auth.json in), and the
 # codex-runner writes config.toml (h's MCP servers) here each run. Keeping it separate from
-# ~/.codex means h runs never pollute the user's personal codex config. See docs/plans/codex-chatgpt-auth.md.
+# ~/.codex means h runs never pollute the user's personal codex config. See docs/plans/impl/codex-chatgpt-auth.md.
 export CODEX_AUTH_MODE="${CODEX_AUTH_MODE:-}"
 # Self-detect ChatGPT-plan auth (trxy trial 1b finding, 2026-07-25): a headless launcher
 # (up-local.sh, a cron, an agent session) rarely carries the interactive shell's exports, and a

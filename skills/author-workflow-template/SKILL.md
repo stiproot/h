@@ -48,6 +48,14 @@ template's `required` values break every other template's render.
 - **`--set publish=true`** — per-run inputs become `{{params.x}}` engine tokens (emit them with the
   `h.token` helper, never literal `{{ }}`); identity (runActivity/agentId/model*) becomes params
   with values-baked defaults. This is the mode `h workflow publish` and `h template compose` use.
+  **The `params:` defaults block is a CONTRACT, not just defaults**: every OPTIONAL param the
+  steps reference must appear in it (an empty default like `clonePath: ""` or `focus: ""` marks
+  it author-sanctioned optional), and every REQUIRED content param (e.g. a worktree template's
+  `slug`) must be ABSENT from it. `h chain run`'s registration-time input validation
+  (docs/plans/impl/member-input-validation.md) reads the block exactly that way: a referenced param
+  that is neither in the block nor supplied by the member's kind contract / declared `--input`s
+  is REFUSED at registration. An optional param missing from the block breaks every chain that
+  names the workflow.
 - **`--set composable=true`** — an overlay ATOM: render only the step fragments you contribute;
   omit standalone closers. Overlay (⊕) merges by step `id`: same id → your `input.task` APPENDS to
   the existing task and your `input.setup` list CONCATENATES onto the existing one (base first —

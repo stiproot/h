@@ -1,13 +1,93 @@
 import { Effect } from "effect";
 
-import type { AgentStreamParser, AgentStrategy, InvocationResult, StreamEvent } from "./types.ts";
+import type {
+  AgentStreamParser,
+  AgentStrategy,
+  InvocationResult,
+  RawLineEvent,
+  StreamEvent,
+} from "./types.ts";
+import { rawLineEvent } from "./types.ts";
 import { createMissingEnvResult, resolveEnvValue } from "./shared.ts";
+
+// ---------------------------------------------------------------------------------------------
+// Codex's own event vocabulary — what the run ledger records, so events.jsonl is the agent's shape
+// rather than a re-wrapping of it. Discriminated on `type`; open by design, so an unmodelled type
+// keeps its `type` under CodexOtherEvent instead of being coerced or dropped.
+// ---------------------------------------------------------------------------------------------
+
+interface CodexEventBase {
+  type: string;
+}
+
+/** Thread announcement — `thread_id` is the session id. */
+export interface CodexThreadStartedEvent extends CodexEventBase {
+  type: "thread.started";
+  thread_id?: string;
+}
+
+/**
+ * One completed item. `item.type` says what it was: `agent_message`/`message` (assistant text) or
+ * `function_call`/`mcp_tool_call` (a TOOL CALL — codex's unit of tool use).
+ */
+export interface CodexItemCompletedEvent extends CodexEventBase {
+  type: "item.completed";
+  item?: {
+    type?: string;
+    role?: string;
+    text?: string;
+    content?: Array<{ type?: string; text?: string }>;
+  };
+}
+
+/** End of a turn, carrying token usage. */
+export interface CodexTurnCompletedEvent extends CodexEventBase {
+  type: "turn.completed";
+  usage?: { prompt_tokens?: number; cached_tokens?: number; output_tokens?: number };
+}
+
+/** A JSON event whose `type` we do not model yet — preserved verbatim. */
+export type CodexOtherEvent = CodexEventBase;
+
+export type CodexEvent =
+  | CodexThreadStartedEvent
+  | CodexItemCompletedEvent
+  | CodexTurnCompletedEvent
+  | CodexOtherEvent
+  | RawLineEvent;
+
+/** Item types codex uses for a tool call — its unit of tool use. */
+const CODEX_TOOL_ITEMS = new Set(["function_call", "mcp_tool_call"]);
+
+/** True when this event is a completed TOOL CALL. */
+export function isCodexToolCall(event: CodexEvent): event is CodexItemCompletedEvent {
+  const ev = event as CodexItemCompletedEvent;
+  return ev.type === "item.completed" && CODEX_TOOL_ITEMS.has(ev.item?.type ?? "");
+}
+
+/** One stdout line → codex's native event, or a `raw` event when the line is not its JSON. */
+export function parseCodexEvent(line: string): CodexEvent {
+  try {
+    const parsed = JSON.parse(line) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { type?: unknown }).type === "string"
+    ) {
+      return parsed as CodexEvent;
+    }
+  } catch {
+    // Not JSON — codex interleaves plain lines with its JSONL stream.
+  }
+  return rawLineEvent(line);
+}
 
 // Codex streams JSONL events. Map each known event type to the standard StreamEvent vocabulary.
 const codexJsonlParser: AgentStreamParser = {
   parseLine(line, events, onEvent) {
     if (!line.trim()) return;
-    onEvent?.({ type: "output", text: line });
+    // The LEDGER gets codex's OWN event — parsed, typed, verbatim (not `{type:"output", text}`).
+    onEvent?.(parseCodexEvent(line) as unknown as Record<string, unknown>);
 
     try {
       const ev = JSON.parse(line) as {
@@ -106,7 +186,7 @@ export const codexStrategy: AgentStrategy = {
     // Only pin a model when one is explicitly set. A ChatGPT-account (Plus/Pro/Team) plan REJECTS
     // explicit API model ids (`o4-mini`, `gpt-5-codex`, …) with a 400 — omitting --model lets the
     // codex CLI use the account's own default. In API-key mode the runner supplies AGENT_MODEL
-    // (e.g. o4-mini); in chatgpt mode it leaves it empty. See docs/plans/codex-chatgpt-auth.md.
+    // (e.g. o4-mini); in chatgpt mode it leaves it empty. See docs/plans/impl/codex-chatgpt-auth.md.
     if (request.model) args.push("--model", request.model);
     args.push(request.taskPrompt);
     return Effect.succeed({
@@ -131,5 +211,12 @@ export const codexStrategy: AgentStrategy = {
       },
       // costUsd is intentionally omitted — Codex does not report it.
     };
+  },
+
+  // Codex's verified shape: a completed function_call/mcp_tool_call item is one tool call. Reads
+  // the TYPED native event the parser emits — NOT the `tool_use` pushed into `events`, which is
+  // internal to buildInvocationResult and never reaches the ledger.
+  tallyToolCalls(current, event) {
+    return isCodexToolCall(event as unknown as CodexEvent) ? current + 1 : current;
   },
 };

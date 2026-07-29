@@ -1,8 +1,12 @@
-**Status:** EXPLORATORY (2026-07-06) — no code committed. This plan picks a direction for adding configurable model providers (worked example: DeepSeek) while keeping Claude the zero-configuration default. It is grounded in a surface map of every LLM path in the repo and three independent design proposals; the ruling is a deliberate blend.
-**Living doc** — update Decisions and add a Progress log as things land.
-**Revision 2026-07-06:** §2 crux ruling revised after online research — DeepSeek exposes a *first-party* Anthropic-compatible endpoint and officially supports Claude Code, so claude-CLI-on-DeepSeek is viable (not the no-go originally ruled), though still the worse host for h on cost/telemetry grounds. See §2 and Sources.
-
 # Configurable model providers: naming a provider without demoting Claude
+
+Status: Deferred — no `provider` concept was ever built, and events partly overtook the plan: DeepSeek now runs in production via openhands' BYOK pair and via the claude CLI on DeepSeek's Anthropic-compatible endpoint, both without it
+Established: 2026-07-06
+Revisit when: a third provider arrives, or a workflow step needs to name a provider per-step rather than per-agent-service — at which point §1's surface map (still accurate) is the starting point
+
+**What overtook it.** §2's crux was settled in practice by [model-fallback-continuity](./model-fallback-continuity.md) Phase 1: the stock `claude` CLI drives DeepSeek's first-party Anthropic-compatible endpoint (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`), validated live through tool use, MCP, and a cold-start driver check-in. So "reach a non-Anthropic model" is answered; what this plan still uniquely offers is the *naming* — a provider concept, a per-step override, and provider-aware cost telemetry.
+
+**Still-accurate gaps worth keeping** (§2, verified as written): the Python wire contract carries no `model` at all, so a workflow step cannot override a Python agent's model; and five of the six non-claude run activities never forward a model, so a step's `input.model` is silently dropped there. Those are concrete, small, and independent of the provider concept.
 
 ## Framing
 

@@ -5,7 +5,7 @@ import { WatchPolicy } from "./watch.model.ts";
 import { WfIdentity } from "./wf.model.ts";
 
 /**
- * The SCHEDULED-FIRE cron's data shapes (docs/plans/schedule-and-fallback.md) — the THIRD variant of
+ * The SCHEDULED-FIRE cron's data shapes (docs/plans/impl/schedule-and-fallback.md) — the THIRD variant of
  * the cron siblings, sibling of the recur cron (cron.model.ts) and the discovery cron
  * (discover.model.ts). Where a recur cron RE-FIRES one workflow on a cadence until its goal resolves,
  * and a discovery cron FANS OUT one fire per newly-seen source item, a scheduled-fire row fires ONE

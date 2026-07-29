@@ -1,7 +1,7 @@
 import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
-import { AgentInvoker } from "agent-cli";
+import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
 import { AgentRunError } from "core";
 import type { AgentRequest, AgentResponse } from "core";
@@ -98,6 +98,8 @@ export const PiRunnerLive: Layer.Layer<
           workspacePath: cwd,
           input,
           daprHttpPort: Option.getOrUndefined(cfg.daprHttpPort),
+          // pi counts its OWN stream shape; see agent-cli event-shape.ts.
+          tallyToolCalls: toolCallTallyFor("pi"),
         }).pipe(Effect.provideService(RunLedger, ledger));
 
         const result = yield* invoker

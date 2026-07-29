@@ -1,5 +1,5 @@
 """Tests for the submit-and-forward workflow route (engine-owned supervision in
-workflow-svc — docs/plans/watcher-primitive.md). Run:
+workflow-svc — docs/plans/impl/watcher-primitive.md). Run:
 `uv run --package agent-server pytest`."""
 
 from __future__ import annotations

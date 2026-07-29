@@ -37,7 +37,7 @@ _agent_enter_group "$@"
 
 # Group-writable by default: files a host agent creates in the SHARED workspace (worktrees, runs,
 # caches) inherit group rw, so the compose agents (same AGENT_GID) can also use them — host ⇄ compose
-# interchangeability (docs/plans/agent-process-identity.md; paired with cli/scripts/setup-agent-workspace.sh
+# interchangeability (docs/plans/impl/agent-process-identity.md; paired with cli/scripts/setup-agent-workspace.sh
 # which group-owns + setgids the workspace root). Sourced before `exec dapr run`, so the agent inherits it.
 umask 002
 

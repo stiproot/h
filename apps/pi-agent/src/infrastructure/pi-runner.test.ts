@@ -65,8 +65,11 @@ function ledgerSummary(runsDir: string, group: string): Record<string, unknown> 
 describe("PiRunnerLive", () => {
   it("maps the invocation result onto the AgentResponse and writes the run ledger", async () => {
     const { runtime, baseDir, runsDir, logs } = makeHarness((params) => {
-      params.onEvent?.({ type: "tool_use" });
-      params.onEvent?.({ type: "output", text: "hello" });
+      // pi's REAL ledger stream: its OWN parsed events. `tool_execution_*` is its unit of tool
+      // use; a non-JSON line arrives as the typed `raw` variant. (piJsonlParser's normalised
+      // `tool_use` goes only into the INTERNAL events array, which the ledger never sees.)
+      params.onEvent?.({ type: "tool_execution_start" });
+      params.onEvent?.({ type: "raw", text: "hello" });
       return Effect.succeed({
         success: true,
         stdout: "all done",

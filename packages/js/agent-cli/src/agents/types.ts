@@ -30,8 +30,33 @@ export interface ModelUsage {
   costUsd: number;
 }
 
-/** Called for each JSON event emitted by the agent CLI stream. */
+/**
+ * Called for each event emitted by the agent CLI stream.
+ *
+ * Deliberately structural (`Record<string, unknown>`): the run ledger is agent-AGNOSTIC and must
+ * accept any CLI's vocabulary. What each strategy passes THROUGH it is its own typed native event
+ * (`OpenhandsEvent`, `PiEvent`, `CodexEvent`, or claude's `StreamEvent`), so what lands in
+ * events.jsonl is the shape that agent's CLI actually emitted — not a re-wrapping of it.
+ */
 export type AgentEventCallback = (event: Record<string, unknown>) => void;
+
+/**
+ * A stdout line that is not JSON at all — a banner, a Rich-drawn box, a progress line. Every
+ * non-claude CLI interleaves these with its JSON stream, so they need a home in the event
+ * vocabulary rather than being disguised as real events.
+ *
+ * They used to be emitted as `{type: "output", text: line}`, which made EVERY line of those
+ * streams look like a uniform `output` event and buried the real event as an escaped string
+ * inside `text`. `raw` names them for what they are, so a reader can tell CLI chatter from the
+ * agent's actual events.
+ */
+export interface RawLineEvent {
+  type: "raw";
+  text: string;
+}
+
+/** Build a {@link RawLineEvent} for a line that could not be parsed as the agent's JSON. */
+export const rawLineEvent = (text: string): RawLineEvent => ({ type: "raw", text });
 
 export type AgentType = "claude" | "codex" | "openhands" | "pi";
 
@@ -214,4 +239,16 @@ export interface AgentStrategy {
   extractSessionId(events: StreamEvent[]): string | undefined;
 
   extractMetrics(events: StreamEvent[], request: AgentInvocationRequest): Partial<InvocationResult>;
+
+  /**
+   * This agent's OWN tool-call tally, folded over its raw event stream — the sibling of
+   * `streamParser`, because only the strategy knows its CLI's event vocabulary.
+   *
+   * OMIT IT until this agent's shape has actually been verified against captured events: the run
+   * ledger then records `toolCalls: null` (unknown) instead of 0, and a 0 reads as a measured
+   * zero. That mistake is not hypothetical — a busy openhands run was misread as a "hollow
+   * panelist" on 2026-07-27 because a claude-shaped tally was applied to it. Every run's
+   * observed `eventShape` is logged, so a tally is added from evidence, never from assumption.
+   */
+  tallyToolCalls?(current: number, event: Record<string, unknown>): number;
 }

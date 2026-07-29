@@ -6,7 +6,7 @@ import { NodeContext } from "@effect/platform-node";
 import { Cause, Effect, Exit } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { provisionMcpConfig } from "./claude-runner.ts";
+import { provisionMcpConfig } from "core";
 
 const H_SERVERS = JSON.stringify({
   mcpServers: { github: { type: "http", url: "https://api.githubcopilot.com/mcp/" } },

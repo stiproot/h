@@ -1,0 +1,153 @@
+{{- /*
+plan workflow — worktree → setup → plan, and STOP. The planning half of `implement`, split
+out so the plan can be reviewed before anything is built.
+
+Why it exists (docs/plans/impl/chain-plan-atom.md): `implement` is worktree → setup → plan →
+implement under ONE runActivity, so the planning and implementing agents are always the same
+one and the intermediate plan is never a chain-visible artifact. This template ends AT the
+plan and reports it through a declared output contract, which makes two things expressible
+that were not:
+
+  - a distinct planning agent ("Claude plans, then OpenHands implements") — two agent-bound
+    chain members instead of one;
+  - a REVIEW of the plan before it becomes a prompt (docs/plans/spec-review-pipeline.md):
+    the captured plan feeds a panelized member, whose synthesized answer is the vetted spec
+    the implement member consumes.
+
+Chain shape it unlocks:
+
+  h chain run --slug <slug> -p repo=owner/name -p spec=@spec.md -- \
+    -w plan   --agent claude           --id plan   --capture plan=plan \
+    -w answer --agent claude openhands  --id review --input task=plan.plan --capture answer=answer \
+    -t implement verify create-pr --agent openhands --input spec=review.answer
+
+Publish-native: per-run inputs are {{params.*}} engine tokens — save it once, fire it with
+`h workflow run plan -p slug=… -p spec=@spec.md`.
+
+Fire-time params:
+  slug         branch token; the run reads the worktree on branch feature/<slug>
+  spec         the Markdown spec to plan against (required)
+  repo         wf-registry identity (owner/name); identity only, does not drive the clone
+  clonePath    pre-clone path the worktree cuts from (empty = <sharedRoot>/repo)
+  runActivity  / agentId — fire-time identity (--agent), defaulting to claude
+
+Template config (values, baked at publish time): plan.models.plan, plan.remoteBase,
+plan.gitAuth, plan.clonePath, plan.repo.
+
+Publish:
+  helm template plan cli/charts/workflows -s templates/plan.tmpl.yaml \
+    --set template=plan --set publish=true
+*/ -}}
+{{- /*
+The declared output contract: `plan` is the whole point — the artifact a reviewer critiques
+and an implementer consumes, so it is REQUIRED. `skipped` carries the one legitimate
+non-outcome (the work already appears done), leaving `plan` present but explicitly inert.
+*/ -}}
+{{- define "h.contract.plan" -}}
+type: object
+required:
+  - plan
+properties:
+  plan:
+    type: string
+    description: >-
+      the implementation plan, self-contained and grounded in the code actually read —
+      the artifact a downstream reviewer or implementer consumes
+  skipped:
+    type: string
+    description: >-
+      present when no real planning was possible — e.g. the change already appears
+      implemented; omitted otherwise
+{{- end }}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "plan" }}
+role: standalone
+{{- $p := .Values.plan }}
+{{- $publish := .Values.publish | default false }}
+{{- $contract := include "h.contract.plan" . | fromYaml }}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
+{{- /* Identity refs follow implement.tmpl.yaml exactly: $activityRef is emitted UNQUOTED, so the
+publish branch pre-quotes it ({{ at YAML value position parses as a flow mapping). */ -}}
+{{- $activityRef := $runActivity }}
+{{- $agentIdRef := .Values.agentId }}
+{{- if $publish }}
+{{- $activityRef = include "h.token" "params.runActivity" | quote }}
+{{- $agentIdRef = include "h.token" "params.agentId" }}
+{{- end }}
+{{- $slug := "" }}
+{{- $spec := "" }}
+{{- if $publish }}
+{{- $slug = include "h.token" "params.slug" }}
+{{- $spec = include "h.token" "params.spec" }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  clonePath: {{ $p.clonePath | default "" | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  {{- with $p.repo }}
+  repo: {{ . | quote }}
+  {{- end }}
+  {{- with $p.models.plan }}
+  modelPlan: {{ . | quote }}
+  {{- end }}
+{{- else }}
+{{- $slug = required "plan.slug is required (--set plan.slug=<slug>)" $p.slug }}
+{{- $spec = required "plan.spec is required (--set-file plan.spec=<path.md>)" $p.spec }}
+instanceId: {{ printf "plan-%s" $slug | quote }}
+{{- end }}
+steps:
+  - id: worktree
+    activity: create-worktree
+    input:
+      agentId: {{ $agentIdRef | quote }}
+      branch: {{ printf "feature/%s" $slug | quote }}
+      clonePath: {{ include "h.token" "params.clonePath" | quote }}
+      {{- with $p.remoteBase }}
+      remoteBase: {{ . | quote }}
+      {{- end }}
+      {{- with $p.gitAuth }}
+      auth: {{ . | quote }}
+      {{- end }}
+  - id: setup
+    activity: setup
+    input:
+      agentId: {{ $agentIdRef | quote }}
+      setup:
+        {{- include "h.setupSteps" . | nindent 8 }}
+  - id: plan
+    activity: {{ $activityRef }}
+    input:
+      outputContract: {{ $contract | toJson }}
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $p.models.plan }}
+      model: {{ ternary (include "h.token" "params.modelPlan") . $publish | quote }}
+      {{- end }}
+      permissionMode: plan
+      task: |-
+        You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
+
+        Investigate the request under ===SPEC=== below and produce an implementation plan.
+        Ground it in the code you actually read — cite real paths and real existing symbols,
+        and follow the conventions of the nearest precedent already in the tree. Do NOT write
+        code or modify any files: this run plans only, and a separate run implements.
+
+        Your plan is consumed by another agent as its sole spec, so it must stand alone —
+        name the files to change, what to add or alter in each, and the tests that prove the
+        acceptance criteria. If the change already appears implemented, say so in `skipped`
+        and keep `plan` to what you found.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+
+        ===SPEC===
+        {{- $spec | nindent 8 }}
+outputs:
+  {{- include "h.contract.plan" . | nindent 2 }}
+{{- /*
+panelSynthesis — "how to synthesize a panel of me": spliced into the judge's task when this
+workflow runs under an --agent roster; inert otherwise.
+*/}}
+panelSynthesis: |-
+  Merge the panelists' plans into ONE implementation plan. Prefer the plan that is better
+  grounded in the code actually read over the one that merely sounds thorough, and merge
+  complementary steps rather than picking a side when they compose. Where they disagree on
+  an approach, choose one, state briefly why in the plan itself, and make sure the result is
+  a single coherent sequence an implementer can follow start to finish.
+{{- end }}

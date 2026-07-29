@@ -1,6 +1,6 @@
 """h template — the template primitive's surface: the spatial (overlay) composition level.
 
-The composition stack (docs/plans/chain-composition-surface.md): templates —(compose)→ workflow
+The composition stack (docs/plans/impl/chain-composition-surface.md): templates —(compose)→ workflow
 definitions —(run)→ workflows —(chain run)→ chains. `compose` is the arrow out of this level:
 it renders each named template in publish+composable mode and overlays them (merge by step id)
 into ONE workflow definition — one run, one worktree, one agent context. `-t` means template

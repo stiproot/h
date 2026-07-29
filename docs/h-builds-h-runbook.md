@@ -2,8 +2,8 @@
 
 Operating the self-build loop: labeled GitHub issues → `feature` runs on the h repo → PRs a
 human reviews → auto-revised until merged. Design and rulings:
-[docs/plans/h-builds-h.md](./plans/h-builds-h.md); the cron mechanism:
-[docs/plans/workflow-watcher-registry.md](./plans/workflow-watcher-registry.md) §9 (discovery/
+[docs/plans/impl/h-builds-h.md](./plans/impl/h-builds-h.md); the cron mechanism:
+[docs/plans/impl/workflow-watcher-registry.md](./plans/impl/workflow-watcher-registry.md) §9 (discovery/
 Job 1) and §10 (arm-at-birth revise/Job 2). Runs locally only — no inbound webhooks; all GitHub
 state is poll-discovered on the `workflow-cron-tick`.
 
@@ -135,7 +135,7 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
 ## Termination & budgets (engine-owned)
 
 - **Per-PR revise loop** stops on either the goal (`revise-pr` reports `goal: RESOLVED` in its
-  validated structured output when the PR merges — docs/plans/structured-workflow-outputs.md — →
+  validated structured output when the PR merges — docs/plans/impl/structured-workflow-outputs.md — →
   `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
   (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;

@@ -1,4 +1,4 @@
-"""panelize()'s contract (docs/plans/panels-as-a-modifier.md): pure transform, shape + errors.
+"""panelize()'s contract (docs/plans/impl/panels-as-a-modifier.md): pure transform, shape + errors.
 
 The transform is the single author of panel-branch prose, so these tests are also the spec of
 the sync steering (the concurrency preamble) and of the seam invariant: the synthesis carries
@@ -139,3 +139,17 @@ def test_roster_pairs_resolves_and_rejects_unknown_names() -> None:
     ]
     with pytest.raises(PanelizeError, match="unknown agent 'hal9000'"):
         roster_pairs(("claude", "hal9000"), identity)
+
+
+def test_model_override_applied_to_branches() -> None:
+    """When model_override is set, it appears in every branch input instead of being stripped."""
+    result = panelize(definition(), ROSTER, model_override="claude-sonnet-4-6")
+    for branch in result["steps"][1]["parallel"]:
+        assert branch["input"]["model"] == "claude-sonnet-4-6"
+
+
+def test_model_override_empty_is_absent() -> None:
+    """An empty-string model_override is treated as absent — model is stripped from branches."""
+    result = panelize(definition(), ROSTER, model_override="")
+    for branch in result["steps"][1]["parallel"]:
+        assert "model" not in branch["input"]

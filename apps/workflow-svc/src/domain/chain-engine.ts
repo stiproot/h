@@ -7,7 +7,7 @@ import {
 
 /**
  * The pure half of the chain engine: given one chain row, an observation of every member of the
- * CURRENT STAGE (docs/plans/inline-chain-cron-composition.md D3), and the clock, decide what to do.
+ * CURRENT STAGE (docs/plans/impl/inline-chain-cron-composition.md D3), and the clock, decide what to do.
  * No I/O — the scan (chain-scan.ts) reads each member's runtime status (and, for cron/`until`
  * members, its output/`wf:resolved`), reduces each to a `done`/`failed` observation, then executes
  * the decision against the ports (capture outputs, thread the chain data, fire the next stage).

@@ -63,7 +63,8 @@ def test_chain_run_registers_default_workflows(tmp_path: Path) -> None:
     assert body["strategy"] == "sequential"
     assert [h["kind"] for h in body["members"]] == ["implement-pr", "review-pr", "revise-pr"]
     workflow = {h["kind"]: h for h in body["members"]}
-    # implement-pr + revise-pr share the branch instance; review-pr has its own; revise-pr re-runs fresh.
+    # implement-pr + revise-pr share the branch instance; review-pr has its own;
+    # revise-pr re-runs fresh.
     assert workflow["implement-pr"]["instanceId"] == "implement-demo"
     assert workflow["implement-pr"]["fresh"] is False
     assert workflow["revise-pr"]["instanceId"] == "implement-demo"
@@ -135,9 +136,16 @@ def test_chain_run_identity_flags_become_hop_params(tmp_path: Path) -> None:
     )  # fmt: skip
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
+    # Force-clearing model slots alongside the identity swap: a baked model belongs to the
+    # executor it was chosen for, and claude-sonnet-4-6 sent to an openhands-agent on DeepSeek is
+    # rejected outright (live 2026-07-27). Clearing the slots with "" overrides the saved
+    # default — the runner-side `||` fixes handle "" correctly, and the new executor's own
+    # AGENT_MODEL is the fallback at the agent runner level.
     assert body["members"][0]["params"] == {
         "runActivity": "run-openhands",
         "agentId": "openhands-agent",
+        "modelPlan": "",
+        "modelImplement": "",
     }
     assert "params" not in body["members"][1]
 
@@ -167,8 +175,68 @@ def test_chain_run_pi_identity_flags_become_hop_params(tmp_path: Path) -> None:
     assert body["members"][0]["params"] == {
         "runActivity": "run-pi",
         "agentId": "pi-agent",
+        "modelPlan": "",
+        "modelImplement": "",
     }
     assert "params" not in body["members"][1]
+
+
+@respx.mock
+def test_chain_run_claude_agent_keeps_the_baked_models(tmp_path: Path) -> None:
+    """The clearing rule must be TARGETED: claude is the executor the templates' models were
+    tuned for (sonnet to plan, haiku to implement), so selecting it must not wipe them."""
+    route = _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "implement-pr",
+                "steps": [],
+                "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "implement-pr", "--agent", "claude", "-w", "review-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    params = json.loads(route.calls[0].request.content)["members"][0]["params"]
+    assert params == {"runActivity": "run-claude", "agentId": "claude-agent"}
+    assert "modelPlan" not in params
+
+
+@respx.mock
+def test_chain_run_explicit_model_wins_over_the_clearing_rule(tmp_path: Path) -> None:
+    """--model is the explicit override: naming one alongside a foreign --agent must set it,
+    not clear it."""
+    route = _mock_run()
+    respx.get(f"{WORKFLOW_URL}/workflow/get/implement-pr").mock(
+        return_value=Response(
+            200,
+            json={
+                "key": "implement-pr",
+                "steps": [],
+                "params": {"runActivity": "run-claude", "agentId": "claude-agent"},
+            },
+        )
+    )
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "implement-pr", "--agent", "openhands", "--model", "deepseek-v4-flash",
+            "-w", "review-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    params = json.loads(route.calls[0].request.content)["members"][0]["params"]
+    assert params["agentId"] == "openhands-agent"
+    assert params["modelPlan"] == "deepseek-v4-flash"
+    assert params["modelImplement"] == "deepseek-v4-flash"
 
 
 @respx.mock
@@ -247,8 +315,9 @@ def test_chain_run_template_group_composes_on_fire(tmp_path: Path, monkeypatch) 
         "instanceId": "implement-x",
         "fresh": False,
     }
-    # revise-pr is its own first-class workflow — it fires the published `revise` key (NOT the composed
-    # implement-pr definition), sharing the branch instance so it operates on the same feature/<slug>.
+    # revise-pr is its own first-class workflow — it fires the published `revise` key (NOT
+    # the composed implement-pr definition), sharing the branch instance so it operates on
+    # the same feature/<slug>.
     assert body["members"][2]["kind"] == "revise-pr"
     assert body["members"][2]["key"] == "revise-pr"
     assert body["members"][2]["instanceId"] == "implement-x"
@@ -687,7 +756,7 @@ def test_chain_run_answer_bad_capture_field_fails_loud(tmp_path: Path) -> None:
     assert "no field(s) notafield" in _all_output(result)
 
 
-# --- the --agent roster (docs/plans/panels-as-a-modifier.md) ---------------------------------
+# --- the --agent roster (docs/plans/impl/panels-as-a-modifier.md) ---------------------------------
 
 
 @needs_helm
@@ -755,7 +824,15 @@ def test_chain_roster_rejects_write_kinds(tmp_path: Path) -> None:
     assert "roster" in _all_output(result)
 
 
-def test_chain_roster_rejects_model(tmp_path: Path) -> None:
+@needs_helm
+@respx.mock
+def test_chain_roster_accepts_model(tmp_path: Path) -> None:
+    """A roster (N --agent names) with --model now succeeds: the model is applied to every
+    branch step input via panelize's model_override."""
+    route = _mock_run()
+    respx.post(f"{WORKFLOW_URL}/workflow/save").mock(
+        return_value=Response(200, json={"key": "x-w0"})
+    )
     result = runner.invoke(
         app,
         [
@@ -774,8 +851,9 @@ def test_chain_roster_rejects_model(tmp_path: Path) -> None:
             "opus",
         ],
     )
-    assert result.exit_code == 1
-    assert "--model with a roster" in _all_output(result)
+    # Should succeed: model is forwarded to every branch via panelize rather than rejected.
+    assert result.exit_code == 0, _all_output(result)
+    assert route.called
 
 
 # --- activation gates + loop×stages (issues #78 / #79b) --------------------------------------
@@ -795,7 +873,8 @@ def test_chain_run_activation_gates_ride_the_body(tmp_path: Path) -> None:
     body = json.loads(route.calls[0].request.content)
     assert body["after"] == "p"
     assert body["notBefore"] == "2027-01-01T00:00:00Z"
-    assert "activates" in _all_output(result) and "chain 'p'" in _all_output(result).replace(chr(10), " ")
+    out = _all_output(result)
+    assert "activates" in out and "chain 'p'" in out.replace(chr(10), " ")
 
 
 @respx.mock
@@ -852,3 +931,65 @@ def test_loop_refuses_concurrent_stages_in_the_loop_segment(tmp_path: Path) -> N
     )  # fmt: skip
     assert result.exit_code == 1
     assert "single-member stages" in _all_output(result)
+
+
+# ── Member-input validation at registration (docs/plans/impl/member-input-validation.md) ──────────
+
+
+@needs_helm
+@respx.mock
+def test_member_input_validation_refuses_unsatisfiable_slug(tmp_path: Path) -> None:
+    """The live repro: `-w plan --kind answer --input spec=spec` — the answer contract supplies
+    only `task`, the declared --input REPLACES it with `spec`, and nothing supplies the `slug`
+    the plan template's worktree step requires. Registration must REFUSE, naming the param —
+    previously this registered fine and died mid-run as `fatal: 'feature/' is not a valid
+    branch name`."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "demo", "-p", "repo=owner/name", "-p", _pspec(tmp_path),
+         "--", "-w", "plan", "--kind", "answer", "--agent", "claude", "openhands",
+         "--input", "spec=spec", "--capture", "plan=plan"],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    out = _all_output(result)
+    assert "{{params.slug}}" in out
+    assert "answer" in out and "spec" in out  # the contract-vs-declared diagnosis
+    assert not route.called  # refused BEFORE registration, nothing reached the engine
+
+
+@needs_helm
+@respx.mock
+def test_member_input_validation_accepts_declared_input(tmp_path: Path) -> None:
+    """The well-formed equivalent: `--input slug=slug` added — registration proceeds. Also the
+    false-positive guard: plan's `clonePath` (empty defaults-block entry, author-sanctioned
+    optional) and review-pr's `focus` never trip the check."""
+    route = _mock_run("demo")
+    respx.post(f"{WORKFLOW_URL}/workflow/save").mock(
+        return_value=Response(200, json={"key": "demo-w0"})
+    )
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "demo", "-p", "repo=owner/name", "-p", _pspec(tmp_path),
+         "--", "-w", "plan", "--kind", "answer", "--agent", "claude", "openhands",
+         "--input", "spec=spec", "--input", "slug=slug", "--capture", "plan=plan"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    assert route.called
+
+
+@needs_helm
+@respx.mock
+def test_member_input_validation_defaults_do_not_trip(tmp_path: Path) -> None:
+    """A kind-matched member passes: review-pr references clonePath/focus/spec — all either
+    defaults-block entries (author-sanctioned optional) or contract-supplied — with nothing
+    seeded beyond the spec. This is the regression guard that matters most: a false positive
+    here blocks working compositions."""
+    route = _mock_run("demo")
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "demo", "-p", "prNumber=5", "-p", _pspec(tmp_path),
+         "--", "-w", "review-pr"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    assert route.called

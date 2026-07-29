@@ -4,10 +4,10 @@ A chain is a registered policy the chain engine (workflow-svc) sequences on the 
 mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the
 workflows run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable
 registry. State threads workflow-to-workflow IN THE ENGINE (it reads each workflow's validated
-structured output — docs/plans/structured-workflow-outputs.md — into the chain's chain data and
+structured output — docs/plans/impl/structured-workflow-outputs.md — into the chain's chain data and
 builds the next workflow's params), so the chained workflows stay chain-agnostic.
 
-The workflow list is the chain EXPRESSION (docs/plans/chain-composition-surface.md §1.5),
+The workflow list is the chain EXPRESSION (docs/plans/impl/chain-composition-surface.md §1.5),
 hand-parsed from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the
 EXPR flag names). Chain-level flags (--slug/--strategy/--max-iterations) and value hydration
 (`-p key=value`, seeding the shared data) are ordinary Typer options — Typer consumes them
@@ -22,14 +22,15 @@ wherever they sit; everything workflow-scoped is positional in the expression:
 
 A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
 chain-scoped key `<slug>-w<N>` by default, or EMBEDDED in the chain row with `--inline` (D1).
-Concurrency is stages (docs/plans/inline-chain-cron-composition.md D3): --parallel (or an explicit
---stage N) groups members into one concurrent stage the engine joins before advancing. A `--cron`
+Concurrency is stages (docs/plans/impl/inline-chain-cron-composition.md D3): --parallel
+(or an explicit --stage N) groups members into one concurrent stage the engine joins
+before advancing. A `--cron`
 member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:resolved (D2/D4);
 `--id` gives a member a chain data namespace so a downstream reads its capture via a dotted
 `--input PARAM=id.field` (D5). Identity flags become fire-time params (§1.9): --agent maps to
 {runActivity, agentId}, --model to the workflow kind's model params.
 
-`--agent` with SEVERAL names is a panel ROSTER (docs/plans/panels-as-a-modifier.md): the member
+`--agent` with SEVERAL names is a panel ROSTER (docs/plans/impl/panels-as-a-modifier.md): the member
 is panelized — its contract-carrying step is replicated into a parallel step group, one branch
 per roster agent, and a pinned judge synthesizes under the member's own contract, so every seam
 downstream (loop-until-clean, captures, the watcher) is unchanged. A roster forces
@@ -47,7 +48,12 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
-from h_cli.config import AGENT_IDENTITY, CHARTS_DIR, agent_identity_params
+from h_cli.config import (
+    AGENT_IDENTITY,
+    CHARTS_DIR,
+    agent_identity_params,
+    baked_models_suit,
+)
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
@@ -71,9 +77,10 @@ _BUDGET_UNITS = {"m": 60_000, "h": 3_600_000}
 
 KNOWN_KINDS = ("implement-pr", "review-pr", "revise-pr", "answer")
 # Well-known -w names → (kind, saved key fired). Each is a first-class standalone workflow with its
-# own saved definition — `revise-pr` fires the `revise-pr` template (which reads the PR's review threads
-# itself), no longer a re-fire of implement-pr's definition. `answer` is the bare "answer this task"
-# member (the panelizable degenerate case, docs/plans/panels-as-a-modifier.md — successor of the
+# own saved definition — `revise-pr` fires the `revise-pr` template (which reads the PR's
+# review threads itself), no longer a re-fire of implement-pr's definition. `answer` is the
+# bare "answer this task" member (the panelizable degenerate case,
+# docs/plans/impl/panels-as-a-modifier.md — successor of the
 # retired agent-panel): reads `task` off the chain data, captures `answer`; an --agent roster
 # panelizes it at fire time. Coded threading contracts live in
 # workflow-svc/domain/chain-members.ts (a novel kind is added on both sides, per chain.model.ts).
@@ -100,14 +107,29 @@ KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
     "review-pr": ("modelReview",),
     "answer": ("modelAnswer",),
 }
+# kind → every param its coded contract can supply at fire time — the REQUIRED keys plus the
+# optional passthroughs, mirroring chain-members.ts buildParams (a novel kind updates BOTH
+# sides, per chain.model.ts; test_kind_sync pins the required halves). `repo` is withRepo's
+# conditional add and is handled separately (supplied only when the chain data seeds it).
+KIND_CONTRACT_SUPPLIES: dict[str, frozenset[str]] = {
+    "implement-pr": frozenset({"slug", "spec", "issueNumber", "clonePath", "verifyCmd"}),
+    "review-pr": frozenset({"pr", "spec"}),
+    "revise-pr": frozenset({"pr", "slug", "clonePath"}),
+    "answer": frozenset({"task"}),
+}
+# Params that legitimately resolve EMPTY without a defaults-block entry (the clonePath class,
+# member-input-validation's false-positive rule): `plugins` gates the optional plugin-install
+# setup step — empty deliberately means "install none".
+ALWAYS_OPTIONAL_PARAMS = frozenset({"plugins"})
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
 # (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER
-# is the explicit relaxation (docs/plans/panels-as-a-modifier.md decision 7): the panelists run as
-# named, the pin migrates to the synthesis judge (panelize.JUDGE_ACTIVITY, claude).
+# is the explicit relaxation (docs/plans/impl/panels-as-a-modifier.md decision 7):
+# the panelists run as named, the pin migrates to the synthesis judge
+# (panelize.JUDGE_ACTIVITY, claude).
 FROZEN_EXECUTOR_KINDS = {"review-pr"}
 # Write kinds share ONE branch/worktree per member — a roster of N writers would clobber it; the
 # isolated form of "N implementations" is --parallel stage composition (the two-substrate table,
-# docs/plans/panels-as-a-modifier.md).
+# docs/plans/impl/panels-as-a-modifier.md).
 WRITE_KINDS = frozenset({"implement-pr", "revise-pr"})
 # -t group kind inference: the terminal atom's declared output contract IS the threading contract.
 TERMINAL_ATOM_KIND = {"create-pr": "implement-pr"}
@@ -162,6 +184,14 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
                 )
                 raise AssertionError("unreachable")
             params.update(identity)
+            # A baked model belongs to the executor it was chosen for. When the user reassigns
+            # the executor without also naming a model, clear the model param slots so the
+            # saved default is overridden — the new executor's default model may not suit the
+            # template's task, and the runner-side `||` fixes handle "" correctly.
+            # An explicit --model still wins below.
+            if not cfg.model and not baked_models_suit(agent):
+                for name in KIND_MODEL_PARAMS[kind]:
+                    params[name] = ""
     if cfg.model:
         for name in KIND_MODEL_PARAMS[kind]:
             params[name] = cfg.model
@@ -183,11 +213,31 @@ def _panel_definition(key: str) -> dict[str, Any]:
     return stored
 
 
-def _apply_roster(merged: dict[str, Any], roster: tuple[str, ...], label: str) -> dict[str, Any]:
+def _apply_roster(
+    merged: dict[str, Any], roster: tuple[str, ...], label: str, model_override: str | None = None
+) -> dict[str, Any]:
     """Panelize the composed definition with the roster: each name resolves through
-    AGENT_IDENTITY to its run activity; any shape violation fails loud at registration."""
+    AGENT_IDENTITY to its run activity; any shape violation fails loud at registration.
+
+    When *model_override* is set (from `--model`), it is applied to every branch step input.
+    Otherwise the baked model is stripped and a warning is emitted noting the fallback."""
     try:
-        return panelize(merged, roster_pairs(roster, AGENT_IDENTITY))
+        baked_model = ""
+        for step in merged.get("steps") or []:
+            inp = step.get("input") or {}
+            if inp.get("outputContract") and inp.get("model"):
+                baked_model = inp["model"]
+                break
+        result = panelize(
+            merged, roster_pairs(roster, AGENT_IDENTITY), model_override=model_override
+        )
+        if baked_model and not model_override:
+            roster_str = ", ".join(roster)
+            _warn(
+                f"panelized '{label}' — model '{baked_model}' stripped from branches; "
+                f"each panelist uses its own AGENT_MODEL (roster: {roster_str})"
+            )
+        return result
     except PanelizeError as err:
         _fail(f"cannot panelize '{label}': {err}")
         raise AssertionError("unreachable")
@@ -241,6 +291,61 @@ def _check_output_mappings(
         )
 
 
+def _member_input_gaps(
+    definition: dict[str, Any],
+    kind: str,
+    inputs: dict[str, str] | None,
+    fire_params: dict[str, str],
+    repo_seeded: bool,
+) -> list[str]:
+    """Registration-time INPUT validation (docs/plans/impl/member-input-validation.md) — the input
+    half of the asymmetry _check_output_mappings closes for outputs: every `{{params.X}}` the
+    member's definition references must be satisfiable at fire time, else the run dies minutes
+    later inside an activity with an error about something else entirely (the live case:
+    `-w plan --kind answer` drops `slug` → `fatal: 'feature/' is not a valid branch name`).
+
+    A param is satisfied by: an entry in the definition's `params:` defaults block (present at
+    ALL — an empty default like `clonePath: ""` is the template author declaring the param
+    optional; a required content param like plan's `slug` is deliberately absent from the
+    block); the member's declared `--input` names (which REPLACE the kind contract's input
+    half — exactly how the live case lost `slug`); else the kind contract's supplied keys;
+    the member's own non-empty fire params (identity/model); `repo` when the chain data seeds
+    it (withRepo); and the ALWAYS_OPTIONAL set. Chain `-p` seeds do NOT satisfy on their own —
+    a seed only becomes a param through the contract or a declared --input, which is the exact
+    trap this guards. Conservative by design: an undeterminable definition skips (never block
+    a valid chain on a guess). Runs BEFORE any publish, so a refused chain leaves NO durable
+    footprint."""
+    import json as _json
+    import re as _re
+
+    referenced = set(
+        _re.findall(r"\{\{params\.([A-Za-z0-9_]+)\}\}", _json.dumps(definition.get("steps") or []))
+    )
+    block = set((definition.get("params") or {}).keys())
+    declared_inputs = set((inputs or {}).keys())
+    supplied = declared_inputs if declared_inputs else set(KIND_CONTRACT_SUPPLIES.get(kind, ()))
+    if repo_seeded:
+        supplied |= {"repo"}
+    supplied |= {k for k, v in fire_params.items() if v != ""}
+    return sorted(referenced - block - supplied - ALWAYS_OPTIONAL_PARAMS)
+
+
+def _fail_member_inputs(
+    label: str, kind: str, inputs: dict[str, str] | None, missing: list[str]
+) -> None:
+    tokens = ", ".join("{{params." + m + "}}" for m in missing)
+    contract = ", ".join(sorted(KIND_CONTRACT_SUPPLIES.get(kind, ()))) or "(nothing)"
+    declared = ", ".join(sorted((inputs or {}).keys())) or "(none)"
+    fixes = " ".join(f"--input {m}={m}" for m in missing)
+    _fail(
+        f"member '{label}' (kind: {kind}) references {tokens}, which nothing supplies.\n"
+        f"  the '{kind}' kind's contract provides: {contract}\n"
+        f"  you declared:                          {declared}\n"
+        f"  fix: add {fixes} (the source must exist on the chain data — seed it with -p if "
+        "needed); note a declared --input REPLACES the kind contract's inputs"
+    )
+
+
 def _resolve_workflow(
     member: MemberRef,
     cfg: WorkflowConfig,
@@ -249,9 +354,11 @@ def _resolve_workflow(
     stage: int,
     uses_stages: bool,
     in_parallel: bool,
+    repo_seeded: bool,
 ) -> dict[str, Any]:
     """A parsed member → the engine's ChainMember. Emits `key` (published) XOR `steps` (inline,
-    D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface."""
+    D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface. Validates the
+    member's INPUTS against its definition before any publish side effect."""
     if member.key:
         if member.key in WELL_KNOWN and not cfg.kind:
             kind, key = WELL_KNOWN[member.key]
@@ -279,8 +386,10 @@ def _resolve_workflow(
     if kind not in KNOWN_KINDS:
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
-    # A roster (several --agent names) panelizes the member (docs/plans/panels-as-a-modifier.md):
-    # read/judge kinds only, no --model (per-branch models fall to each agent's own AGENT_MODEL).
+    # A roster (several --agent names) panelizes the member
+    # (docs/plans/impl/panels-as-a-modifier.md):
+    # read/judge kinds only. When --model is given alongside a roster, it is applied to every
+    # branch step input; without it each panelist falls back to its own AGENT_MODEL.
     roster = cfg.agents if len(cfg.agents) > 1 else ()
     if roster:
         if kind in WRITE_KINDS:
@@ -288,11 +397,6 @@ def _resolve_workflow(
                 f"a roster on '{member.label}' ({kind}) is not supported — write kinds share "
                 "one branch/worktree, so N writers would clobber it; compose N members with "
                 "--parallel (isolated instances) instead"
-            )
-        if cfg.model:
-            _fail(
-                f"--model with a roster on '{member.label}' is not supported — each panelist "
-                "falls back to its own agent's default model"
             )
 
     # A cron member self-arms an embedded recurrence (D1/D2), so it MUST be inline; --inline opts
@@ -320,14 +424,22 @@ def _resolve_workflow(
         merged = _panel_definition(key)
     if merged is not None:
         if roster:
-            merged = _apply_roster(merged, roster, member.label)
+            merged = _apply_roster(merged, roster, member.label, model_override=cfg.model)
             judge_note = " (judge: claude-agent)" if kind in FROZEN_EXECUTOR_KINDS else ""
+            model_note = f" (model: {cfg.model})" if cfg.model else ""
             console.print(
-                f"==> panelized '{member.label}' — roster: {', '.join(roster)}{judge_note}"
+                f"==> panelized '{member.label}' — roster: {', '.join(roster)}"
+                f"{judge_note}{model_note}"
             )
         source = " ⊕ ".join(member.templates) if member.key is None else member.key
         declared_outputs = merged.get("outputs")
         merged_params = merged.get("params") or {}
+        # Input validation BEFORE the publish below — a refused chain must leave no durable
+        # footprint (docs/plans/impl/member-input-validation.md).
+        declared_inputs = dict(cfg.inputs) if cfg.inputs else None
+        gaps = _member_input_gaps(merged, kind, declared_inputs, params, repo_seeded)
+        if gaps:
+            _fail_member_inputs(member.label, kind, declared_inputs, gaps)
         if inline:
             # Inline storage (D1): embed the composed steps in the chain row — nothing published.
             # The template's param defaults ride the member's params (no saved def to merge from).
@@ -400,6 +512,28 @@ def _resolve_workflow(
             stored = _guarded(lambda: workflow_svc.get(key))
             declared_outputs = stored.get("outputs") if isinstance(stored, dict) else None
         _check_output_mappings(entry, declared_outputs, member.label)
+
+    # Input validation for a saved -w member (the composed path validated pre-publish above):
+    # prefer the chart template's hermetic render (no wire call), falling back to the stored
+    # definition — an UNDETERMINABLE definition (no template, fetch failed) skips validation
+    # rather than block a valid chain (member-input-validation's false-positive rule).
+    if merged is None:
+        template_name = template_name_for_key(key)
+        template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
+        definition: dict[str, Any] | None
+        try:
+            if template_path.exists():
+                definition = compose_templates([template_name])
+            else:
+                stored_def = workflow_svc.get(key)
+                definition = stored_def if isinstance(stored_def, dict) else None
+        except Exception:
+            definition = None
+        if definition is not None:
+            declared_inputs = dict(cfg.inputs) if cfg.inputs else None
+            gaps = _member_input_gaps(definition, kind, declared_inputs, params, repo_seeded)
+            if gaps:
+                _fail_member_inputs(member.label, kind, declared_inputs, gaps)
     return entry
 
 
@@ -480,7 +614,8 @@ def run(
       --agent A B C...  SEVERAL names are a panel ROSTER: the member is panelized — each roster
                         agent answers concurrently, a pinned judge (claude) synthesizes under the
                         member's own output contract, so downstream seams are unchanged. Read/
-                        judge kinds only (write kinds: use --parallel members); no --model.
+                        judge kinds only (write kinds: use --parallel members); --model applies
+                        the specified model to every panelized branch.
 
       --stage N         the member's concurrency STAGE (members sharing a stage run concurrently,
                         joined before the next); the alternative to --parallel grouping
@@ -544,6 +679,13 @@ def run(
         cfg.stage is not None for _, cfg, *_ in members
     )
 
+    # Chain-level -p values seed the shared data chain data, threaded to every member. Parsed
+    # BEFORE member resolution so the input validation inside _resolve_workflow knows the
+    # seeds (repo). The implicit slug goes into defaultData (lowest precedence, issue #82) so
+    # an --after parent's captured slug wins at activation. Explicit -p slug=... lands in data
+    # and wins over both.
+    data: dict[str, Any] = {**parse_params(param or [])}
+
     workflows: list[dict[str, Any]] = []
     for member, cfg, index, final_stage in members:
         if member.templates and all(template_role(atom) == "overlay" for atom in member.templates):
@@ -553,12 +695,17 @@ def run(
             )
         in_parallel = stage_counts[final_stage] > 1
         workflows.append(
-            _resolve_workflow(member, cfg, slug, index, final_stage, uses_stages, in_parallel)
+            _resolve_workflow(
+                member,
+                cfg,
+                slug,
+                index,
+                final_stage,
+                uses_stages,
+                in_parallel,
+                repo_seeded=bool(data.get("repo")),
+            )
         )
-    # Chain-level -p values seed the shared data chain data, threaded to every member. The implicit
-    # slug goes into defaultData (lowest precedence, issue #82) so an --after parent's captured slug
-    # wins at activation. Explicit -p slug=... lands in data and wins over both.
-    data: dict[str, Any] = {**parse_params(param or [])}
     # A cron member's recurrence + the chain's completion predicate both read wf:<repo>:<slug>:<wf>,
     # so it needs a repo on the chain data — fail loud here, not mid-fire in the engine.
     if any(w.get("cron") for w in workflows) and not data.get("repo"):

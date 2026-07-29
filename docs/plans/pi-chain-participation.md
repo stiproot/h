@@ -1,14 +1,10 @@
 # Deferred: pi as a chain participant (pi needs github access for the PR flow)
 
-Status: **stub / deferred** (2026-07-14). Surfaced while trying to run a claude + openhands + **pi**
-chain — pi can't own a stage of the standard feature→pr-review→revise flow as it stands.
+Status: Deferred — pi runs fine as a pure coding executor (validated end to end 2026-07-14, commit b062b18); it simply has no MCP, so it cannot own a stage of the implement-pr → review-pr → revise-pr flow, and option (a) is unbuilt
+Established: 2026-07-14
+Revisit when: pi is wanted as a PR-flow participant rather than a coding executor — the recommended route is (a), a github-only MCP, for which codex's `mcpJsonToCodexToml` is now a worked precedent (see [codex-chatgpt-auth](./impl/codex-chatgpt-auth.md))
 
-**Update (2026-07-14):** pi now RUNS as a workflow executor — validated end-to-end (run-pi →
-pi-agent → pi/DeepSeek created a file in a worktree, under the non-root model). Getting there fixed
-four breakages (pi had never actually run): Node 20→22, a non-writable `~/.pi`, the pi 0.80 CLI
-(`--file`→STDIN, `-p`, native `deepseek` provider + `DEEPSEEK_API_KEY`) — commit b062b18. The gap
-below (pi has no MCP → can't open PRs or handle review threads) is unchanged: pi is a working
-**pure coding executor**, but still can't own a PR-flow stage.
+Getting pi running at all fixed four breakages it had never surfaced: Node 20→22, a non-writable `~/.pi`, and the pi 0.80 CLI's `--file`→STDIN / `-p` / native `deepseek` provider changes.
 
 ## The gap
 

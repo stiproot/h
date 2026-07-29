@@ -29,8 +29,16 @@ export const claudeStrategy: AgentStrategy = {
     // (`claude setup-token` → CLAUDE_CODE_OAUTH_TOKEN), inherited from the process
     // env, instead of an API key. Either one satisfies the requirement.
     const hasOAuthToken = resolveEnvValue(processEnv, "CLAUDE_CODE_OAUTH_TOKEN");
-    if (!hasApiKey && !hasOAuthToken) {
-      return createMissingEnvResult("Claude", "ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN");
+    // ANTHROPIC_AUTH_TOKEN supports third-party Anthropic-compatible endpoints
+    // (e.g. Moonshot AI) that authenticate via Authorization: Bearer header.
+    const hasAuthToken =
+      resolveEnvValue(effectiveEnv, "ANTHROPIC_AUTH_TOKEN") ||
+      resolveEnvValue(processEnv, "ANTHROPIC_AUTH_TOKEN");
+    if (!hasApiKey && !hasOAuthToken && !hasAuthToken) {
+      return createMissingEnvResult(
+        "Claude",
+        "ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, or ANTHROPIC_AUTH_TOKEN",
+      );
     }
     return null;
   },
@@ -52,7 +60,7 @@ export const claudeStrategy: AgentStrategy = {
   },
 
   buildInvocation(request) {
-    return adaptToLiteLlmEffect(request, request.model ?? DEFAULT_CLAUDE_MODEL).pipe(
+    return adaptToLiteLlmEffect(request, request.model || DEFAULT_CLAUDE_MODEL).pipe(
       Effect.map((effectiveModel) => buildClaudeInvocation(request, effectiveModel)),
     );
   },
@@ -72,6 +80,20 @@ export const claudeStrategy: AgentStrategy = {
       costUsd: resultEvent?.total_cost_usd ?? metrics.costUsd,
       numTurns: resultEvent?.num_turns,
     };
+  },
+
+  // The claude CLI's verified shape: it never emits a top-level `tool_use` — calls arrive as
+  // content blocks nested in an assistant message. `stats.tool_calls` is trusted when reported.
+  tallyToolCalls(current, event) {
+    let next = current;
+    if ((event as { type?: string }).type === "tool_use") next += 1;
+    const content = (event as { message?: { content?: unknown } }).message?.content;
+    if (Array.isArray(content)) {
+      next += content.filter((block) => (block as { type?: string })?.type === "tool_use").length;
+    }
+    const reported = (event as { stats?: { tool_calls?: number } }).stats?.tool_calls;
+    if (typeof reported === "number") next = Math.max(next, reported);
+    return next;
   },
 };
 

@@ -174,16 +174,92 @@ chain PARKS instead.
 
 ## Driver state
 
-_Last updated 2026-07-27 at session handoff. Read this first._
+_Last updated 2026-07-28, ~22:30, start of an unattended overnight batch. Read this first._
+
+**OVERNIGHT BATCH IN PROGRESS (2026-07-28 → 29).** Operator asleep; authority granted:
+merge PRs that are review-clean AND pass a driver verify-at-head. Order: harness fixes →
+hardening-audit items → doc/steering drift. Executors: claude + openhands (DeepSeek);
+**codex EXCLUDED — OpenAI quota exhausted**; pi is implement-only (no MCP, cannot own a
+PR-flow stage).
+
+**CORRECTION — the usage-limit fallback is NOT armed, and cannot be.** The driver intended
+to arm it and said so; verifying afterwards showed `h chain run` has **no `--fallback-*`
+flags at all** — they exist only on `h workflow run`. This is exactly Phase 2 item 2 of this
+plan ("chains carry fallback by default … today it's `h workflow run`-only"), still unbuilt,
+now with a concrete cost: an entire unattended batch ran with no fallback because the surface
+does not exist on the shape the batch uses. **Every real batch runs as chains, so a
+workflow-run-only fallback is effectively no fallback.** Promote Phase 2 item 2.
+
+*Actual mitigation in force tonight (posture, not machinery):* openhands/DeepSeek does all
+writing (implement + revise); claude appears ONLY as a review panelist. So a Claude usage
+limit does not stop work — it kills the claude branch of a review panel, and because a panel
+is a `whenAll` parallel group, one dead panelist fails the whole review member (DRIVER.md's
+recovery section). The recovery is to re-fire that review with an openhands-only roster.
+
+- **⚠ THE TEST SUITE FIRES REAL CHAINS AGAINST A LIVE STACK (2026-07-28).** Durable rows
+  appeared in two production registries overnight (`chain:sub:x`, saved workflow `x-w0` —
+  the registry's only entry), the chain epoch climbed to **4**, and a live `review-pr` panel
+  ran **including codex**, the executor excluded for the night on exhausted quota; that run
+  completed with 3 tool calls, so it spent quota.
+  **Root cause (corrected — the first attribution to an agent running commands was WRONG):**
+  `test_chain_roster_accepts_model`, new in PR #99, invokes
+  `chain run --slug x -w review-pr --agent claude codex --model opus` with **no
+  `@respx.mock`**, so it makes a real HTTP call to whatever workflow-svc is reachable. That
+  explains every observation exactly — the chain id is the test's `--slug`, `x-w0` is its
+  compose-on-fire publish, the epoch increments once per suite run, and codex is literally in
+  the test's roster. **The driver's own verify-at-head runs were among the triggers.**
+  So the exposure is not agency but a property of the suite: **running the CLI tests on any
+  machine with a live stack fires real chains, publishes real workflows, and invokes real
+  agents on real providers, silently.** Harmless only by luck here (dispatch failed). The
+  immediate fix (the missing mock) was caught independently by #99's review panel; the class
+  needs a guard, and an engine-enforced executor allowlist so an exclusion cannot be bypassed
+  by ANY path. See task #8 and reviewer-identity-security (moved Deferred → Active).
+- **In flight:** `kimi-int3` (openhands implementing the Moonshot Kimi integration from a
+  panel-vetted spec) → `kimi-int3-review` gated behind it (claude+openhands review panel →
+  openhands revise, loop-until-clean ×3).
+- **Four harness defects found tonight, all real, none yet fixed** — see the task list and
+  the notes below. Two of them BREAK CHAINS and have live workarounds:
+  1. *Empty-string model params.* `--agent X` without `--model` emits `modelImplement: ""`;
+     `openhands.ts:184` sets `LLM_MODEL` only `if (request.model)` → the CLI dies. Claude is
+     masked by `DEFAULT_CLAUDE_MODEL`. **Workaround: always pass `--model` explicitly on a
+     single-agent member.**
+  2. *Unsatisfiable member inputs fail late.* `-w plan --kind answer` drops `slug` →
+     `fatal: 'feature/' is not a valid branch name` inside an activity. Registration checks
+     declared `--capture` against the outputs schema but never checks inputs.
+     **Workaround: declare `--input slug=slug` explicitly.**
+  3. *Panelize silently downgrades the model* — `panelize.py:157` strips `model`, so branches
+     fall back to `AGENT_MODEL`; `--model` with a roster is rejected, so there is no override.
+     **Workaround applied: `.env` `AGENT_MODEL` raised haiku → `claude-sonnet-4-6`** (backup
+     at `/tmp/env.bak.*`; this is a global change worth reverting or making deliberate).
+  4. *No first-class `plan` member kind* — carried-followups §2, now with a concrete failure.
+- **Environment left changed:** `.env` `AGENT_MODEL=claude-sonnet-4-6` (was haiku);
+  claude-agent restarted to pick it up. Host-mode stack UP via `make infra-up` +
+  `MODE=dev up-local` (8 services).
+- **Litter to clean:** six finalized dead chain rows (`kimi-agent`, `kimi-agent-review`,
+  `kimi-integration`, `kimi-integration-review`, `kimi-int2`, `kimi-int2-review`) and a stale
+  `feature/kimi-integration` worktree. `h chain rm` is PR #97, still open — the reason this
+  cannot be cleaned properly yet.
+- **Open PR not from this batch:** #97 (`h chain rm` / `POST /chain/disarm`).
+
+### Prior state (2026-07-27 session handoff), still true unless superseded above
 
 - **In flight: nothing.** Board clear apart from the parked zombie below.
 - **Merge queue: empty.** All of batch 2 is merged: trxy #55 (team S.K.A.T.E. design, fully
   decided), #56 (spot-image terrain suggestions), #57 (spot ownership), plus h #93/#94.
   trxy #54 was CLOSED unmerged (stale-premise churn — see the standing rule in DRIVER.md).
 - **Provider status: OpenAI/codex quota EXHAUSTED (2026-07-27).** Do not roster codex in
-  implement legs OR panels until it clears. Live: claude (Anthropic), openhands (DeepSeek) —
-  but openhands is implement-only, NOT a review panelist (h #96: it returned a bare verdict
-  with zero tool calls).
+  implement legs OR panels until it clears. Live: claude (Anthropic), openhands (DeepSeek).
+  **CORRECTED 2026-07-28 — the "openhands is implement-only" rule is WITHDRAWN.** It rested
+  on h #96's `toolCalls: 0`, which was a measurement artifact: the ledger tallied only the
+  claude CLI's event shape, so every non-claude agent scored a confident `0` regardless of
+  work done. Fixed in `868d080` (per-strategy tally; `toolCalls` is now `number | null`,
+  null = not measurable). Counter-evidence the same day: a panelized `plan` member
+  (claude + openhands) shows openhands at **14** real tool calls — `ActionEvent`,
+  `FileEditorAction`, `TerminalAction` — producing a 27KB plan citing real paths and line
+  numbers. So openhands IS a viable panelist for plan/answer work. The **bare-verdict**
+  observation on PR review specifically is a separate claim and remains unverified — roster
+  openhands on reviews, but judge its branch by whether it produced a substantive summary,
+  not by a tool count.
 - **Open h issues, none blocking:** #84 done, #95 (no `h chain rm` — the reason for the
   zombie), #96 (hollow panelist). Open trxy issue: #58 (leaderboard rank gaps, found by
   hands-on exploration; root-caused with a before/after — read-side fix suggested).

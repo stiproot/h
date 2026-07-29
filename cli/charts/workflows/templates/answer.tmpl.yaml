@@ -74,7 +74,7 @@ steps:
 outputs:
   {{- include "h.contract.answer" . | nindent 2 }}
 {{- /*
-panelSynthesis — "how to synthesize a panel of me" (docs/plans/panels-as-a-modifier.md): spliced
+panelSynthesis — "how to synthesize a panel of me" (docs/plans/impl/panels-as-a-modifier.md): spliced
 into the judge's task when this workflow runs under an --agent roster; inert otherwise.
 */}}
 panelSynthesis: |-

@@ -14,7 +14,12 @@ agent-server = { workspace = true }
 agent-core = { workspace = true }
 
 [dependency-groups]
-dev = ["ruff>=0.9"]
+dev = ["ruff>=0.9", "pytest>=8"]
+
+[tool.pytest.ini_options]
+# `infrastructure` is a flat namespace package under src/ (mirrors langgraph-agent).
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py312"

@@ -1,7 +1,7 @@
 import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
-import { AgentInvoker } from "agent-cli";
+import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
 import { AgentRunError } from "core";
 import type { AgentRequest, AgentResponse } from "core";
@@ -130,6 +130,9 @@ export const OpenhandsRunnerLive: Layer.Layer<
           workspacePath: cwd,
           input,
           daprHttpPort: Option.getOrUndefined(cfg.daprHttpPort),
+          // openhands counts its OWN shape (ActionEvent), so the ledger can report a real
+          // number instead of the claude-shaped 0 that read as "made no tool calls".
+          tallyToolCalls: toolCallTallyFor("openhands"),
         }).pipe(Effect.provideService(RunLedger, ledger));
 
         const result = yield* invoker

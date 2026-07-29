@@ -24,6 +24,14 @@ lasting context to its one long-lived home** (ARCHITECTURE.md, a skill, a lint r
 CLAUDE.md, an auto-memory, or a code comment) — plans are transient, so knowledge left
 inside one is lost when it's filed away.
 
+Every plan declares `Status:` (one of `Planning | Active | Blocked | Deferred | Complete`)
+and `Established:`; an archived one also declares `Lifted to:`. **`scripts/check-plans.mjs`
+(in `bun run lint`) enforces that**, and additionally that every `docs/plans/**.md` path
+cited from OUTSIDE `docs/plans/` resolves — code comments and steering docs cite plans by
+path, so archiving one silently rots its citations unless they move with it. Items an
+otherwise-finished plan parks go to `docs/plans/carried-followups.md`, not into a new
+near-empty follow-up doc.
+
 ## h primitives (vocabulary)
 
 The standard vocabulary for composing components.
@@ -49,13 +57,13 @@ used here. This section is the terse runtime-facing index.
   data}` plus a shared engine that, on the same cron tick, reads the current STAGE's persisted state
   and acts through a closed vocabulary (advance/fire-next, join, finalize) — where a watcher RE-fires
   one instance, a chain FIRES THE NEXT stage. A chain is ordered STAGES, each stage a CONCURRENT set
-  (docs/plans/inline-chain-cron-composition.md D3): members carry a `stage` (absent ⇒ member index =
+  (docs/plans/impl/inline-chain-cron-composition.md D3): members carry a `stage` (absent ⇒ member index =
   sequential), `cursor` is the current stage, and the engine joins on every member of a stage
   completing before advancing. State threads workflow-to-workflow through the row's two-level `data`
   (D5: a member's declared `captures` write under its own `id` namespace so concurrent members never
   clobber; a downstream `inputs` reads back a dotted `id.field` — flat when no id, the degenerate
   case), filled by the engine parsing each one's output (no actor) — STRUCTURED ONLY since
-  docs/plans/structured-workflow-outputs.md (marker parsing retired 2026-07-15): every chained
+  docs/plans/impl/structured-workflow-outputs.md (marker parsing retired 2026-07-15): every chained
   template declares an `outputs:` schema and ends its agent step with a validated fenced json block
   (the `outputContract` step input → the run activities' rung-2 seam, `domain/structured-output.ts`;
   envelope gains `structured`), which the kind contracts read — chained workflows stay chain-agnostic.
@@ -71,22 +79,29 @@ used here. This section is the terse runtime-facing index.
   position-scoped `--agent/--model/--fresh/--kind/--inline` flags, stage flags `--parallel` (infix) or
   `--stage N`, cron flags `--cron CADENCE`/`--max-fires N`, the namespace `--id NAME`, plus declarative
   threading mappings `--capture BB=FIELD / --input PARAM=SRC (SRC = flat key or dotted id.field) /
-  --until PATH=VALUE` (validated against the declared outputs schema at registration; each declared
-  half replaces its side of the kind contract) (suffix = that workflow, prefix = chain-wide default);
+  --until PATH=VALUE` (validated at registration on BOTH sides: captures/until against the declared
+  outputs schema, and every `{{params.X}}` a member's definition references against what its kind
+  contract + declared inputs + seeds can supply — an unsatisfiable member is REFUSED before anything
+  publishes, the template's `params:` block read as the optional-param contract
+  (docs/plans/impl/member-input-validation.md); each declared half replaces its side of the kind
+  contract) (suffix = that workflow, prefix = chain-wide default);
   a `-t` group overlays inline and publishes under `<slug>-w<N>` by default, or EMBEDS with `--inline`
   (compose-on-fire; at most ONE atom per composition declares `outputs`). `--agent` takes a ROSTER
-  (greedy operands, the `-t` idiom): SEVERAL names PANELIZE the member (docs/plans/panels-as-a-modifier.md
+  (greedy operands, the `-t` idiom): SEVERAL names PANELIZE the member (docs/plans/impl/panels-as-a-modifier.md
   — panel as cardinality, 2026-07-24): a pure CLI-side transform (`infrastructure/panelize.py`) replicates
-  the member's contract-carrying step into a parallel step group (one branch per agent, contract+model
-  stripped, concurrency preamble injected) and appends a pinned-judge (claude) synthesis under the
+  the member's contract-carrying step into a parallel step group (one branch per agent, contract stripped
+  (model from `--model` applies to every branch, else stripped to each agent's own AGENT_MODEL),
+  concurrency preamble injected) and appends a pinned-judge (claude) synthesis under the
   member's ORIGINAL id+contract — so every downstream seam (loop-until-clean, captures, watcher) is
   unchanged and the engine needs nothing new. Read/judge kinds only (write kinds share one worktree —
-  compose N `--parallel` members instead); no `--model` with a roster; a roster forces compose-on-fire
-  (a `-w` key renders its chart template — `panelSynthesis:`, the template's optional join-rule prose,
-  flows from the render — else the stored def); the review-pr executor freeze relaxes to the named
-  roster, the pin migrating to the judge. `h chain list` inspects.
-  Strategies: `sequential`, `loop-until-clean` (loop × stages reconciliation is deferred — see the plan
-  doc's open sub-questions).
+  compose N `--parallel` members instead); `--model` with a roster applies the model to every panelized
+  branch; a roster forces compose-on-fire (a `-w` key renders its chart template — `panelSynthesis:`,
+  the template's optional join-rule prose, flows from the render — else the stored def); the review-pr
+  executor freeze relaxes to the named roster, the pin migrating to the judge. `h chain list` inspects.
+  Strategies: `sequential`, `loop-until-clean`. Loop × stages is RECONCILED (2026-07-25): `loop.startCursor`
+  is the review member's **STAGE**, not its member index — stages before the loop segment may be concurrent
+  (the panels shape), stages inside the segment (`startCursor`..last) must be SINGLE-MEMBER, refused loud at
+  registration. Fixed CLI-side in `chain.py`; the engine was unchanged.
 - **Cron** — the recurrence sibling: a durable registration `{cadence, source, budget}` plus the same
   shared engine that, on the same cron tick, reads the target `wf:` row + the live instance and acts
   through a closed vocabulary (fire-again, deactivate) — where a watcher RE-fires one instance on a
@@ -113,7 +128,7 @@ used here. This section is the terse runtime-facing index.
   sibling: it fires one workflow exactly ONCE at an absolute `fireAt` (`decide` → wait | fire | expire;
   an optional `notAfter` expires a missed window), then deactivates — no cadence, no budget, no goal
   handshake, deliberately none of the recurring machinery. It is the shared spine for three consumers
-  (docs/plans/schedule-and-fallback.md): **schedule-at-a-time** (`h workflow run <key> --at <iso> | --in
+  (docs/plans/impl/schedule-and-fallback.md): **schedule-at-a-time** (`h workflow run <key> --at <iso> | --in
   <dur>` arms a row instead of firing now; `h schedule list|rm`), **pause/resume** (`h workflow pause
   <id> <key> --in <dur>` terminates the run and arms a continuation reusing its `workspaceId`;
   `h workflow resume <schedId>` fires it now — stop-and-continue, re-enters from step 1), and the
@@ -128,8 +143,18 @@ used here. This section is the terse runtime-facing index.
   (the `__workflow_index__` pattern): saved workflows, `run:*` mirrors, `watch:*`,
   `chain:*`, `cron:*` (recur rows `cron:sub:*` + the discovery/fan-out cron's `cron:discover:*` /
   `cron:discover-index` + the one-shot scheduled-fire cron's `cron:sched:*` / `cron:sched-index`),
-  and `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
-  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10).
+  `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
+  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10),
+  and `exec:` (the executor policy — the single row `exec:config`, entries
+  `{name, reason: operator|usage-limited, deniedAt, until?}` (bare shortname strings read as
+  operator entries); written only by workflow-svc: `POST /exec/policy` and the watcher's
+  AUTO-DENY, which fences an executor with an expiring usage-limited entry when a run finalizes
+  usage-limited (docs/plans/impl/usage-limit-auto-deny.md — never downgrades an operator entry,
+  idempotent across ticks; a SAME-agent fallback continuation is deliberately refused while the
+  fence holds — fail-fast). The activity-registry gate wraps every `run-*` activity and REFUSES a
+  denied executor loudly at fire time on every path — chains, crons, watcher re-fires, sched
+  continuations, fallback switches, panel branches. Surface: `h agents list|deny|allow` (operator
+  denies never expire; allow lifts either kind); docs/plans/live-state-containment.md §2.3).
   The convention: a registry prefix names the single component that owns writing it.
 
 The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a
@@ -171,6 +196,10 @@ apps/pi-agent/src/                        # pi-agent — pi CLI coding agent
 apps/codex-agent/src/                    # codex-agent — OpenAI Codex CLI coding agent (Fastify + Dapr sidecar)
 ├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("codex-agent")
 └── infrastructure/codex-runner.ts        # IAgentRunner impl using CodexInvokerLive (agent-cli); honours optional cwd/model; /run, /setup, /dapr/subscribe come from agent-server
+
+apps/kimi-agent/src/                      # kimi-agent — Claude Code CLI × Moonshot Anthropic-compat endpoint (Fastify + Dapr sidecar)
+├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("kimi-agent")
+└── infrastructure/kimi-runner.ts         # IAgentRunner impl using ClaudeInvokerLive (agent-cli); custom runner bypasses LiteLLM preflight; /run, /setup, /dapr/subscribe come from agent-server
 
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
 ├── main.py                               # composition root – registers shared agent-server routes + /workflow (babysitter); opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
@@ -220,7 +249,7 @@ apps/workflow-svc/src/
 │   ├── schedule-engine.ts / schedule-scan.ts         # the one-shot cron:sched variant: pure decide(row, now) → wait | fire | expire; arm/disarm/advance + per-tick fire-once-then-deactivate (fires via invokeWithWatch). Spine for --at/--in, pause/resume, usage-limit fallback
 │   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the WATCH fire choke point) + scanWatchesEffect (terminate/retry/escalate/cost-tally/publish)
 │   ├── chain-scan.ts / chain-members.ts            # chain registration + per-tick STAGE progression (observe every current-stage member → join → capture all → fire next stage); inline(steps)/saved(key) fire + armCron for cron members; observeMember cron branch reads wf:resolved; atomic-failure teardown (terminate siblings + publish cron-disarm); STRUCTURED-ONLY threading (stepStructured/contractFor; declared captures namespace under member id (D5), inputs resolve dotted paths; no marker parsing — retired 2026-07-15) (no actor). Kinds (`MEMBER_KINDS` / `ChainMemberKind`, closed literal — a novel kind is added on BOTH sides, engine + CLI): `implement-pr`, `review-pr`, `revise-pr`, and `answer` (the bare "answer this task" member — coded contract reads a `task`, captures the structured `answer`; identity is ordinary fire-time params, and an `--agent` roster panelizes it at fire time. Successor of the retired hand-built `agent-panel` kind — subsumed 2026-07-24 by panels-as-a-modifier)
-│   ├── structured-output.ts                          # the rung-2 seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract called by every run-* activity (docs/plans/structured-workflow-outputs.md)
+│   ├── structured-output.ts                          # the rung-2 seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract called by every run-* activity (docs/plans/impl/structured-workflow-outputs.md)
 │   ├── cron-scan.ts                                  # registerCronForFire (IDEMPOTENT ensure-exists — §10) + scanCronsEffect (recur fire/deactivate, epoch-fenced)
 │   ├── discover-scan.ts                              # registerDiscover + scanDiscoverEffect (read source after gates=budget → dedup by exact-key wf: read → fire OLDEST eligible, supervised if watch set)
 │   └── scheduling.ts                                 # isDue / assertValidCron (cron-parser) – pure, unit-tested
@@ -237,12 +266,12 @@ apps/workflow-svc/src/
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
-│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
+│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph,kimi} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
 │       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + structured goal: RESOLVED); BEST-EFFORT (§3/§10)
 │       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: the structured block's `pr` for arm-revise-pr); LOUD, idempotent
 │       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD
 └── infrastructure/workflows/
-    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; brackets a wf-identified run write-wf-row(running)→steps→arm-cron(if armCron)→write-wf-row(done|failed); resolves the activity NAME too (fire-time identity — unresolved token fails loud); a step may instead be a PARALLEL GROUP {id?, parallel:[steps]} fanned out through ONE whenAll (docs/plans/multi-agent-panel.md — branches resolve against pre-group results only, land under branch ids + a {branchId: result} map under the group id; since 2026-07-24 groups are GENERATED by the CLI's panelize transform from an `--agent` roster (docs/plans/panels-as-a-modifier.md), e.g. `-w answer --agent claude codex --parallel -w answer --agent claude pi` two panels in one stage — the hand-built agent-panel template/kind is retired)
+    └── generic.workflow.ts                           # step-sequencing workflow with $ref/{{token}} resolution; brackets a wf-identified run write-wf-row(running)→steps→arm-cron(if armCron)→write-wf-row(done|failed); resolves the activity NAME too (fire-time identity — unresolved token fails loud); a step may instead be a PARALLEL GROUP {id?, parallel:[steps]} fanned out through ONE whenAll (docs/plans/impl/multi-agent-panel.md — branches resolve against pre-group results only, land under branch ids + a {branchId: result} map under the group id; since 2026-07-24 groups are GENERATED by the CLI's panelize transform from an `--agent` roster (docs/plans/impl/panels-as-a-modifier.md), e.g. `-w answer --agent claude codex --parallel -w answer --agent claude pi` two panels in one stage — the hand-built agent-panel template/kind is retired)
 
 apps/obs-mcp/src/                         # obs-mcp – read-only observability MCP (no Dapr sidecar; port 8013)
 ├── index.ts                              # composition root – Fastify/MCP; reads ZIPKIN_URL, LOKI_URL, AGENT_RUNS_DIR
@@ -301,7 +330,8 @@ packages/js/agent-server/src/                # shared HTTP contract for agent se
 └── runner.ts         # IAgentRunner port (run request → response)
 
 packages/js/core/src/
-├── index.ts               # re-exports
+├── index.ts               # re-exports (mergeMcpConfig, provisionMcpConfig, AgentRequest, AgentResponse, AgentRunError, …)
+├── mcp-config.ts          # mergeMcpConfig – deterministic merge of h's mcp servers into a project's .mcp.json; provisionMcpConfig – Effect that provisions the run cwd's .mcp.json from src per mode
 └── types/agent.ts         # AgentRequest (+ workspaceId), AgentResponse (+ costUsd, toolCalls, runId)
 
 packages/js/core-dapr/src/
@@ -536,6 +566,17 @@ uv run h --help                          # run the CLI from the repo root
 uv run --package h-cli pytest            # its test suite (incl. golden snapshots of cli/charts)
 ```
 
+## CI (self-hosted runner)
+
+CI (`.github/workflows/guards.yml`) runs on a **self-hosted runner** (`tools/ci-runner/` —
+Dockerfile + compose + runbook README) whenever the `RUNNER_LABEL` repo variable is set
+(=`h-dev`); delete the variable to fall back to GitHub-hosted (`runs-on:
+${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` — no YAML change either way). Self-hosted
+execution is free of Actions minutes, so CI survives a billing lapse; if the dev box is off,
+jobs queue ~24h then cancel. Live-verified 2026-07-29
+(docs/plans/impl/local-ci-execution.md). The repo must stay PRIVATE while a runner is
+attached — delete the runner first if it is ever made public.
+
 ## Docker build context
 
 All app Dockerfiles use `context: .` (workspace root) so Bun can resolve workspace packages during `bun install --frozen-lockfile`. Dockerfiles copy workspace manifests first for layer caching, then source, then run `bunx turbo build --filter=<app>...` to build workspace package dependencies in topological order. When adding a new workspace package, add its `package.json` COPY line to all relevant app Dockerfiles — `bun install --frozen-lockfile` will fail otherwise; parity is guarded by `scripts/check-dockerfiles.mjs`.
@@ -578,14 +619,15 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **Compose env precedence (shell exports shadow `.env`)** — compose interpolates `${VAR}` from the process environment FIRST, the project `.env` file second. The user profile exports `GH_TOKEN`, so after editing a secret in `.env` a plain `docker compose … --force-recreate` silently stamps the OLD exported value back into the containers. **Encoded fix: always invoke compose via `cli/scripts/compose.sh`** (same args as `docker compose`; it strips every key defined in `.env` from the process env first, making `.env` the exclusive source for the keys it defines) — the Makefile targets and README commands all route through it, and the guard is STRUCTURAL: `docker-compose.yml`'s `x-h-compose-guard` key references `${H_COMPOSE:?…}`, which only the wrapper sets, so raw `docker compose` (any subcommand — interpolation runs at file parse) fails loud with a pointer to the wrapper. If containers still look stale, verify with `docker exec <ctr> printenv GH_TOKEN` against `.env`. Applies to every var in `.env`, not just `GH_TOKEN`. Bit us live 2026-07-16 (two stale recreates of claude-agent).
 - **Local port allocation** — every `cli/scripts/run-*.sh` pins a unique set of ports (app, `--dapr-http-port`, `--dapr-grpc-port`, `--dapr-internal-grpc-port`) so any combination can run simultaneously without collision; the full map is in `README.md`. All sidecars pin a distinct `360xx` gRPC port and a `610xx` internal-gRPC port. On Linux (default ephemeral range 32768–60999), the `610xx` internal-gRPC ports sit above the ceiling — removing that exposure for internal-gRPC specifically. The `360xx` sidecar API gRPC ports remain inside the Linux ephemeral range (residual exposure); `net.ipv4.ip_local_reserved_ports` is the sysctl to protect all pinned ports. On macOS (ephemeral range 49152–65535) the `610xx` ports fall inside it, so the residual applies on both platforms. `50006`/`50007` (placement/scheduler) bind inside containers and are unaffected. `dapr-mcp` additionally runs a second app listener on `ACTOR_APP_PORT` (8012 local / 8010 compose) for actor callbacks — that, not the MCP port, is its Dapr `--app-port`.
 - **Run scripts are idempotent** — each `cli/scripts/run-*.sh` sources `cli/scripts/_lib.sh` and calls `stop_stale <app-id> <ports…>` before `exec dapr run`. This runs `dapr stop --app-id <id>` then force-frees the app/http/grpc ports it pins (SIGTERM, then SIGKILL if still bound), so re-running a script cleanly replaces a prior instance instead of failing with `invalid configuration for HTTPPort. Port N is not available`.
-- **Headless host-mode bring-up (agent-friendly, no zellij/TTY)** — the `make dev` / `make h-builds-h` zellij layouts are the INTERACTIVE view (one pane per service, for a human to watch); each `run-*.sh` they launch blocks in the foreground, so they can't be driven unattended. The DETACHED sibling is `cli/scripts/up-local.sh` (`make up-local` / `up-local-wait` / `down-local`, `MODE=dev|h-builds-h`): it launches every service for a mode under `_supervise.sh` in a `setsid` process group (logs → `.local-logs/<svc>.log`, pidfiles under `.local-logs/pids/`) and RETURNS immediately; `wait-local.sh` gates readiness by TCP-probing each service's app port (the only host-mode "stack UP" signal — compose healthchecks don't apply to `dapr run`). This is the canonical way for an agent to stand up local mode from scratch: `make infra-up` (control plane in compose) → `make up-local-wait` (services on the host) → work → `make down-local`. A true from-scratch reset also needs `compose … down -v --profile all` AND clearing the `./dapr-etcd` **bind** mount (not a named volume, so `-v` misses it — stale etcd replays scheduled workflows) and `/tmp/dapr-h-nr.db`. Service membership per mode lives ONCE in `cli/scripts/_services.sh` (ports/app-ids parsed from the run scripts, never duplicated); `scripts/check-services.mjs` (wired into `bun run lint`) fails if that list drifts from the `.zellij/*.kdl` pane set. See docs/plans/agent-local-mode-bringup.md.
-- **Codex on a ChatGPT subscription (not only an API key)** — `codex-agent` authenticates via `OPENAI_API_KEY` by default (API pricing). To run on a ChatGPT (Plus/Pro/Team) plan instead, `codex login` once on the host (writes `~/.codex/auth.json`), leave `OPENAI_API_KEY` empty, and set **`CODEX_AUTH_MODE=chatgpt`** — `run-codex-agent.sh` picks it up and `agent-cli/src/agents/codex.ts` `validateEnvironment` accepts it as an alternative to the key (the Enterprise-only `CODEX_ACCESS_TOKEN` also satisfies the gate). The `codex` subprocess inherits `HOME`/`CODEX_HOME` via the invoker's `mergeProcessEnv` (`{...process.env, ...env}`), so it finds `auth.json` with no extra plumbing. **Gotcha:** a ChatGPT-account plan **rejects explicit API model ids** — `o4-mini`/`gpt-5-codex` both 400 with "not supported when using Codex with a ChatGPT account"; the account default is used ONLY when `--model` is omitted. So in chatgpt mode the run script defaults `AGENT_MODEL` empty and `buildInvocation` omits `--model`. Container mode (a writable `CODEX_HOME` mount + the one-auth.json-per-runner concurrency rule) is docs/plans/codex-chatgpt-auth.md Phase 2.
+- **Headless host-mode bring-up (agent-friendly, no zellij/TTY)** — the `make dev` / `make h-builds-h` zellij layouts are the INTERACTIVE view (one pane per service, for a human to watch); each `run-*.sh` they launch blocks in the foreground, so they can't be driven unattended. The DETACHED sibling is `cli/scripts/up-local.sh` (`make up-local` / `up-local-wait` / `down-local`, `MODE=dev|h-builds-h`): it launches every service for a mode under `_supervise.sh` in a `setsid` process group (logs → `.local-logs/<svc>.log`, pidfiles under `.local-logs/pids/`) and RETURNS immediately; `wait-local.sh` gates readiness by TCP-probing each service's app port (the only host-mode "stack UP" signal — compose healthchecks don't apply to `dapr run`). This is the canonical way for an agent to stand up local mode from scratch: `make infra-up` (control plane in compose) → `make up-local-wait` (services on the host) → work → `make down-local`. A true from-scratch reset also needs `compose … down -v --profile all` AND clearing the `./dapr-etcd` **bind** mount (not a named volume, so `-v` misses it — stale etcd replays scheduled workflows) and `/tmp/dapr-h-nr.db`. Service membership per mode lives ONCE in `cli/scripts/_services.sh` (ports/app-ids parsed from the run scripts, never duplicated); `scripts/check-services.mjs` (wired into `bun run lint`) fails if that list drifts from the `.zellij/*.kdl` pane set. See docs/plans/impl/agent-local-mode-bringup.md.
+- **Codex on a ChatGPT subscription (not only an API key)** — `codex-agent` authenticates via `OPENAI_API_KEY` by default (API pricing). To run on a ChatGPT (Plus/Pro/Team) plan instead, `codex login` once on the host (writes `~/.codex/auth.json`), leave `OPENAI_API_KEY` empty, and set **`CODEX_AUTH_MODE=chatgpt`** — `run-codex-agent.sh` picks it up and `agent-cli/src/agents/codex.ts` `validateEnvironment` accepts it as an alternative to the key (the Enterprise-only `CODEX_ACCESS_TOKEN` also satisfies the gate). The `codex` subprocess inherits `HOME`/`CODEX_HOME` via the invoker's `mergeProcessEnv` (`{...process.env, ...env}`), so it finds `auth.json` with no extra plumbing. **Gotcha:** a ChatGPT-account plan **rejects explicit API model ids** — `o4-mini`/`gpt-5-codex` both 400 with "not supported when using Codex with a ChatGPT account"; the account default is used ONLY when `--model` is omitted. So in chatgpt mode the run script defaults `AGENT_MODEL` empty and `buildInvocation` omits `--model`. **Container mode works too, but `CODEX_HOME` must be CONTAINER-PRIVATE** (an in-image `/codex-home`, with the host `auth.json` mounted read-only as `CODEX_SEED_AUTH` and seeded in at 0660): codex's app-server keeps a SQLite state DB there, so pointing it at the host-shared workspace poisons it with cross-uid files (host uid 1000 writes them 0644 → the container user can't write → "readonly database" → fatal). Same cross-uid class as the poisoned bun cache. **MCP parity caveat:** codex configures MCP globally (a `config.toml` in `CODEX_HOME`, rewritten by the runner each run) rather than per-cwd like claude's `.mcp.json`, and its `--url` speaks **streamable-HTTP only** — so h's SSE servers (`dapr`, `obs`, `workflows`) are SKIPPED in the translation. Codex has full `github`-MCP parity, so PR/coding workflows work; codex cannot orchestrate. Remaining open items (container concurrency under the one-auth.json-per-runner rule, k8s creds, the Enterprise token path) are docs/plans/carried-followups.md §3–§4.
 - **`:edge` images** track the latest Dapr release and can move without notice. Pin to a specific version for anything beyond local hacking.
 - **`packages/agent-cli` and `packages/logger` dist** — both packages are imported from `./dist/index.js`. Changes to source are not picked up until rebuilt.
 - **Alloy log scraping** — `config/alloy/config.alloy` uses `discovery.relabel` (not `loki.relabel`) to apply `__meta_docker_*` labels to log streams. `loki.relabel` only sees log-entry labels, not discovery metadata — using it for Docker labels produces streams with no labels, which Loki rejects with a 400.
 - **Python agents base image** — all Python agents use `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (not Docker Hub). Workspace members (`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`) build against the root `uv.lock` with `uv sync --frozen --no-dev --package <app>` (two-phase: `--no-install-workspace` for cached external deps, then a second sync to install the editable workspace packages). The standalone `claude-managed-agent` installs from its own `uv.lock` via `uv sync --frozen --no-dev`.
 - **Dapr Conversation API tool calling** — `DaprChatClient` (alpha2) does not support function/tool calling. The Python agents use `OpenAIChatClient` (OpenAI wire protocol) pointed at the LiteLLM proxy instead.
 - **MCP server per-connection isolation** — `workflow-mcp` creates a new `Server` instance per SSE connection. A single shared instance throws "Already connected to a transport" on reconnect.
+- **Kimi agent gaps** — `ENABLE_TOOL_SEARCH=false` and WebFetch are both injected/disabled because Moonshot's Anthropic-compat endpoint does not support them. These are documented Moonshot limitations, not bugs.
 - **Resiliency policy** — `dapr/local/resiliency.yaml` sets a 1-hour outbound timeout for all agent app-ids. Without it the Dapr Workflow scheduler times out long-running agent activities before they complete.
 - **Dapr CRDs survive `helm uninstall`** — Helm does not remove CRDs on uninstall by design. `make dapr-uninstall` explicitly deletes all `*.dapr.io` CRDs after uninstalling the release. If you uninstall manually and then try to reinstall, you will get a field-manager conflict; run `make dapr-uninstall` to clean up properly.
 - **Dapr mTLS cert rotation (Kubernetes)** — Dapr sidecars and control-plane components hold short-lived mTLS certs issued by `dapr-sentry`. These are renewed automatically, but if the Kubernetes service account token used to authenticate to Sentry expires (possible on long-running local clusters), renewal fails and the cluster enters a degraded state. Symptom: persistent `DaprBuiltInActorNotFoundRetries` warnings and workflows not executing. Fix: `make dapr-uninstall && make dapr-install` to issue a fresh CA and all certs from scratch.

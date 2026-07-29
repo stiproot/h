@@ -53,7 +53,7 @@ export function runAgentProcessEffect(
 }
 
 /**
- * Isolate a dropped-uid sub-agent's bun cache (docs/plans/agent-process-identity.md). When the
+ * Isolate a dropped-uid sub-agent's bun cache (docs/plans/impl/agent-process-identity.md). When the
  * untrusted CLI runs as `SUB_AGENT_UID` via sudo, its `bun install` (e.g. a verify step) must NOT
  * write a bun cache SHARED with a different uid: under `fs.protected_hardlinks=1` the other uid
  * (the agent-server, or the host user) then can't hardlink those entries, and bun silently leaves
@@ -108,7 +108,7 @@ function runPreparedInvocation(
       }
     };
 
-    // Config-gated privilege drop (docs/plans/agent-process-identity.md): when SUB_AGENT_UID is set
+    // Config-gated privilege drop (docs/plans/impl/agent-process-identity.md): when SUB_AGENT_UID is set
     // (container mode) the untrusted CLI runs as that lower-trust non-root user via sudo — a non-root
     // agent-server can't setuid on its own. Unset (local/host mode) → spawn directly as the current
     // user, the unchanged behaviour. --preserve-env carries spawnEnv to the CLI (the sudoers rule

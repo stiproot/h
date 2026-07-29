@@ -16,6 +16,13 @@ import { Context, Data, Effect, Layer, Runtime } from "effect";
  * mirror), so a failure in one never skips the others and the on-disk files stay the source of truth.
  */
 
+/** A run's observed event vocabulary — see `observeShape`. */
+export type ObservedEventShape = {
+  total: number;
+  byType: Record<string, number>;
+  byKeys: Record<string, number>;
+};
+
 export type RunLedgerContext = {
   agentId: string;
   /** Shared runs root (AGENT_RUNS_DIR), visible to every agent and the host. */
@@ -27,6 +34,15 @@ export type RunLedgerContext = {
   input: string;
   /** Dapr sidecar HTTP port; when set, a compact record is mirrored to the statestore. */
   daprHttpPort?: string;
+  /**
+   * This agent's tool-call tally (`toolCallTallyFor(agentType)` from agent-cli — injected by
+   * the runner, which owns the agent-cli dependency this package deliberately avoids).
+   *
+   * OMIT IT when the agent's stream shape has not actually been verified: the summary then
+   * records `toolCalls: null` (unknown) instead of 0. A 0 reads as a measured zero and has
+   * already caused a false "hollow panelist" reading of a busy openhands run (2026-07-27).
+   */
+  tallyToolCalls?: (current: number, event: Record<string, unknown>) => number;
 };
 
 export type RunOutcome = {
@@ -58,7 +74,10 @@ export type RunSummary = {
   turns: number | null;
   tokens: { input: number; output: number } | null;
   costUsd: number | null;
-  toolCalls: number;
+  /** null = this agent's stream shape is not one we can count; NOT a measured zero. */
+  toolCalls: number | null;
+  /** What this agent's event stream actually looked like — evidence, not assumption. */
+  eventShape: ObservedEventShape;
   sessionId: string | null;
   startedAt: string;
   endedAt: string;
@@ -112,21 +131,28 @@ export type ActivitySummary = {
 // ---------------------------------------------------------------------------
 
 /**
- * Tool-call tally over the invoker's event stream: count top-level tool_use events, count
- * tool_use content blocks nested inside message events (the claude CLI stream never emits a
- * top-level tool_use — its calls arrive as `{type: "assistant", message: {content:
- * [{type: "tool_use"}, …]}}`), and trust reported stats when a strategy provides them.
+ * Fold one event into the run's observed event SHAPE — agent-agnostic, recording what arrived
+ * without interpreting it. Every agent gets this, including ones whose vocabulary nothing here
+ * understands, so a real per-agent parser can be written from captured evidence.
+ *
+ * The richer typed version lives in agent-cli (`observeEvent`); this is the loosely-typed
+ * fallback so the ledger keeps its deliberate no-agent-cli-dependency.
  */
-function tallyToolCalls(current: number, event: Record<string, unknown>): number {
-  let next = current;
-  if ((event as { type?: string }).type === "tool_use") next += 1;
-  const content = (event as { message?: { content?: unknown } }).message?.content;
-  if (Array.isArray(content)) {
-    next += content.filter((block) => (block as { type?: string })?.type === "tool_use").length;
+function observeShape(shape: ObservedEventShape, event: Record<string, unknown>): void {
+  shape.total += 1;
+  const type = (event as { type?: unknown }).type;
+  const typeKey = typeof type === "string" ? type : "(absent)";
+  const keysKey = Object.keys(event).toSorted().join(",") || "(empty)";
+  for (const [hist, key] of [
+    [shape.byType, typeKey],
+    [shape.byKeys, keysKey],
+  ] as const) {
+    if (hist[key] === undefined && Object.keys(hist).length >= 24) {
+      hist["(other)"] = (hist["(other)"] ?? 0) + 1;
+      continue;
+    }
+    hist[key] = (hist[key] ?? 0) + 1;
   }
-  const statsToolCalls = (event as { stats?: { tool_calls?: number } }).stats?.tool_calls;
-  if (typeof statsToolCalls === "number") next = Math.max(next, statsToolCalls);
-  return next;
 }
 
 function buildRunSummary(
@@ -134,7 +160,8 @@ function buildRunSummary(
   runId: string,
   startedAt: string,
   startedAtMs: number,
-  toolCalls: number,
+  toolCalls: number | null,
+  eventShape: ObservedEventShape,
   outcome: RunOutcome,
 ): RunSummary {
   const endedAt = new Date().toISOString();
@@ -150,6 +177,7 @@ function buildRunSummary(
     tokens: outcome.tokens ?? null,
     costUsd: outcome.costUsd ?? null,
     toolCalls,
+    eventShape,
     sessionId: outcome.sessionId ?? null,
     startedAt,
     endedAt,
@@ -349,13 +377,18 @@ export const startRunLedgerEffect = (
     const runId = `${group}:${ctx.agentId}:${ts}`;
     const startedAt = new Date(ts).toISOString();
     const eventsPath = join(dir, "events.jsonl");
-    let toolCalls = 0;
+    // null until this agent's own tally counts something — an un-injected (unverified) agent
+    // therefore reports `null` (unknown), never a 0 that would read as a measured zero.
+    const tally = ctx.tallyToolCalls;
+    let toolCalls: number | null = tally ? 0 : null;
+    const eventShape: ObservedEventShape = { total: 0, byType: {}, byKeys: {} };
 
     yield* ledger.createRunDir(dir).pipe(Effect.ignore);
 
     let pendingAppends: Promise<void> = Promise.resolve();
     const onEvent = (event: Record<string, unknown>): void => {
-      toolCalls = tallyToolCalls(toolCalls, event);
+      observeShape(eventShape, event);
+      if (tally) toolCalls = tally(toolCalls ?? 0, event);
       pendingAppends = pendingAppends.then(() =>
         Runtime.runPromise(runtime)(ledger.appendEvent(eventsPath, event).pipe(Effect.ignore)),
       );
@@ -364,7 +397,7 @@ export const startRunLedgerEffect = (
     const finish = (outcome: RunOutcome): Effect.Effect<RunSummary> =>
       Effect.gen(function* () {
         yield* Effect.promise(() => pendingAppends);
-        const summary = buildRunSummary(ctx, runId, startedAt, ts, toolCalls, outcome);
+        const summary = buildRunSummary(ctx, runId, startedAt, ts, toolCalls, eventShape, outcome);
         yield* ledger.writeRunFiles(dir, summary, outcome.output ?? "").pipe(Effect.ignore);
         yield* ledger
           .mirrorToStatestore(ctx.daprHttpPort, runId, {

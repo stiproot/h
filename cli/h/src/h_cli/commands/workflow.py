@@ -21,6 +21,7 @@ from h_cli.config import (
     FROZEN_EXECUTOR_KEYS,
     MODEL_PARAM_SLOTS,
     agent_identity_params,
+    baked_models_suit,
     resolve_agent_url,
 )
 from h_cli.infrastructure import agent_service, helm, workflow_svc
@@ -197,7 +198,7 @@ def _render_template(name: str) -> dict[str, Any]:
 
 
 def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
-    """A roster fires a PANELIZED definition (docs/plans/panels-as-a-modifier.md), so it must
+    """A roster fires a PANELIZED definition (docs/plans/impl/panels-as-a-modifier.md), so it must
     compose-on-fire: render the chart template of that name when one exists (`outputs` AND
     `panelSynthesis` flow from the render; --inline forces the template reading), else fall back
     to the stored definition (generic synthesis prose)."""
@@ -403,15 +404,19 @@ def run(
             refuse_overlay(template_name, "run")
     if agent and not roster:
         params.update(_identity_params(key, agent[0]))
+        # A baked model belongs to the executor it was chosen for. When the user reassigns
+        # the executor without also naming a model, clear the model param slots so the
+        # saved default is overridden — the new executor's default model may not suit the
+        # template's task, and the runner-side `||` fixes handle "" correctly.
+        # An explicit --model still wins below.
+        if not model and not baked_models_suit(agent[0]):
+            for slot in MODEL_PARAM_SLOTS:
+                params[slot] = ""
     if model:
-        if roster:
-            err_console.print(
-                "[red]--model with a roster is not supported[/red] — each panelist falls back "
-                "to its own agent's default model"
-            )
-            raise typer.Exit(1)
         for slot in MODEL_PARAM_SLOTS:
             params[slot] = model
+        # When --model is given alongside a roster, it is applied to every branch via panelize's
+        # model_override; params go to the template, not individual branches.
     if roster and (via or cron or max_fires is not None or at or in_):
         err_console.print(
             "[red]a roster fires a panelized definition inline[/red] — drop --via/--cron/"
@@ -478,18 +483,37 @@ def run(
             )
             raise typer.Exit(1)
     if roster:
-        # Panel path (docs/plans/panels-as-a-modifier.md): panelize the definition and fire the
+        # Panel path (docs/plans/impl/panels-as-a-modifier.md): panelize the definition and fire the
         # steps inline (leaving only the wf: status row) — the roster restructures the
         # definition, so there is no stored def to fire verbatim. The review-pr executor freeze
         # relaxes for a roster: the panelists run as named, the judge stays pinned (claude).
+        # When --model is given, it is applied to every branch; without it the baked model is
+        # stripped and a warning is emitted.
         definition = _roster_definition(key, inline)
+        baked_model = ""
+        for step in definition.get("steps") or []:
+            inp = step.get("input") or {}
+            if inp.get("outputContract") and inp.get("model"):
+                baked_model = inp["model"]
+                break
         try:
-            panelized = panelize(definition, roster_pairs(roster, AGENT_IDENTITY))
+            panelized = panelize(
+                definition, roster_pairs(roster, AGENT_IDENTITY), model_override=model
+            )
         except PanelizeError as err:
             err_console.print(f"[red]cannot panelize '{key}':[/red] {err}")
             raise typer.Exit(1) from err
+        if baked_model and not model:
+            err_console.print(
+                f"[yellow]warning:[/yellow] panelized '{key}' — model "
+                f"'{baked_model}' stripped from branches; each panelist uses its own "
+                f"AGENT_MODEL (roster: {', '.join(roster)})"
+            )
         merged = {**(definition.get("params") or {}), **params}
-        console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
+        model_note = f" (model: {model})" if model else ""
+        console.print(
+            f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude){model_note}"
+        )
         result = _guarded(
             lambda: workflow_svc.run_steps(
                 panelized["steps"], merged, instance_id, fresh, watch_policy, None, None
@@ -510,7 +534,8 @@ def run(
         merged = {**(definition.get("params") or {}), **params}
         # --inline --cron: recur these very steps over an EMBEDDED source (nothing published to
         # re-hydrate). The cron key mirrors the wf: coords, so it needs repo+slug params + the
-        # wf-identity, exactly like a saved --cron (docs/plans/inline-chain-cron-composition.md D1).
+        # wf-identity, exactly like a saved --cron
+        # (docs/plans/impl/inline-chain-cron-composition.md D1).
         arm_cron: dict[str, Any] | None = None
         wf: dict[str, Any] | None = None
         if cron_policy:

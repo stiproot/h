@@ -9,7 +9,7 @@
 # after `codex login` refreshes the host creds.
 #
 # One-auth.json-per-runner caveat (OpenAI CI/CD guide): this seeds ONE codex-agent container. Do not
-# point multiple concurrent codex runners at the same file. See docs/plans/codex-chatgpt-auth.md.
+# point multiple concurrent codex runners at the same file. See docs/plans/impl/codex-chatgpt-auth.md.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

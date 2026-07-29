@@ -322,7 +322,9 @@ def test_compose_implement_create_pr_extends_implement() -> None:
 def test_arm_revise_golden(snapshot) -> None:
     """arm-revise overlay (§10, Job 2): a lone register-cron step arming a revise-until-merged
     cron."""
-    rendered = helm.render_workflow("arm-revise-pr", values={"publish": "true"}, include_local=False)
+    rendered = helm.render_workflow(
+        "arm-revise-pr", values={"publish": "true"}, include_local=False
+    )
     assert rendered == snapshot
 
 
@@ -517,8 +519,9 @@ def test_bootstrap_repo_contract_in_three_places() -> None:
 
 
 def test_answer_publish_golden(snapshot) -> None:
-    """answer publish mode: the bare panelizable task template (docs/plans/panels-as-a-modifier.md
-    — successor of the retired hand-built agent-panel; a roster panelizes it at fire time)."""
+    """answer publish mode: the bare panelizable task template
+    (docs/plans/impl/panels-as-a-modifier.md -- successor of the retired hand-built agent-panel;
+    a roster panelizes it at fire time)."""
     rendered = helm.render_workflow("answer", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
@@ -536,3 +539,29 @@ def test_answer_is_one_contract_step_with_panel_synthesis() -> None:
     assert definition["outputs"]["required"] == ["answer"]
     assert "answer" in definition["panelSynthesis"]
     assert "disagreements" in definition["panelSynthesis"]
+
+
+def test_plan_publish_golden(snapshot) -> None:
+    """plan publish mode: implement's planning half, split out so the plan is a chain-visible
+    artifact (docs/plans/impl/chain-plan-atom.md, docs/plans/spec-review-pipeline.md)."""
+    rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_plan_stops_at_the_plan_and_declares_it() -> None:
+    """Structure contract: worktree → setup → plan and STOP — the split from `implement` is the
+    whole point, so an implement step appearing here would silently defeat it. The plan step is
+    read-only (permissionMode) and reports through the declared contract."""
+    rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+    assert [step["id"] for step in definition["steps"]] == ["worktree", "setup", "plan"]
+
+    plan_step = definition["steps"][-1]
+    assert plan_step["activity"] == "{{params.runActivity}}"
+    assert plan_step["input"]["permissionMode"] == "plan"
+    assert plan_step["input"]["cwd"] == "{{worktree.worktreePath}}"
+    assert plan_step["input"]["outputContract"] == definition["outputs"]
+    assert "===OUTPUT CONTRACT===" in plan_step["input"]["task"]
+    assert definition["outputs"]["required"] == ["plan"]
+    # Panelizable like `answer`: one contract-carrying step plus a join rule for roster runs.
+    assert "plan" in definition["panelSynthesis"]

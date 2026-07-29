@@ -48,6 +48,13 @@ WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
 # Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
 TARGET_REPO_DIR ?= repo
 
+# k3d cluster backing the Tilt path (see the k3d section below). The registry is REQUIRED:
+# Tilt detects it via the standard local-registry-hosting ConfigMap and pushes there instead of
+# trying to push to Docker Hub.
+K3D_CLUSTER       ?= h
+K3D_REGISTRY      ?= h-registry
+K3D_REGISTRY_PORT ?= 5111
+
 # ── Default target ────────────────────────────────────────────────────────────
 
 .DEFAULT_GOAL := help
@@ -57,7 +64,7 @@ TARGET_REPO_DIR ?= repo
 .PHONY: help
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} \
-		/^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 # ── Local infra (Docker Compose) ────────────────────────────────────────────────
 #
@@ -95,9 +102,22 @@ test: test-js test-py ## Run all unit tests (JS + Python)
 test-js: ## Run the JS/TS unit tests (turbo → vitest)
 	bun run test
 
-test-py: ## Run the Python unit tests (pytest)
+# EVERY Python suite in the repo runs here — this target is the single source of truth for
+# "the Python test surface", and CI calls it rather than repeating the list (two lists drift;
+# they already had, omitting h-cli's 281 tests from `make test` and agent-server's 22 from both).
+# Add a new suite HERE and CI picks it up for free.
+# Scope each invocation to its own tests dir: a bare root pytest collects the ./dapr-etcd bind
+# mount and dies on PermissionError.
+test-py: ## Run the Python unit tests (pytest — all 7 suites)
 	uv run --package agent-core pytest packages/py/agent-core
+	uv run --package agent-server pytest packages/py/agent-server/tests
 	uv run --package langgraph-agent pytest apps/langgraph-agent/tests
+	uv run --package workflow-agent pytest apps/workflow-agent/tests
+	# The LLM-invoked tool surface (write_file / read_skill) takes a MODEL-supplied path, so its
+	# workspace-containment tests are not optional — these two apps had ZERO tests before.
+	uv run --package dapr-agent pytest apps/dapr-agent/tests
+	uv run --package dapr-claude-loop-agent pytest apps/dapr-claude-loop-agent/tests
+	uv run --package h-cli pytest cli/h/tests
 
 # -----------------------------------------------------------------------------
 # Lint — hygiene AND architecture. `lint-js` runs tsc + oxfmt/oxlint and, on the
@@ -176,10 +196,13 @@ pods-dapr: ## Show pods in the dapr-system namespace (Helm-managed control plane
 #
 # Daily start/stop for the dev stack.
 #
-# Prerequisites for `tilt-up`:
-#   1. Kubernetes enabled in Rancher Desktop
+# Prerequisites for `tilt-up` — `make k3d-up` does 1 for you on Linux:
+#   1. A Kubernetes cluster (Rancher Desktop on macOS, or `make k3d-up`)
 #   2. `make dapr-install` completed
 #   3. `cli/scripts/gen-k8s-secrets.sh` run (creates k8s/secrets/app-secrets.yaml)
+#
+# From nothing to a running stack:
+#   make k3d-up && make dapr-install && cli/scripts/gen-k8s-secrets.sh && make tilt-up
 
 .PHONY: tilt-up tilt-down tilt-trigger
 tilt-up: ## Start the Tilt dev stack (opens Tilt UI at http://localhost:10350)
@@ -190,6 +213,50 @@ tilt-down: ## Stop the Tilt dev stack and remove its Kubernetes resources
 
 tilt-trigger: ## Force-rebuild and redeploy one service (usage: make tilt-trigger SERVICE=workflow)
 	tilt trigger $(SERVICE)
+
+# ── k3d cluster (the Tilt path's Kubernetes, Linux-friendly) ────────────────────
+#
+# Rancher Desktop supplies the cluster on macOS; on Linux this creates an equivalent one in
+# Docker. The `--registry-create` is LOAD-BEARING, not a convenience: Tilt detects a
+# cluster-attached registry through the standard local-registry-hosting ConfigMap and pushes
+# images there. WITHOUT it Tilt falls back to pushing `h/workflow-svc` to Docker Hub and every
+# build dies with `push access denied` — even though it correctly reports `Env: k3d`.
+#
+# kubectl/k3d/tilt are single static binaries; none needs root:
+#   curl -sLo ~/.local/bin/kubectl "https://dl.k8s.io/release/$$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x ~/.local/bin/kubectl
+
+.PHONY: k3d-up k3d-down
+k3d-up: ## Create the k3d cluster + local registry that the Tilt path needs (idempotent)
+	@if k3d cluster list $(K3D_CLUSTER) >/dev/null 2>&1; then \
+	  echo "k3d cluster '$(K3D_CLUSTER)' already exists — starting it if stopped"; \
+	  k3d cluster start $(K3D_CLUSTER) || true; \
+	else \
+	  k3d cluster create $(K3D_CLUSTER) --servers 1 --agents 0 \
+	    --registry-create $(K3D_REGISTRY):0.0.0.0:$(K3D_REGISTRY_PORT) --wait --timeout 240s; \
+	fi
+	kubectl cluster-info
+
+k3d-down: ## Delete the k3d cluster and its registry
+	k3d cluster delete $(K3D_CLUSTER) || true
+
+# ── Tear everything down ───────────────────────────────────────────────────────
+#
+# One entry point for "stop whatever I started", across all three modes — host-local services,
+# Docker Compose infra, and the Tilt/k8s path. Every step tolerates the thing not being there,
+# so it is safe to run from any state (that is the point: you should not have to remember which
+# mode you were in). Use the granular targets when you want to keep part of the stack.
+
+.PHONY: down
+down: ## Tear down EVERYTHING (host-local services, compose infra, Tilt, k3d cluster)
+	-$(MAKE) down-local MODE=dev
+	-$(MAKE) down-local MODE=h-builds-h
+	-tilt down 2>/dev/null || true
+	-$(MAKE) k3d-down
+	-$(MAKE) infra-down
+	@echo ""
+	@echo "==> all h services torn down."
+	@echo "    Remaining by design: the shared workspace ($(WORKSPACE_DIR)) and the bun/turbo caches."
+	@echo "    Worktrees cut by chains: make worktrees-purge"
 
 # ── Local dev session (zellij) ──────────────────────────────────────────────────
 #
@@ -237,7 +304,7 @@ h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the curre
 # stack and know when it is ready, using detached, RETURNING commands. Reuses the
 # same run scripts, stop_stale idempotency, and _supervise.sh restart logic — only
 # the orchestration layer differs (detached process groups + log files, not zellij
-# panes). MODE=dev (default) or MODE=h-builds-h. See docs/plans/agent-local-mode-bringup.md.
+# panes). MODE=dev (default) or MODE=h-builds-h. See docs/plans/impl/agent-local-mode-bringup.md.
 
 .PHONY: up-local wait-local up-local-wait down-local
 up-local: infra-up ## Start all host-mode services detached (MODE=dev|h-builds-h); returns immediately
@@ -251,3 +318,12 @@ up-local-wait: up-local ## Start the stack detached, then block until it is read
 
 down-local: ## Stop all host-mode services for MODE (leaves infra up; use infra-down for that)
 	cli/scripts/down-local.sh $(MODE)
+
+# ── Git hooks ──────────────────────────────────────────────────────────────────
+
+.PHONY: install-hooks
+install-hooks: ## Install the pre-push hook (sets core.hooksPath = scripts/hooks)
+	git config core.hooksPath scripts/hooks
+	@echo "Installed hooksPath = scripts/hooks — pre-push will run 'bun run lint' before every push."
+	@echo "  To remove: git config --unset core.hooksPath"
+	@echo "  To skip (emergency): git push --no-verify"

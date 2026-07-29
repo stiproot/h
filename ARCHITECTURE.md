@@ -15,10 +15,10 @@ Small primitives; everything larger is a composition of them.
   last lands, threading state by reading each one's machine-validated structured output into a
   two-level namespaced chain data — every chained template declares an `outputs:` schema and ends its
   agent step with a fenced json block validated against it; the workflow's contract is "params in,
-  declared output out", runnable standalone — docs/plans/structured-workflow-outputs.md). A member may
+  declared output out", runnable standalone — docs/plans/impl/structured-workflow-outputs.md). A member may
   be a saved key, embedded inline steps, or a cron member the chain only OBSERVES (it self-arms its own
   recurrence via §10; the chain reads `wf:resolved`, never writes `cron:sub`); a chain fails as a unit
-  (terminate siblings + publish cron-disarm). docs/plans/inline-chain-cron-composition.md. Registry
+  (terminate siblings + publish cron-disarm). docs/plans/impl/inline-chain-cron-composition.md. Registry
   `chain:*`; `h chain list`.
 - **Cron** — a registered policy + engine that *recurs* one workflow on the cron tick (re-fire until
   its goal resolves or a budget trips). Registry `cron:*`; `h cron list`. Two more variants share the
@@ -29,7 +29,7 @@ Small primitives; everything larger is a composition of them.
   exactly ONCE at an absolute time, then deactivates — no cadence, no budget, no goal handshake. The
   one-shot is the spine for scheduling-at-a-time, pause/resume (fire a continuation after a delay,
   reusing the workspace), and the usage-limit fallback (the watcher arms a deferred continuation under
-  a different agent) — docs/plans/schedule-and-fallback.md.
+  a different agent) — docs/plans/impl/schedule-and-fallback.md.
 
 Watcher, Chain, and Cron are the same shape — a policy row + a pure `decide` + a cron-tick scan,
 single-writer, epoch-fenced — differing only in the action (supervise / sequence / recur). The
@@ -117,7 +117,7 @@ a `-t` group overlays inline, composed-on-fire).
   give themselves: the durable execution environment (workspaces, identity, supervision, recurrence,
   observability), the collaboration substrate between runs (workflows, chains, parallel step groups,
   threaded state), and the primitives delivered *to* agents (plugins, skills, MCP servers). Inside a
-  step the agent is sovereign; between steps h is (docs/plans/multi-agent-panel.md).
+  step the agent is sovereign; between steps h is (docs/plans/impl/multi-agent-panel.md).
 - **Fail loud** — surface missing inputs / cost gaps / unavailable tools; never a silent no-op.
 - **Atomic cutovers** — delete the old in the same change that lands the new.
 - **Harden by encoding** — an invariant worth stating is worth a lint rule, not a review habit. When

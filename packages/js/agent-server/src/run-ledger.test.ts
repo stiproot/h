@@ -110,12 +110,26 @@ function makeStubLedger(failing: ReadonlyArray<keyof LedgerImpl> = []) {
   return { calls, layer: Layer.succeed(RunLedger, impl) };
 }
 
+/** The claude CLI's verified shape, as agent-cli's `toolCallTallyFor("claude")` supplies it. */
+const claudeTally = (current: number, event: Record<string, unknown>): number => {
+  let next = current;
+  if ((event as { type?: string }).type === "tool_use") next += 1;
+  const content = (event as { message?: { content?: unknown } }).message?.content;
+  if (Array.isArray(content)) {
+    next += content.filter((block) => (block as { type?: string })?.type === "tool_use").length;
+  }
+  const reported = (event as { stats?: { tool_calls?: number } }).stats?.tool_calls;
+  if (typeof reported === "number") next = Math.max(next, reported);
+  return next;
+};
+
 const runCtx = {
   agentId: "claude-agent",
   runsDir: "/unused",
   workflowInstanceId: "inst-1",
   workspacePath: "/w",
   input: "do the thing",
+  tallyToolCalls: claudeTally,
 };
 
 describe("startRunLedgerEffect", () => {
@@ -175,6 +189,41 @@ describe("startRunLedgerEffect", () => {
       }).pipe(Effect.provide(layer)),
     );
     expect(summary.toolCalls).toBe(3);
+  });
+
+  it("reports toolCalls as null — NOT 0 — for an agent whose shape is not verified", async () => {
+    // Regression: openhands emits flat {type:"output",text} lines, so the claude-shaped tally
+    // counted 0 and a busy run was misread as a hollow panelist (2026-07-27). An agent with no
+    // injected tally must record "unknown", which no one can mistake for a measured zero.
+    const { layer } = makeStubLedger();
+    const { tallyToolCalls: _omitted, ...noTallyCtx } = runCtx;
+    const summary = await Effect.runPromise(
+      Effect.gen(function* () {
+        const handle = yield* startRunLedgerEffect({ ...noTallyCtx, agentId: "openhands-agent" });
+        handle.onEvent({ type: "output", text: "Initializing agent..." });
+        handle.onEvent({ type: "output", text: '{"tool_name": "bash"}' });
+        return yield* handle.finish({ status: "completed", output: "" });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(summary.toolCalls).toBeNull();
+  });
+
+  it("records the OBSERVED event shape for every agent, understood or not", async () => {
+    // The evidence that lets a real per-agent parser be written later.
+    const { layer } = makeStubLedger();
+    const { tallyToolCalls: _omitted, ...noTallyCtx } = runCtx;
+    const summary = await Effect.runPromise(
+      Effect.gen(function* () {
+        const handle = yield* startRunLedgerEffect({ ...noTallyCtx, agentId: "openhands-agent" });
+        handle.onEvent({ type: "output", text: "one" });
+        handle.onEvent({ type: "output", text: "two" });
+        handle.onEvent({ nested: { a: 1 } });
+        return yield* handle.finish({ status: "completed", output: "" });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(summary.eventShape.total).toBe(3);
+    expect(summary.eventShape.byType).toEqual({ output: 2, "(absent)": 1 });
+    expect(summary.eventShape.byKeys).toEqual({ "text,type": 2, nested: 1 });
   });
 });
 

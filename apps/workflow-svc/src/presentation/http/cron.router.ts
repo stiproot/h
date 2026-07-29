@@ -201,7 +201,7 @@ export function registerCronRoutes(fastify: FastifyInstance, runtime: WorkflowRo
     ),
   );
 
-  // The cron-disarm pub/sub target (docs/plans/inline-chain-cron-composition.md D6): a finalizing
+  // The cron-disarm pub/sub target (docs/plans/impl/inline-chain-cron-composition.md D6): a finalizing
   // chain publishes `{repo, slug, workflow}` here to deactivate a member-armed cron WITHOUT writing
   // cron:sub itself (D2) — this handler is the single writer, reusing disarmCron. Dapr delivers
   // pub/sub events as `application/cloudevents+json`, which Fastify's default JSON parser does not

@@ -1,7 +1,15 @@
 # Verify & eval loop tightening — acceptance deduced, review evidence-checked
 
-Status: Implemented — 2026-07-26
+Status: Complete — all three seams implemented 2026-07-26 (PR #80) and live-validated end to end the same day
 Established: 2026-07-26
+
+Lifted to:
+- Seam 1, deduce-the-full-acceptance verify (the supplied `verifyCmd` is the FLOOR, not the definition of done) → the prose in `cli/charts/workflows/templates/verify.tmpl.yaml`, where the duty is carried.
+- Seam 2, spec-aware review → the optional `spec` param on `review-pr.tmpl.yaml` + `values.yaml`, threaded from chain data by `chain-members.ts`.
+- Seam 3, the review test-evidence check → the `review-pr` checklist.
+- The always-open runtime slot pattern (token always rendered, section inert when empty) that resolved this plan's own contradiction → the `focus`/`spec` params in `review-pr.tmpl.yaml`; chart-time gating was rejected because it silences fire-time specs.
+- The validation shape → [docs/cookbook.md](../../cookbook.md) ("Validate an existing PR against its ORIGINAL spec").
+- Follow-up gaps → GitHub issues #84 (worktree fetch race) and #88 (revise-pr never updates the PR body).
 
 ## Origin
 
@@ -82,3 +90,12 @@ the definition of done) and too PERMISSIVE about evidence (no one checks that do
   test-evidence wording in this log be exact (it was: "pytest green" hid two failures) —
   the eval loop tightening this plan ships caught its own PR's evidence imprecision, which
   is the point.
+- 2026-07-26 — LIVE-VALIDATED end-to-end and archived. Seam 1: trxy PR #47's implement run
+  deduced the unit suite + justified skipping test:core via the rule it was itself adding;
+  val-43's revise ran test:core 655/655 under only the lint floor. Seam 2: every val-4x panel
+  reviewed against the chain-seeded original spec (caught scope omissions the PR bodies hid).
+  Seam 3: val-43 drew the exact missing-test-evidence FINDING on the PR whose silent test skip
+  originated this plan — the acceptance's "fixture-proven panel run", proven in production.
+  Lifted: the validation shape → docs/cookbook.md ("Validate an existing PR against its
+  ORIGINAL spec"); prose duties live in the templates; follow-up gaps filed as issues #84
+  (worktree fetch race) and #88 (revise-pr never updates the PR body).

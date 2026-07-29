@@ -19,7 +19,7 @@ publish: false
 
 # Composable (overlay) mode: render a template as an overlay-able atom — omit the standalone
 # closers a create-pr/verify overlay will supply (feature ends its implement step neutrally at
-# the plan). Set by `h template compose`; see docs/plans/workflow-composition.md.
+# the plan). Set by `h template compose`; see docs/plans/impl/workflow-composition.md.
 composable: false
 
 # implement workflow (templates/implement.tmpl.yaml): worktree → setup → plan → implement. A pure atom —
@@ -67,7 +67,7 @@ createPr:
   gitAuth: ""
 
 # arm-revise overlay template (templates/arm-revise-pr.tmpl.yaml): the "arm at birth" step
-# (docs/plans/workflow-watcher-registry.md §10, Job 2). Appended after implement, it registers a
+# (docs/plans/impl/workflow-watcher-registry.md §10, Job 2). Appended after implement, it registers a
 # revise-until-merged recur cron for the PR the run just opened — via the register-cron activity
 # (the arm-* pattern), not the fire edge. cadence/maxFires are execution machinery, baked here.
 armRevisePr:
@@ -145,10 +145,33 @@ reviewPr:
     review: ""
 
 # answer workflow (templates/answer.tmpl.yaml): one bare "answer this task" step — the panelizable
-# degenerate case (docs/plans/panels-as-a-modifier.md; successor of the retired agent-panel).
+# degenerate case (docs/plans/impl/panels-as-a-modifier.md; successor of the retired agent-panel).
 # Identity is fire-time params; an --agent roster panelizes it at fire time.
 answer:
   models:
     # Model for a single-executor run (opens the modelAnswer slot); empty = the agent's
     # AGENT_MODEL. A panel run strips per-branch models (each panelist uses its own default).
     answer: ""
+
+# plan workflow (templates/plan.tmpl.yaml): implement's planning half, split out so the plan is a
+# chain-visible artifact — a distinct planning agent, and a panel review of the plan before it
+# becomes a prompt (docs/plans/impl/chain-plan-atom.md, docs/plans/spec-review-pipeline.md).
+plan:
+  # Git-branch-safe token; the run reads a worktree on branch feature/<slug>. Required at render.
+  slug: ""
+  # The Markdown spec to plan against. Required — pass with --set-file plan.spec=<path.md>.
+  spec: ""
+  # GitHub repo (owner/name) — the wf-registry identity segment. Identity only; does NOT drive
+  # the clone (that is clonePath). Empty = no identity row (opt-in).
+  repo: ""
+  # Local path of the pre-cloned target repo. LEAVE EMPTY — see implement.clonePath above for why
+  # baking a mode-specific path breaks host⇄compose interchangeability.
+  clonePath: ""
+  # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
+  remoteBase: ""
+  # Git auth strategy NAME for the worktree step; "" = the agent's default (GIT_AUTH env).
+  gitAuth: ""
+  # Per-step model overrides; empty = the agent's AGENT_MODEL. Planning is the reasoning-heavy
+  # half, so it defaults to the stronger model — same choice implement.models.plan makes.
+  models:
+    plan: claude-sonnet-4-6

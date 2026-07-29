@@ -30,8 +30,9 @@ _skip_no_ts = pytest.mark.skipif(
 
 
 def _run_activities() -> set[str]:
-    """Every `run-*` activity name registered in the engine."""
-    return set(re.findall(r'case\s+"(run-[a-z0-9-]+)"', _REGISTRY.read_text()))
+    """Every `run-*` activity name registered in the engine (the registry's name→fn map keys —
+    dashed names are quoted, so `"run-x":` is exactly a map entry)."""
+    return set(re.findall(r'"(run-[a-z0-9-]+)":', _REGISTRY.read_text()))
 
 
 def _is_shared_input(activity: str) -> bool:
@@ -49,7 +50,8 @@ def _is_shared_input(activity: str) -> bool:
 @_skip_no_ts
 def test_shared_input_activities_have_agent_identity() -> None:
     """Every shared-input run-* activity must be reachable via a --agent name whose runActivity
-    matches. This is what makes `h ... --agent X` work; codex drifted out of it before this guard."""
+    matches. This is what makes `h ... --agent X` work; codex drifted out of it before this
+    guard."""
     shared = {a for a in _run_activities() if _is_shared_input(a)}
     assert shared, "no shared-input run-* activities found — regex/paths likely broke"
 
@@ -57,7 +59,8 @@ def test_shared_input_activities_have_agent_identity() -> None:
     missing = shared - run_activities_in_identity
     assert not missing, (
         f"shared-input run-* activities with no AGENT_IDENTITY entry: {sorted(missing)}. "
-        "Add a --agent name → (runActivity, agentId) to AGENT_IDENTITY in cli/h/src/h_cli/config.py "
+        "Add a --agent name → (runActivity, agentId) to AGENT_IDENTITY in "
+        "cli/h/src/h_cli/config.py "
         "(and its agentId to AGENT_URLS), or, if it is not a shared-input agent, it should not "
         "declare both cwd and model in its Input."
     )

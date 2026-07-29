@@ -20,6 +20,7 @@ composition stack, and the design principles.
 | `langgraph-agent` | LangChain / LangGraph | Config-driven ReAct graph (`create_react_agent`) via `ChatAnthropic` → LiteLLM proxy; no Dapr Agents SDK |
 | `workflow-agent` | Dapr Agents SDK | Cron-triggered orchestrator; builds/tests/persists/runs workflows via the workflows MCP |
 | `codex-agent` | OpenAI Codex CLI | Lean coding agent; same Fastify + Dapr sidecar contract as claude-agent |
+| `kimi-agent` | Claude Code CLI (Moonshot) | Anthropic-compat endpoint; claude CLI routed to Moonshot AI; opt-in profile |
 
 ## Workspace layout
 
@@ -38,7 +39,8 @@ h/
 │   ├── workflow-mcp/           # workflow-mcp — MCP server exposing workflow tools to agents
 │   ├── dapr-mcp/               # dapr-mcp — MCP server for Dapr state-store inspection
 │   ├── obs-mcp/                # obs-mcp — read-only observability MCP (traces, logs, run ledger)
-│   └── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
+│   ├── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
+│   └── kimi-agent/             # kimi-agent — Claude Code CLI × Moonshot (Fastify + Dapr sidecar)
 ├── packages/            # shared libs, partitioned by language ecosystem
 │   ├── js/              # TypeScript (npm workspace — root package.json)
 │   │   ├── agent-cli/        # Shared agent invocation logic (CLI strategies, stream parsing)
@@ -66,6 +68,14 @@ h/
 │   ├── scripts/          # Run, test, and utility scripts (shell + payload strategy)
 │   ├── charts/           # Helm-templated workflow definitions (client-side helm template)
 │   └── h/                # The `h` command — Python (Typer + rich), uv workspace member
+├── skills/               # Harness agent skills, copied into an agent's ~/.claude/skills at setup
+│                         #   (linear, analyze-workflow-run, workflow-orchestrator, h-issues,
+│                         #    author-workflow-template) — see CLAUDE.md "h skills"
+├── docs/                 # Plans discipline (docs/plans/, archived under docs/plans/impl/),
+│                         #   the h-builds-h runbook, DRIVER.md, and the validated-command cookbook
+├── web/                  # EXPERIMENTAL runtime-viz sandbox (D3). Deliberately OUTSIDE the apps/*
+│                         #   workspace glob — own package.json, `bun install` inside it. See web/README.md
+├── scripts/              # Repo content guards run by `bun run lint` (check-*.mjs)
 ├── Tiltfile              # Tilt dev stack definition (k8s mode)
 ├── Makefile              # Lifecycle commands — see `make help`
 ├── turbo.json            # Turborepo pipeline (build ordering for workspace packages)
@@ -80,8 +90,14 @@ Runs `workflow` and `claude-agent` in a local Kubernetes cluster (Rancher Deskto
 
 ### Prerequisites (one-time)
 
-1. Enable Kubernetes in Rancher Desktop (Settings → Kubernetes)
-2. Install [Tilt](https://docs.tilt.dev/install.html): `brew install tilt`
+1. A Kubernetes cluster:
+   - **macOS** — enable Kubernetes in Rancher Desktop (Settings → Kubernetes)
+   - **Linux** — `make k3d-up` creates an equivalent k3d cluster in Docker. It also creates a
+     cluster-attached **registry**, which is load-bearing: Tilt detects it via the standard
+     `local-registry-hosting` ConfigMap and pushes images there. Without one, Tilt tries to push
+     to Docker Hub and every build fails with `push access denied`.
+2. Install [Tilt](https://docs.tilt.dev/install.html): `brew install tilt` (Linux: the release
+   tarball; `kubectl`, `k3d` and `tilt` are all single static binaries needing no root)
 3. Install Dapr control plane:
    ```sh
    make dapr-install
@@ -117,8 +133,18 @@ See `make help` for all available targets.
 ### Full teardown
 
 ```sh
-make tilt-down
+make down             # tears down EVERYTHING, whichever mode you started
+```
+
+`make down` is mode-agnostic and safe to re-run from any state — host-mode services, Compose
+infra, Tilt and the k3d cluster. Use it when you do not want to remember what you started.
+The granular targets remain for partial teardown:
+
+```sh
+make tilt-down        # app stack only (Dapr control plane and cluster stay up)
+make k3d-down         # delete the k3d cluster + its registry
 make dapr-uninstall   # removes Dapr control plane + CRDs
+make worktrees-purge  # remove worktrees cut by chain runs
 ```
 
 ## Running locally (host-side dapr CLI)
@@ -178,6 +204,7 @@ profile silently shadow an edited `.env` on recreate — compose gives the proce
 ./cli/scripts/run-openhands-agent.sh
 ./cli/scripts/run-pi-agent.sh
 ./cli/scripts/run-codex-agent.sh
+./cli/scripts/run-kimi-agent.sh
 ./cli/scripts/run-dapr-agent.sh
 ./cli/scripts/run-dapr-claude-loop-agent.sh
 ./cli/scripts/run-claude-managed-agent.sh
@@ -206,7 +233,7 @@ make down-local               # stop them (leaves infra up; `make infra-down` st
 process groups, logs → `.local-logs/<service>.log`); `make wait-local` gates readiness by
 TCP-probing each service's app port. Service membership per mode lives in `cli/scripts/_services.sh`
 (the single source of truth the launcher and the zellij layouts share — kept in step by
-`scripts/check-services.mjs` at lint time). See docs/plans/agent-local-mode-bringup.md.
+`scripts/check-services.mjs` at lint time). See docs/plans/impl/agent-local-mode-bringup.md.
 
 ### 5. Run a test
 
@@ -251,6 +278,7 @@ exports for every key it defines (see §3). Use it for every compose invocation.
 | `cli/scripts/compose.sh --profile dapr-claude-loop-agent up --build` | dapr-claude-loop-agent only |
 | `cli/scripts/compose.sh --profile claude-managed-agent up --build` | claude-managed-agent only |
 | `cli/scripts/compose.sh --profile langgraph-agent up --build` | langgraph-agent only |
+| `cli/scripts/compose.sh --profile kimi-agent up --build` | kimi-agent only |
 | `cli/scripts/compose.sh --profile workflow-agent up --build` | workflow-agent only |
 | `cli/scripts/compose.sh --profile mcps up --build` | MCP servers only |
 
@@ -280,6 +308,7 @@ cli/scripts/compose.sh --profile all down -v
 | `openhands-agent` | local build | `8004` (app), `3504` (sidecar) | OpenHands CLI agent |
 | `pi-agent` | local build | `8015` (app), `3515` (sidecar) | pi CLI coding agent |
 | `codex-agent` | local build | `8016` (app), `3516` (sidecar) | OpenAI Codex CLI agent |
+| `kimi-agent` | local build | `8017` (app), `3517` (sidecar) | Claude Code CLI × Moonshot AI |
 | `dapr-agent` | local build | `8006` (app), `3506` (sidecar) | Dapr Agents SDK ReAct loop |
 | `dapr-claude-loop-agent` | local build | `8007` (app), `3507` (sidecar) | Anthropic SDK agentic loop |
 | `claude-managed-agent` | local build | `8008` (app), `3508` (sidecar) | Claude Managed Agents |
@@ -303,6 +332,7 @@ cli/scripts/compose.sh --profile all down -v
 | `workflow-agent` | 8010 | 3510 | 36010 | 61012 |
 | `pi-agent` | 8015 | 3515 | 36015 | 61016 |
 | `codex-agent` | 8016 | 3516 | 36016 | 61017 |
+| `kimi-agent` | 8017 | 3517 | 36017 | 61018 |
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 
@@ -383,6 +413,24 @@ uv run h workflow run implement -p slug=x --fallback-agent openhands --fallback-
 uv run h workflow pause <instanceId> feature --in 30m   # stop-and-continue: terminate + arm a resume reusing the workspace; `h workflow resume <schedId>` fires it now
 uv run --package h-cli pytest         # unit + golden-snapshot tests (requires helm for goldens)
 ```
+
+### Git hooks
+
+Install a local `pre-push` hook that runs the fast lint guards (no build/test,
+so it stays under a few seconds):
+
+```sh
+make install-hooks    # sets core.hooksPath = scripts/hooks
+```
+
+After installation, `git push` will run `bun run lint` first and block the push
+if any guard fails. Skip with `git push --no-verify` (emergency use only).
+
+### CI
+
+A GitHub Actions workflow (`.github/workflows/guards.yml`) runs the full guard
+surface — lint, build, test, and the h CLI pytest suite — on every pull request
+and push to `main`. Check the **guards** job status in the PR checks UI.
 
 ## Tooling
 

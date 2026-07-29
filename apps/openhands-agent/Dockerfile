@@ -29,6 +29,7 @@ COPY apps/workflow-svc/package.json ./apps/workflow-svc/
 COPY apps/workflow-mcp/package.json ./apps/workflow-mcp/
 COPY apps/dapr-mcp/package.json ./apps/dapr-mcp/
 COPY apps/obs-mcp/package.json ./apps/obs-mcp/
+COPY apps/kimi-agent/package.json ./apps/kimi-agent/
 
 RUN --mount=type=cache,id=bun-store,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
@@ -37,12 +38,25 @@ RUN --mount=type=cache,id=bun-store,target=/root/.bun/install/cache \
 COPY packages/js/ ./packages/js/
 COPY apps/openhands-agent/ ./apps/openhands-agent/
 
+# h skills at the agent-neutral path H_SKILLS_DIR points at. Compose bind-mounts ./skills
+# over this for live editing; k8s has no such mount, so the image must carry them —
+# without it the setup step's `cp -r $H_SKILLS_DIR/.` has no source.
+COPY skills/ /h-skills/
+
 RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
     bunx turbo build --filter=openhands-agent...
 
 WORKDIR /app/apps/openhands-agent
 # The non-root server (agent-svc) owns its built code; identity + entrypoint come from the base.
 RUN chown -R agent-svc:agent /app
+
+# The OpenHands CLI writes state under $HOME/.openhands, but it runs DROPPED as agent-cli
+# (SUB_AGENT_UID) with HOME preserved as /home/agent-svc — which the base image leaves 0750
+# owned by agent-svc, so the CLI cannot create the directory itself and dies with
+# "PermissionError: '/home/agent-svc/.openhands'". The base solves the same problem for
+# ~/.claude by keeping it group-writable; do the equivalent here. setgid so anything the CLI
+# writes stays in the shared `agent` group and the server can still read it.
+RUN install -d -o agent-svc -g agent -m 2770 /home/agent-svc/.openhands
 
 EXPOSE 8000
 

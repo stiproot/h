@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Shared base for the uv:python in-process agents (dapr-agent, langgraph, workflow-agent,
 # dapr-claude-loop, claude-managed). Bakes the BASELINE process-identity model
-# (docs/plans/agent-process-identity.md): non-root service user only — no CLI drop, because these
+# (docs/plans/impl/agent-process-identity.md): non-root service user only — no CLI drop, because these
 # agents run their agentic loop in-process (no subprocess to drop). Agents `FROM h-agent-base-py`.
 # Build before the agent images:
 #   docker build -f docker/agent-base-py.Dockerfile -t h-agent-base-py .   (or: make agent-bases)

@@ -5,6 +5,7 @@ import { Effect, type ManagedRuntime } from "effect";
 import { injectTraceContext, withTraceparentParent } from "telemetry";
 
 import type { CronStore } from "../domain/ports/ICronStore.ts";
+import type { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
 import type { WfStore } from "../domain/ports/IWfStore.ts";
 import type { WorkflowInvoker } from "../domain/ports/IWorkflowInvoker.ts";
 import type { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
@@ -24,7 +25,7 @@ import type { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
 /**
  * Everything an activity effect may yield from the shared runtime. Includes the registry stores
  * (`WfStore`, `CronStore`) and the invoker/store the cron registration touches, because registry
- * state is written by ACTIVITIES (docs/plans/workflow-watcher-registry.md §10 — the `arm-*` pattern):
+ * state is written by ACTIVITIES (docs/plans/impl/workflow-watcher-registry.md §10 — the `arm-*` pattern):
  * `write-wf-row` writes `wf:`, `register-cron` writes `cron:` via `registerCronForFire`. The shared
  * runtime is built from the app layer, which provides all of these.
  */
@@ -34,6 +35,7 @@ export type ActivityEnv =
   | FileSystem.FileSystem
   | WfStore
   | CronStore
+  | ExecPolicyStore
   | WorkflowInvoker
   | WorkflowStore;
 

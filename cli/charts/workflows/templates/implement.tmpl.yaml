@@ -11,7 +11,7 @@ compositions. Overlay the verify template to gate the run on an acceptance check
 template to commit/push/open a PR: `h template compose implement verify create-pr` (create-pr
 last — it is the finishing move, gated by verify's "stop on FAIL"). There is no verifyCmd or
 --pr/createPr flag: if you want a check or a PR, you compose one in. See
-docs/plans/workflow-composition.md.
+docs/plans/impl/workflow-composition.md.
 
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
   helm template implement cli/charts/workflows -s templates/implement.tmpl.yaml \
@@ -31,12 +31,12 @@ role: base
 {{- $publish := .Values.publish | default false }}
 {{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement ends neutrally
 at the plan (no standalone commit-decision closer) so verify/create-pr overlays can append their
-prose to its tail. See docs/plans/workflow-composition.md. `h template compose` sets this. */ -}}
+prose to its tail. See docs/plans/impl/workflow-composition.md. `h template compose` sets this. */ -}}
 {{- $composable := .Values.composable | default false }}
 {{- /* The activity that runs the plan/implement steps — run-claude by default, or run-openhands
 to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
-{{- /* Fire-time identity (docs/plans/chain-composition-surface.md §1.9): in publish mode the
+{{- /* Fire-time identity (docs/plans/impl/chain-composition-surface.md §1.9): in publish mode the
 identity fields are emitted as {{params.*}} engine tokens and the values above become stored
 DEFAULTS (the params block below), overridable per fire (`-p runActivity=run-openhands`) or per
 chained workflow (`--agent`). A non-publish render bakes the literals exactly as before. */ -}}
@@ -56,7 +56,7 @@ non-publish render stays byte-identical to the pre-params-era output. */ -}}
 {{- $spec = include "h.token" "params.spec" }}
 params:
   runActivity: {{ $runActivity | quote }}
-  {{- /* Target-repo knob (multi-repo, docs/plans/chain-engine-followups.md successor work):
+  {{- /* Target-repo knob (multi-repo, docs/plans/impl/chain-engine-followups.md successor work):
   the pre-clone path the worktree cuts from. Values default (empty = the shared <root>/repo);
   fire-time -p clonePath=/workspace/<other-repo> aims the run at another checkout. */}}
   clonePath: {{ $f.clonePath | default "" | quote }}

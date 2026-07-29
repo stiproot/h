@@ -1,10 +1,16 @@
 # Workflow viz — a live force-directed view of runs, chains, and engines
 
+Status: Active — an open-ended research log for the `web/` sandbox, deliberately without a completion gate; layout variants keep landing, some frozen as baselines and some superseded
+Established: 2026-07-17
+
 > **Phase: experimental research.** This document is the running log of a
 > visualization initiative (`web/`), not a finished spec. We are exploring what
-> D3 v7 can do for h's runtime graph — expect the layout section to keep growing
-> with variants, some frozen as baselines and some superseded. The steering
-> summary lives in the root `CLAUDE.md` (Observability → Viz) and `web/README.md`.
+> D3 v7 can do for h's runtime graph. The steering summary lives in the root
+> `CLAUDE.md` (Observability → Viz) and `web/README.md`.
+>
+> This plan does not archive on a deliverable — it archives if and when the
+> research concludes (a chosen visual language graduates into a maintained
+> surface, or the sandbox is abandoned). Until then `Active` is honest.
 
 ## Goal
 

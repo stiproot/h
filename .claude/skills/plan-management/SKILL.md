@@ -74,10 +74,39 @@ Established: <YYYY-MM-DD>
 | `Planning` | The plan itself needs design/scoping before implementation can start. A plan is born here if the approach isn't settled yet.  |
 | `Active`   | Being implemented. The doc is the live tracking log — keep it current.                                                        |
 | `Blocked`  | Implementation is stuck. Record the blocker (what, why, what would unblock) in the doc.                                       |
+| `Deferred` | Parked, not abandoned — a real idea nobody is working on. MUST carry a `Revisit when:` line naming what brings it back.      |
 | `Complete` | Implemented, durable context lifted out, ready to archive to `docs/plans/impl/` (core plans).                                 |
 
 Keep the status line honest and current — it's the first thing anyone (human or
 agent) reads to know where the work stands.
+
+**`Deferred` exists so a parked idea doesn't have to lie.** Before it, a stub sat at
+`Active` (misleading) or got archived as if finished (burying open questions where
+nobody looks). A `Deferred` plan stays in `docs/plans/`, reads as parked at a glance,
+and names its own trigger — so the decision to revive it is a lookup, not an
+archaeology exercise.
+
+## Enforced, not just conventional
+
+`scripts/check-plans.mjs` runs on every `bun run lint` and fails on:
+
+- a missing or `**Status:**`-spelled status line, an off-vocabulary status, or a
+  missing `Established: YYYY-MM-DD`;
+- a `Deferred` plan with no `Revisit when:` trigger;
+- a `Complete` plan still sitting in `docs/plans/`, or a non-`Complete` plan in `impl/`;
+- an archived plan with no `Lifted to:` list (the archiving checklist's central gate);
+- **any `docs/plans/**.md` path referenced from outside `docs/plans/` that does not
+  resolve** — archiving a plan breaks every code comment and steering doc citing it,
+  silently, and there are well over a hundred such citations.
+
+Two deliberate non-rules. The guard never infers that a plan *should* be archived —
+several are legitimately long-lived, and archiving is gated on a lift-then-archive
+judgment no regex can proxy; it only checks that what a plan claims is well-formed.
+And plan **bodies** are exempt from the link check: a plan is a point-in-time record,
+so it may cite a doc since retired (the same exemption `check-vocabulary.mjs` makes).
+
+If you add a status to the table above, add it to `STATUSES` in the guard — they are
+deliberately kept in lockstep.
 
 ## The lifecycle
 
@@ -132,6 +161,18 @@ When the work is done and context is lifted:
 Domain-specific plans (`docs/plans/domain/`) have no archive step — delete or keep
 locally once the work lands.
 
+### Deferred items an otherwise-finished plan leaves behind
+
+A plan is often done except for one or two items it deliberately parked. Don't keep the
+whole plan `Active` for them, and don't drop them on archive. Move them to
+**`docs/plans/carried-followups.md`** (`Status: Deferred`) — the single home for items
+carried out of archived plans — and point the plan's `Lifted to:` line at the section.
+One greppable home beats a scatter of near-empty follow-up docs.
+
+An item leaves that doc by being built, by becoming a GitHub issue (the h-builds-h
+loop's queue — the route `panels-as-a-modifier` took for #76–#79), or by being
+explicitly dropped with a reason.
+
 ## Archiving checklist (core plans)
 
 Before you move a plan to `impl/`, confirm:
@@ -139,7 +180,14 @@ Before you move a plan to `impl/`, confirm:
 - [ ] Status is `Complete` with a one-line outcome.
 - [ ] Every piece of lasting context has a home outside the plan, linked from a
       "Lifted to:" list — nothing unique is left only in the plan.
+- [ ] Deferred leftovers are in `docs/plans/carried-followups.md`, not stranded.
 - [ ] Sub-plans it spawned are themselves resolved or have their own status.
+- [ ] **Citations still resolve.** Code comments, `ARCHITECTURE.md`, `CLAUDE.md`, the
+      charts and the skills cite plans by path; moving one to `impl/` breaks every
+      citation. Rewrite them in the same change — `check-plans.mjs` will fail the build
+      if you don't, but fixing them yourself keeps the diff coherent.
+- [ ] Relative links INSIDE the moved file still resolve — it just gained a directory
+      level, so `../../ARCHITECTURE.md` becomes `../../../ARCHITECTURE.md`.
 
 If you can't point to where a finding now lives, it isn't lifted yet — finish
 step 4 before archiving.

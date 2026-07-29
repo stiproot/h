@@ -5,7 +5,7 @@ import { WatchStore } from "../../domain/ports/IWatchStore.ts";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
 /**
- * Read/delete surface over the watch registry (docs/plans/watcher-primitive.md §2 item 10):
+ * Read/delete surface over the watch registry (docs/plans/impl/watcher-primitive.md §2 item 10):
  * `h watch list|rm` and the agent services' watches passthrough read these. The list carries
  * the `watch:__tick__` heartbeat so consumers (the sweep's staleness guard) can tell a live
  * scan from a dead or disarmed one without a second call.

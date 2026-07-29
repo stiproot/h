@@ -424,7 +424,7 @@ services:
       # Defaults to ChatGPT-plan auth: run `cli/scripts/seed-codex-auth.sh` once to place the host's
       # ~/.codex/auth.json at /workspace/codex-home (CODEX_HOME below). Empty AGENT_MODEL ⇒ codex uses
       # the account's default model (a ChatGPT plan rejects explicit API model ids). For API-key mode
-      # set CODEX_AUTH_MODE=apikey + OPENAI_API_KEY + CODEX_MODEL in .env. See docs/plans/codex-chatgpt-auth.md.
+      # set CODEX_AUTH_MODE=apikey + OPENAI_API_KEY + CODEX_MODEL in .env. See docs/plans/impl/codex-chatgpt-auth.md.
       - CODEX_AUTH_MODE=${CODEX_AUTH_MODE:-chatgpt}
       # Container-PRIVATE CODEX_HOME (built into the image, group-writable) — NOT the host-shared
       # /workspace/codex-home, whose cross-uid state files break codex's SQLite state DB (issue #59).
@@ -478,6 +478,69 @@ services:
     network_mode: "service:codex-agent"
     depends_on:
       - codex-agent
+
+  # --- Kimi agent (Moonshot AI — opt-in via kimi-agent profile) ---
+  kimi-agent:
+    container_name: kimi-agent
+    profiles: [kimi-agent]
+    build:
+      context: .
+      dockerfile: apps/kimi-agent/Dockerfile
+    environment:
+      # Moonshot auth — the runner reads ANTHROPIC_AUTH_TOKEN directly.
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - ANTHROPIC_AUTH_TOKEN=${MOONSHOT_API_KEY:-}
+      - KIMI_ANTHROPIC_URL=${KIMI_ANTHROPIC_URL:-https://api.moonshot.ai/anthropic}
+      - AGENT_MODEL=${KIMI_MODEL:-kimi-k3}
+      - ANTHROPIC_DEFAULT_OPUS_MODEL=${KIMI_MODEL:-kimi-k3}
+      - ANTHROPIC_DEFAULT_SONNET_MODEL=${KIMI_MODEL:-kimi-k3}
+      - ANTHROPIC_DEFAULT_HAIKU_MODEL=${KIMI_MODEL:-kimi-k3}
+      - ANTHROPIC_DEFAULT_FABLE_MODEL=${KIMI_MODEL:-kimi-k3}
+      - CLAUDE_CODE_SUBAGENT_MODEL=${KIMI_MODEL:-kimi-k3}
+      # ANTHROPIC_API_KEY is intentionally absent — the runner's env: { ANTHROPIC_API_KEY: "" }
+      # overrides any compose-level value, but we don't set it here to avoid shadowing risk.
+      - GH_TOKEN=${GH_TOKEN:-}
+      - H_SKILLS_DIR=/h-skills
+      - AGENT_BASE_DIR=/workspace/kimi-agent
+      - MCP_CONFIG_SRC=/workspace/kimi-agent/.mcp.json
+      - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+    volumes:
+      - ../h-workspace:/workspace
+      - ./skills:/h-skills:ro
+      - ./apps/kimi-agent/.mcp.json:/workspace/kimi-agent/.mcp.json:ro
+    ports:
+      - "8017:8000"
+      - "3517:3500"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -fsS http://localhost:8000/dapr/subscribe"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  kimi-agent-dapr:
+    container_name: kimi-agent-dapr
+    profiles: [kimi-agent]
+    image: daprio/daprd:edge
+    restart: on-failure
+    user: "0:0"
+    command:
+      - "./daprd"
+      - "--app-id=kimi-agent"
+      - "--app-port=8000"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+      - ./secrets:/secrets:ro
+      - dapr-nr:/nr
+    network_mode: "service:kimi-agent"
+    depends_on:
+      - kimi-agent
 
   # --- Dapr Agents SDK agent ---
   dapr-agent:
