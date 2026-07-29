@@ -15,7 +15,11 @@ fi
 # silently routes a subagent call to a nonexistent Anthropic model.
 export ANTHROPIC_AUTH_TOKEN="${MOONSHOT_API_KEY}"
 export KIMI_ANTHROPIC_URL="${KIMI_ANTHROPIC_URL:-https://api.moonshot.ai/anthropic}"
-export AGENT_MODEL="${AGENT_MODEL:-kimi-k3}"
+# KIMI_MODEL, not the ambient AGENT_MODEL: in this repo AGENT_MODEL means "the claude fleet
+# model" (.env sets a claude-* id), and letting it bleed through routes a Claude model id to
+# Moonshot's endpoint → 404 on every run. Same silent-model-override class PR #99 fixed in
+# panelize. Override kimi's model with KIMI_MODEL (or per-run via the step's model input).
+export AGENT_MODEL="${KIMI_MODEL:-kimi-k3}"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-kimi-k3}"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-kimi-k3}"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-kimi-k3}"
