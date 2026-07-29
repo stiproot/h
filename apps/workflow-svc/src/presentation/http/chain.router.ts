@@ -83,7 +83,9 @@ export function registerChainRoutes(
   const DisarmBody = Schema.Struct({ chainId: Schema.String });
 
   fastify.post("/chain/disarm", (request, reply) =>
-    runRoute(runtime, reply,
+    runRoute(
+      runtime,
+      reply,
       Effect.gen(function* () {
         const body = yield* Schema.decodeUnknown(DisarmBody)(request.body);
         const row = yield* disarmChain(body.chainId).pipe(

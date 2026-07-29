@@ -865,8 +865,7 @@ export const disarmChain = (
     const nowMs = Date.now();
     const now = new Date(nowMs).toISOString();
     const existing = yield* cs.getRow(chainId);
-    if (Option.isNone(existing))
-      return yield* Effect.fail<DisarmChainError>({ _tag: "NotFound" });
+    if (Option.isNone(existing)) return yield* Effect.fail<DisarmChainError>({ _tag: "NotFound" });
     const row = existing.value;
     // idempotent: already disarmed
     if (row.outcome === "disarmed") return row;
