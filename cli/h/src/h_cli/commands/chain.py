@@ -107,6 +107,20 @@ KIND_MODEL_PARAMS: dict[str, tuple[str, ...]] = {
     "review-pr": ("modelReview",),
     "answer": ("modelAnswer",),
 }
+# kind → every param its coded contract can supply at fire time — the REQUIRED keys plus the
+# optional passthroughs, mirroring chain-members.ts buildParams (a novel kind updates BOTH
+# sides, per chain.model.ts; test_kind_sync pins the required halves). `repo` is withRepo's
+# conditional add and is handled separately (supplied only when the chain data seeds it).
+KIND_CONTRACT_SUPPLIES: dict[str, frozenset[str]] = {
+    "implement-pr": frozenset({"slug", "spec", "issueNumber", "clonePath", "verifyCmd"}),
+    "review-pr": frozenset({"pr", "spec"}),
+    "revise-pr": frozenset({"pr", "slug", "clonePath"}),
+    "answer": frozenset({"task"}),
+}
+# Params that legitimately resolve EMPTY without a defaults-block entry (the clonePath class,
+# member-input-validation's false-positive rule): `plugins` gates the optional plugin-install
+# setup step — empty deliberately means "install none".
+ALWAYS_OPTIONAL_PARAMS = frozenset({"plugins"})
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
 # (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER
 # is the explicit relaxation (docs/plans/impl/panels-as-a-modifier.md decision 7):
@@ -277,6 +291,61 @@ def _check_output_mappings(
         )
 
 
+def _member_input_gaps(
+    definition: dict[str, Any],
+    kind: str,
+    inputs: dict[str, str] | None,
+    fire_params: dict[str, str],
+    repo_seeded: bool,
+) -> list[str]:
+    """Registration-time INPUT validation (docs/plans/impl/member-input-validation.md) — the input
+    half of the asymmetry _check_output_mappings closes for outputs: every `{{params.X}}` the
+    member's definition references must be satisfiable at fire time, else the run dies minutes
+    later inside an activity with an error about something else entirely (the live case:
+    `-w plan --kind answer` drops `slug` → `fatal: 'feature/' is not a valid branch name`).
+
+    A param is satisfied by: an entry in the definition's `params:` defaults block (present at
+    ALL — an empty default like `clonePath: ""` is the template author declaring the param
+    optional; a required content param like plan's `slug` is deliberately absent from the
+    block); the member's declared `--input` names (which REPLACE the kind contract's input
+    half — exactly how the live case lost `slug`); else the kind contract's supplied keys;
+    the member's own non-empty fire params (identity/model); `repo` when the chain data seeds
+    it (withRepo); and the ALWAYS_OPTIONAL set. Chain `-p` seeds do NOT satisfy on their own —
+    a seed only becomes a param through the contract or a declared --input, which is the exact
+    trap this guards. Conservative by design: an undeterminable definition skips (never block
+    a valid chain on a guess). Runs BEFORE any publish, so a refused chain leaves NO durable
+    footprint."""
+    import json as _json
+    import re as _re
+
+    referenced = set(
+        _re.findall(r"\{\{params\.([A-Za-z0-9_]+)\}\}", _json.dumps(definition.get("steps") or []))
+    )
+    block = set((definition.get("params") or {}).keys())
+    declared_inputs = set((inputs or {}).keys())
+    supplied = declared_inputs if declared_inputs else set(KIND_CONTRACT_SUPPLIES.get(kind, ()))
+    if repo_seeded:
+        supplied |= {"repo"}
+    supplied |= {k for k, v in fire_params.items() if v != ""}
+    return sorted(referenced - block - supplied - ALWAYS_OPTIONAL_PARAMS)
+
+
+def _fail_member_inputs(
+    label: str, kind: str, inputs: dict[str, str] | None, missing: list[str]
+) -> None:
+    tokens = ", ".join("{{params." + m + "}}" for m in missing)
+    contract = ", ".join(sorted(KIND_CONTRACT_SUPPLIES.get(kind, ()))) or "(nothing)"
+    declared = ", ".join(sorted((inputs or {}).keys())) or "(none)"
+    fixes = " ".join(f"--input {m}={m}" for m in missing)
+    _fail(
+        f"member '{label}' (kind: {kind}) references {tokens}, which nothing supplies.\n"
+        f"  the '{kind}' kind's contract provides: {contract}\n"
+        f"  you declared:                          {declared}\n"
+        f"  fix: add {fixes} (the source must exist on the chain data — seed it with -p if "
+        "needed); note a declared --input REPLACES the kind contract's inputs"
+    )
+
+
 def _resolve_workflow(
     member: MemberRef,
     cfg: WorkflowConfig,
@@ -285,9 +354,11 @@ def _resolve_workflow(
     stage: int,
     uses_stages: bool,
     in_parallel: bool,
+    repo_seeded: bool,
 ) -> dict[str, Any]:
     """A parsed member → the engine's ChainMember. Emits `key` (published) XOR `steps` (inline,
-    D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface."""
+    D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface. Validates the
+    member's INPUTS against its definition before any publish side effect."""
     if member.key:
         if member.key in WELL_KNOWN and not cfg.kind:
             kind, key = WELL_KNOWN[member.key]
@@ -363,6 +434,12 @@ def _resolve_workflow(
         source = " ⊕ ".join(member.templates) if member.key is None else member.key
         declared_outputs = merged.get("outputs")
         merged_params = merged.get("params") or {}
+        # Input validation BEFORE the publish below — a refused chain must leave no durable
+        # footprint (docs/plans/impl/member-input-validation.md).
+        declared_inputs = dict(cfg.inputs) if cfg.inputs else None
+        gaps = _member_input_gaps(merged, kind, declared_inputs, params, repo_seeded)
+        if gaps:
+            _fail_member_inputs(member.label, kind, declared_inputs, gaps)
         if inline:
             # Inline storage (D1): embed the composed steps in the chain row — nothing published.
             # The template's param defaults ride the member's params (no saved def to merge from).
@@ -435,6 +512,28 @@ def _resolve_workflow(
             stored = _guarded(lambda: workflow_svc.get(key))
             declared_outputs = stored.get("outputs") if isinstance(stored, dict) else None
         _check_output_mappings(entry, declared_outputs, member.label)
+
+    # Input validation for a saved -w member (the composed path validated pre-publish above):
+    # prefer the chart template's hermetic render (no wire call), falling back to the stored
+    # definition — an UNDETERMINABLE definition (no template, fetch failed) skips validation
+    # rather than block a valid chain (member-input-validation's false-positive rule).
+    if merged is None:
+        template_name = template_name_for_key(key)
+        template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
+        definition: dict[str, Any] | None
+        try:
+            if template_path.exists():
+                definition = compose_templates([template_name])
+            else:
+                stored_def = workflow_svc.get(key)
+                definition = stored_def if isinstance(stored_def, dict) else None
+        except Exception:
+            definition = None
+        if definition is not None:
+            declared_inputs = dict(cfg.inputs) if cfg.inputs else None
+            gaps = _member_input_gaps(definition, kind, declared_inputs, params, repo_seeded)
+            if gaps:
+                _fail_member_inputs(member.label, kind, declared_inputs, gaps)
     return entry
 
 
@@ -580,6 +679,13 @@ def run(
         cfg.stage is not None for _, cfg, *_ in members
     )
 
+    # Chain-level -p values seed the shared data chain data, threaded to every member. Parsed
+    # BEFORE member resolution so the input validation inside _resolve_workflow knows the
+    # seeds (repo). The implicit slug goes into defaultData (lowest precedence, issue #82) so
+    # an --after parent's captured slug wins at activation. Explicit -p slug=... lands in data
+    # and wins over both.
+    data: dict[str, Any] = {**parse_params(param or [])}
+
     workflows: list[dict[str, Any]] = []
     for member, cfg, index, final_stage in members:
         if member.templates and all(template_role(atom) == "overlay" for atom in member.templates):
@@ -589,12 +695,17 @@ def run(
             )
         in_parallel = stage_counts[final_stage] > 1
         workflows.append(
-            _resolve_workflow(member, cfg, slug, index, final_stage, uses_stages, in_parallel)
+            _resolve_workflow(
+                member,
+                cfg,
+                slug,
+                index,
+                final_stage,
+                uses_stages,
+                in_parallel,
+                repo_seeded=bool(data.get("repo")),
+            )
         )
-    # Chain-level -p values seed the shared data chain data, threaded to every member. The implicit
-    # slug goes into defaultData (lowest precedence, issue #82) so an --after parent's captured slug
-    # wins at activation. Explicit -p slug=... lands in data and wins over both.
-    data: dict[str, Any] = {**parse_params(param or [])}
     # A cron member's recurrence + the chain's completion predicate both read wf:<repo>:<slug>:<wf>,
     # so it needs a repo on the chain data — fail loud here, not mid-fire in the engine.
     if any(w.get("cron") for w in workflows) and not data.get("repo"):

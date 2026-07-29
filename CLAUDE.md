@@ -79,8 +79,12 @@ used here. This section is the terse runtime-facing index.
   position-scoped `--agent/--model/--fresh/--kind/--inline` flags, stage flags `--parallel` (infix) or
   `--stage N`, cron flags `--cron CADENCE`/`--max-fires N`, the namespace `--id NAME`, plus declarative
   threading mappings `--capture BB=FIELD / --input PARAM=SRC (SRC = flat key or dotted id.field) /
-  --until PATH=VALUE` (validated against the declared outputs schema at registration; each declared
-  half replaces its side of the kind contract) (suffix = that workflow, prefix = chain-wide default);
+  --until PATH=VALUE` (validated at registration on BOTH sides: captures/until against the declared
+  outputs schema, and every `{{params.X}}` a member's definition references against what its kind
+  contract + declared inputs + seeds can supply — an unsatisfiable member is REFUSED before anything
+  publishes, the template's `params:` block read as the optional-param contract
+  (docs/plans/impl/member-input-validation.md); each declared half replaces its side of the kind
+  contract) (suffix = that workflow, prefix = chain-wide default);
   a `-t` group overlays inline and publishes under `<slug>-w<N>` by default, or EMBEDS with `--inline`
   (compose-on-fire; at most ONE atom per composition declares `outputs`). `--agent` takes a ROSTER
   (greedy operands, the `-t` idiom): SEVERAL names PANELIZE the member (docs/plans/impl/panels-as-a-modifier.md

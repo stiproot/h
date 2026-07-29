@@ -642,6 +642,7 @@
     repo: "owner/h"
     slug: ""
     spec: ""
+    focus: ""
   steps:
     - id: setup
       activity: setup
@@ -789,6 +790,7 @@
     repo: "owner/h"
     slug: ""
     spec: "Add login flow with OAuth2."
+    focus: ""
   steps:
     - id: setup
       activity: setup

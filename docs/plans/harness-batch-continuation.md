@@ -66,15 +66,14 @@ Nothing below is restated here — go to the plan.
 | Minimal-surface executors / per-run trust profile | [reviewer-identity-security](./reviewer-identity-security.md) | Moved Deferred → Active on this batch's evidence |
 | Remaining audit items (phases 2, 4, 5) | [hardening-audit/](./hardening-audit/) | **Re-verify before working any of them** — 5 of 11 phase-1 items were already fixed |
 | Kimi integration | [impl/moonshot-kimi-integration](./impl/moonshot-kimi-integration.md) | **MERGED 2026-07-29** — see §1 |
-| Member-input validation at registration | [member-input-validation](./member-input-validation.md) | Spec RESCUED from the ephemeral scratchpad 2026-07-29; awaiting operator sign-off |
+| Member-input validation at registration | [impl/member-input-validation](./impl/member-input-validation.md) | **BUILT 2026-07-29** (operator-approved) — registration refuses unsatisfiable members pre-publish |
 | Auto-deny an executor on a usage-limited run | [usage-limit-auto-deny](./usage-limit-auto-deny.md) | Spawned 2026-07-29 from the executor-policy work; Planning |
 
 ### Homeless items that still need doing
 
-1. **Member-input validation at registration** — RESOLVED as a home 2026-07-29: the spec was
-   rescued verbatim into [member-input-validation](./member-input-validation.md) before its
-   ephemeral scratchpad died. Building awaits operator sign-off (it changes registration
-   behavior). The other three defects of the four are fixed (#99 merged) or carried.
+1. **Member-input validation at registration** — DONE 2026-07-29: spec rescued into
+   [impl/member-input-validation](./impl/member-input-validation.md), operator-approved, built
+   the same day (all four of the batch's harness defects now resolved or carried).
 2. **Decide whether agent pushes run the pre-push hook.** An agent had silently set
    `core.hooksPath` on the SHARED agent clone while testing #100; it would have armed itself
    on the next worktree cut from main, making every agent push run the full lint in an

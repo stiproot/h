@@ -931,3 +931,65 @@ def test_loop_refuses_concurrent_stages_in_the_loop_segment(tmp_path: Path) -> N
     )  # fmt: skip
     assert result.exit_code == 1
     assert "single-member stages" in _all_output(result)
+
+
+# ── Member-input validation at registration (docs/plans/impl/member-input-validation.md) ──────────
+
+
+@needs_helm
+@respx.mock
+def test_member_input_validation_refuses_unsatisfiable_slug(tmp_path: Path) -> None:
+    """The live repro: `-w plan --kind answer --input spec=spec` — the answer contract supplies
+    only `task`, the declared --input REPLACES it with `spec`, and nothing supplies the `slug`
+    the plan template's worktree step requires. Registration must REFUSE, naming the param —
+    previously this registered fine and died mid-run as `fatal: 'feature/' is not a valid
+    branch name`."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "demo", "-p", "repo=owner/name", "-p", _pspec(tmp_path),
+         "--", "-w", "plan", "--kind", "answer", "--agent", "claude", "openhands",
+         "--input", "spec=spec", "--capture", "plan=plan"],
+    )  # fmt: skip
+    assert result.exit_code == 1
+    out = _all_output(result)
+    assert "{{params.slug}}" in out
+    assert "answer" in out and "spec" in out  # the contract-vs-declared diagnosis
+    assert not route.called  # refused BEFORE registration, nothing reached the engine
+
+
+@needs_helm
+@respx.mock
+def test_member_input_validation_accepts_declared_input(tmp_path: Path) -> None:
+    """The well-formed equivalent: `--input slug=slug` added — registration proceeds. Also the
+    false-positive guard: plan's `clonePath` (empty defaults-block entry, author-sanctioned
+    optional) and review-pr's `focus` never trip the check."""
+    route = _mock_run("demo")
+    respx.post(f"{WORKFLOW_URL}/workflow/save").mock(
+        return_value=Response(200, json={"key": "demo-w0"})
+    )
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "demo", "-p", "repo=owner/name", "-p", _pspec(tmp_path),
+         "--", "-w", "plan", "--kind", "answer", "--agent", "claude", "openhands",
+         "--input", "spec=spec", "--input", "slug=slug", "--capture", "plan=plan"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    assert route.called
+
+
+@needs_helm
+@respx.mock
+def test_member_input_validation_defaults_do_not_trip(tmp_path: Path) -> None:
+    """A kind-matched member passes: review-pr references clonePath/focus/spec — all either
+    defaults-block entries (author-sanctioned optional) or contract-supplied — with nothing
+    seeded beyond the spec. This is the regression guard that matters most: a false positive
+    here blocks working compositions."""
+    route = _mock_run("demo")
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "demo", "-p", "prNumber=5", "-p", _pspec(tmp_path),
+         "--", "-w", "review-pr"],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    assert route.called

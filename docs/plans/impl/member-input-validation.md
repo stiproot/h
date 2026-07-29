@@ -1,13 +1,18 @@
 # Fail loud at registration when a chain member's required inputs cannot be satisfied
 
-Status: Planning — full spec below (rescued 2026-07-29 from an ephemeral scratchpad); awaiting
-operator sign-off on the registration-refusal behavior before building
+Status: Complete — built and green 2026-07-29 (operator-approved same day): `h chain run`
+refuses an unsatisfiable member BEFORE any publish side effect; the live repro is a test
 Established: 2026-07-29
+Lifted to: the validation lives in `cli/h/src/h_cli/commands/chain.py`
+(`_member_input_gaps` + `KIND_CONTRACT_SUPPLIES`, called pre-publish in `_resolve_workflow`);
+the "params block is the optional-param contract" authoring convention is in the
+`author-workflow-template` skill (§3 publish mode) and the CLAUDE.md chain bullet; the three
+spec tests are in `cli/h/tests/test_chain.py` (`test_member_input_validation_*`).
 
 A chain member can be registered in a state that CANNOT work, and the engine accepts it. The
 failure then surfaces minutes later, deep inside an activity, as an error about something
 else entirely. Harness defect #4 of 4 from the 2026-07-28 batch
-(docs/plans/harness-batch-continuation.md §2); the other three are fixed or carried.
+(../harness-batch-continuation.md §2); the other three are fixed or carried.
 
 Reproduced live 2026-07-28.
 
