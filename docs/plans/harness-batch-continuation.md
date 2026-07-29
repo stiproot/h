@@ -52,7 +52,7 @@ Nothing below is restated here — go to the plan.
 | Thread | Plan | Note |
 | --- | --- | --- |
 | Exposed PAT; tests firing real chains; executor allowlist | [live-state-containment](./live-state-containment.md) | **PAT rotation is the single most urgent item in this batch** |
-| CI does not execute; a panel cannot catch a build failure | [local-ci-execution](./local-ci-execution.md) | Operator holds a working container example — capture it first |
+| CI does not execute; a panel cannot catch a build failure | [local-ci-execution](./impl/local-ci-execution.md) | Operator holds a working container example — capture it first |
 | Minimal-surface executors / per-run trust profile | [reviewer-identity-security](./reviewer-identity-security.md) | Moved Deferred → Active on this batch's evidence |
 | Remaining audit items (phases 2, 4, 5) | [hardening-audit/](./hardening-audit/) | **Re-verify before working any of them** — 5 of 11 phase-1 items were already fixed |
 | Kimi integration | [moonshot-kimi-integration](./moonshot-kimi-integration.md) | See §1 |

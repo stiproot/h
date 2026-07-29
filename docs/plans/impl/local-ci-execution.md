@@ -1,8 +1,14 @@
 # Run the guard surface locally, in a container — CI without Actions quota
 
-Status: Active — the operator's working example (trxy-v2's self-hosted runner) captured
-2026-07-29 and adapted as `tools/ci-runner/`; deploying + live-verifying now
+Status: Complete — CI executes again, free of Actions quota: trxy-v2's self-hosted-runner
+pattern adapted as `tools/ci-runner/`, deployed, and live-verified 2026-07-29 (the very
+commit that landed it ran to green on `h-runner-1`)
 Established: 2026-07-29
+Lifted to: the runbook lives at `tools/ci-runner/README.md` (start/stop/switch/security);
+the fleet switch is documented at its point of use (the `runs-on` comment in
+`.github/workflows/guards.yml`); the CLAUDE.md dev-commands note points at both; the
+trxy-inherited traps (EPHEMERAL non-empty means ON, noble base for shared cache keys,
+never on a public repo) are encoded as comments in the Dockerfile/compose themselves.
 
 ## The constraint that defines this plan
 
@@ -100,3 +106,13 @@ tool-cache); repo stays private or the runner is deleted first.
   actually runs" half that quota blocked.
 - `docs/DRIVER.md` — the merge protocol, including verify-at-head against the merge result,
   which is the manual version of what this would automate.
+
+## Log
+
+- 2026-07-29 — Built, deployed, live-verified, done in one pass: the operator pointed at
+  trxy-v2's runner (the "working example" the stub said to capture first), the adaptation is
+  `tools/ci-runner/`, `RUNNER_LABEL=h-dev` is SET, `h-runner-1` is online, and the landing
+  commit's own `guards` run completed `success` on it. The "do NOT add branch protection"
+  warning above is now INVERTED — the check reports again, so requiring it is safe and is
+  the natural follow-up (parked in carried-followups §; an operator repo-settings action).
+  The A0 posture likewise inverts back: CI primary, pre-push hook the fast local guard.

@@ -231,3 +231,15 @@ machinery was built (*build what's needed*). The tripwire is explicit: **the fir
 expensive re-run burned by a tail-of-output validation failure.** The shape to build when it
 trips is pinned — a composition (a cheap-agent extract atom), never LLM credentials on
 workflow-svc.
+
+---
+
+## From [local-ci-execution](./impl/local-ci-execution.md)
+
+### 16. Branch protection requiring the `guards` check
+
+With the self-hosted runner live (2026-07-29), the `guards` check reports again, so
+requiring it on `main` is safe — the old "never add branch protection, the check never
+reports" warning is inverted. An operator repo-settings action (plus deciding whether the
+h-builds-h loop's merges go through PRs only). *Revisit when:* the next time a red-CI
+commit lands on main, or when tightening the merge protocol in `docs/DRIVER.md`.

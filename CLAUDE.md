@@ -552,6 +552,17 @@ uv run h --help                          # run the CLI from the repo root
 uv run --package h-cli pytest            # its test suite (incl. golden snapshots of cli/charts)
 ```
 
+## CI (self-hosted runner)
+
+CI (`.github/workflows/guards.yml`) runs on a **self-hosted runner** (`tools/ci-runner/` —
+Dockerfile + compose + runbook README) whenever the `RUNNER_LABEL` repo variable is set
+(=`h-dev`); delete the variable to fall back to GitHub-hosted (`runs-on:
+${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` — no YAML change either way). Self-hosted
+execution is free of Actions minutes, so CI survives a billing lapse; if the dev box is off,
+jobs queue ~24h then cancel. Live-verified 2026-07-29
+(docs/plans/impl/local-ci-execution.md). The repo must stay PRIVATE while a runner is
+attached — delete the runner first if it is ever made public.
+
 ## Docker build context
 
 All app Dockerfiles use `context: .` (workspace root) so Bun can resolve workspace packages during `bun install --frozen-lockfile`. Dockerfiles copy workspace manifests first for layer caching, then source, then run `bunx turbo build --filter=<app>...` to build workspace package dependencies in topological order. When adding a new workspace package, add its `package.json` COPY line to all relevant app Dockerfiles — `bun install --frozen-lockfile` will fail otherwise; parity is guarded by `scripts/check-dockerfiles.mjs`.
