@@ -102,13 +102,22 @@ test: test-js test-py ## Run all unit tests (JS + Python)
 test-js: ## Run the JS/TS unit tests (turbo → vitest)
 	bun run test
 
-test-py: ## Run the Python unit tests (pytest)
+# EVERY Python suite in the repo runs here — this target is the single source of truth for
+# "the Python test surface", and CI calls it rather than repeating the list (two lists drift;
+# they already had, omitting h-cli's 281 tests from `make test` and agent-server's 22 from both).
+# Add a new suite HERE and CI picks it up for free.
+# Scope each invocation to its own tests dir: a bare root pytest collects the ./dapr-etcd bind
+# mount and dies on PermissionError.
+test-py: ## Run the Python unit tests (pytest — all 7 suites)
 	uv run --package agent-core pytest packages/py/agent-core
+	uv run --package agent-server pytest packages/py/agent-server/tests
 	uv run --package langgraph-agent pytest apps/langgraph-agent/tests
+	uv run --package workflow-agent pytest apps/workflow-agent/tests
 	# The LLM-invoked tool surface (write_file / read_skill) takes a MODEL-supplied path, so its
 	# workspace-containment tests are not optional — these two apps had ZERO tests before.
 	uv run --package dapr-agent pytest apps/dapr-agent/tests
 	uv run --package dapr-claude-loop-agent pytest apps/dapr-claude-loop-agent/tests
+	uv run --package h-cli pytest cli/h/tests
 
 # -----------------------------------------------------------------------------
 # Lint — hygiene AND architecture. `lint-js` runs tsc + oxfmt/oxlint and, on the
@@ -309,3 +318,12 @@ up-local-wait: up-local ## Start the stack detached, then block until it is read
 
 down-local: ## Stop all host-mode services for MODE (leaves infra up; use infra-down for that)
 	cli/scripts/down-local.sh $(MODE)
+
+# ── Git hooks ──────────────────────────────────────────────────────────────────
+
+.PHONY: install-hooks
+install-hooks: ## Install the pre-push hook (sets core.hooksPath = scripts/hooks)
+	git config core.hooksPath scripts/hooks
+	@echo "Installed hooksPath = scripts/hooks — pre-push will run 'bun run lint' before every push."
+	@echo "  To remove: git config --unset core.hooksPath"
+	@echo "  To skip (emergency): git push --no-verify"

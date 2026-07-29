@@ -97,6 +97,37 @@ describe("GitClient (ExecGitClient layer)", () => {
     }
   });
 
+  it("scrubs the injected token from the clone's persisted origin (never at rest)", async () => {
+    const token = "ghp-SUPER-SECRET-TOKEN";
+    const url = "https://github.com/acme/private-repo.git";
+    // A stub git that logs its argv and succeeds: `git clone` would persist the tokened URL as
+    // origin, so cloneEffect must follow up with a set-url back to the caller's clean URL
+    // (docs/plans/live-state-containment.md — the /clone path's credential-at-rest defect).
+    const stubDir = join(root, "stub-bin");
+    mkdirSync(stubDir);
+    const log = join(root, "git-calls.log");
+    writeFileSync(join(stubDir, "git"), `#!/bin/sh\necho "$@" >> "${log}"\nexit 0\n`);
+    chmodSync(join(stubDir, "git"), 0o755);
+    const realPath = process.env.PATH;
+    process.env.PATH = `${stubDir}:${realPath}`;
+
+    try {
+      await run(
+        Effect.gen(function* () {
+          const git = yield* GitClient;
+          yield* git.clone({ url, dir: "repo", cwd: root, token });
+        }),
+      );
+      const calls = readFileSync(log, "utf8");
+      // The clone itself used the injected URL…
+      expect(calls).toContain(`x-access-token:${token}`);
+      // …and origin was then reset to the clean caller URL, so no credential rests in config.
+      expect(calls).toContain(`-C repo remote set-url origin ${url}`);
+    } finally {
+      process.env.PATH = realPath;
+    }
+  });
+
   it("adds a worktree on the requested new branch", async () => {
     const worktree = join(root, "worktrees", "run-1");
     await run(

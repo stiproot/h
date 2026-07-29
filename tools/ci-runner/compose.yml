@@ -1,0 +1,70 @@
+# Self-hosted GitHub Actions runner for h.
+#
+#   export GH_TOKEN=…   # needs Administration:read+write on stiproot/h
+#   docker compose -f tools/ci-runner/compose.yml up -d runner
+#
+# ACCESS_TOKEN comes straight from the shell's GH_TOKEN, so no PAT is written to disk.
+# NOTE: this is a STANDALONE compose project — it is deliberately outside compose.sh /
+# docker-compose.yml (no h services, no Dapr, no x-h-compose-guard). The .env-precedence
+# gotcha does not apply: the shell export is the intended source here.
+#
+# Runbook: tools/ci-runner/README.md
+name: h-ci-runner
+
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: h/ci-runner:local
+    container_name: h-runner-1
+    restart: unless-stopped
+    environment:
+      REPO_URL: https://github.com/stiproot/h
+      ACCESS_TOKEN: ${GH_TOKEN:?export GH_TOKEN (PAT with Administration RW on stiproot/h) first}
+      RUNNER_SCOPE: repo
+      RUNNER_NAME: h-runner-1
+      RUNNER_WORKDIR: /home/runner/_work
+      LABELS: h-dev
+      # Persistent, not ephemeral: private single-owner repo, and guards.yml's
+      # pull_request trigger only ever fires for branches of THIS repo (no forks) —
+      # so per-job isolation buys little, while a warm checkout and tool cache buy a
+      # lot on one serialised runner.
+      #
+      # DO NOT set EPHEMERAL here, not even to 'false'. The base image's entrypoint
+      # tests `[ -n "${EPHEMERAL}" ]` — non-EMPTY, not "true" — so EPHEMERAL='false'
+      # switches ephemeral mode ON (bit trxy live: RestartCount hit 96, the warm
+      # workspace discarded after every job). Unset is the only "off".
+      DISABLE_AUTO_UPDATE: 'true'
+      RUNNER_GROUP: Default
+      # Mirror the hosted ubuntu-24.04 environment for actions that read these.
+      ImageOS: ubuntu24
+      RUNNER_TOOL_CACHE: /opt/hostedtoolcache
+      AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+      # Persistent caches on named volumes so jobs don't re-download the world.
+      # actions/checkout's `git clean -ffdx` wipes anything inside the repo per job.
+      BUN_INSTALL_CACHE_DIR: /home/runner/bun-cache
+      UV_CACHE_DIR: /home/runner/uv-cache
+    volumes:
+      # Named volumes, not host binds: no sudo to create, no machine-specific layout,
+      # and the runner's root-owned files never touch the host tree. Reset with
+      # `docker compose down && docker volume rm h-ci-runner_runner-work`.
+      - runner-work:/home/runner/_work
+      - runner-toolcache:/opt/hostedtoolcache
+      - runner-bun-cache:/home/runner/bun-cache
+      - runner-uv-cache:/home/runner/uv-cache
+      # Deliberately NOT mounting /var/run/docker.sock: guards.yml needs no docker,
+      # and mounting it gives any workflow step root on the dev box.
+    mem_limit: 8g
+    cpus: 6
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '3'
+
+volumes:
+  runner-work:
+  runner-toolcache:
+  runner-bun-cache:
+  runner-uv-cache:

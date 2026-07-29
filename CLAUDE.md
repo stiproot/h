@@ -139,8 +139,13 @@ used here. This section is the terse runtime-facing index.
   (the `__workflow_index__` pattern): saved workflows, `run:*` mirrors, `watch:*`,
   `chain:*`, `cron:*` (recur rows `cron:sub:*` + the discovery/fan-out cron's `cron:discover:*` /
   `cron:discover-index` + the one-shot scheduled-fire cron's `cron:sched:*` / `cron:sched-index`),
-  and `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
-  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10).
+  `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
+  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10),
+  and `exec:` (the executor policy — the single row `exec:config` `{denied: [shortnames]}`, written
+  only by `POST /exec/policy`; the activity-registry gate wraps every `run-*` activity and REFUSES a
+  denied executor loudly at fire time on every path — chains, crons, watcher re-fires, sched
+  continuations, fallback switches, panel branches. Surface: `h agents list|deny|allow`;
+  docs/plans/live-state-containment.md §2.3).
   The convention: a registry prefix names the single component that owns writing it.
 
 The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a
@@ -551,6 +556,17 @@ The `h` CLI (installed editable as a workspace member):
 uv run h --help                          # run the CLI from the repo root
 uv run --package h-cli pytest            # its test suite (incl. golden snapshots of cli/charts)
 ```
+
+## CI (self-hosted runner)
+
+CI (`.github/workflows/guards.yml`) runs on a **self-hosted runner** (`tools/ci-runner/` —
+Dockerfile + compose + runbook README) whenever the `RUNNER_LABEL` repo variable is set
+(=`h-dev`); delete the variable to fall back to GitHub-hosted (`runs-on:
+${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` — no YAML change either way). Self-hosted
+execution is free of Actions minutes, so CI survives a billing lapse; if the dev box is off,
+jobs queue ~24h then cancel. Live-verified 2026-07-29
+(docs/plans/impl/local-ci-execution.md). The repo must stay PRIVATE while a runner is
+attached — delete the runner first if it is ever made public.
 
 ## Docker build context
 

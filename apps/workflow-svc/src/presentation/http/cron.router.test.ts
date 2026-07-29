@@ -12,6 +12,10 @@ import type { DiscoverRow } from "../../domain/models/discover.model.ts";
 import { ChainStore, type ChainStoreService } from "../../domain/ports/IChainStore.ts";
 import { CronStore, type CronStoreService } from "../../domain/ports/ICronStore.ts";
 import { WatchStore, type WatchStoreService } from "../../domain/ports/IWatchStore.ts";
+import {
+  ExecPolicyStore,
+  type ExecPolicyStoreService,
+} from "../../domain/ports/IExecPolicyStore.ts";
 import { WfStore, type WfStoreService } from "../../domain/ports/IWfStore.ts";
 import { SourceReader, type SourceReaderService } from "../../domain/ports/ISourceReader.ts";
 import {
@@ -20,6 +24,11 @@ import {
 } from "../../domain/ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "../../domain/ports/IWorkflowStore.ts";
 import { registerCronRoutes, tickEffect } from "./cron.router.ts";
+
+const stubExecPolicyStore: ExecPolicyStoreService = {
+  get: () => Effect.succeed(Option.none()),
+  save: () => Effect.void,
+};
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
@@ -116,6 +125,7 @@ const envLayer = (
     Layer.succeed(ChainStore, emptyChainStore),
     Layer.succeed(CronStore, cron),
     Layer.succeed(WfStore, emptyWfStore),
+    Layer.succeed(ExecPolicyStore, stubExecPolicyStore),
     Layer.succeed(DaprPublisherTag, stubPublisher),
     Layer.succeed(SourceReader, stubSourceReader),
   );

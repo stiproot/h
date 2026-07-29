@@ -1,7 +1,15 @@
 # Moonshot Kimi as an h executor
 
-Status: Planning — routes researched and grounded against the tree 2026-07-28; Route A recommended, not yet reviewed or built
+Status: Active — Route A built and panel-reviewed as PR #98 (branch `feature/kimi-int3`, NOT merged); the wire is proven live but the h plumbing is not
 Established: 2026-07-28
+
+**Resume point: [harness-batch-continuation](./harness-batch-continuation.md) §1.** In short:
+#98 is green on the full gate with 19 of 20 review threads resolved, and the model id was
+found WRONG by a live call (`kimi-k3[1m]` → 404; the real id is `kimi-k3`) and fixed in
+`40c5f72`. Still required before merge: the live end-to-end run through
+`run-kimi` → `kimi-agent` → the CLI (this plan's own acceptance criterion — the direct API
+call proves the endpoint, not the plumbing), a re-verify at head after the model fix, and a
+merge decision on a review loop that capped without reviewing the current head.
 
 ## Goal
 

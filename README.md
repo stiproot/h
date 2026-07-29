@@ -414,6 +414,24 @@ uv run h workflow pause <instanceId> feature --in 30m   # stop-and-continue: ter
 uv run --package h-cli pytest         # unit + golden-snapshot tests (requires helm for goldens)
 ```
 
+### Git hooks
+
+Install a local `pre-push` hook that runs the fast lint guards (no build/test,
+so it stays under a few seconds):
+
+```sh
+make install-hooks    # sets core.hooksPath = scripts/hooks
+```
+
+After installation, `git push` will run `bun run lint` first and block the push
+if any guard fails. Skip with `git push --no-verify` (emergency use only).
+
+### CI
+
+A GitHub Actions workflow (`.github/workflows/guards.yml`) runs the full guard
+surface — lint, build, test, and the h CLI pytest suite — on every pull request
+and push to `main`. Check the **guards** job status in the PR checks UI.
+
 ## Tooling
 
 - **[Bun](https://bun.sh)** — package management and TypeScript execution

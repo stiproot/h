@@ -59,7 +59,8 @@ def test_inline_renders_a_template_and_fires_its_steps() -> None:
 @respx.mock
 def test_inline_cron_arms_an_embedded_recurrence() -> None:
     """--inline --cron posts armCron{inline:true} + wf identity so the run recurs over an
-    EMBEDDED source built from its own steps (docs/plans/impl/inline-chain-cron-composition.md D1)."""
+    EMBEDDED source built from its own steps
+    (docs/plans/impl/inline-chain-cron-composition.md D1)."""
     route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
         return_value=Response(202, json={"instanceId": "revise-pi-agent", "watching": False})
     )

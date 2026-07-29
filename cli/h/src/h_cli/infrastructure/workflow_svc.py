@@ -111,7 +111,8 @@ def run_steps(
 
     `arm_cron` ({cadence, workflow, budget?, inline:true}) makes the run register its OWN recurrence
     over an EMBEDDED source built from these very steps — the inline sibling of `run_saved`'s cron,
-    for a definition that was never published (docs/plans/impl/inline-chain-cron-composition.md D1). It
+    for a definition that was never published
+    (docs/plans/impl/inline-chain-cron-composition.md D1). It
     needs `wf` ({repo, slug, workflow}) so the recurring runs write the goal-handshake status row
     the cron engine reads to stop."""
     body: dict[str, Any] = {"steps": steps}
@@ -201,6 +202,20 @@ def cron_list() -> Any:
     """The cron registry plus the scan heartbeat (the staleness signal, one call). Includes both the
     recur rows (`crons`) and the discovery/fan-out rows (`discover`)."""
     resp = httpx.get(f"{WORKFLOW_URL}/cron/list", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def exec_policy_get() -> Any:
+    """The executor policy row (`exec:config`) — absent reads as {denied: [], updatedAt: ""}."""
+    resp = httpx.get(f"{WORKFLOW_URL}/exec/policy", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def exec_policy_set(denied: list[str]) -> Any:
+    """Replace the denied-executor set (workflow-svc is the exec: registry's single writer)."""
+    resp = httpx.post(f"{WORKFLOW_URL}/exec/policy", json={"denied": denied}, timeout=10)
     resp.raise_for_status()
     return resp.json()
 

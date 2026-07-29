@@ -5,6 +5,7 @@ import { Effect, type ManagedRuntime } from "effect";
 import { injectTraceContext, withTraceparentParent } from "telemetry";
 
 import type { CronStore } from "../domain/ports/ICronStore.ts";
+import type { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
 import type { WfStore } from "../domain/ports/IWfStore.ts";
 import type { WorkflowInvoker } from "../domain/ports/IWorkflowInvoker.ts";
 import type { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
@@ -34,6 +35,7 @@ export type ActivityEnv =
   | FileSystem.FileSystem
   | WfStore
   | CronStore
+  | ExecPolicyStore
   | WorkflowInvoker
   | WorkflowStore;
 

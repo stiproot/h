@@ -185,3 +185,15 @@ h watch list      # durable watcher registrations
 h cron list       # recur + discovery + one-shot sched rows
 h schedule list   # the one-shot rows alone
 ```
+
+## Deny an executor engine-wide — "no codex tonight", enforced
+
+```sh
+h agents deny codex     # every fire path now REFUSES run-codex (chains, crons, panels, fallbacks)
+h agents list           # policy column shows DENIED
+h agents allow codex    # re-enable
+```
+
+Validated 2026-07-29: with codex denied, a fired `run-codex` workflow FAILED at the activity
+gate with `executor 'codex' is denied by the exec:config policy` — before any agent invoke, no
+quota spent (docs/plans/live-state-containment.md §2.3).

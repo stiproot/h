@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ─── Local pre-push hook ─────────────────────────────────────────────────────
+#
+# Runs the fast lint guards before every push.  If any guard fails the push is
+# blocked.  This is NOT a full build/test — only lint, so it stays well under a
+# few seconds for the common case.
+#
+# Install:
+#   make install-hooks        # sets core.hooksPath = scripts/hooks
+#
+# Skip (emergency use only):
+#   git push --no-verify
+#
+# ──────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "━━━ pre-push: running content guards (bun run lint && make lint-py) ━━━"
+echo ""
+
+if ! bun run lint; then
+  echo ""
+  echo "✖ pre-push: one or more guards FAILED — push blocked."
+  echo "  To bypass (emergency only): git push --no-verify"
+  exit 1
+fi
+
+echo ""
+echo "━━━ pre-push: running Python lint (make lint-py) ━━━"
+echo ""
+
+if ! make lint-py; then
+  echo ""
+  echo "✖ pre-push: Python lint FAILED — push blocked."
+  echo "  To bypass (emergency only): git push --no-verify"
+  exit 1
+fi
+
+echo ""
+echo "✔ pre-push: all guards passed."
