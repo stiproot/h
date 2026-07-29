@@ -14,8 +14,10 @@ import { runClaudeManagedActivity } from "./activities/run-claude-managed.activi
 import { runCodexActivity } from "./activities/run-codex.activity.ts";
 import { runDaprAgentActivity } from "./activities/run-dapr-agent.activity.ts";
 import { runDaprClaudeLoopActivity } from "./activities/run-dapr-claude-loop.activity.ts";
+import { runItestActivity } from "./activities/run-itest.activity.ts";
 import { runKimiActivity } from "./activities/run-kimi.activity.ts";
 import { runLanggraphActivity } from "./activities/run-langgraph.activity.ts";
+import { runStubActivity } from "./activities/run-stub.activity.ts";
 import { runOpenhandsActivity } from "./activities/run-openhands.activity.ts";
 import { runPiActivity } from "./activities/run-pi.activity.ts";
 import { setupActivity } from "./activities/setup.activity.ts";
@@ -79,6 +81,8 @@ const registry: Record<string, ActivityFn> = Object.fromEntries(
     "run-openhands": runOpenhandsActivity,
     "run-pi": runPiActivity,
     "run-dapr-agent": runDaprAgentActivity,
+    "run-stub": runStubActivity,
+    "run-itest": runItestActivity,
     "copy-session": copySessionActivity,
     "write-wf-row": writeWfRowActivity,
     "register-cron": registerCronActivity,

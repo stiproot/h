@@ -1,0 +1,30 @@
+{{- /*
+run-itest overlay template — appends a machine-executed integration-test step BEFORE create-pr
+(docs/plans/worktree-integration-gate.md Phase 2). The step runs the harness from the trusted
+origin/main base ref against the worktree, classifying failure as infra vs assertion. A nonzero
+exit fails the step structurally — create-pr never runs. Set itest.skip=true as a break-glass
+when the cluster is unavailable; the skip is surfaced in the PR body, never silently hidden.
+
+Compose (operator cutover after run-itest activity is deployed):
+  h template compose implement verify run-itest create-pr arm-revise-pr --save implement-pr
+Render alone (for inspection):
+  helm template run-itest cli/charts/workflows -s templates/run-itest.tmpl.yaml --set template=run-itest
+*/ -}}
+{{- /* Template gate — bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "run-itest" }}
+role: overlay
+{{- $t := .Values.itest | default dict }}
+{{- $skip := $t.skip | default false }}
+{{- $skipReason := $t.skipReason | default "break-glass: itest.skip=true set in template values" }}
+steps:
+  - id: itest
+    activity: run-itest
+    input:
+      {{- if $skip }}
+      skip: true
+      skipReason: {{ $skipReason | quote }}
+      {{- else }}
+      worktreePath: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- end }}
+      traceparent: {{ include "h.token" "traceparent" | quote }}
+{{- end }}

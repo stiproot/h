@@ -1090,6 +1090,31 @@
   
   '''
 # ---
+# name: test_run_itest_golden
+  '''
+  role: overlay
+  steps:
+    - id: itest
+      activity: run-itest
+      input:
+        worktreePath: "{{worktree.worktreePath}}"
+        traceparent: "{{traceparent}}"
+  
+  '''
+# ---
+# name: test_run_itest_skip_golden
+  '''
+  role: overlay
+  steps:
+    - id: itest
+      activity: run-itest
+      input:
+        skip: true
+        skipReason: "break-glass: itest.skip=true set in template values"
+        traceparent: "{{traceparent}}"
+  
+  '''
+# ---
 # name: test_verify_golden
   '''
   role: overlay

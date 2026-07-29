@@ -239,6 +239,27 @@ k3d-up: ## Create the k3d cluster + local registry that the Tilt path needs (ide
 k3d-down: ## Delete the k3d cluster and its registry
 	k3d cluster delete $(K3D_CLUSTER) || true
 
+# ── Integration test (the machine-executed gate) ───────────────────────────────
+#
+# `make itest` builds workflow-svc + stub-agent from the current worktree, deploys an
+# ephemeral h-itest-<id> namespace, fires the smoke workflow against it, asserts the
+# runtime spine end-to-end, then tears down. Evidence lands under .local-logs/itest/<id>/.
+# Exit-code taxonomy: 0=passed, 10=assertion, 11=infra.
+#
+# Prerequisites: k3d cluster + registry running (`make k3d-up`) and Dapr installed
+# (`make dapr-install`). The gate is designed for host-mode workflow-svc (the loop's mode).
+#
+# `make itest-gc` is the sweeper for what a trap-based teardown can't cover (SIGKILL,
+# host restart): deletes h-itest-* namespaces older than 2h and prunes gate images
+# older than 7 days. Safe to run at any time; wired as a pre-amble in the harness too.
+
+.PHONY: itest itest-gc
+itest: ## Run the integration test against the worktree (requires k3d + dapr-install)
+	@bash scripts/itest/run-itest.sh .
+
+itest-gc: ## Delete h-itest-* namespaces older than 2h; prune gate images older than 7d
+	@bash scripts/itest/run-itest.sh --gc
+
 # ── Tear everything down ───────────────────────────────────────────────────────
 #
 # One entry point for "stop whatever I started", across all three modes — host-local services,

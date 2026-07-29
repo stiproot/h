@@ -43,6 +43,12 @@ earlier outputs with `{"$ref": "stepId.field"}` or `"{{stepId.field}}"`.
   returns `{ worktreePath }`; input `{ sourceRepo, branch, baseRef, agentId }` — sourceRepo defaults to
   the shared pre-cloned target repo; use it to investigate or change a repo on an isolated checkout that
   every agent in the run shares
+- `run-stub` — runs the deterministic stub agent (no LLM, no secrets); returns a canned structured output
+  `{"goal":"RESOLVED","status":"smoke-passed"}` satisfying the smoke outputContract; input `{ task }`;
+  itest-only — not for production workflows
+- `run-itest` — machine-executed integration gate; materialises the harness from origin/main and runs it
+  against `worktreePath`; returns `{passed,class,exitCode,treeHash,durationMs,outputTail}`; throws on
+  failure (assertion/infra/timeout) so the step fails structurally; input `{ worktreePath, skip?, skipReason? }`
 - `run-claude` / `run-codex` / `run-openhands` / `run-pi` / `run-dapr-agent` / `run-dapr-claude-loop` / `run-claude-managed` /
   `run-langgraph` / `run-kimi` — each runs that agent, input `{ task }`. `run-claude`, `run-codex`, `run-kimi`,
   `run-openhands`, and `run-pi` also take an optional `cwd` (e.g. `"{{create-worktree.worktreePath}}"`) to run in

@@ -201,6 +201,10 @@ apps/kimi-agent/src/                      # kimi-agent — Claude Code CLI × Mo
 ├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("kimi-agent")
 └── infrastructure/kimi-runner.ts         # IAgentRunner impl using ClaudeInvokerLive (agent-cli); custom runner bypasses LiteLLM preflight; /run, /setup, /dapr/subscribe come from agent-server
 
+apps/stub-agent/src/                      # stub-agent — deterministic itest-only agent (no LLM, no secrets); Fastify + Dapr sidecar
+├── index.ts                              # composition root – registers shared agent-server routes + /workflow (babysitter), starts Fastify
+└── infrastructure/stub-runner.ts         # IAgentRunner impl; returns a canned structured output satisfying the smoke outputContract; run-stub activity invokes this service via Dapr
+
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
 ├── main.py                               # composition root – registers shared agent-server routes + /workflow (babysitter); opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
 ├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – delegates to agent_core's ReAct loop (OpenAIChatAdapter); merges the workflow-mcp toolset when enabled
@@ -266,7 +270,7 @@ apps/workflow-svc/src/
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
-│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph,kimi} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
+│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph,kimi,stub,itest} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
 │       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + structured goal: RESOLVED); BEST-EFFORT (§3/§10)
 │       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: the structured block's `pr` for arm-revise-pr); LOUD, idempotent
 │       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD

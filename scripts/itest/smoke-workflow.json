@@ -1,0 +1,22 @@
+{
+  "wf": { "repo": "h-itest", "slug": "smoke", "workflow": "smoke" },
+  "watch": { "maxDurationMs": 120000 },
+  "params": {},
+  "steps": [
+    {
+      "id": "stub",
+      "activity": "run-stub",
+      "input": {
+        "task": "smoke",
+        "outputContract": {
+          "type": "object",
+          "properties": {
+            "goal": { "type": "string", "enum": ["RESOLVED"] },
+            "status": { "type": "string" }
+          },
+          "required": ["goal"]
+        }
+      }
+    }
+  ]
+}

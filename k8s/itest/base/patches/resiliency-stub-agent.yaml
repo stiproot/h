@@ -1,0 +1,11 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: resiliency
+  namespace: default
+spec:
+  targets:
+    apps:
+      stub-agent:
+        outbound:
+          timeout: agentTimeout

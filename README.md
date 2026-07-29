@@ -21,6 +21,7 @@ composition stack, and the design principles.
 | `workflow-agent` | Dapr Agents SDK | Cron-triggered orchestrator; builds/tests/persists/runs workflows via the workflows MCP |
 | `codex-agent` | OpenAI Codex CLI | Lean coding agent; same Fastify + Dapr sidecar contract as claude-agent |
 | `kimi-agent` | Claude Code CLI (Moonshot) | Anthropic-compat endpoint; claude CLI routed to Moonshot AI; opt-in profile |
+| `stub-agent` | Deterministic stub (itest-only) | Canned structured output; no LLM, no secrets; used by the integration-test gate harness |
 
 ## Workspace layout
 
@@ -40,7 +41,8 @@ h/
 │   ├── dapr-mcp/               # dapr-mcp — MCP server for Dapr state-store inspection
 │   ├── obs-mcp/                # obs-mcp — read-only observability MCP (traces, logs, run ledger)
 │   ├── codex-agent/            # codex-agent — OpenAI Codex CLI (Fastify + Dapr sidecar)
-│   └── kimi-agent/             # kimi-agent — Claude Code CLI × Moonshot (Fastify + Dapr sidecar)
+│   ├── kimi-agent/             # kimi-agent — Claude Code CLI × Moonshot (Fastify + Dapr sidecar)
+│   └── stub-agent/             # stub-agent — deterministic itest-only agent (no LLM, Fastify + Dapr sidecar)
 ├── packages/            # shared libs, partitioned by language ecosystem
 │   ├── js/              # TypeScript (npm workspace — root package.json)
 │   │   ├── agent-cli/        # Shared agent invocation logic (CLI strategies, stream parsing)

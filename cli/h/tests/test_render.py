@@ -36,6 +36,7 @@ PINNED_OR_OVERLAY_IDENTITY = {
     "verify",
     "create-pr",
     "arm-revise-pr",
+    "run-itest",
 }
 
 
@@ -546,6 +547,83 @@ def test_plan_publish_golden(snapshot) -> None:
     artifact (docs/plans/impl/chain-plan-atom.md, docs/plans/spec-review-pipeline.md)."""
     rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
+
+
+def test_run_itest_golden(snapshot) -> None:
+    """run-itest overlay atom (Phase 2 gate): a lone run-itest step carrying the worktree path token."""
+    rendered = helm.render_workflow("run-itest", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_run_itest_skip_golden(snapshot) -> None:
+    """run-itest skip mode (break-glass): step emits skip=true + reason instead of the path token."""
+    rendered = helm.render_workflow(
+        "run-itest",
+        values={"publish": "true", "itest.skip": "true"},
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_run_itest_is_one_step_with_worktree_token() -> None:
+    """Structure contract: ONE step (id=itest, activity=run-itest) with the worktree path token."""
+    import yaml
+
+    rendered = helm.render_workflow("run-itest", values={"publish": "true"}, include_local=False)
+    definition = yaml.safe_load(rendered)
+    assert definition["role"] == "overlay"
+    (step,) = definition["steps"]
+    assert step["id"] == "itest"
+    assert step["activity"] == "run-itest"
+    assert step["input"]["worktreePath"] == "{{worktree.worktreePath}}"
+
+
+def test_run_itest_skip_emits_skip_flag() -> None:
+    """Skip mode: worktreePath is absent; skip=true and skipReason are present."""
+    import yaml
+
+    rendered = helm.render_workflow(
+        "run-itest",
+        values={"publish": "true", "itest.skip": "true"},
+        include_local=False,
+    )
+    definition = yaml.safe_load(rendered)
+    (step,) = definition["steps"]
+    assert step["input"]["skip"] is True
+    assert "worktreePath" not in step["input"]
+    assert "skipReason" in step["input"]
+
+
+def test_compose_implement_run_itest_create_pr_appends_itest_step() -> None:
+    """implement ⊕ run-itest ⊕ create-pr: itest step is APPENDED (new id) after implement."""
+    from h_cli.infrastructure.overlay import overlay
+
+    def _atom(name: str, **vals: str) -> dict:
+        return json.loads(
+            helm.to_wire_json(
+                helm.render_workflow(
+                    name,
+                    values={"publish": "true", "composable": "true", **vals},
+                    include_local=False,
+                )
+            )
+        )
+
+    merged = overlay(
+        _atom("implement"),
+        _atom("run-itest"),
+        _atom("create-pr"),
+    )
+    assert [s["id"] for s in merged["steps"]] == [
+        "worktree",
+        "setup",
+        "plan",
+        "implement",
+        "itest",
+    ]
+    itest = next(s for s in merged["steps"] if s["id"] == "itest")
+    assert itest["activity"] == "run-itest"
+    assert itest["input"]["worktreePath"] == "{{worktree.worktreePath}}"
 
 
 def test_plan_stops_at_the_plan_and_declares_it() -> None:

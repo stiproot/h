@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# References the existing k8s manifests unchanged — parameterization stays in the per-run overlay.
+resources:
+  - ../../infra/redis.yaml
+  - ../../dapr/statestore.yaml
+  - ../../dapr/pubsub.yaml
+  - ../../dapr/appconfig.yaml
+  - ../../dapr/resiliency.yaml
+  - ../../dapr/workflow-cron.yaml
+  - ../../apps/workflow-svc.yaml
+  - stub-agent.yaml
+
+patches:
+  - path: patches/resiliency-stub-agent.yaml
+    target:
+      kind: Resiliency
+      name: resiliency

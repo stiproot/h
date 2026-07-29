@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: workflow-svc
+  name: stub-agent
   namespace: default
 spec:
   selector:
     matchLabels:
-      app: workflow-svc
+      app: stub-agent
   template:
     metadata:
       labels:
-        app: workflow-svc
+        app: stub-agent
       annotations:
         dapr.io/enabled: "true"
-        dapr.io/app-id: "workflow-svc"
+        dapr.io/app-id: "stub-agent"
         dapr.io/app-port: "8000"
         dapr.io/log-level: "info"
         dapr.io/config: "appconfig"
     spec:
       containers:
-        - name: workflow-svc
-          image: h/workflow-svc
+        - name: stub-agent
+          image: h/stub-agent
           env:
             - name: APP_PORT
               value: "8000"
@@ -28,11 +28,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: workflow-svc
+  name: stub-agent
   namespace: default
 spec:
   selector:
-    app: workflow-svc
+    app: stub-agent
   ports:
     - port: 8000
       targetPort: 8000
