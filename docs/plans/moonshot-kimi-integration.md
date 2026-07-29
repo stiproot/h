@@ -30,9 +30,9 @@ Moonshot publishes an **official** Claude Code integration
 | --- | --- |
 | `ANTHROPIC_BASE_URL` | `https://api.moonshot.ai/anthropic` |
 | `ANTHROPIC_AUTH_TOKEN` | the Moonshot API key |
-| `ANTHROPIC_MODEL` | `kimi-k3[1m]` |
-| `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` | `kimi-k3[1m]` |
-| `CLAUDE_CODE_SUBAGENT_MODEL` | `kimi-k3[1m]` |
+| `ANTHROPIC_MODEL` | `kimi-k3` |
+| `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU,FABLE}_MODEL` | `kimi-k3` |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | `kimi-k3` |
 | `ENABLE_TOOL_SEARCH` | `false` — **unsupported on this endpoint** |
 | `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `1048576` (K3's 1M context) |
 
@@ -206,8 +206,15 @@ checklist, and its codex worked example is the cautionary tale for skipping the 
 3. **Model-alias sprawl.** The claude CLI resolves several model slots
    (`ANTHROPIC_DEFAULT_*_MODEL`, `CLAUDE_CODE_SUBAGENT_MODEL`); missing one silently routes
    a subagent to a nonexistent Anthropic model. Set them all in the run script.
-4. **`kimi-k3[1m]` contains brackets.** It flows through `--model`, env vars, chart params,
-   and shell quoting. A quoting bug will look like an auth failure.
+4. ~~**`kimi-k3[1m]` contains brackets.**~~ **RESOLVED, and the risk was real but mis-aimed
+   (2026-07-29).** The bracketed id is not a quoting hazard — it is simply WRONG. A live call
+   to `https://api.moonshot.ai/anthropic/v1/messages` with `kimi-k3[1m]` returns
+   `404 resource_not_found_error: Not found the model kimi-k3[1m] or Permission denied`. The
+   account's `/v1/models` lists exactly four ids — `kimi-k2.6`, `kimi-k2.7-code`,
+   `kimi-k2.7-code-highspeed`, `kimi-k3` — and plain **`kimi-k3` returns 200** with
+   `stop_reason: end_turn`. The `[1m]` suffix came from vendor documentation and was carried
+   through the plan, the review panel, and the implementation unchallenged, because **nothing
+   in the pipeline ever made a live call**. Corrected everywhere.
 
 ## The structural finding (the improvement worth banking)
 
@@ -230,8 +237,12 @@ them together would fuse an integration with a refactor.
 ## Open questions
 
 - Decision (2a) vs (2b) on the preflight — flagged for the review panel.
-- Does `kimi-k3[1m]`'s 1M context need `CLAUDE_CODE_AUTO_COMPACT_WINDOW` set inside the
+- Does `kimi-k3`'s large context need `CLAUDE_CODE_AUTO_COMPACT_WINDOW` set inside the
   *agent service* env, or is the CLI default adequate for h's typically short runs?
+- **`kimi-k3` reasons by default and spends output budget on thinking** — a 64-token
+  `max_tokens` returned EMPTY text with `thinking_tokens: 61`. Harmless at agent-scale
+  budgets (1024 tokens answered fine), but a low per-step `max_tokens` would silently yield
+  no output rather than an error. Worth a note if any step ever caps tokens tightly.
 - Should `kimi-agent` join the `h-builds-h` service set, or stay opt-in until it has a
   track record? (Leaning opt-in.)
 

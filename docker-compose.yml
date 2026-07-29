@@ -491,7 +491,7 @@ services:
       - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
       - ANTHROPIC_AUTH_TOKEN=${MOONSHOT_API_KEY:-}
       - KIMI_ANTHROPIC_URL=${KIMI_ANTHROPIC_URL:-https://api.moonshot.ai/anthropic}
-      - AGENT_MODEL=${AGENT_MODEL:-kimi-k3[1m]}
+      - AGENT_MODEL=${AGENT_MODEL:-kimi-k3}
       # ANTHROPIC_API_KEY is intentionally absent — the runner's env: { ANTHROPIC_API_KEY: "" }
       # overrides any compose-level value, but we don't set it here to avoid shadowing risk.
       - GH_TOKEN=${GH_TOKEN:-}

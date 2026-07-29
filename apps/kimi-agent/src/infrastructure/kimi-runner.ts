@@ -17,7 +17,7 @@ const DEFAULT_RUN_TIMEOUT_MS = 1_800_000;
 // so adaptToLiteLlmEffect short-circuits at litellm.ts:27 (!llmConfig?.baseUrl).
 const kimiRunnerConfig = Config.all({
   baseDir: Config.string("AGENT_BASE_DIR").pipe(Config.withDefault("/workspace/kimi-agent")),
-  model: Config.string("AGENT_MODEL").pipe(Config.withDefault("kimi-k3[1m]")),
+  model: Config.string("AGENT_MODEL").pipe(Config.withDefault("kimi-k3")),
   moonShotApiKey: Config.string("ANTHROPIC_AUTH_TOKEN"),
   kimiAnthropicUrl: Config.string("KIMI_ANTHROPIC_URL").pipe(
     Config.withDefault("https://api.moonshot.ai/anthropic"),
