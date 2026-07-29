@@ -1,8 +1,8 @@
 # Run the guard surface locally, in a container — CI without Actions quota
 
-Status: Deferred — stub. The operator has a working example of running GitHub Actions locally in a container; it is not yet captured here, and nothing is built
+Status: Active — the operator's working example (trxy-v2's self-hosted runner) captured
+2026-07-29 and adapted as `tools/ci-runner/`; deploying + live-verifying now
 Established: 2026-07-29
-Revisit when: we want a reproducible, environment-neutral run of the guard surface — or the next time a defect slips through because local verification was environment-dependent
 
 ## The constraint that defines this plan
 
@@ -61,26 +61,38 @@ A containerised local run addresses all three: a clean, pinned environment; the 
 the gate against the *merge result* rather than the branch; and an executed, reportable result
 rather than a self-reported claim.
 
-## What the operator already has (CAPTURE THIS FIRST)
+## The captured design (from trxy-v2, 2026-07-29)
 
-The operator reports a **working example of running our actions locally in a container**.
-That example is the starting point and is not recorded anywhere in this repo — capturing it
-is the first task when this is picked up, before any design. Likely shape (`act`, or a
-hand-rolled container running the same steps), but do not guess: get the real thing.
+The operator's working example is **trxy-v2's `tools/ci-runner`** — not `act`, not a
+reimplementation: a **real self-hosted GitHub Actions runner** in Docker
+(`myoung34/github-runner:ubuntu-noble` base), registered against the repo via `GH_TOKEN`
+(Administration:RW), running the ACTUAL workflows. Validated in trxy through a real billing
+lapse (`docs/guides/self-hosted-ci-runner.md` there; also the EPHEMERAL='false' trap —
+non-empty means ON — and the shared `Linux-*` cache keys forcing a noble base).
 
-## Open questions for when it is picked up
+This resolves the open questions wholesale:
 
-- **`act`, or our own container?** `act` reuses `guards.yml` directly so the two paths cannot
-  drift; a hand-rolled container is simpler but becomes a second definition of the gate — the
-  exact drift class the audit exists to prevent.
-- **What runs it, and when?** A `make ci-local` an operator runs before merging is the cheap
-  start. A pre-merge step in the driver's protocol is the useful version, since the driver is
-  the thing that actually merges.
-- **Merge-result verification.** The highest-value property CI has and the hook lacks. The
-  driver already does this by hand (worktree at `origin/main` + merge the branch, then run the
-  gate) — that procedure is in `docs/DRIVER.md` and could simply be scripted.
-- **Cost/time.** The full gate is minutes, not seconds. Decide what runs per-push (fast
-  guards) versus per-merge (everything), or the containerised run will be skipped.
+- **`act` vs own container** — neither: a genuine runner executes the real `guards.yml`,
+  so there is no second definition of the gate to drift.
+- **What runs it / when** — GitHub does, on the same triggers as hosted CI. The fleet
+  switch is `runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` + a repo variable; no
+  YAML change in either direction.
+- **Merge-result verification** — comes back for free: `pull_request` runs execute against
+  the merge ref, `push` runs against main, results land as checks the loop can read.
+- **Cost/time** — hosted minutes: zero. Wall clock: one runner serialises, acceptable for
+  a single-job workflow.
+
+Adapted for h as `tools/ci-runner/` (Dockerfile + compose.yml + README runbook): h's
+toolchain is node + bun (pinned to guards.yml's BUN_VERSION) + uv + helm — no deno/yarn/
+postgres/docker. No docker socket mounted; persistent named-volume caches (bun, uv,
+tool-cache); repo stays private or the runner is deleted first.
+
+## Follow-ups once live-verified
+
+- **Branch protection** requiring the `guards` check becomes safe to add (the old warning
+  below assumed the check never reports).
+- The A0 posture inverts back: CI is again the primary mechanism, the pre-push hook the
+  fast local guard.
 
 ## Related
 

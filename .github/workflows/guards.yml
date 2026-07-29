@@ -21,7 +21,10 @@ env:
 jobs:
   guards:
     name: Guard surface (lint → build → test → pytest)
-    runs-on: ubuntu-latest
+    # The fleet switch (tools/ci-runner/README.md): set the RUNNER_LABEL repo variable
+    # (=h-dev) to run on the self-hosted runner — free minutes, survives a billing
+    # lapse; delete it to return to GitHub-hosted. || treats undefined/empty as falsy.
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
