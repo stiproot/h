@@ -11,8 +11,16 @@ does not restate work that already has a home — it points at it.
 
 ## 1. In flight — PR #98 (Kimi integration)
 
-**Branch `feature/kimi-int3` @ `40c5f72`. NOT merged. This is the only PR of the batch still
-open** (besides #97, which predates it — `h chain rm`, unreviewed by this batch).
+**RESOLVED 2026-07-29: MERGED as `fb08be6`** on full evidence (gate green on the merge
+result, live tool-using e2e through the whole plumbing, PR CI green on the new self-hosted
+runner, review loop finalized CLEAN after one unattended revise iteration). The stray
+:8017 agent, the ephemeral `/tmp/kimi-live` worktree, and every kimi branch/worktree are
+cleaned. See [impl/moonshot-kimi-integration](./impl/moonshot-kimi-integration.md). The
+only PR of the batch still open is #97 (`h chain rm`, predates the batch, unreviewed).
+
+<details><summary>Original state (historical)</summary>
+
+Branch `feature/kimi-int3` @ `40c5f72`. NOT merged.
 
 State:
 
@@ -41,7 +49,9 @@ worktree that will not survive a reboot**. Do not treat it as part of the stack.
 (`dapr stop --app-id kimi-agent`) or restart from a real checkout. It is NOT in
 `cli/scripts/_services.sh` (deliberately opt-in) and NOT in any compose profile default.
 
-Owning plan: [moonshot-kimi-integration](./moonshot-kimi-integration.md).
+Owning plan: [moonshot-kimi-integration](./impl/moonshot-kimi-integration.md).
+
+</details>
 
 ---
 
@@ -51,23 +61,20 @@ Nothing below is restated here — go to the plan.
 
 | Thread | Plan | Note |
 | --- | --- | --- |
-| Exposed PAT; tests firing real chains; executor allowlist | [live-state-containment](./live-state-containment.md) | **PAT rotation is the single most urgent item in this batch** |
-| CI does not execute; a panel cannot catch a build failure | [local-ci-execution](./impl/local-ci-execution.md) | Operator holds a working container example — capture it first |
+| Exposed PAT; tests firing real chains; executor allowlist | [live-state-containment](./live-state-containment.md) | **All engineering DONE + live-verified 2026-07-29** — PAT rotation (operator) is the one open item |
+| CI does not execute; a panel cannot catch a build failure | [impl/local-ci-execution](./impl/local-ci-execution.md) | **DONE 2026-07-29** — self-hosted runner live (tools/ci-runner/); branch-protection follow-up carried |
 | Minimal-surface executors / per-run trust profile | [reviewer-identity-security](./reviewer-identity-security.md) | Moved Deferred → Active on this batch's evidence |
 | Remaining audit items (phases 2, 4, 5) | [hardening-audit/](./hardening-audit/) | **Re-verify before working any of them** — 5 of 11 phase-1 items were already fixed |
-| Kimi integration | [moonshot-kimi-integration](./moonshot-kimi-integration.md) | See §1 |
+| Kimi integration | [impl/moonshot-kimi-integration](./impl/moonshot-kimi-integration.md) | **MERGED 2026-07-29** — see §1 |
+| Member-input validation at registration | [member-input-validation](./member-input-validation.md) | Spec RESCUED from the ephemeral scratchpad 2026-07-29; awaiting operator sign-off |
+| Auto-deny an executor on a usage-limited run | [usage-limit-auto-deny](./usage-limit-auto-deny.md) | Spawned 2026-07-29 from the executor-policy work; Planning |
 
 ### Homeless items that still need doing
 
-1. **Member-input validation at registration** (harness defect #4 of 4 found this batch).
-   A member whose template requires a param nothing supplies registers fine and dies later
-   inside an activity — `-w plan --kind answer` drops `slug` and fails as
-   `fatal: 'feature/' is not a valid branch name`. Registration validates declared
-   `--capture` against the outputs schema but never checks that INPUTS are satisfiable.
-   **A full spec is written** at
-   `/tmp/claude-1000/.../scratchpad/fix-member-input-validation.md` — **that path is
-   ephemeral; re-derive or rewrite it.** The other three defects of the four are fixed
-   (#99 merged) or carried.
+1. **Member-input validation at registration** — RESOLVED as a home 2026-07-29: the spec was
+   rescued verbatim into [member-input-validation](./member-input-validation.md) before its
+   ephemeral scratchpad died. Building awaits operator sign-off (it changes registration
+   behavior). The other three defects of the four are fixed (#99 merged) or carried.
 2. **Decide whether agent pushes run the pre-push hook.** An agent had silently set
    `core.hooksPath` on the SHARED agent clone while testing #100; it would have armed itself
    on the next worktree cut from main, making every agent push run the full lint in an
@@ -102,12 +109,14 @@ Nothing below is restated here — go to the plan.
 
 - **14 chain rows**, all finalized, including six dead `kimi-*` registrations. No
   `h chain rm` until **PR #97** lands — that PR is the cleanup tool.
-- **`x-w0`** — a saved workflow published by the unmocked test; currently the saved-workflow
-  registry's ONLY entry. Delete once §2 of live-state-containment is fixed.
-- **18 `/tmp/verify-*` and `/tmp/fix*` git worktrees** off the primary clone —
-  `git worktree prune` after removing them; several have branches (`tmp-fix98*`,
-  `tmp-fix100`) that can be deleted.
-- A stale `feature/kimi-integration` worktree in the agent workspace.
+- **`x-w0`** — a saved workflow published by the unmocked test. Its CAUSE is fixed
+  (live-state-containment §2.2, pytest-socket); the row itself remains — deleting it via
+  raw state writes was permission-blocked 2026-07-29, so it waits for PR #97's `h chain rm`
+  sibling or an operator-allowed `state_delete`.
+- ~~18 `/tmp/verify-*` and `/tmp/fix*` git worktrees~~ — CLEANED 2026-07-29 (worktrees
+  removed, `tmp-*` branches deleted, pruned).
+- ~~A stale `feature/kimi-integration` worktree in the agent workspace~~ — CLEANED
+  2026-07-29 along with all kimi worktrees/branches (local, agent-workspace, remote).
 
 ---
 

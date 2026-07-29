@@ -1,7 +1,16 @@
 # Moonshot Kimi as an h executor
 
-Status: Active — Route A built and panel-reviewed as PR #98 (branch `feature/kimi-int3`, NOT merged); the wire is proven live but the h plumbing is not
+Status: Complete — PR #98 MERGED 2026-07-29 (`fb08be6`) on full evidence: gate green on the
+merge result, live e2e `run-kimi → kimi-agent → claude CLI → Moonshot` COMPLETED with tool
+use ($0.27), PR CI green on the self-hosted runner, review loop (claude+openhands panel →
+revise → re-review) finalized CLEAN
 Established: 2026-07-28
+Lifted to: CLAUDE.md (kimi-agent app-tree entry, `run-kimi` activity, the Moonshot
+limitations gotcha — landed with the PR itself); the KIMI_MODEL-not-AGENT_MODEL convention
+is encoded at its points of use (`cli/scripts/run-kimi-agent.sh` comment, `.env.example`,
+docker-compose.yml); `run-kimi` sits in the gated activity map so the executor policy
+(docs/plans/live-state-containment.md §2.3) covers kimi with no extra wiring; Route B/C
+research stays in this archived body as the record of the road not taken.
 
 **Resume point: [harness-batch-continuation](./harness-batch-continuation.md) §1.** In short:
 #98 is green on the full gate with 19 of 20 review threads resolved, and the model id was
@@ -263,3 +272,15 @@ them together would fuse an integration with a refactor.
   visible from the vendor docs, and the existing DeepSeek precedent hides both because it
   runs the host CLI rather than the runner. Route A recommended, C rejected as a build
   target (it would displace the live DeepSeek fallback), B deferred with a trigger.
+
+## Log
+
+- 2026-07-29 — Driven to merge in one session: main merged into the branch (the one conflict
+  was the activity registry — run-kimi joined the new GATED map, auto-covered by the executor
+  policy); found+fixed the ambient-AGENT_MODEL bleed (a claude-* id would have routed to
+  Moonshot → 404 on every run; now KIMI_MODEL per the repo's per-agent-var convention); full
+  gate green on the merge result; the live e2e acceptance run COMPLETED with 2 tool calls;
+  the val-98 review loop found real issues in round 1 (dead import, missing compose model
+  aliases), the revise leg fixed them unattended, round 2 was CLEAN; PR CI green on
+  h-runner-1 at the final head; squash-merged as fb08be6. Litter cleaned: kimi worktrees +
+  branches (local, agent-workspace, remote), the /tmp/kimi-live stray agent.
