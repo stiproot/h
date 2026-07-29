@@ -32,13 +32,42 @@ def _executor_shortname(name: str) -> str:
     return run_activity.removeprefix("run-")
 
 
+def _entries(policy: dict) -> list[dict]:
+    """The policy's denied list as entries (the wire is already normalized by the GET route,
+    but tolerate the pre-provenance string shape defensively)."""
+    out: list[dict] = []
+    for d in policy.get("denied", []):
+        if isinstance(d, str):
+            out.append({"name": d, "reason": "operator", "deniedAt": policy.get("updatedAt", "")})
+        else:
+            out.append(d)
+    return out
+
+
+def _policy_cell(entry: dict | None) -> str:
+    # Compact on purpose — rich truncates wide cells; provenance detail rides `h agents list`'s
+    # denied summary line below the table and the gate's refusal message.
+    if entry is None:
+        return "allowed"
+    return "auto-denied" if entry.get("reason") == "usage-limited" else "DENIED"
+
+
+def _print_denied(entries: list[dict]) -> None:
+    parts = []
+    for e in sorted(entries, key=lambda e: e["name"]):
+        until = f", until {e['until']}" if e.get("until") else ""
+        parts.append(f"{e['name']} ({e['reason']}{until})")
+    console.print("denied: " + (", ".join(parts) or "(none)"))
+
+
 @app.command("list")
 def list_() -> None:
-    """List all workflow-invokable agents, their identities, and the denied set."""
+    """List all workflow-invokable agents, their identities, and the denied set (with
+    provenance: operator denies never expire; auto usage-limited denies carry an expiry)."""
     try:
-        denied = set(workflow_svc.exec_policy_get().get("denied", []))
+        entries = {e["name"]: e for e in _entries(workflow_svc.exec_policy_get())}
     except Exception:
-        denied = set()  # workflow-svc down: the table still lists; policy column shows unknown
+        entries = {}  # workflow-svc down: the table still lists; policy column shows unknown
         console.print("[yellow]workflow-svc unreachable — policy column unavailable[/yellow]")
 
     seen: set[str] = set()
@@ -49,32 +78,34 @@ def list_() -> None:
             continue
         seen.add(agent_id)
         url = AGENT_URLS.get(agent_id, "-")
-        policy = "DENIED" if run_activity.removeprefix("run-") in denied else "allowed"
+        policy = _policy_cell(entries.get(run_activity.removeprefix("run-")))
         rows.append((name, run_activity, agent_id, url, policy))
 
     table = Table("agent", "runActivity", "agentId", "url", "policy", title=f"agents ({len(rows)})")
     for row in rows:
         table.add_row(*row)
     console.print(table)
+    if entries:
+        _print_denied(list(entries.values()))
 
 
 @app.command("deny")
 def deny(names: list[str] = typer.Argument(..., help="Agent names to deny (e.g. codex).")) -> None:
-    """Deny executors engine-wide: every fire path refuses them until allowed again."""
-    shortnames = [_executor_shortname(n) for n in names]
-    current = set(workflow_svc.exec_policy_get().get("denied", []))
-    updated = sorted(current | set(shortnames))
-    policy = workflow_svc.exec_policy_set(updated)
-    console.print(f"denied: {', '.join(policy['denied']) or '(none)'}")
+    """Deny executors engine-wide: every fire path refuses them until allowed again. An
+    operator deny never expires and upgrades any automatic usage-limited entry."""
+    shortnames = {_executor_shortname(n) for n in names}
+    kept = [e for e in _entries(workflow_svc.exec_policy_get()) if e["name"] not in shortnames]
+    # New denies ride as bare names — the route stamps them as operator entries at write time.
+    policy = workflow_svc.exec_policy_set(kept + sorted(shortnames))
+    _print_denied(_entries(policy))
 
 
 @app.command("allow")
 def allow(
     names: list[str] = typer.Argument(..., help="Agent names to re-allow (e.g. codex)."),
 ) -> None:
-    """Remove executors from the denied set."""
+    """Remove executors from the denied set — lifts operator AND auto entries alike."""
     shortnames = {_executor_shortname(n) for n in names}
-    current = set(workflow_svc.exec_policy_get().get("denied", []))
-    updated = sorted(current - shortnames)
+    updated = [e for e in _entries(workflow_svc.exec_policy_get()) if e["name"] not in shortnames]
     policy = workflow_svc.exec_policy_set(updated)
-    console.print(f"denied: {', '.join(policy['denied']) or '(none)'}")
+    _print_denied(_entries(policy))

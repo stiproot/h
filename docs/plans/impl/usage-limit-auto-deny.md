@@ -1,8 +1,14 @@
 # Auto-deny on usage-limit: the engine fences an exhausted provider itself
 
-Status: Planning — the executor-policy gate exists and is live; the trigger wiring is designed
-in outline only, and the row-shape/expiry questions below need settling before building
+Status: Complete — built, unit-tested, and deployed 2026-07-29 (operator green-lit the design
+the same day); the automatic trigger's LIVE validation happens on the next real usage-limited
+run — the wiring is engine-side and covered by scan tests
 Established: 2026-07-29
+Lifted to: the CLAUDE.md `exec:` registry bullet (row shape with provenance/expiry, the two
+writers, the same-agent-fallback fail-fast semantics); the decision surface in
+`domain/exec-policy.ts` (normalizeDenied/activeDenial/mergeAutoDeny + DEFAULT_AUTO_DENY_MS,
+each carrying its why); the watcher wiring in `domain/watch-scan.ts` (executeAutoDeny beside
+executeFinalize); scan + domain + CLI tests.
 
 ## The idea
 
@@ -67,3 +73,18 @@ wiring is small. What needs planning is the semantics.
 - 2026-07-29 — Stub created out of the live-state-containment session: the manual deny was
   built and live-verified the same day; the operator asked for the automatic trigger to be
   planned properly rather than bolted on.
+
+## Log
+
+- 2026-07-29 — Green-lit and built in one pass. The five Planning questions resolved as: (1)
+  row shape evolved to provenance entries, bare strings still read as operator entries (no
+  migration — the day-old live row normalizes on read); (2) expiry via a single conservative
+  DEFAULT_AUTO_DENY_MS (6h) on auto entries only, operator entries never expire, `h agents
+  allow` lifts either; (3) fallback composition: a DIFFERENT-agent fallback is untouched; a
+  SAME-agent deferred continuation is refused while the fence holds — deliberate fail-fast,
+  the deny expiry is the effective retry gate (encoded at DEFAULT_AUTO_DENY_MS's definition);
+  (4) panels: sibling branches naming the fenced executor fail loud at the gate, consistent
+  with §2.3's loud-refusal stance; (5) flap resistance: deny on first signal (classify-stop is
+  positive-match-only; a wrong deny is bounded by expiry + one CLI command). mergeAutoDeny is
+  the safety core: never downgrades operator entries, idempotent across scan ticks, replaces
+  only expired auto entries. Live-fire validation deferred to the next real usage-limited run.

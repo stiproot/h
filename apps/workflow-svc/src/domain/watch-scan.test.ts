@@ -9,6 +9,8 @@ import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "./model
 import { emptyLedger } from "./models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest } from "./models/workflow.model.ts";
 import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
+import { ExecPolicyStore, type ExecPolicyStoreService } from "./ports/IExecPolicyStore.ts";
+import type { ExecPolicy } from "./models/exec.model.ts";
 import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
@@ -115,12 +117,30 @@ function memorySchedStore(): { service: CronStoreService; sched: Map<string, Sch
   };
 }
 
+// In-memory exec-policy store so the auto-deny's writes are observable.
+function memoryExecPolicyStore(): {
+  service: ExecPolicyStoreService;
+  saved: ExecPolicy[];
+  current: () => ExecPolicy | undefined;
+} {
+  const saved: ExecPolicy[] = [];
+  return {
+    saved,
+    current: () => saved[saved.length - 1],
+    service: {
+      get: () => Effect.succeed(Option.fromNullable(saved[saved.length - 1])),
+      save: (policy) => Effect.sync(() => void saved.push(policy)),
+    },
+  };
+}
+
 function env(
   ws: WatchStoreService,
   invoker: WorkflowInvokerService,
   wfStore: WorkflowStoreService = stubWorkflowStore(),
   publisher: DaprPublisherService = capturingPublisher().service,
   cron: CronStoreService = memorySchedStore().service,
+  execPolicy: ExecPolicyStoreService = memoryExecPolicyStore().service,
 ) {
   return Layer.mergeAll(
     Layer.succeed(WatchStore, ws),
@@ -128,6 +148,7 @@ function env(
     Layer.succeed(WorkflowStore, wfStore),
     Layer.succeed(DaprPublisherTag, publisher),
     Layer.succeed(CronStore, cron),
+    Layer.succeed(ExecPolicyStore, execPolicy),
   );
 }
 
@@ -310,6 +331,63 @@ describe("scanWatchesEffect", () => {
     expect(report.finalized).toEqual(["wf-1:usage-limited"]);
     expect(mem.rows.get("wf-1")).toMatchObject({ status: "finalized", outcome: "usage-limited" });
     expect(pub.events[0]).toMatchObject({ outcome: "usage-limited" });
+  });
+
+  it("auto-denies the limited executor on a usage-limited finalize (docs/plans/impl/usage-limit-auto-deny.md)", async () => {
+    // The fleet fence: the run key carries the agentId (claude-agent), so the finalize writes a
+    // usage-limited exec:config entry for `claude` — every subsequent fire on any path is refused
+    // at the activity gate until the entry expires or the operator lifts it.
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:claude-agent:123", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:123", "usage-limited");
+    const exec = memoryExecPolicyStore();
+    const report = await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            memorySchedStore().service,
+            exec.service,
+          ),
+        ),
+      ),
+    );
+    expect(report.autoDenied).toEqual(["claude"]);
+    const entry = exec.current()!.denied[0]!;
+    expect(entry).toMatchObject({ name: "claude", reason: "usage-limited" });
+    expect((entry as { until?: string }).until).toBeDefined();
+  });
+
+  it("auto-deny never downgrades an operator entry (already denied — nothing written)", async () => {
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runStopReasons.set("run:wf-1:claude-agent:123", "usage-limited");
+    const exec = memoryExecPolicyStore();
+    exec.saved.push({ denied: ["claude"], updatedAt: "2026-07-29T00:00:00Z" }); // operator shape
+    const report = await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            memorySchedStore().service,
+            exec.service,
+          ),
+        ),
+      ),
+    );
+    expect(report.autoDenied).toEqual([]);
+    expect(exec.saved).toHaveLength(1); // the operator row is untouched
   });
 
   it("does NOT refine a budget-terminated outcome even if a mirror says usage-limited", async () => {

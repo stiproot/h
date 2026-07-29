@@ -213,8 +213,9 @@ def exec_policy_get() -> Any:
     return resp.json()
 
 
-def exec_policy_set(denied: list[str]) -> Any:
-    """Replace the denied-executor set (workflow-svc is the exec: registry's single writer)."""
+def exec_policy_set(denied: list[Any]) -> Any:
+    """Replace the denied-executor set — entries (kept as-is) and/or bare names (stamped as
+    operator entries by the route). workflow-svc owns writing the exec: registry."""
     resp = httpx.post(f"{WORKFLOW_URL}/exec/policy", json={"denied": denied}, timeout=10)
     resp.raise_for_status()
     return resp.json()

@@ -17,7 +17,9 @@ import {
   type WorkflowRequest,
   toRequest,
 } from "./models/workflow.model.ts";
+import { executorFromAgentId, mergeAutoDeny } from "./exec-policy.ts";
 import { CronStore } from "./ports/ICronStore.ts";
+import { ExecPolicyStore } from "./ports/IExecPolicyStore.ts";
 import { WatchStore } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "./ports/IWorkflowStore.ts";
@@ -40,11 +42,14 @@ const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
 // CronStore is required because the usage-limit fallback arms a cron:sched row (a deferred
 // continuation under a different agent) — the watcher never sleeps; the schedule engine fires it.
+// ExecPolicyStore: the auto-deny — a usage-limited finalize fences the executor engine-wide
+// (docs/plans/impl/usage-limit-auto-deny.md).
 export type WatchScanEnv =
   | WatchStore
   | WorkflowInvoker
   | WorkflowStore
   | CronStore
+  | ExecPolicyStore
   | DaprPublisherTag;
 
 export type WatchScanReport = {
@@ -54,6 +59,7 @@ export type WatchScanReport = {
   terminated: string[];
   escalated: string[];
   fallbacks: string[];
+  autoDenied: string[];
   errors: string[];
   disabled?: boolean;
 };
@@ -195,6 +201,7 @@ export const scanWatchesEffect = (
       terminated: [],
       escalated: [],
       fallbacks: [],
+      autoDenied: [],
       errors: [],
     };
     if (!enabled) return { ...report, disabled: true };
@@ -295,6 +302,47 @@ const saveFenced = (
     return true;
   });
 
+/**
+ * The auto-deny (docs/plans/impl/usage-limit-auto-deny.md): a usage-limited finalize fences the
+ * limited EXECUTOR engine-wide by merging a usage-limited entry into `exec:config`, so the
+ * whole fleet stops trying that provider instead of every chain discovering the limit
+ * independently. The executor is read off the run key that carried the usage-limited stop
+ * reason (`run:<instanceId>:<agentId>:<ts>` — the ledger's key shape). mergeAutoDeny is
+ * where the safety lives: it never downgrades an operator entry and is idempotent across
+ * scan ticks. Best-effort by design — a failed policy write must not fail the finalize —
+ * but never silent: failures land in report.errors.
+ */
+const executeAutoDeny = (
+  instanceId: string,
+  nowIso: string,
+  report: WatchScanReport,
+): Effect.Effect<void, never, WatchStore | ExecPolicyStore> =>
+  Effect.gen(function* () {
+    const ws = yield* WatchStore;
+    const keys = yield* ws.listRunKeys();
+    const mine = keys.filter((key) => key.startsWith(`run:${instanceId}:`));
+    for (const key of mine) {
+      const reason = yield* ws.getRunStopReason(key);
+      if (reason !== "usage-limited") continue;
+      const agentId = key.slice(`run:${instanceId}:`.length).split(":")[0];
+      if (!agentId) return;
+      const executor = executorFromAgentId(agentId);
+      const store = yield* ExecPolicyStore;
+      const policy = yield* store.get();
+      const next = mergeAutoDeny(Option.getOrUndefined(policy), executor, nowIso);
+      if (next === null) return; // operator-denied or already fenced — nothing to write
+      yield* store.save(next);
+      report.autoDenied.push(executor);
+      return;
+    }
+  }).pipe(
+    Effect.catchAll((err) =>
+      Effect.sync(() => {
+        report.errors.push(`${instanceId}: auto-deny skipped — ${String(err)}`);
+      }),
+    ),
+  );
+
 const executeFinalize = (
   row: WatchRow,
   observedOutcome: WatchOutcome,
@@ -339,6 +387,9 @@ const executeFinalize = (
         costGap,
       })
       .pipe(Effect.ignore);
+    if (outcome === "usage-limited") {
+      yield* executeAutoDeny(row.instanceId, endedAt, report);
+    }
     if (row.policy.escalate?.onOutcome.includes(outcome)) {
       yield* executeEscalate(row, outcome, costUsd, nowMs, traceparent, report);
     }

@@ -67,7 +67,7 @@ Nothing below is restated here — go to the plan.
 | Remaining audit items (phases 2, 4, 5) | [hardening-audit/](./hardening-audit/) | **Re-verify before working any of them** — 5 of 11 phase-1 items were already fixed |
 | Kimi integration | [impl/moonshot-kimi-integration](./impl/moonshot-kimi-integration.md) | **MERGED 2026-07-29** — see §1 |
 | Member-input validation at registration | [impl/member-input-validation](./impl/member-input-validation.md) | **BUILT 2026-07-29** (operator-approved) — registration refuses unsatisfiable members pre-publish |
-| Auto-deny an executor on a usage-limited run | [usage-limit-auto-deny](./usage-limit-auto-deny.md) | Spawned 2026-07-29 from the executor-policy work; Planning |
+| Auto-deny an executor on a usage-limited run |  [impl/usage-limit-auto-deny](./impl/usage-limit-auto-deny.md) | **BUILT 2026-07-29** (green-lit) — watcher auto-fences a usage-limited executor; live-fire on the next real limit |
 
 ### Homeless items that still need doing
 

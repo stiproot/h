@@ -1,7 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect, Option } from "effect";
 
-import { deniedMessage, executorFromActivity, isExecutorDenied } from "../domain/exec-policy.ts";
+import { activeDenial, deniedMessage, executorFromActivity } from "../domain/exec-policy.ts";
 import { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
 import { runActivity } from "./activity-runtime.ts";
 import { cloneRepoActivity } from "./activities/clone-repo.activity.ts";
@@ -43,8 +43,13 @@ export function gatedExecutor(activityName: string, fn: ActivityFn): ActivityFn 
       Effect.gen(function* () {
         const store = yield* ExecPolicyStore;
         const policy = yield* store.get();
-        if (isExecutorDenied(Option.getOrUndefined(policy), executor)) {
-          return yield* Effect.fail(new Error(deniedMessage(executor)));
+        const denial = activeDenial(
+          Option.getOrUndefined(policy),
+          executor,
+          new Date().toISOString(),
+        );
+        if (denial !== undefined) {
+          return yield* Effect.fail(new Error(deniedMessage(executor, denial)));
         }
       }),
       traceparent,
