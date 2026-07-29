@@ -1,9 +1,12 @@
 {{- /*
-run-itest overlay template — appends a machine-executed integration-test step BEFORE create-pr
-(docs/plans/worktree-integration-gate.md Phase 2). The step runs the harness from the trusted
-origin/main base ref against the worktree, classifying failure as infra vs assertion. A nonzero
-exit fails the step structurally — create-pr never runs. Set itest.skip=true as a break-glass
-when the cluster is unavailable; the skip is surfaced in the PR body, never silently hidden.
+run-itest overlay template — appends a machine-executed integration-test step as a post-PR quality
+signal (docs/plans/worktree-integration-gate.md Phase 2). The overlay system merges by step id:
+create-pr's step carries id "implement" and is folded into the implement step at compose time, while
+run-itest's step carries id "itest" and is appended afterwards — so in the composed order the PR is
+opened during "implement" and the gate runs after. A nonzero exit fails the workflow structurally
+(classified infra vs assertion), surfacing the gate result on the already-open PR. Set itest.skip=true
+as a break-glass when the cluster is unavailable; the skip is surfaced in the evidence, never silently
+hidden.
 
 Compose (operator cutover after run-itest activity is deployed):
   h template compose implement verify run-itest create-pr arm-revise-pr --save implement-pr

@@ -15,6 +15,8 @@
 #
 set -euo pipefail
 
+# Initial REPO_ROOT from BASH_SOURCE — correct when running in-place; overridden below when the
+# script is materialised to a temp dir and a worktree path is passed as $1.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 K3D_REGISTRY="${K3D_REGISTRY:-localhost:5111}"
 EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
@@ -51,7 +53,12 @@ if [[ "${1:-}" == "--gc" ]]; then
 fi
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
-WORKTREE="${1:-${REPO_ROOT}}"
+# Canonicalize WORKTREE to an absolute path, then re-derive REPO_ROOT and EVIDENCE_BASE from it.
+# This ensures the harness works correctly when materialised to a temp dir and invoked with the
+# real worktree path as $1 (the run-itest activity's D7 isolation pattern).
+WORKTREE="$(cd "${1:-${REPO_ROOT}}" && pwd)"
+REPO_ROOT="${WORKTREE}"
+EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
 ID="$(date +%Y%m%d%H%M%S)-$$"
 NS="h-itest-${ID}"
 EVIDENCE_DIR="${EVIDENCE_BASE}/${ID}"
@@ -151,6 +158,9 @@ fi
 # ── 4. Generate per-run overlay ───────────────────────────────────────────────
 OVERLAY_DIR="${EVIDENCE_DIR}/overlay"
 mkdir -p "${OVERLAY_DIR}/patches"
+# Copy the base kustomize tree into the overlay dir so kustomize's LoadRestrictionsRootOnly is
+# satisfied (absolute paths outside the overlay root are rejected by kubectl apply -k ≥ v5).
+cp -r "${WORKTREE}/k8s/itest/base" "${OVERLAY_DIR}/base"
 
 cat >"${OVERLAY_DIR}/patches/cron-5s.yaml" <<'EOF'
 apiVersion: dapr.io/v1alpha1
@@ -170,7 +180,7 @@ kind: Kustomization
 namespace: ${NS}
 
 resources:
-  - ${WORKTREE}/k8s/itest/base
+  - ./base
 
 images:
   - name: h/workflow-svc
@@ -289,11 +299,12 @@ if [[ -z "${WF_ROW}" ]]; then
 fi
 
 WF_STATUS=$(echo "${WF_ROW}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || echo "")
+# WfRow.resolved is the goal-handshake field (boolean) written by write-wf-row from the
+# structured output's `goal: "RESOLVED"` field — there is no top-level `structured` key.
 GOAL=$(echo "${WF_ROW}" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
-s=d.get('structured') or {}
-print(s.get('goal',''))
+print('RESOLVED' if d.get('resolved') else '')
 " 2>/dev/null || echo "")
 
 echo "[itest] wf:row status=${WF_STATUS} goal=${GOAL}"
