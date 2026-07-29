@@ -52,15 +52,15 @@ jobs:
       - name: Lint (Python ruff + import-linter hex contracts)
         run: make lint-py
 
-      - name: Test (Python: agent-core, langgraph-agent, dapr-agent, dapr-claude-loop-agent)
-        run: |
-          uv run --package agent-core pytest packages/py/agent-core
-          uv run --package langgraph-agent pytest apps/langgraph-agent/tests
-          uv run --package dapr-agent pytest apps/dapr-agent/tests
-          uv run --package dapr-claude-loop-agent pytest apps/dapr-claude-loop-agent/tests
-
-      - name: Set up Helm
+      # Helm must be installed BEFORE the Python tests: h-cli's chart-render and golden tests
+      # SKIP silently without it (6 of them), which is green-by-absence — a pass that proves
+      # nothing. It is set up here, ahead of make test-py, for exactly that reason.
+      - name: Set up Helm (required — h-cli chart tests skip silently without it)
         uses: azure/setup-helm@v4
 
-      - name: Test (h CLI pytest, scoped to cli/h/tests)
-        run: uv run --package h-cli pytest cli/h/tests
+      # Delegates to the Makefile so CI and a local run cannot drift — `make test-py` is the
+      # single source of truth for the Python test surface (all 7 suites, h-cli included).
+      # Do NOT re-list the suites here; the two lists had already diverged once, omitting
+      # h-cli's 281 tests from `make test` and agent-server's 22 from both.
+      - name: Test (Python — all 7 suites, via make test-py)
+        run: make test-py
