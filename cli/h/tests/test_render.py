@@ -550,13 +550,13 @@ def test_plan_publish_golden(snapshot) -> None:
 
 
 def test_run_itest_golden(snapshot) -> None:
-    """run-itest overlay atom (Phase 2 gate): a lone run-itest step carrying the worktree path token."""
+    """run-itest overlay atom (Phase 2 gate): a lone itest step carrying the worktree path token."""
     rendered = helm.render_workflow("run-itest", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
 
 def test_run_itest_skip_golden(snapshot) -> None:
-    """run-itest skip mode (break-glass): step emits skip=true + reason instead of the path token."""
+    """run-itest skip mode (break-glass): step emits skip+reason instead of the path token."""
     rendered = helm.render_workflow(
         "run-itest",
         values={"publish": "true", "itest.skip": "true"},
