@@ -14,6 +14,7 @@ import { runClaudeManagedActivity } from "./activities/run-claude-managed.activi
 import { runCodexActivity } from "./activities/run-codex.activity.ts";
 import { runDaprAgentActivity } from "./activities/run-dapr-agent.activity.ts";
 import { runDaprClaudeLoopActivity } from "./activities/run-dapr-claude-loop.activity.ts";
+import { runKimiActivity } from "./activities/run-kimi.activity.ts";
 import { runLanggraphActivity } from "./activities/run-langgraph.activity.ts";
 import { runOpenhandsActivity } from "./activities/run-openhands.activity.ts";
 import { runPiActivity } from "./activities/run-pi.activity.ts";
@@ -68,6 +69,7 @@ const registry: Record<string, ActivityFn> = Object.fromEntries(
     "run-claude-managed": runClaudeManagedActivity,
     "run-codex": runCodexActivity,
     "run-dapr-claude-loop": runDaprClaudeLoopActivity,
+    "run-kimi": runKimiActivity,
     "run-langgraph": runLanggraphActivity,
     "run-openhands": runOpenhandsActivity,
     "run-pi": runPiActivity,

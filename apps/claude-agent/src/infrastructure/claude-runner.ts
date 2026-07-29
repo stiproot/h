@@ -3,11 +3,9 @@ import { join } from "path";
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
 import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
-import { AgentRunError } from "core";
+import { AgentRunError, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
 import { Cause, Config, Effect, Layer, Option } from "effect";
-
-import { mergeMcpConfig } from "./mcp-config.ts";
 
 const AGENT_ID = "claude-agent";
 
@@ -68,49 +66,6 @@ const resolveConfig = claudeRunnerConfig.pipe(
     }),
   ),
 );
-
-/**
- * Provisions the run cwd's `.mcp.json` from `src` per `mode` (exported for tests):
- *
- * - `merge`: h's servers merge into whatever `.mcp.json` the cwd already has (the project's
- *   own servers and top-level keys survive; h's win on a name conflict). A missing `src` is
- *   skipped — merge mode is a convenience, not a guarantee.
- * - `replace`: the cwd's config is discarded entirely and only `src`'s servers survive — the
- *   minimal-surface posture, where the cwd is a target repo whose `.mcp.json` must never reach
- *   an agent executing untrusted specs. Fails CLOSED: a missing `src` is a defect (the run
- *   aborts loudly), because silently skipping the rewrite would leave the target repo's own
- *   servers — potentially h's control-plane set — in place.
- */
-export const provisionMcpConfig = (
-  cwd: string,
-  src: string,
-  mode: "merge" | "replace",
-): Effect.Effect<void, unknown, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const mcpDest = join(cwd, ".mcp.json");
-    if (!(yield* fs.exists(src))) {
-      if (mode === "replace") {
-        return yield* Effect.dieMessage(
-          `MCP_CONFIG_MODE=replace requires MCP_CONFIG_SRC to exist; missing: ${src}`,
-        );
-      }
-      return;
-    }
-    // Replace mode never reads the cwd config it would discard.
-    const existing =
-      mode === "replace"
-        ? null
-        : (yield* fs.exists(mcpDest))
-          ? yield* fs.readFileString(mcpDest)
-          : null;
-    const incoming = yield* fs.readFileString(src);
-    const merged = yield* Effect.try({
-      try: () => mergeMcpConfig(existing, incoming, mode),
-      catch: (cause) => cause,
-    });
-    yield* fs.writeFileString(mcpDest, merged);
-  });
 
 // The full run flow as one Effect: resolve the workspace dir, provision it, merge the MCP
 // config, start the run ledger, invoke the claude CLI, and assemble the response. Failures

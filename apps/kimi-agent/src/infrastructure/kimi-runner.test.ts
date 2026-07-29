@@ -46,9 +46,7 @@ describe("provisionMcpConfig", () => {
     expect(result.someProjectSetting).toBeUndefined();
   });
 
-  it("replace mode FAILS CLOSED when the source file is missing (defect, run aborts)", async () => {
-    // Silently skipping would leave the target repo's own .mcp.json — potentially h's
-    // control-plane servers — in place for the agent executing untrusted specs.
+  it("replace mode FAILS CLOSED when the source file is missing", async () => {
     writeFileSync(join(cwd, ".mcp.json"), CWD_SERVERS);
     const exit = await run(join(srcDir, "nope.json"), "replace");
     expect(Exit.isFailure(exit)).toBe(true);
@@ -56,7 +54,6 @@ describe("provisionMcpConfig", () => {
       expect(Cause.pretty(exit.cause)).toContain("MCP_CONFIG_MODE=replace requires");
       expect(Cause.pretty(exit.cause)).toContain("nope.json");
     }
-    // And the hostile config was not touched — but the run died before spawning the agent.
     const untouched = JSON.parse(readFileSync(join(cwd, ".mcp.json"), "utf8"));
     expect(untouched.mcpServers.dapr).toBeDefined();
   });

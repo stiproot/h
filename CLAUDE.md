@@ -188,6 +188,10 @@ apps/codex-agent/src/                    # codex-agent — OpenAI Codex CLI codi
 ├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("codex-agent")
 └── infrastructure/codex-runner.ts        # IAgentRunner impl using CodexInvokerLive (agent-cli); honours optional cwd/model; /run, /setup, /dapr/subscribe come from agent-server
 
+apps/kimi-agent/src/                      # kimi-agent — Claude Code CLI × Moonshot Anthropic-compat endpoint (Fastify + Dapr sidecar)
+├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), starts Fastify; uses makeTracingLive("kimi-agent")
+└── infrastructure/kimi-runner.ts         # IAgentRunner impl using ClaudeInvokerLive (agent-cli); custom runner bypasses LiteLLM preflight; /run, /setup, /dapr/subscribe come from agent-server
+
 apps/dapr-agent/src/                      # dapr-agent (thin wrapper over agent-core)
 ├── main.py                               # composition root – registers shared agent-server routes + /workflow (babysitter); opt-in workflow orchestration when WORKFLOWS_MCP_URL is set (merges the workflow toolset + appends the workflow-orchestrator skill)
 ├── infrastructure/dapr_agent_runner.py   # IAgentRunner impl – delegates to agent_core's ReAct loop (OpenAIChatAdapter); merges the workflow-mcp toolset when enabled
@@ -253,7 +257,7 @@ apps/workflow-svc/src/
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
-│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
+│       ├── setup / clone-repo / create-worktree / run-{claude,codex,openhands,pi,dapr-agent,dapr-claude-loop,claude-managed,langgraph,kimi} / copy-session .activity.ts  # provisioning + agent-run + output-copy; every run-* honors an optional outputContract step input (validated fenced json → envelope `structured`, mismatch fails the step)
 │       ├── write-wf-row.activity.ts                  # the run writes its OWN wf: row (running→done/failed + structured goal: RESOLVED); BEST-EFFORT (§3/§10)
 │       ├── register-cron.activity.ts                 # §10 arm-* : arm a recur cron from the run's closing bracket (planCron + guard: the structured block's `pr` for arm-revise-pr); LOUD, idempotent
 │       └── register-discover.activity.ts             # §10 arm-* : a provision workflow's step that registers a discovery cron (fired by `h cron discover add`); LOUD
@@ -317,7 +321,8 @@ packages/js/agent-server/src/                # shared HTTP contract for agent se
 └── runner.ts         # IAgentRunner port (run request → response)
 
 packages/js/core/src/
-├── index.ts               # re-exports
+├── index.ts               # re-exports (mergeMcpConfig, provisionMcpConfig, AgentRequest, AgentResponse, AgentRunError, …)
+├── mcp-config.ts          # mergeMcpConfig – deterministic merge of h's mcp servers into a project's .mcp.json; provisionMcpConfig – Effect that provisions the run cwd's .mcp.json from src per mode
 └── types/agent.ts         # AgentRequest (+ workspaceId), AgentResponse (+ costUsd, toolCalls, runId)
 
 packages/js/core-dapr/src/
@@ -613,6 +618,7 @@ BuildKit cache mounts are used for both `bun install` (`id=bun-store`) and the t
 - **Python agents base image** — all Python agents use `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` (not Docker Hub). Workspace members (`dapr-agent`, `dapr-claude-loop-agent`, `langgraph-agent`, `workflow-agent`) build against the root `uv.lock` with `uv sync --frozen --no-dev --package <app>` (two-phase: `--no-install-workspace` for cached external deps, then a second sync to install the editable workspace packages). The standalone `claude-managed-agent` installs from its own `uv.lock` via `uv sync --frozen --no-dev`.
 - **Dapr Conversation API tool calling** — `DaprChatClient` (alpha2) does not support function/tool calling. The Python agents use `OpenAIChatClient` (OpenAI wire protocol) pointed at the LiteLLM proxy instead.
 - **MCP server per-connection isolation** — `workflow-mcp` creates a new `Server` instance per SSE connection. A single shared instance throws "Already connected to a transport" on reconnect.
+- **Kimi agent gaps** — `ENABLE_TOOL_SEARCH=false` and WebFetch are both injected/disabled because Moonshot's Anthropic-compat endpoint does not support them. These are documented Moonshot limitations, not bugs.
 - **Resiliency policy** — `dapr/local/resiliency.yaml` sets a 1-hour outbound timeout for all agent app-ids. Without it the Dapr Workflow scheduler times out long-running agent activities before they complete.
 - **Dapr CRDs survive `helm uninstall`** — Helm does not remove CRDs on uninstall by design. `make dapr-uninstall` explicitly deletes all `*.dapr.io` CRDs after uninstalling the release. If you uninstall manually and then try to reinstall, you will get a field-manager conflict; run `make dapr-uninstall` to clean up properly.
 - **Dapr mTLS cert rotation (Kubernetes)** — Dapr sidecars and control-plane components hold short-lived mTLS certs issued by `dapr-sentry`. These are renewed automatically, but if the Kubernetes service account token used to authenticate to Sentry expires (possible on long-running local clusters), renewal fails and the cluster enters a degraded state. Symptom: persistent `DaprBuiltInActorNotFoundRetries` warnings and workflows not executing. Fix: `make dapr-uninstall && make dapr-install` to issue a fresh CA and all certs from scratch.

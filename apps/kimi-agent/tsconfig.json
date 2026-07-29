@@ -14,13 +14,10 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
     "rewriteRelativeImportExtensions": true,
-    "types": ["node"],
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "rootDir": "./src"
   },
   "include": ["src"]
 }

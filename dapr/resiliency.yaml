@@ -35,3 +35,6 @@ spec:
       codex-agent:
         outbound:
           timeout: agentTimeout
+      kimi-agent:
+        outbound:
+          timeout: agentTimeout
