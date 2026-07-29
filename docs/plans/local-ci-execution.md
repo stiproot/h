@@ -43,9 +43,23 @@ A local hook is not equivalent to CI, and the gap is not hypothetical — it bit
    archive pass lengthened comment lines with the new `impl/` path segment, and #99
    lengthened two more. Only the merge failed. A pre-push hook runs on a branch and cannot
    see that; CI on the merge result can.
+3. **A review panel cannot catch a build failure — so nothing does.** A panel reviews the
+   DIFF and accepts the PR body's evidence claims. PR #98 passed FOUR review rounds and
+   eighteen findings while `bun run lint` failed on **three separate** `oxfmt` violations,
+   each introduced by a revise commit; the revise agent never ran lint, and no number of
+   further rounds would have surfaced them. Every one was found by the driver running the
+   gate by hand.
 
-A containerised local run addresses both: a clean, pinned environment, and the ability to run
-the gate against the *merge result* rather than the branch.
+   This is the strongest argument for the plan: **an executed gate turns the build result
+   into an objective input the review can read, instead of a claim it must trust.** Until
+   then the driver is the only thing standing between a false evidence claim and `main` —
+   which does not scale and did not hold (the driver also merged a PR after verifying with
+   only the JS half of the gate). Whatever runs the guards must run them on the MERGE RESULT
+   and report somewhere the loop can see.
+
+A containerised local run addresses all three: a clean, pinned environment; the ability to run
+the gate against the *merge result* rather than the branch; and an executed, reportable result
+rather than a self-reported claim.
 
 ## What the operator already has (CAPTURE THIS FIRST)
 
