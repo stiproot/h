@@ -30,8 +30,9 @@ _skip_no_ts = pytest.mark.skipif(
 
 
 def _run_activities() -> set[str]:
-    """Every `run-*` activity name registered in the engine."""
-    return set(re.findall(r'case\s+"(run-[a-z0-9-]+)"', _REGISTRY.read_text()))
+    """Every `run-*` activity name registered in the engine (the registry's name→fn map keys —
+    dashed names are quoted, so `"run-x":` is exactly a map entry)."""
+    return set(re.findall(r'"(run-[a-z0-9-]+)":', _REGISTRY.read_text()))
 
 
 def _is_shared_input(activity: str) -> bool:

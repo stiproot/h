@@ -28,6 +28,7 @@ import { assertValidCron, resolveFireAt } from "../../domain/scheduling.ts";
 import { advanceSched, registerSchedForFire } from "../../domain/schedule-scan.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { CronStore } from "../../domain/ports/ICronStore.ts";
+import type { ExecPolicyStore } from "../../domain/ports/IExecPolicyStore.ts";
 import { SourceReader } from "../../domain/ports/ISourceReader.ts";
 import { WatchStore } from "../../domain/ports/IWatchStore.ts";
 import { WfStore } from "../../domain/ports/IWfStore.ts";
@@ -42,6 +43,7 @@ export type WorkflowRoutesEnv =
   | WatchStore
   | ChainStore
   | CronStore
+  | ExecPolicyStore
   | WfStore
   | SourceReader
   | DaprPublisherTag;

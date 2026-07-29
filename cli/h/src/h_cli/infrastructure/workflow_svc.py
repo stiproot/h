@@ -206,6 +206,20 @@ def cron_list() -> Any:
     return resp.json()
 
 
+def exec_policy_get() -> Any:
+    """The executor policy row (`exec:config`) — absent reads as {denied: [], updatedAt: ""}."""
+    resp = httpx.get(f"{WORKFLOW_URL}/exec/policy", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def exec_policy_set(denied: list[str]) -> Any:
+    """Replace the denied-executor set (workflow-svc is the exec: registry's single writer)."""
+    resp = httpx.post(f"{WORKFLOW_URL}/exec/policy", json={"denied": denied}, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
 def provision_discover(
     repo: str,
     label: str,

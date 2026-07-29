@@ -139,8 +139,13 @@ used here. This section is the terse runtime-facing index.
   (the `__workflow_index__` pattern): saved workflows, `run:*` mirrors, `watch:*`,
   `chain:*`, `cron:*` (recur rows `cron:sub:*` + the discovery/fan-out cron's `cron:discover:*` /
   `cron:discover-index` + the one-shot scheduled-fire cron's `cron:sched:*` / `cron:sched-index`),
-  and `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
-  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10).
+  `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
+  written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10),
+  and `exec:` (the executor policy — the single row `exec:config` `{denied: [shortnames]}`, written
+  only by `POST /exec/policy`; the activity-registry gate wraps every `run-*` activity and REFUSES a
+  denied executor loudly at fire time on every path — chains, crons, watcher re-fires, sched
+  continuations, fallback switches, panel branches. Surface: `h agents list|deny|allow`;
+  docs/plans/live-state-containment.md §2.3).
   The convention: a registry prefix names the single component that owns writing it.
 
 The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a
