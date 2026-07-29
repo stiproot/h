@@ -5,8 +5,8 @@ import { tmpdir } from "os";
 
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
-// Hard timeout: ~20 minutes. The harness exits with its own taxonomy; this is the
-// backstop if the harness hangs (e.g. kubectl wait stalls, registry unreachable).
+// Hard timeout per attempt: ~20 minutes. The harness exits with its own taxonomy; this is
+// the backstop if the harness hangs (e.g. kubectl wait stalls, registry unreachable).
 const HARD_TIMEOUT_MS = 20 * 60 * 1000;
 
 // Exit-code taxonomy (docs/plans/worktree-integration-gate.md §B):
@@ -41,29 +41,93 @@ function getTreeHash(worktreePath: string): string {
   }
 }
 
-// Materialises the harness from the trusted base ref (origin/main), NOT from the worktree
-// (D7: the worktree cannot neuter its own gate). Writes it to a temp dir and returns the path.
+// Materialises the harness (run-itest.sh + smoke-workflow.json) from the trusted base ref
+// (origin/main), NOT from the worktree (D7: the worktree cannot neuter its own gate).
+// Both files are placed in the same temp dir so the harness finds the smoke def alongside
+// itself (the harness checks for a co-materialized smoke def before falling back to the
+// worktree copy). Returns the harness script path.
 function materializeHarness(worktreePath: string, runId: string): string {
   const tmpDir = join(tmpdir(), `h-itest-harness-${runId}`);
   mkdirSync(tmpDir, { recursive: true });
-  const scriptPath = join(tmpDir, "run-itest.sh");
-  let scriptContent: string;
-  try {
-    scriptContent = execFileSync(
-      "git",
-      ["-C", worktreePath, "show", "origin/main:scripts/itest/run-itest.sh"],
-      { encoding: "utf8", timeout: 15_000 },
-    );
-  } catch (err) {
-    // Fallback: if origin/main doesn't have the harness yet (first deploy), use HEAD.
-    scriptContent = execFileSync(
-      "git",
-      ["-C", worktreePath, "show", "HEAD:scripts/itest/run-itest.sh"],
-      { encoding: "utf8", timeout: 15_000 },
-    );
+
+  function showFromMain(gitPath: string, fallbackPath: string): string {
+    try {
+      return execFileSync("git", ["-C", worktreePath, "show", `origin/main:${gitPath}`], {
+        encoding: "utf8",
+        timeout: 15_000,
+      });
+    } catch {
+      // Fallback: if origin/main doesn't have the file yet (first deploy), use HEAD.
+      return execFileSync("git", ["-C", worktreePath, "show", `HEAD:${fallbackPath}`], {
+        encoding: "utf8",
+        timeout: 15_000,
+      });
+    }
   }
+
+  const scriptContent = showFromMain("scripts/itest/run-itest.sh", "scripts/itest/run-itest.sh");
+  const scriptPath = join(tmpDir, "run-itest.sh");
   writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
+
+  const smokeContent = showFromMain(
+    "scripts/itest/smoke-workflow.json",
+    "scripts/itest/smoke-workflow.json",
+  );
+  writeFileSync(join(tmpDir, "smoke-workflow.json"), smokeContent);
+
   return scriptPath;
+}
+
+type SpawnResult = {
+  exitCode: number;
+  output: string;
+  timedOut: boolean;
+  durationMs: number;
+};
+
+async function spawnHarness(harnessPath: string, worktreePath: string): Promise<SpawnResult> {
+  const startMs = Date.now();
+  const outputChunks: string[] = [];
+  let exitCode = -1;
+  let timedOut = false;
+
+  await new Promise<void>((resolve) => {
+    const controller = new AbortController();
+    const hardTimer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, HARD_TIMEOUT_MS);
+
+    const proc = spawn("bash", [harnessPath, worktreePath], {
+      stdio: ["ignore", "pipe", "pipe"],
+      signal: controller.signal,
+    });
+
+    const onData = (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      process.stdout.write(text);
+      outputChunks.push(text);
+    };
+    proc.stdout?.on("data", onData);
+    proc.stderr?.on("data", onData);
+
+    proc.on("close", (code) => {
+      clearTimeout(hardTimer);
+      exitCode = code ?? -1;
+      resolve();
+    });
+    proc.on("error", () => {
+      clearTimeout(hardTimer);
+      resolve();
+    });
+  });
+
+  return {
+    exitCode,
+    output: outputChunks.join(""),
+    timedOut,
+    durationMs: Date.now() - startMs,
+  };
 }
 
 type Input = {
@@ -107,55 +171,38 @@ export async function runItestActivity(
     );
   }
 
-  const outputChunks: string[] = [];
-  let exitCode = -1;
-  let timedOut = false;
+  // First attempt.
+  let result = await spawnHarness(harnessPath, worktreePath);
+  let durationMs = result.durationMs;
 
-  await new Promise<void>((resolve) => {
-    const controller = new AbortController();
-    const hardTimer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, HARD_TIMEOUT_MS);
-
-    const proc = spawn("bash", [harnessPath, worktreePath], {
-      stdio: ["ignore", "pipe", "pipe"],
-      signal: controller.signal,
-    });
-
-    const onData = (chunk: Buffer) => {
-      const text = chunk.toString("utf8");
-      process.stdout.write(text);
-      outputChunks.push(text);
-    };
-    proc.stdout?.on("data", onData);
-    proc.stderr?.on("data", onData);
-
-    proc.on("close", (code) => {
-      clearTimeout(hardTimer);
-      exitCode = code ?? -1;
-      resolve();
-    });
-    proc.on("error", () => {
-      clearTimeout(hardTimer);
-      resolve();
-    });
-  });
-
-  const durationMs = Date.now() - startMs;
-  const fullOutput = outputChunks.join("");
-  const outputTail = fullOutput.slice(-2000);
-
-  if (timedOut) {
+  if (result.timedOut) {
     throw new Error(
-      `run-itest: hard timeout after ${durationMs}ms ` + `(treeHash=${treeHash})\n\n${outputTail}`,
+      `run-itest: hard timeout after ${durationMs}ms (treeHash=${treeHash})\n\n${result.output.slice(-2000)}`,
     );
   }
 
-  const cls = classifyExit(exitCode);
-  if (exitCode !== 0) {
+  let cls = classifyExit(result.exitCode);
+
+  // Retry once on infra failure (exit 11). Assertion failures (exit 10) are never retried —
+  // they are deterministic failures of the smoke assertions, not transient infra flakes.
+  if (result.exitCode !== 0 && cls === "infra") {
+    process.stdout.write("[run-itest] infra failure on first attempt — retrying once\n");
+    const retry = await spawnHarness(harnessPath, worktreePath);
+    durationMs += retry.durationMs;
+    if (retry.timedOut) {
+      throw new Error(
+        `run-itest: hard timeout on retry after ${durationMs}ms (treeHash=${treeHash})\n\n${retry.output.slice(-2000)}`,
+      );
+    }
+    result = retry;
+    cls = classifyExit(result.exitCode);
+  }
+
+  const outputTail = result.output.slice(-2000);
+
+  if (result.exitCode !== 0) {
     throw new Error(
-      `run-itest: ${cls} failure (exit=${exitCode}, treeHash=${treeHash}, durationMs=${durationMs})\n\n${outputTail}`,
+      `run-itest: ${cls} failure (exit=${result.exitCode}, treeHash=${treeHash}, durationMs=${durationMs})\n\n${outputTail}`,
     );
   }
 

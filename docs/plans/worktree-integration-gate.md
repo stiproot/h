@@ -19,9 +19,10 @@ claim it must trust."* An integration failure (workflow-svc won't start, the cro
 throws, a statestore key regression) is invisible to every gate we have.
 
 The rule this plan enforces: **an h feature worktree must pass a machine-executed integration
-test — the stack built from that worktree, actually running — before its PR exists.** Not
-prose the agent may skip; a workflow step whose activity fails on a nonzero exit, so a red
-integration test means create-pr never runs.
+test — the stack built from that worktree, actually running.** Not prose the agent may skip;
+a workflow step whose activity fails on a nonzero exit. NOTE: the overlay merges by step id,
+so in the composed implement-pr order the gate runs after the PR is already open (it is a
+post-PR quality signal surfaced on the open PR, not a pre-PR block).
 
 ## Why k8s (the creative part)
 
@@ -98,7 +99,7 @@ stage progression, the MCP servers, real agent services, macOS. Linux-first: the
 loop's actual host) runs k3d; `k3d image import` is the documented portability route if a
 macOS path is ever needed.
 
-### B. The gate — a machine-executed workflow step before create-pr
+### B. The gate — a machine-executed workflow step (post-PR quality signal)
 
 - **New activity `run-itest`** in workflow-svc (specific-first per panel D5 verdict; the
   general execute-anything `run-gate` is deferred until a second consumer exists — and a
@@ -117,7 +118,12 @@ macOS path is ever needed.
   - records the worktree **tree hash** in the evidence so create-pr can assert the pushed
     HEAD matches what was tested (panel minor: tested tree ≠ pushed tree);
   - returns `{passed, class, exitCode, treeHash, durationMs, outputTail}` — a machine fact.
-    Nonzero/timeout ⇒ the activity fails ⇒ the step fails ⇒ **create-pr never runs**.
+    Nonzero/timeout ⇒ the activity fails ⇒ the step fails ⇒ **the workflow fails structurally**.
+    NOTE: the overlay merges by step id — create-pr's step carries id `implement` and folds
+    into the implement step at compose time, while the `itest` step id appends afterwards.
+    The composed order is therefore: …implement(+PR epilogue) → itest. The gate runs AFTER the
+    PR is already open and surfaces the machine result on the already-open PR. This is the
+    accepted design (a post-PR quality gate, not a pre-PR block).
 - **New overlay template `run-itest.tmpl.yaml`** (`role: overlay`, the `arm-revise-pr`
   precedent: appends a *new* step, id `itest`) with cwd `{{worktree.worktreePath}}`.
 - **Recompose the h feature key**:
@@ -192,7 +198,8 @@ layer — the CLI composes workflows for any repo). Instead, omission of the ove
 - **D3 — kustomize for the ephemeral render** — approved; plus explicit sidecar-annotation and
   `spec.scopes` handling (M7).
 - **D4 — the gate is a workflow step failing structurally** — approved; plus the B2 taxonomy
-  (timeout, infra-vs-assertion, retry-once-on-infra).
+  (timeout, infra-vs-assertion, retry-once-on-infra); retry-once is in the activity itself
+  (not caller's responsibility as the Phase 2 note originally said — corrected).
 - **D5 — specific-first: `run-itest` activity, not a general `run-gate`** — reversed from the
   base plan (was general-first) on the panel's argument: one consumer today, and a general
   execute-command activity is itself the M6 injection surface. Generalize on the second
@@ -223,8 +230,8 @@ layer — the CLI composes workflows for any repo). Instead, omission of the ove
     evidence to `.local-logs/itest/<id>/` before namespace deletion.
 - **Phase 2 — the gate.** IMPLEMENTED 2026-07-29 (PR feature/itest-gate).
   `run-stub` activity (mirrors run-kimi, calls stub-agent Dapr service);
-  `run-itest` activity (materialises harness from origin/main, 20 min hard timeout, taxonomy,
-  tree hash, retry-once on infra is caller's responsibility); unit tests;
+  `run-itest` activity (materialises harness + smoke def from origin/main, 20 min hard timeout
+  per attempt, taxonomy, tree hash, retry-once on infra implemented in the activity); unit tests;
   activity-registry entries; `run-itest.tmpl.yaml` overlay + template gate + goldens;
   `itest.skip` break-glass; recompose `implement-pr` is an operator cutover step AFTER
   workflow-svc carrying run-itest is deployed (out of scope for this PR).

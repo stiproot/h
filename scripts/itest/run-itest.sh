@@ -30,8 +30,10 @@ if [[ "${1:-}" == "--gc" ]]; then
     | grep "namespace/h-itest-" \
     | while read -r ns; do
         name="${ns#namespace/}"
-        age_s=$(( $(date +%s) - $(kubectl get namespace "$name" -o jsonpath='{.metadata.creationTimestamp}' \
-          | xargs -I{} date -d "{}" +%s 2>/dev/null || echo 0) ))
+        creation_ts=$(kubectl get namespace "$name" -o jsonpath='{.metadata.creationTimestamp}' \
+          | xargs -I{} date -d "{}" +%s 2>/dev/null || echo 0)
+        if (( creation_ts == 0 )); then continue; fi  # treat parse failure as "keep"
+        age_s=$(( $(date +%s) - creation_ts ))
         if (( age_s > 7200 )); then
           echo "[itest-gc] deleting stale namespace: $name (${age_s}s old)"
           kubectl delete namespace "$name" --ignore-not-found || true
@@ -52,6 +54,11 @@ if [[ "${1:-}" == "--gc" ]]; then
   exit 0
 fi
 
+# ── Preamble GC (best-effort) ─────────────────────────────────────────────────
+# Sweep stale namespaces and old images before deploying. Never blocks the gate — any failure
+# is silently swallowed (kubectl / docker may be temporarily unavailable).
+bash "${BASH_SOURCE[0]}" --gc 2>/dev/null || true
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 # Canonicalize WORKTREE to an absolute path, then re-derive REPO_ROOT and EVIDENCE_BASE from it.
 # This ensures the harness works correctly when materialised to a temp dir and invoked with the
@@ -59,6 +66,17 @@ fi
 WORKTREE="$(cd "${1:-${REPO_ROOT}}" && pwd)"
 REPO_ROOT="${WORKTREE}"
 EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
+
+# Smoke definition: prefer a co-materialized trusted copy alongside this script (the
+# run-itest activity materialises it from origin/main next to the harness for D7 isolation);
+# fall back to the worktree copy for in-place developer runs.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/smoke-workflow.json" ]]; then
+  SMOKE_DEF="${SCRIPT_DIR}/smoke-workflow.json"
+else
+  SMOKE_DEF="${REPO_ROOT}/scripts/itest/smoke-workflow.json"
+fi
+
 ID="$(date +%Y%m%d%H%M%S)-$$"
 NS="h-itest-${ID}"
 EVIDENCE_DIR="${EVIDENCE_BASE}/${ID}"
@@ -158,9 +176,10 @@ fi
 # ── 4. Generate per-run overlay ───────────────────────────────────────────────
 OVERLAY_DIR="${EVIDENCE_DIR}/overlay"
 mkdir -p "${OVERLAY_DIR}/patches"
-# Copy the base kustomize tree into the overlay dir so kustomize's LoadRestrictionsRootOnly is
-# satisfied (absolute paths outside the overlay root are rejected by kubectl apply -k ≥ v5).
-cp -r "${WORKTREE}/k8s/itest/base" "${OVERLAY_DIR}/base"
+# Copy the full k8s tree into the overlay dir so kustomize's LoadRestrictionsRootOnly is
+# satisfied and the base kustomization's ../../infra / ../../dapr / ../../apps resource
+# references resolve correctly from within the overlay root.
+cp -r "${WORKTREE}/k8s" "${OVERLAY_DIR}/k8s"
 
 cat >"${OVERLAY_DIR}/patches/cron-5s.yaml" <<'EOF'
 apiVersion: dapr.io/v1alpha1
@@ -180,7 +199,7 @@ kind: Kustomization
 namespace: ${NS}
 
 resources:
-  - ./base
+  - ./k8s/itest/base
 
 images:
   - name: h/workflow-svc
@@ -233,8 +252,7 @@ done
 
 # ── 7. Fire smoke workflow ────────────────────────────────────────────────────
 INSTANCE_ID="smoke-${ID}"
-SMOKE_DEF="${REPO_ROOT}/scripts/itest/smoke-workflow.json"
-echo "[itest] firing smoke workflow (instanceId=${INSTANCE_ID})..."
+echo "[itest] firing smoke workflow (instanceId=${INSTANCE_ID}, smoke-def=${SMOKE_DEF})..."
 
 SMOKE_BODY="$(cat "${SMOKE_DEF}" | python3 -c "
 import json, sys
