@@ -1459,6 +1459,45 @@ describe("disarmChain", () => {
     expect(mem.ledgers.get(ledgerDate)?.chainsFinalized ?? 0).toBe(0);
   });
 
+  it.each([
+    ["completed", "finalized-completed"],
+    ["failed", "finalized-failed"],
+    ["terminated", "finalized-terminated"],
+  ] as const)(
+    "is idempotent for status=finalized, outcome=%s — row unchanged, no ledger bump",
+    async (outcome, chainId) => {
+      const mem = memoryChainStore();
+      const existingRow: ChainRow = {
+        chainId,
+        epoch: 5,
+        slug: chainId,
+        members: [{ kind: "implement-pr", key: "implement-pr" }],
+        strategy: "sequential",
+        cursor: 0,
+        data: {},
+        status: "finalized",
+        outcome,
+        lastStatus: "COMPLETED",
+        unknownStreak: 0,
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      };
+      mem.rows.set(chainId, existingRow);
+
+      const result = await Effect.runPromise(
+        disarmChain(chainId).pipe(Effect.provide(Layer.succeed(ChainStore, mem.service))),
+      );
+
+      expect(result.epoch).toBe(5);
+      expect(result.outcome).toBe(outcome);
+      expect(result.status).toBe("finalized");
+
+      const ledgerDate = new Date().toISOString().slice(0, 10);
+      expect(mem.ledgers.get(ledgerDate)?.chainsFinalized ?? 0).toBe(0);
+    },
+  );
+
   it("returns NotFound for a missing chain", async () => {
     const mem = memoryChainStore();
 

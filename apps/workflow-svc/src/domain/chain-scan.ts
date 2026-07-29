@@ -867,8 +867,8 @@ export const disarmChain = (
     const existing = yield* cs.getRow(chainId);
     if (Option.isNone(existing)) return yield* Effect.fail<DisarmChainError>({ _tag: "NotFound" });
     const row = existing.value;
-    // idempotent: already disarmed
-    if (row.outcome === "disarmed") return row;
+    // idempotent: any terminal chain state — mirrors disarmCron's status check
+    if (row.status === "finalized") return row;
     const disarmed: ChainRow = {
       ...row,
       epoch: row.epoch + 1,
