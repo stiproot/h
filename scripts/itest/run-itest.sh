@@ -19,8 +19,12 @@ set -euo pipefail
 # script is materialised to a temp dir and a worktree path is passed as $1.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 K3D_REGISTRY="${K3D_REGISTRY:-localhost:5111}"
+# In-cluster image reference — k3d's registry container is named k3d-h-registry and reachable
+# from inside the cluster at port 5000, not at the host-side localhost:5111 push address.
+K3D_REGISTRY_CLUSTER="${K3D_REGISTRY_CLUSTER:-k3d-h-registry:5000}"
 EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
-WF_SVC_PORT_LOCAL=8090          # ephemeral port-forward target
+# Allocate a free ephemeral port per run so concurrent gate runs don't collide on the port-forward.
+WF_SVC_PORT_LOCAL=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); p=s.getsockname()[1]; s.close(); print(p)")
 WF_SVC_NAMESPACE_PORT=8000
 
 # ── GC mode ──────────────────────────────────────────────────────────────────
@@ -203,10 +207,10 @@ resources:
 
 images:
   - name: h/workflow-svc
-    newName: ${K3D_REGISTRY}/h/workflow-svc
+    newName: ${K3D_REGISTRY_CLUSTER}/h/workflow-svc
     newTag: "${TAG}"
   - name: h/stub-agent
-    newName: ${K3D_REGISTRY}/h/stub-agent
+    newName: ${K3D_REGISTRY_CLUSTER}/h/stub-agent
     newTag: "${TAG}"
 
 patches:
@@ -263,7 +267,7 @@ print(json.dumps(d))
 
 echo "${SMOKE_BODY}" >"${EVIDENCE_DIR}/smoke-request.json"
 
-HTTP_STATUS=$(curl -sf -w "%{http_code}" -o "${EVIDENCE_DIR}/smoke-response.json" \
+HTTP_STATUS=$(curl -s -w "%{http_code}" -o "${EVIDENCE_DIR}/smoke-response.json" \
   -X POST "http://localhost:${WF_SVC_PORT_LOCAL}/workflow/run" \
   -H "Content-Type: application/json" \
   -d "${SMOKE_BODY}" 2>&1 || echo "000")

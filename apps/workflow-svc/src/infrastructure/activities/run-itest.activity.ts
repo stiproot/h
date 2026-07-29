@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "child_process";
-import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import { tmpdir } from "os";
 
 import type { WorkflowActivityContext } from "@dapr/dapr";
@@ -171,40 +171,46 @@ export async function runItestActivity(
     );
   }
 
-  // First attempt.
-  let result = await spawnHarness(harnessPath, worktreePath);
-  let durationMs = result.durationMs;
+  const harnessDir = dirname(harnessPath);
+  try {
+    // First attempt.
+    let result = await spawnHarness(harnessPath, worktreePath);
+    let durationMs = result.durationMs;
 
-  if (result.timedOut) {
-    throw new Error(
-      `run-itest: hard timeout after ${durationMs}ms (treeHash=${treeHash})\n\n${result.output.slice(-2000)}`,
-    );
-  }
-
-  let cls = classifyExit(result.exitCode);
-
-  // Retry once on infra failure (exit 11). Assertion failures (exit 10) are never retried —
-  // they are deterministic failures of the smoke assertions, not transient infra flakes.
-  if (result.exitCode !== 0 && cls === "infra") {
-    process.stdout.write("[run-itest] infra failure on first attempt — retrying once\n");
-    const retry = await spawnHarness(harnessPath, worktreePath);
-    durationMs += retry.durationMs;
-    if (retry.timedOut) {
+    if (result.timedOut) {
       throw new Error(
-        `run-itest: hard timeout on retry after ${durationMs}ms (treeHash=${treeHash})\n\n${retry.output.slice(-2000)}`,
+        `run-itest: hard timeout after ${durationMs}ms (treeHash=${treeHash})\n\n${result.output.slice(-2000)}`,
       );
     }
-    result = retry;
-    cls = classifyExit(result.exitCode);
+
+    let cls = classifyExit(result.exitCode);
+
+    // Retry once on infra failure (exit 11). Assertion failures (exit 10) are never retried —
+    // they are deterministic failures of the smoke assertions, not transient infra flakes.
+    if (result.exitCode !== 0 && cls === "infra") {
+      process.stdout.write("[run-itest] infra failure on first attempt — retrying once\n");
+      const retry = await spawnHarness(harnessPath, worktreePath);
+      durationMs += retry.durationMs;
+      if (retry.timedOut) {
+        throw new Error(
+          `run-itest: hard timeout on retry after ${durationMs}ms (treeHash=${treeHash})\n\n${retry.output.slice(-2000)}`,
+        );
+      }
+      result = retry;
+      cls = classifyExit(result.exitCode);
+    }
+
+    const outputTail = result.output.slice(-2000);
+
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `run-itest: ${cls} failure (exit=${result.exitCode}, treeHash=${treeHash}, durationMs=${durationMs})\n\n${outputTail}`,
+      );
+    }
+
+    return { passed: true, class: "passed", exitCode: 0, treeHash, durationMs, outputTail };
+  } finally {
+    // Always clean up the materialised harness tmpdir, regardless of outcome.
+    rmSync(harnessDir, { recursive: true, force: true });
   }
-
-  const outputTail = result.output.slice(-2000);
-
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `run-itest: ${cls} failure (exit=${result.exitCode}, treeHash=${treeHash}, durationMs=${durationMs})\n\n${outputTail}`,
-    );
-  }
-
-  return { passed: true, class: "passed", exitCode: 0, treeHash, durationMs, outputTail };
 }

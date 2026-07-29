@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "child_process";
+import { rmSync } from "fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runItestActivity } from "./run-itest.activity.ts";
@@ -10,6 +11,7 @@ vi.mock("child_process", () => ({
 vi.mock("fs", () => ({
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
+  rmSync: vi.fn(),
 }));
 vi.mock("os", () => ({
   tmpdir: () => "/tmp",
@@ -17,6 +19,7 @@ vi.mock("os", () => ({
 
 const mockExecFileSync = vi.mocked(execFileSync);
 const mockSpawn = vi.mocked(spawn);
+const mockRmSync = vi.mocked(rmSync);
 
 function makeSpawnResult(exitCode: number, output = "") {
   const stdout = {
@@ -113,5 +116,40 @@ describe("runItestActivity", () => {
     expect(result.passed).toBe(true);
     expect(result.class).toBe("passed");
     expect(mockSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("materializeHarness: falls back to HEAD when origin/main is unavailable", async () => {
+    // getTreeHash, then origin/main throws for both files, HEAD fallback succeeds for both.
+    mockExecFileSync
+      .mockReturnValueOnce("bbb2222\n" as never) // getTreeHash
+      .mockImplementationOnce(() => {
+        throw new Error("unknown revision: origin/main");
+      }) // origin/main run-itest.sh
+      .mockReturnValueOnce("#!/bin/bash\n" as never) // HEAD fallback run-itest.sh
+      .mockImplementationOnce(() => {
+        throw new Error("unknown revision: origin/main");
+      }) // origin/main smoke-workflow.json
+      .mockReturnValueOnce("{}" as never); // HEAD fallback smoke-workflow.json
+
+    mockSpawn.mockReturnValueOnce(makeSpawnResult(0, "[itest] ALL ASSERTIONS PASSED.") as never);
+
+    const result = await runItestActivity(fakeDaprCtx, { worktreePath: "/fake/worktree" });
+    expect(result.passed).toBe(true);
+    expect(result.class).toBe("passed");
+    expect(result.treeHash).toBe("bbb2222");
+  });
+
+  it("tmpdir cleanup: rmSync called on the harness dir regardless of outcome", async () => {
+    setupExecMocks("ccc3333");
+    mockSpawn.mockReturnValueOnce(makeSpawnResult(10, "ASSERTION FAIL") as never);
+
+    await expect(runItestActivity(fakeDaprCtx, { worktreePath: "/fake/worktree" })).rejects.toThrow(
+      /assertion failure/,
+    );
+    // The tmpdir (/tmp/h-itest-harness-<runId>) must be removed regardless of failure.
+    expect(mockRmSync).toHaveBeenCalledWith(expect.stringContaining("/tmp/h-itest-harness-"), {
+      recursive: true,
+      force: true,
+    });
   });
 });

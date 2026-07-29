@@ -246,8 +246,9 @@ k3d-down: ## Delete the k3d cluster and its registry
 # runtime spine end-to-end, then tears down. Evidence lands under .local-logs/itest/<id>/.
 # Exit-code taxonomy: 0=passed, 10=assertion, 11=infra.
 #
-# Prerequisites: k3d cluster + registry running (`make k3d-up`) and Dapr installed
-# (`make dapr-install`). The gate is designed for host-mode workflow-svc (the loop's mode).
+# Prerequisites: k3d cluster + registry running (`make k3d-up`), Dapr installed
+# (`make dapr-install`), and base images built (`make agent-bases`). The gate is designed
+# for host-mode workflow-svc (the loop's mode).
 #
 # `make itest-gc` is the sweeper for what a trap-based teardown can't cover (SIGKILL,
 # host restart): deletes h-itest-* namespaces older than 2h and prunes gate images
