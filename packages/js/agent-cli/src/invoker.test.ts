@@ -130,6 +130,30 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
     expect(result.stderr).toBe("Task timed out");
   });
 
+  it.runIf(process.platform === "linux")(
+    "timeout kills the whole process GROUP — a grandchild the CLI spawned dies too (B2)",
+    async () => {
+      // The orphan hole (docs/plans/cost-containment.md B2): the CLI spawns children; killing only
+      // the direct child on timeout leaves grandchildren billing invisibly. With setsid group
+      // leadership the scope finalizer takes the group. Linux-only: macOS has no setsid.
+      const script = `
+        const { spawn } = require("child_process");
+        const c = spawn("node", ["-e", "setTimeout(() => {}, 30000)"]);
+        console.log(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: String(c.pid) }] } }));
+        setTimeout(() => {}, 30000);
+      `;
+
+      const result = await invoke(nodeStrategy(script), baseParams({ timeout: 1500 }));
+      expect(result.exitCode).toBe(124);
+      const grandchildPid = Number(result.stdout);
+      expect(Number.isInteger(grandchildPid)).toBe(true);
+
+      // Give SIGTERM delivery a beat, then probe: signal 0 throws ESRCH once the process is gone.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(() => process.kill(grandchildPid, 0)).toThrow();
+    },
+  );
+
   it("resolves a non-zero exit as an unsuccessful result with stderr captured", async () => {
     const script = `console.error("boom"); process.exit(3);`;
 

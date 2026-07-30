@@ -2,6 +2,7 @@ import { Command, type CommandExecutor, type HttpClient } from "@effect/platform
 import { Duration, Effect, Stream } from "effect";
 
 import { buildInvocationResult, parseStreamLine } from "./parse-stream.ts";
+import { killRunGroup, registerLiveRun, unregisterLiveRun } from "./reaper.ts";
 import type {
   AgentInvocationRequest,
   AgentStrategy,
@@ -109,6 +110,8 @@ function runPreparedInvocation(
     // agent-server can't setuid on its own. Unset (local/host mode) → spawn directly as the current
     // user, the unchanged behaviour. --preserve-env carries spawnEnv to the CLI (the sudoers rule
     // grants SETENV); the server's working directory is inherited so the CLI runs in the run's cwd.
+    // (Group leadership for reaping needs no wrapper: the platform executor spawns `detached`, so
+    // the child already leads a fresh process group — see reaper.ts.)
     const subAgentUid = process.env.SUB_AGENT_UID;
     const execCommand = subAgentUid ? "sudo" : prepared.command;
     const execArgs = subAgentUid
@@ -128,6 +131,20 @@ function runPreparedInvocation(
     const runProcess = Effect.scoped(
       Effect.gen(function* () {
         const proc = yield* Command.start(command);
+
+        // Register for shutdown reaping (app death runs no finalizers — the process-exit hook in
+        // reaper.ts reaps live groups) + group-kill on every scope close: timeout interruption
+        // AND normal completion (the platform's release skips cleanup on exit 0, so a background
+        // child the CLI left running would linger), and as the dropped uid on the sudo path
+        // (a kill from this uid reaches only sudo itself). Runs before the platform's own kill
+        // (LIFO), which tolerates an already-gone leader.
+        const live = registerLiveRun(proc.pid, subAgentUid);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            killRunGroup(live, "SIGTERM");
+            unregisterLiveRun(live);
+          }),
+        );
 
         const awaitExit = proc.exitCode.pipe(
           Effect.map((code) => ({ exitCode: code as number | null, signal: null })),

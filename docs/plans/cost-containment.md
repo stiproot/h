@@ -83,10 +83,24 @@ agent shape.
   **C3 fixed in the same change**: `buildInvocationResult` counts `system/api_retry` events
   (429/rate_limit — the captured marker shape) and `classifyStop` classifies a timeout with
   ≥3 such retries as `usage-limited`, so a throttle-stretched run reaches the fence/fallback.
-- **B2. Orphan reaping.** The invoker owns its CLI subprocess: on run timeout and on app
-  shutdown it must kill the **process group** (the CLI spawns children), so no orphan can
-  bill invisibly. (Same class as the sub-agent cache-poisoning fix: child processes must not
-  outlive their contract.)
+- **B2. Orphan reaping. DONE 2026-07-30.** Finding first: `@effect/platform-node` already spawns
+  the CLI `detached` (a process-group leader) and its scope release group-kills a still-running
+  or nonzero-exited child — so the timeout path was half-covered all along (a first setsid-based
+  attempt was reverted as redundant AND harmful: setsid forks when the child is already a leader,
+  swallowing exit codes). What was actually missing, now in `agent-cli/src/agents/reaper.ts` +
+  a run finalizer in run-process.ts:
+  1. **App death** — `process.exit()` (SIGTERM/SIGINT/uncaught paths) runs no Effect finalizers;
+     every live run registers in the reaper and a `process.on("exit")` hook SIGKILLs the live
+     groups. Residual (documented): SIGKILL/OOM of the app itself in HOST mode — container mode's
+     PID-namespace death reaps everything anyway.
+  2. **The dropped-uid group** — a `kill(-pid)` from the app's uid reaches only sudo itself
+     (which relays to its one command child; grandchildren survive). The reap also shells
+     `sudo -u #uid kill -- -pgid`, the identity allowed to take the whole group (covered by the
+     agent-base sudoers `ALL` grant).
+  3. **Clean-exit leftovers** — the platform skips cleanup on exit 0; the run finalizer
+     group-kills on every scope close, so a background child the agent left running dies with
+     the run. Live-validated by a Linux-gated invoker test: a timed-out run's GRANDCHILD is dead
+     after the finalizer.
 - **B3. Honest gaps. DONE 2026-07-30.** `tallyCost` (watch) and `tallyChainCost` (chain) now
   read a `RunMirrorMeta` slice per mirror (the port cutover: `getRunCost`/`getRunStopReason` →
   one `getRunMeta`, shared pure parser `runMirrorMetaFrom` in watch.model.ts): `kind:
