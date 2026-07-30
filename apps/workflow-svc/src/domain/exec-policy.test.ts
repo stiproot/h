@@ -4,10 +4,12 @@ import {
   DEFAULT_AUTO_DENY_MS,
   activeDenial,
   deniedMessage,
+  endOfUtcDayIso,
   executorFromActivity,
   executorFromAgentId,
   isExecutorDenied,
   mergeAutoDeny,
+  mergeBudgetDeny,
   normalizeDenied,
 } from "./exec-policy.ts";
 import type { ExecPolicy } from "./models/exec.model.ts";
@@ -111,6 +113,45 @@ describe("mergeAutoDeny (the watcher's fence — never downgrades, always idempo
     const entries = normalizeDenied(next!);
     expect(entries.find((e) => e.name === "codex")).toMatchObject({ reason: "operator" });
     expect(entries.find((e) => e.name === "kimi")).toMatchObject({ deniedAt: later });
+  });
+});
+
+describe("mergeBudgetDeny (the daily-budget fence — docs/plans/cost-containment.md A1)", () => {
+  it("fences with a cost-budget entry expiring at the next UTC midnight (the day-ledger reset)", () => {
+    const next = mergeBudgetDeny({ denied: [], updatedAt: NOW, budgets: { kimi: 5 } }, "kimi", NOW);
+    expect(next).not.toBeNull();
+    const entry = normalizeDenied(next!)[0]!;
+    expect(entry).toMatchObject({ name: "kimi", reason: "cost-budget", deniedAt: NOW });
+    expect(entry.until).toBe(endOfUtcDayIso(NOW));
+    // The budget table rides along — a deny merge never drops it.
+    expect(next!.budgets).toEqual({ kimi: 5 });
+  });
+
+  it("returns null on an operator entry — a budget fence never overrides the operator", () => {
+    expect(mergeBudgetDeny({ denied: ["kimi"], updatedAt: NOW }, "kimi", NOW)).toBeNull();
+  });
+
+  it("returns null while ANY active entry covers the executor (already fenced; idempotent)", () => {
+    const usage = mergeAutoDeny(undefined, "kimi", NOW)!;
+    expect(mergeBudgetDeny(usage, "kimi", NOW)).toBeNull();
+    const budget = mergeBudgetDeny(undefined, "kimi", NOW)!;
+    expect(mergeBudgetDeny(budget, "kimi", "2026-07-29T13:00:00.000Z")).toBeNull();
+  });
+
+  it("mergeAutoDeny also preserves the budget table", () => {
+    const next = mergeAutoDeny(
+      { denied: [], updatedAt: NOW, budgets: { claude: 20 } },
+      "kimi",
+      NOW,
+    );
+    expect(next!.budgets).toEqual({ claude: 20 });
+  });
+});
+
+describe("endOfUtcDayIso", () => {
+  it("is the next UTC midnight", () => {
+    expect(endOfUtcDayIso("2026-07-30T18:45:00.000Z")).toBe("2026-07-31T00:00:00.000Z");
+    expect(endOfUtcDayIso("2026-07-31T00:00:00.000Z")).toBe("2026-08-01T00:00:00.000Z");
   });
 });
 

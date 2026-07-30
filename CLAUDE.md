@@ -146,15 +146,20 @@ used here. This section is the terse runtime-facing index.
   `wf:*` (per-workflow status rows, `wf:<repo>:<slug>:<workflow>`, each
   written by the workflow that names it — via its own `write-wf-row`/`register-*` activities, §10),
   and `exec:` (the executor policy — the single row `exec:config`, entries
-  `{name, reason: operator|usage-limited, deniedAt, until?}` (bare shortname strings read as
-  operator entries); written only by workflow-svc: `POST /exec/policy` and the watcher's
-  AUTO-DENY, which fences an executor with an expiring usage-limited entry when a run finalizes
-  usage-limited (docs/plans/impl/usage-limit-auto-deny.md — never downgrades an operator entry,
-  idempotent across ticks; a SAME-agent fallback continuation is deliberately refused while the
-  fence holds — fail-fast). The activity-registry gate wraps every `run-*` activity and REFUSES a
-  denied executor loudly at fire time on every path — chains, crons, watcher re-fires, sched
-  continuations, fallback switches, panel branches. Surface: `h agents list|deny|allow` (operator
-  denies never expire; allow lifts either kind); docs/plans/live-state-containment.md §2.3).
+  `{name, reason: operator|usage-limited|cost-budget, deniedAt, until?}` (bare shortname strings
+  read as operator entries) plus a per-executor `budgets` table ({shortname: dailyBudgetUsd});
+  written only by workflow-svc: `POST /exec/policy`, `POST /exec/budget`, and the watcher's two
+  auto-fences — AUTO-DENY, an expiring usage-limited entry when a run finalizes usage-limited
+  (docs/plans/impl/usage-limit-auto-deny.md), and the DAILY-BUDGET fence
+  (docs/plans/cost-containment.md A1), a cost-budget entry expiring at the next UTC midnight
+  when the day ledger's per-agent tally crosses the executor's budget. Both never downgrade an
+  operator entry and are idempotent across ticks; a SAME-agent fallback continuation is
+  deliberately refused while a fence holds — fail-fast. The activity-registry gate wraps every
+  `run-*` activity and REFUSES a denied executor loudly at fire time on every path — chains,
+  crons, watcher re-fires, sched continuations, fallback switches, panel branches. Surface:
+  `h agents list|deny|allow|budget` (operator denies never expire; allow lifts any kind; list
+  shows budget vs today's tallied spend + gap-run count); docs/plans/live-state-containment.md
+  §2.3).
   The convention: a registry prefix names the single component that owns writing it.
 
 The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a

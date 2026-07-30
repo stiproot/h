@@ -5,10 +5,13 @@ import { Schema } from "effect";
  * entries come from `h agents deny` and never expire; `usage-limited` entries are written by
  * the watcher when a run finalizes usage-limited, carry an `until` expiry, and are the only
  * kind an automatic lift may touch — an auto action must never override an operator decision.
+ * `cost-budget` entries (docs/plans/cost-containment.md A1) are the watcher's third kind:
+ * written when an executor's tallied day spend crosses its `budgets` entry, expiring at the
+ * next UTC midnight (when the day ledger the tally reads resets).
  */
 export const DeniedEntry = Schema.Struct({
   name: Schema.String,
-  reason: Schema.Literal("operator", "usage-limited"),
+  reason: Schema.Literal("operator", "usage-limited", "cost-budget"),
   deniedAt: Schema.String,
   until: Schema.optional(Schema.String),
 });
@@ -27,6 +30,10 @@ export type DeniedEntry = Schema.Schema.Type<typeof DeniedEntry>;
 export const ExecPolicy = Schema.Struct({
   denied: Schema.Array(Schema.Union(Schema.String, DeniedEntry)),
   updatedAt: Schema.String,
+  // Per-executor daily cost budgets in USD, keyed by SHORTNAME (docs/plans/cost-containment.md
+  // A1): when the watcher's finalization tally for the day crosses one, it writes an expiring
+  // `cost-budget` deny entry. Optional so pre-budget rows decode; absent ⇒ no budgets.
+  budgets: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Number })),
 });
 export type ExecPolicy = Schema.Schema.Type<typeof ExecPolicy>;
 

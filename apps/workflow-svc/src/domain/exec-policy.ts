@@ -85,7 +85,10 @@ export function deniedMessage(executor: string, entry?: DeniedEntry): string {
     entry?.reason === "usage-limited"
       ? ` (auto: a run finalized usage-limited at ${entry.deniedAt}` +
         (entry.until ? `, expires ${entry.until})` : ")")
-      : "";
+      : entry?.reason === "cost-budget"
+        ? ` (auto: daily cost budget crossed at ${entry.deniedAt}` +
+          (entry.until ? `, expires ${entry.until})` : ")")
+        : "";
   return (
     `executor '${executor}' is denied by the exec:config policy${why} — ` +
     `re-enable with: h agents allow ${executor}`
@@ -114,5 +117,49 @@ export function mergeAutoDeny(
   return {
     denied: [...entries.filter((e) => e.name !== executor), entry],
     updatedAt: nowIso,
+    // Budgets ride along untouched — a deny merge must never drop the budget table (A1).
+    ...(policy?.budgets ? { budgets: policy.budgets } : {}),
+  };
+}
+
+/**
+ * The end of `nowIso`'s UTC day — when a `cost-budget` deny expires: the watch ledger the
+ * budget tally reads is keyed by UTC date, so the fence lifts exactly when the day's spend
+ * counter resets.
+ */
+export function endOfUtcDayIso(nowIso: string): string {
+  const day = new Date(nowIso);
+  return new Date(
+    Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate() + 1),
+  ).toISOString();
+}
+
+/**
+ * The watcher's daily-budget merge (docs/plans/cost-containment.md A1), sibling of
+ * {@link mergeAutoDeny} with the same safety posture: fence `executor` with a `cost-budget`
+ * entry expiring at the next UTC midnight (the day-ledger reset). Returns null when nothing
+ * should change — an operator entry exists (never downgraded), or ANY active entry already
+ * covers the executor (already fenced; idempotent across scan ticks). An expired auto entry
+ * is replaced; other executors' entries pass through untouched.
+ */
+export function mergeBudgetDeny(
+  policy: ExecPolicy | undefined,
+  executor: string,
+  nowIso: string,
+): ExecPolicy | null {
+  const entries = normalizeDenied(policy);
+  const existing = entries.find((e) => e.name === executor);
+  if (existing?.reason === "operator") return null;
+  if (existing && (existing.until === undefined || existing.until > nowIso)) return null;
+  const entry: DeniedEntry = {
+    name: executor,
+    reason: "cost-budget",
+    deniedAt: nowIso,
+    until: endOfUtcDayIso(nowIso),
+  };
+  return {
+    denied: [...entries.filter((e) => e.name !== executor), entry],
+    updatedAt: nowIso,
+    ...(policy?.budgets ? { budgets: policy.budgets } : {}),
   };
 }

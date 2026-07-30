@@ -875,6 +875,67 @@ describe("tallyCost", () => {
     });
   });
 
+  it("crossing an exec:config daily budget at finalize writes an expiring cost-budget deny (A1)", async () => {
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:kimi-agent:1", 5.5); // over kimi's $5/day budget
+    const exec = memoryExecPolicyStore();
+    exec.saved.push({ denied: [], updatedAt: "2026-07-30T00:00:00Z", budgets: { kimi: 5 } });
+    const report = await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            memorySchedStore().service,
+            exec.service,
+          ),
+        ),
+      ),
+    );
+    expect(report.autoDenied).toContain("kimi:cost-budget");
+    const entry = exec
+      .current()!
+      .denied.find((d) => typeof d !== "string" && d.name === "kimi") as {
+      reason: string;
+      until?: string;
+    };
+    expect(entry.reason).toBe("cost-budget");
+    expect(entry.until).toMatch(/T00:00:00.000Z$/); // expires at the next UTC midnight
+    // The budget table survives the merge.
+    expect(exec.current()!.budgets).toEqual({ kimi: 5 });
+  });
+
+  it("a finalize under every budget writes no deny (and no budgets ⇒ no check at all)", async () => {
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:kimi-agent:1", 1.5);
+    const exec = memoryExecPolicyStore();
+    exec.saved.push({ denied: [], updatedAt: "2026-07-30T00:00:00Z", budgets: { kimi: 5 } });
+    const report = await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            memorySchedStore().service,
+            exec.service,
+          ),
+        ),
+      ),
+    );
+    expect(report.autoDenied).toEqual([]);
+    expect(exec.current()!.denied).toEqual([]);
+  });
+
   it("per-agent subtotals and gap counts land on the day ledger at finalize", async () => {
     const mem = memoryWatchStore();
     mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));

@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from h_cli.config import AGENT_IDENTITY, AGENT_URLS
+from h_cli.config import AGENT_IDENTITY
 from h_cli.infrastructure import workflow_svc
 
 app = typer.Typer(
@@ -49,7 +49,7 @@ def _policy_cell(entry: dict | None) -> str:
     # denied summary line below the table and the gate's refusal message.
     if entry is None:
         return "allowed"
-    return "auto-denied" if entry.get("reason") == "usage-limited" else "DENIED"
+    return "auto-denied" if entry.get("reason") in ("usage-limited", "cost-budget") else "DENIED"
 
 
 def _print_denied(entries: list[dict]) -> None:
@@ -62,31 +62,54 @@ def _print_denied(entries: list[dict]) -> None:
 
 @app.command("list")
 def list_() -> None:
-    """List all workflow-invokable agents, their identities, and the denied set (with
-    provenance: operator denies never expire; auto usage-limited denies carry an expiry)."""
+    """List all workflow-invokable agents, their identities, the denied set (with provenance:
+    operator denies never expire; auto usage-limited/cost-budget denies carry an expiry), and
+    each executor's daily budget vs today's tallied spend (docs/plans/cost-containment.md A1)."""
+    policy: dict = {}
     try:
-        entries = {e["name"]: e for e in _entries(workflow_svc.exec_policy_get())}
+        policy = workflow_svc.exec_policy_get()
+        entries = {e["name"]: e for e in _entries(policy)}
     except Exception:
         entries = {}  # workflow-svc down: the table still lists; policy column shows unknown
         console.print("[yellow]workflow-svc unreachable — policy column unavailable[/yellow]")
+    budgets: dict = policy.get("budgets", {}) or {}
+    spend: dict = policy.get("todaySpend", {}) or {}
 
     seen: set[str] = set()
-    rows: list[tuple[str, str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str]] = []
     for name in sorted(AGENT_IDENTITY.keys()):
         run_activity, agent_id = AGENT_IDENTITY[name]
         if agent_id in seen:
             continue
         seen.add(agent_id)
-        url = AGENT_URLS.get(agent_id, "-")
-        policy = _policy_cell(entries.get(run_activity.removeprefix("run-")))
-        rows.append((name, run_activity, agent_id, url, policy))
+        short = run_activity.removeprefix("run-")
+        cell = _policy_cell(entries.get(short))
+        budget = f"${budgets[short]:g}/day" if short in budgets else "-"
+        today = f"${spend[short]:.2f}" if short in spend else "-"
+        rows.append((name, run_activity, agent_id, cell, budget, today))
 
-    table = Table("agent", "runActivity", "agentId", "url", "policy", title=f"agents ({len(rows)})")
+    # No url column: at table width it truncated to noise; the budget/today columns (A1) earn
+    # the space. Full URLs live in config (AGENT_URLS).
+    table = Table(
+        "agent",
+        "runActivity",
+        "agentId",
+        "policy",
+        "budget",
+        "today",
+        title=f"agents ({len(rows)})",
+    )
     for row in rows:
         table.add_row(*row)
     console.print(table)
     if entries:
         _print_denied(list(entries.values()))
+    gap_runs = policy.get("todayCostGapRuns", 0)
+    if gap_runs:
+        console.print(
+            f"[yellow]today: {gap_runs} run(s) finalized with NO usable cost (gaps, not zeros) — "
+            "spend column undercounts[/yellow]"
+        )
 
 
 @app.command("deny")
@@ -98,6 +121,30 @@ def deny(names: list[str] = typer.Argument(..., help="Agent names to deny (e.g. 
     # New denies ride as bare names — the route stamps them as operator entries at write time.
     policy = workflow_svc.exec_policy_set(kept + sorted(shortnames))
     _print_denied(_entries(policy))
+
+
+@app.command("budget")
+def budget(
+    name: str = typer.Argument(..., help="Agent name (e.g. kimi)."),
+    usd_per_day: float | None = typer.Argument(
+        None, help="Daily budget in USD; omit with --clear to remove."
+    ),
+    clear: bool = typer.Option(False, "--clear", help="Remove this executor's budget."),
+) -> None:
+    """Set or clear an executor's daily cost budget (docs/plans/cost-containment.md A1): when
+    the watcher's day tally crosses it, the executor is auto-denied until the next UTC midnight
+    (`cost-budget` entry — never overrides an operator deny; lift early with `h agents allow`)."""
+    shortname = _executor_shortname(name)
+    if clear:
+        result = workflow_svc.exec_budget_set(shortname, None)
+    elif usd_per_day is None or usd_per_day <= 0:
+        console.print("[red]give a positive USD/day amount, or --clear to remove[/red]")
+        raise typer.Exit(code=1)
+    else:
+        result = workflow_svc.exec_budget_set(shortname, usd_per_day)
+    budgets = result.get("budgets", {})
+    parts = [f"{n} ${b:g}/day" for n, b in sorted(budgets.items())]
+    console.print("budgets: " + (", ".join(parts) or "(none)"))
 
 
 @app.command("allow")

@@ -87,3 +87,62 @@ def test_agents_deny_refuses_an_unknown_name() -> None:
     result = runner.invoke(app, ["agents", "deny", "codexx"])
     assert result.exit_code == 1
     assert "unknown agent" in result.output
+
+
+@respx.mock
+def test_agents_budget_set_posts_the_shortname_and_amount() -> None:
+    posted = respx.post(f"{WORKFLOW_URL}/exec/budget").mock(
+        return_value=Response(200, json={"budgets": {"kimi": 5.0}, "updatedAt": ""})
+    )
+    result = runner.invoke(app, ["agents", "budget", "kimi", "5"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(posted.calls.last.request.content) == {
+        "name": "kimi",
+        "dailyBudgetUsd": 5.0,
+    }
+    assert "kimi $5/day" in result.output
+
+
+@respx.mock
+def test_agents_budget_clear_posts_null() -> None:
+    posted = respx.post(f"{WORKFLOW_URL}/exec/budget").mock(
+        return_value=Response(200, json={"budgets": {}, "updatedAt": ""})
+    )
+    result = runner.invoke(app, ["agents", "budget", "kimi", "--clear"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(posted.calls.last.request.content) == {
+        "name": "kimi",
+        "dailyBudgetUsd": None,
+    }
+    assert "(none)" in result.output
+
+
+def test_agents_budget_refuses_a_missing_amount() -> None:
+    # No amount and no --clear: fail loudly before any HTTP.
+    result = runner.invoke(app, ["agents", "budget", "kimi"])
+    assert result.exit_code == 1
+    assert "positive USD/day" in result.output
+
+
+@respx.mock
+def test_agents_list_shows_budget_and_today_spend_columns() -> None:
+    # The A1 surface (docs/plans/cost-containment.md): budget vs tallied day spend at a glance,
+    # plus the gap warning when runs finalized with no usable cost.
+    respx.get(f"{WORKFLOW_URL}/exec/policy").mock(
+        return_value=Response(
+            200,
+            json={
+                "denied": [],
+                "updatedAt": "",
+                "budgets": {"kimi": 5.0},
+                "todaySpend": {"kimi": 3.1, "claude": 0.42},
+                "todayCostGapRuns": 2,
+            },
+        )
+    )
+    result = runner.invoke(app, ["agents", "list"])
+    assert result.exit_code == 0, result.output
+    assert "$5/day" in result.output
+    assert "$3.10" in result.output
+    assert "$0.42" in result.output
+    assert "2 run(s) finalized with NO usable cost" in result.output

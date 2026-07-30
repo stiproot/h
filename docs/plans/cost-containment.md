@@ -45,14 +45,18 @@ agent shape.
 
 ## Workstream A — enforcement: budgets the engines act on
 
-- **A1. Per-executor daily cost budget → auto-deny** (the chassis exists: usage-limit
-  auto-deny, docs/plans/impl/usage-limit-auto-deny.md). `exec:config` gains per-executor
-  `{dailyBudgetUsd}`; when the watcher's finalization tally for the day (see B) crosses it,
-  the watcher writes an **expiring `cost-budget` deny entry** — same single-writer,
-  epoch-fenced, never-downgrades-operator semantics; the activity-registry gate already
-  refuses denied executors on every fire path (chains, crons, re-fires, sched continuations,
-  panel branches), so enforcement costs nothing new. Reason vocabulary grows:
-  `operator | usage-limited | cost-budget`.
+- **A1. Per-executor daily cost budget → auto-deny. DONE 2026-07-30** (the chassis existed:
+  usage-limit auto-deny, docs/plans/impl/usage-limit-auto-deny.md). As designed: `exec:config`
+  gained a `budgets` table ({shortname: dailyBudgetUsd}); `executeBudgetCheck` runs after every
+  finalize's ledger bump, sums the day ledger's `costByAgent` per executor, and writes a
+  `cost-budget` deny expiring at the next UTC midnight via `mergeBudgetDeny` (never downgrades
+  operator, idempotent — sibling of mergeAutoDeny; BOTH merges now preserve the budget table,
+  as do POST /exec/policy replacements). Reason vocabulary grew to
+  `operator | usage-limited | cost-budget`; the gate needed nothing new. Surface:
+  `POST /exec/budget`, `h agents budget <name> <usd>|--clear`, and `h agents list` gained
+  budget + today-spend columns (GET /exec/policy now returns `budgets`/`todaySpend`/
+  `todayCostGapRuns` off the day ledger) plus a gap warning line; the url column was dropped
+  (it truncated to noise at table width).
 - **A2. Per-run cost ceiling — `maxCostUsd` in the watch policy.** The watcher terminates a
   running workflow whose tallied-so-far cost crosses the ceiling, finalizing
   `outcome: cost-capped`. Requires a **live cost signal** (today mirrors land at run end):

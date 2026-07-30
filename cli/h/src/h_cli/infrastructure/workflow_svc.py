@@ -221,6 +221,18 @@ def exec_policy_set(denied: list[Any]) -> Any:
     return resp.json()
 
 
+def exec_budget_set(name: str, daily_budget_usd: float | None) -> Any:
+    """Set (a number) or clear (None) one executor's daily cost budget
+    (docs/plans/cost-containment.md A1). workflow-svc owns writing the exec: registry."""
+    resp = httpx.post(
+        f"{WORKFLOW_URL}/exec/budget",
+        json={"name": name, "dailyBudgetUsd": daily_budget_usd},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def provision_discover(
     repo: str,
     label: str,

@@ -17,7 +17,7 @@ import {
   type WorkflowRequest,
   toRequest,
 } from "./models/workflow.model.ts";
-import { executorFromAgentId, mergeAutoDeny } from "./exec-policy.ts";
+import { executorFromAgentId, mergeAutoDeny, mergeBudgetDeny } from "./exec-policy.ts";
 import { CronStore } from "./ports/ICronStore.ts";
 import { ExecPolicyStore } from "./ports/IExecPolicyStore.ts";
 import { WatchStore } from "./ports/IWatchStore.ts";
@@ -343,6 +343,51 @@ const executeAutoDeny = (
     ),
   );
 
+/**
+ * The daily cost-budget fence (docs/plans/cost-containment.md A1): read the day ledger's
+ * per-agent subtotals (trustworthy since B1/B3), sum each BUDGETED executor's spend across its
+ * agent ids, and fence any executor at-or-over its `exec:config` budget with an expiring
+ * `cost-budget` deny (mergeBudgetDeny: never downgrades an operator entry, idempotent across
+ * ticks — an already-fenced executor merges to null). Enforcement itself costs nothing new:
+ * the activity-registry gate already refuses denied executors on every fire path.
+ */
+const executeBudgetCheck = (
+  date: string,
+  nowIso: string,
+  report: WatchScanReport,
+): Effect.Effect<void, never, WatchStore | ExecPolicyStore> =>
+  Effect.gen(function* () {
+    const store = yield* ExecPolicyStore;
+    const policy = Option.getOrUndefined(yield* store.get());
+    const budgets = policy?.budgets;
+    if (!budgets || Object.keys(budgets).length === 0) return;
+    const ws = yield* WatchStore;
+    const ledger = yield* ws.getLedger(date);
+    const byAgent = ledger.costByAgent ?? {};
+    // Spend per executor: ledger subtotals are keyed by agentId (claude-agent); budgets by
+    // shortname (claude) — the same mapping the auto-deny uses.
+    const spendByExecutor: Record<string, number> = {};
+    for (const [agentId, usd] of Object.entries(byAgent)) {
+      const executor = executorFromAgentId(agentId);
+      spendByExecutor[executor] = (spendByExecutor[executor] ?? 0) + usd;
+    }
+    for (const [executor, budget] of Object.entries(budgets)) {
+      if ((spendByExecutor[executor] ?? 0) < budget) continue;
+      // Re-read inside the loop: a prior iteration may have saved a new policy.
+      const current = Option.getOrUndefined(yield* store.get());
+      const next = mergeBudgetDeny(current, executor, nowIso);
+      if (next === null) continue; // operator-denied or already fenced
+      yield* store.save(next);
+      report.autoDenied.push(`${executor}:cost-budget`);
+    }
+  }).pipe(
+    Effect.catchAll((err) =>
+      Effect.sync(() => {
+        report.errors.push(`budget check skipped — ${String(err)}`);
+      }),
+    ),
+  );
+
 const executeFinalize = (
   row: WatchRow,
   observedOutcome: WatchOutcome,
@@ -395,6 +440,10 @@ const executeFinalize = (
     if (outcome === "usage-limited") {
       yield* executeAutoDeny(row.instanceId, endedAt, report);
     }
+    // A1 (docs/plans/cost-containment.md): with this run's spend booked, check every budgeted
+    // executor's day total and fence the ones over budget. After the bump so the tally includes
+    // the finalizing run; best-effort like the auto-deny — a failed check never fails a finalize.
+    yield* executeBudgetCheck(ledgerDate(nowMs), endedAt, report);
     if (row.policy.escalate?.onOutcome.includes(outcome)) {
       yield* executeEscalate(row, outcome, costUsd, nowMs, traceparent, report);
     }
