@@ -44,6 +44,8 @@ data:
   # openhands-agent's BYOK leg: its own model id (LLM_API_KEY/LLM_BASE_URL above are shared).
   OPENHANDS_MODEL: "$(b64 "${OPENHANDS_MODEL:-deepseek-v4-flash}")"
   LINEAR_API_KEY: "$(b64 "${LINEAR_API_KEY:-}")"
+  # codex-agent: API key required for k8s (CODEX_AUTH_MODE=chatgpt is not yet wired into the k8s manifest — see CLAUDE.md §Codex on a ChatGPT subscription).
+  OPENAI_API_KEY: "$(b64 "${OPENAI_API_KEY:-}")"
 EOF
 
 echo "Written: $OUT_FILE"
