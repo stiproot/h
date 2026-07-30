@@ -81,6 +81,8 @@ steps:
         2. Open a pull request against the repository's default branch with the github
            MCP tool create_pull_request: title from the feature, body from the plan file
            and the implementation commit (summarize what the implementation step committed).
+           Include the `===ITEST EVIDENCE===` section below in the PR body when those values
+           are non-empty (i.e. when run-itest was composed in and ran).
            Pass the intended Markdown directly as the tool's body value, beginning with the intended heading or first line;
            do not wrap it in shell command substitution or a heredoc.
            If the value under ===ISSUE=== above is a number N, include the line

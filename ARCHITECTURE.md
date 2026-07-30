@@ -85,7 +85,7 @@ template ─(overlay ⊕)→ workflow definition ─(execute)→ workflow ─(ch
 
 - **Template** — a parameterized workflow.
 - **Overlay (⊕)** — merge templates into one definition. *Spatial*: for units that share an agent's
-  context (one worktree, one run), e.g. `implement ⊕ verify ⊕ create-pr`.
+  context (one worktree, one run), e.g. `implement ⊕ verify ⊕ run-itest ⊕ create-pr ⊕ arm-revise-pr`.
 - **Workflow definition** — hydrated template(s), bound to params at fire time — including
   identity (agent/model): published slots with values-baked defaults, overridable per fire.
 - **Workflow** — an executed definition (the durable run).
