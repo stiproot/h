@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: codex-agent-mcp-config
+  namespace: default
 data:
   .mcp.json: |
     {
@@ -21,6 +22,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: codex-agent
+  namespace: default
   labels:
     app: codex-agent
 spec:
@@ -48,7 +50,7 @@ spec:
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: app-secrets
+                  name: h-secrets
                   key: OPENAI_API_KEY
             - name: AGENT_MODEL
               value: "o4-mini"
@@ -62,8 +64,9 @@ spec:
               subPath: .mcp.json
       volumes:
         - name: workspace
-          persistentVolumeClaim:
-            claimName: workspace-pvc
+          hostPath:
+            path: /var/lib/h-workspace
+            type: DirectoryOrCreate
         - name: mcp-config
           configMap:
             name: codex-agent-mcp-config
@@ -72,6 +75,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: codex-agent
+  namespace: default
 spec:
   selector:
     app: codex-agent
