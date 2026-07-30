@@ -1148,8 +1148,8 @@
           This check GATES everything below it. If the commands STILL fail after your
           attempts, STOP here: do not commit, do not push, do not open a pull request —
           report the failure in plain output (the check outcome; no json block is needed
-          from this step) and halt. The itest machine gate will also catch any pushed
-          code that did not pass, but the check here is the earlier, cheaper gate.
+          from this step) and halt. The itest machine gate will also catch any locally
+          committed changes that did not pass, but the check here is the earlier, cheaper gate.
   
           If it passes, carry out any remaining instructions below — the run continues.
   
