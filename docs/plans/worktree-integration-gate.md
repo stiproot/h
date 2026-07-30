@@ -20,9 +20,11 @@ throws, a statestore key regression) is invisible to every gate we have.
 
 The rule this plan enforces: **an h feature worktree must pass a machine-executed integration
 test — the stack built from that worktree, actually running.** Not prose the agent may skip;
-a workflow step whose activity fails on a nonzero exit. NOTE: the overlay merges by step id,
-so in the composed implement-pr order the gate runs after the PR is already open (it is a
-post-PR quality signal surfaced on the open PR, not a pre-PR block).
+a workflow step whose activity fails on a nonzero exit. The composed order is: implement (commits
+locally) → itest (machine gate) → create-pr (push + open PR) → arm-revise-pr. A red gate fails
+the workflow BEFORE create-pr fires — no PR is opened for a failed run. (Originally the overlay
+merged by id into implement so the PR was opened first; feature/split-create-pr 2026-07-30 restored
+the pre-PR block by giving create-pr its own step id.)
 
 ## Why k8s (the creative part)
 
@@ -99,7 +101,7 @@ stage progression, the MCP servers, real agent services, macOS. Linux-first: the
 loop's actual host) runs k3d; `k3d image import` is the documented portability route if a
 macOS path is ever needed.
 
-### B. The gate — a machine-executed workflow step (post-PR quality signal)
+### B. The gate — a machine-executed workflow step (pre-PR gate, restored by feature/split-create-pr)
 
 - **New activity `run-itest`** in workflow-svc (specific-first per panel D5 verdict; the
   general execute-anything `run-gate` is deferred until a second consumer exists — and a
@@ -118,12 +120,11 @@ macOS path is ever needed.
   - records the worktree **tree hash** in the evidence so create-pr can assert the pushed
     HEAD matches what was tested (panel minor: tested tree ≠ pushed tree);
   - returns `{passed, class, exitCode, treeHash, durationMs, outputTail}` — a machine fact.
-    Nonzero/timeout ⇒ the activity fails ⇒ the step fails ⇒ **the workflow fails structurally**.
-    NOTE: the overlay merges by step id — create-pr's step carries id `implement` and folds
-    into the implement step at compose time, while the `itest` step id appends afterwards.
-    The composed order is therefore: …implement(+PR epilogue) → itest. The gate runs AFTER the
-    PR is already open and surfaces the machine result on the already-open PR. This is the
-    accepted design (a post-PR quality gate, not a pre-PR block).
+    Nonzero/timeout ⇒ the activity fails ⇒ the step fails ⇒ **the workflow fails structurally**,
+    BEFORE create-pr fires. The composed order is: implement (commits locally, NO push/PR) →
+    itest → create-pr (push + open PR). This is the pre-PR block originally intended: no PR is
+    opened for a failed run. (Restored by feature/split-create-pr 2026-07-30; prior to that PR,
+    create-pr merged by id into the implement step so the PR was opened before the gate ran.)
 - **New overlay template `run-itest.tmpl.yaml`** (`role: overlay`, the `arm-revise-pr`
   precedent: appends a *new* step, id `itest`) with cwd `{{worktree.worktreePath}}`.
 - **Recompose the h feature key**:
@@ -136,10 +137,12 @@ macOS path is ever needed.
   no-op that writes `SKIPPED + reason` into the evidence and the PR body — surfacing the
   bypass, never hiding it; a skipped gate is a mandatory review-pr finding. Documented runbook
   escape included.
-- **Evidence threads forward**: create-pr's task embeds `{{itest.output}}` so the PR body
-  carries the machine result (pass/skip, class, tree hash, duration); gate outcomes also land
-  in the run ledger keyed by `workflowInstanceId` (the obs join key) and persist under
-  `.local-logs/itest/<runId>/` — outside both the namespace and worktree GC scopes.
+- **Evidence threads forward**: create-pr's task embeds `{{itest.class}}`, `{{itest.treeHash}}`,
+  `{{itest.durationMs}}`, and `{{itest.outputTail}}` (the scalar fields of `ItestResult` — there
+  is no `output` field) so the PR body carries the machine result (pass/skip, class, tree hash,
+  duration); gate outcomes also land in the run ledger keyed by `workflowInstanceId` (the obs join
+  key) and persist under `.local-logs/itest/<runId>/` — outside both the namespace and worktree GC
+  scopes.
 
 Runtime model, explicit (panel M8): the gate shells out to docker + kubectl, so gate-enabled
 feature runs require **host-mode workflow-svc** (the loop's actual mode per §18). Compose-mode
@@ -237,6 +240,14 @@ layer — the CLI composes workflows for any repo). Instead, omission of the ove
   workflow-svc carrying run-itest is deployed (out of scope for this PR).
 - **Phase 3 — the encoding.** CI `itest` job (non-required, linked to branch-protection flip);
   review-pr prose upgrade; content-guard lockstep; ARCHITECTURE/CLAUDE/runbook/cookbook.
+- **Phase 3b — pre-PR gate (structural fix).** IMPLEMENTED 2026-07-30 (PR feature/split-create-pr).
+  The §B ordering caveat ("post-PR quality signal") is resolved: create-pr.tmpl.yaml split from
+  a merge-by-id overlay (step id `implement`) into an append-only overlay with its own step
+  id `create-pr`. The composed order is now implement → itest → create-pr → arm-revise-pr.
+  A red gate fails the workflow BEFORE create-pr fires. No engine or CLI seam changes were needed
+  (`stepStructured` iterates all step results by value, `TERMINAL_ATOM_KIND` keys on `outputs:`
+  declared by create-pr, and `panelize` locates the contract step dynamically). `{{itest.output}}`
+  token corrected to the actual ItestResult scalar fields throughout docs and templates.
 - **Phase 4 — e2e validation.** One real h-builds-h feature run through the gate, including a
   deliberately broken intermediate commit proving create-pr is blocked with `assertion` class;
   cookbook entry stamped; then archive per plan-management (lift → `impl/`).

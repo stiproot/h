@@ -120,8 +120,8 @@ def test_revise_is_worktree_setup_revise() -> None:
     assert steps == ["worktree", "setup", "revise-pr"]
 
 
-def test_compose_implement_verify_create_pr_orders_and_gates() -> None:
-    """implement ⊕ verify ⊕ create-pr: one step ordered implement → check → PR-if-green."""
+def test_compose_implement_verify_create_pr_creates_five_steps() -> None:
+    """implement ⊕ verify ⊕ create-pr: five steps; check in implement, PR-opening in create-pr."""
     from h_cli.infrastructure.overlay import overlay
 
     def _atom(name: str, **vals: str) -> dict:
@@ -140,11 +140,24 @@ def test_compose_implement_verify_create_pr_orders_and_gates() -> None:
         _atom("verify", **{"verify.cmd": "bun run lint"}),
         _atom("create-pr"),
     )
-    assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement"]
-    task = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
-    # the check gates the PR: verify prose (and its stop-on-fail) precede the open-PR prose
-    assert task.index("===ACCEPTANCE CHECK===") < task.index("open (or update) a pull request")
-    assert "do not open a pull request" in task  # the gate
+    assert [s["id"] for s in merged["steps"]] == [
+        "worktree",
+        "setup",
+        "plan",
+        "implement",
+        "create-pr",
+    ]
+    implement_task = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
+    # verify prose (acceptance check) is in the implement step
+    assert "===ACCEPTANCE CHECK===" in implement_task
+    # commit prose is in the implement step (composable mode)
+    assert "ONLY what the feature touched" in implement_task
+    create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
+    # PR-opening prose is in the create-pr step, not implement
+    assert "open (or update) a pull request" in create_pr["input"]["task"]
+    # exactly one outputContract declarer (create-pr, not implement)
+    declarers = [s for s in merged["steps"] if "outputContract" in s.get("input", {})]
+    assert len(declarers) == 1 and declarers[0]["id"] == "create-pr"
 
 
 def test_git_auth_ssh_on_worktree_step(hostile_spec: Path) -> None:
@@ -277,8 +290,8 @@ def test_create_pr_task_requires_direct_markdown_without_shell_wrapper() -> None
     assert not any(line.strip() == "EOF" for line in task.splitlines())
 
 
-def test_composable_implement_ends_implement_neutrally(hostile_spec: Path) -> None:
-    """composable=true ends implement neutrally at the plan — the overlay attach point."""
+def test_composable_implement_commits_without_pushing(hostile_spec: Path) -> None:
+    """composable=true ends implement with commit-but-no-push instructions (no PR; create-pr owns those)."""
     rendered = helm.render_workflow(
         "implement",
         values={"implement.slug": "hostile-fixture", "composable": "true"},
@@ -288,12 +301,14 @@ def test_composable_implement_ends_implement_neutrally(hostile_spec: Path) -> No
     definition = json.loads(helm.to_wire_json(rendered))
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
     implement = definition["steps"][3]["input"]["task"]
-    assert "do not commit or push" not in implement  # no standalone closer to collide with overlays
-    assert implement.rstrip().endswith("{{plan.output}}")  # ends at the plan handoff
+    assert "ONLY what the feature touched" in implement  # commit prose present
+    assert "do not push" in implement.lower()  # no push
+    assert "do not commit or push" not in implement  # standalone closer is absent in composable mode
+    assert "open (or update) a pull request" not in implement  # PR-opening is create-pr's job
 
 
-def test_compose_implement_create_pr_extends_implement() -> None:
-    """overlay(feature[composable], create-pr) == feature-to-a-PR in one workflow (--pr seam)."""
+def test_compose_implement_create_pr_appends_create_pr_step() -> None:
+    """overlay(feature[composable], create-pr) appends a new create-pr step — NOT extending implement."""
     from h_cli.infrastructure.overlay import overlay
 
     feature = json.loads(
@@ -309,15 +324,22 @@ def test_compose_implement_create_pr_extends_implement() -> None:
         )
     )
     merged = overlay(feature, create_pr)
-    # No extra step — create-pr extended the existing implement, not appended a new run.
-    assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement"]
+    # create-pr appends a NEW step (id: create-pr), separate from implement.
+    assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement", "create-pr"]
     implement = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
-    # The base implement prose AND the epilogue both live on the one step, in order.
+    # Implement has commit prose but no PR-opening prose.
     assert "First persist the plan" in implement
-    assert implement.index("{{plan.output}}") < implement.index("open (or update) a pull request")
-    # The epilogue's fire-time params thread through unresolved for a saved template.
-    assert "{{params.issueNumber}}" in implement
-    assert "feature/{{params.slug}}" in implement
+    assert "ONLY what the feature touched" in implement
+    assert "open (or update) a pull request" not in implement
+    create_pr_step = next(s for s in merged["steps"] if s["id"] == "create-pr")
+    # create-pr step carries fire-time identity, cwd, and outputContract.
+    assert create_pr_step["activity"] == "{{params.runActivity}}"
+    assert create_pr_step["cwd"] == "{{worktree.worktreePath}}"
+    assert "outputContract" in create_pr_step["input"]
+    # PR-opening prose and fire-time params are in the create-pr step.
+    assert "open (or update) a pull request" in create_pr_step["input"]["task"]
+    assert "{{params.issueNumber}}" in create_pr_step["input"]["task"]
+    assert "feature/{{params.slug}}" in create_pr_step["input"]["task"]
 
 
 def test_arm_revise_golden(snapshot) -> None:
@@ -330,8 +352,7 @@ def test_arm_revise_golden(snapshot) -> None:
 
 
 def test_compose_implement_verify_create_pr_arm_revise_appends_the_arm_step() -> None:
-    """implement ⊕ verify ⊕ create-pr ⊕ arm-revise: the arm-revise step is APPENDED (new id) after
-    implement, carrying register-cron + the PR guard — the h-builds-h implement-pr composition."""
+    """implement ⊕ verify ⊕ create-pr ⊕ arm-revise: six steps; arm-revise reads create-pr output."""
     from h_cli.infrastructure.overlay import overlay
 
     def _atom(name: str, **vals: str) -> dict:
@@ -356,13 +377,14 @@ def test_compose_implement_verify_create_pr_arm_revise_appends_the_arm_step() ->
         "setup",
         "plan",
         "implement",
+        "create-pr",
         "arm-revise-pr",
     ]
     arm = next(s for s in merged["steps"] if s["id"] == "arm-revise-pr")
     assert arm["activity"] == "register-cron"
     assert arm["input"]["workflow"] == "revise-pr"
-    # The guard reads the implement step's structured output for `pr`; identity threads as params.
-    assert arm["input"]["requirePrFrom"] == "{{implement.output}}"
+    # The guard reads the create-pr step's structured output for `pr`; identity threads as params.
+    assert arm["input"]["requirePrFrom"] == "{{create-pr.output}}"
     assert arm["input"]["repo"] == "{{params.repo}}"
     assert arm["input"]["slug"] == "{{params.slug}}"
 
@@ -595,7 +617,7 @@ def test_run_itest_skip_emits_skip_flag() -> None:
 
 
 def test_compose_implement_run_itest_create_pr_appends_itest_step() -> None:
-    """implement ⊕ run-itest ⊕ create-pr: itest step is APPENDED (new id) after implement."""
+    """implement ⊕ run-itest ⊕ create-pr: itest gates BEFORE create-pr; create-pr embeds itest tokens."""
     from h_cli.infrastructure.overlay import overlay
 
     def _atom(name: str, **vals: str) -> dict:
@@ -620,10 +642,45 @@ def test_compose_implement_run_itest_create_pr_appends_itest_step() -> None:
         "plan",
         "implement",
         "itest",
+        "create-pr",
     ]
     itest = next(s for s in merged["steps"] if s["id"] == "itest")
     assert itest["activity"] == "run-itest"
     assert itest["input"]["worktreePath"] == "{{worktree.worktreePath}}"
+    create_pr_step = next(s for s in merged["steps"] if s["id"] == "create-pr")
+    # create-pr task embeds the itest scalar field tokens for PR body evidence.
+    assert "{{itest.class}}" in create_pr_step["input"]["task"]
+    assert "{{itest.outputTail}}" in create_pr_step["input"]["task"]
+
+
+def test_composed_implement_pr_full_order_single_declarer() -> None:
+    """implement ⊕ verify ⊕ run-itest ⊕ create-pr ⊕ arm-revise-pr:
+    itest gates BEFORE create-pr; exactly one outputs declarer (create-pr)."""
+    from h_cli.infrastructure.overlay import overlay
+
+    atoms = [
+        json.loads(
+            helm.to_wire_json(
+                helm.render_workflow(
+                    name,
+                    values={"publish": "true", "composable": "true", "verify.cmd": "bun run lint"},
+                    include_local=False,
+                )
+            )
+        )
+        for name in ["implement", "verify", "run-itest", "create-pr", "arm-revise-pr"]
+    ]
+    merged = overlay(*atoms)
+    ids = [s["id"] for s in merged["steps"]]
+    assert ids == ["worktree", "setup", "plan", "implement", "itest", "create-pr", "arm-revise-pr"]
+    assert ids.index("itest") < ids.index("create-pr")
+    declarers = [s for s in merged["steps"] if "outputContract" in s.get("input", {})]
+    assert len(declarers) == 1 and declarers[0]["id"] == "create-pr"
+    assert merged["steps"][-1]["input"]["requirePrFrom"] == "{{create-pr.output}}"
+    create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
+    assert create_pr["activity"] == "{{params.runActivity}}"
+    assert "outputs" in merged
+    assert "pr" in merged["outputs"]["properties"]
 
 
 def test_plan_stops_at_the_plan_and_declares_it() -> None:

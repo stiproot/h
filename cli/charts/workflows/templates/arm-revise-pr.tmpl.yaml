@@ -6,7 +6,7 @@ opened. This is the `arm-*` pattern: a workflow arms its own follow-on recurrenc
 (sibling of write-wf-row), not the fire edge — the recurrence still lives in the cron engine; this
 step only writes the cron:sub row (LOUD on failure, so a botched arm records wf:failed).
 
-Guard: the register-cron activity only arms if `implement`'s structured output block carries a `pr`
+Guard: the register-cron activity only arms if `create-pr`'s structured output block carries a `pr`
 URL — a create-pr run that SKIPPED the push opens no PR and arms nothing (a valid no-op).
 
 Compose (the intended path — the h-builds-h feature-pr key):
@@ -31,6 +31,6 @@ steps:
       slug: {{ include "h.token" "params.slug" | quote }}
       cadence: {{ $cadence | quote }}
       maxFires: {{ $maxFires }}
-      # Only arm if the PR actually opened: register-cron reads the `pr` field of this output's json block.
-      requirePrFrom: {{ include "h.token" "implement.output" | quote }}
+      # Only arm if the PR actually opened: register-cron reads the `pr` field of create-pr's output json block.
+      requirePrFrom: {{ include "h.token" "create-pr.output" | quote }}
 {{- end }}

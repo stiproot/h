@@ -74,8 +74,8 @@
         slug: "{{params.slug}}"
         cadence: "0 */6 * * *"
         maxFires: 20
-        # Only arm if the PR actually opened: register-cron reads the `pr` field of this output's json block.
-        requirePrFrom: "{{implement.output}}"
+        # Only arm if the PR actually opened: register-cron reads the `pr` field of create-pr's output json block.
+        requirePrFrom: "{{create-pr.output}}"
   
   '''
 # ---
@@ -227,25 +227,23 @@
   '''
   role: overlay
   steps:
-    - id: implement
+    - id: create-pr
+      activity: "{{params.runActivity}}"
+      cwd: "{{worktree.worktreePath}}"
+      model: "{{params.modelImplement}}"
       input:
         outputContract: {"properties":{"pr":{"description":"the pull request number, when a PR exists (opened, updated, or pre-existing)","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)","type":"string"},"url":{"description":"the pull request URL","type":"string"},"verify":{"description":"the acceptance-gate outcome, present when a verify gate is composed in (verify.yaml); FAIL means the gate stopped the run before any PR step","enum":["PASS","FAIL"]}},"type":"object"}
         task: |-
           ===ISSUE===
           {{params.issueNumber}}
   
-          Now commit what you implemented and open (or update) a pull request.
-          1. Commit ONLY what the feature touched, on branch feature/{{params.slug}}, with a
-             concise conventional commit message. Add files individually (never `git add -A`
-             or `git commit -a`). Two harness artifacts must NEVER ship: restore the runner's
-             MCP merge with `git checkout -- .mcp.json` (when the repo tracks that file), and
-             leave plan-feature-{{params.slug}}.md uncommitted (run context, not feature code).
-          2. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
+          The implementation step has committed the changes locally. Now push and open (or update) a pull request.
+          1. Push the branch. The origin remote has no credentials — derive <owner>/<repo>
              from `git remote get-url origin` and push with a one-shot token URL:
              git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{params.slug}}
              Never write the token into git config or the remote URL; if GH_TOKEN is unset,
              skip the push and explain why in the `skipped` field of your final json block.
-          3. Open a pull request against the repository's default branch with the github
+          2. Open a pull request against the repository's default branch with the github
              MCP tool create_pull_request: title from the feature, body summarizing the
              spec, the plan, and what you implemented. Pass the intended Markdown directly
              as the tool's body value, beginning with the intended heading or first line;
@@ -254,7 +252,16 @@
              in the PR body, so the merge auto-closes that issue; otherwise omit it. If a
              PR for this branch already exists, your push has updated it — do not open a
              duplicate.
-          4. If a PR for this branch already existed before this push (this is a revise
+  
+          ===ITEST EVIDENCE===
+          class: {{itest.class}}
+          treeHash: {{itest.treeHash}}
+          durationMs: {{itest.durationMs}}
+          outputTail: {{itest.outputTail}}
+          Include this evidence section in the PR body only when these values are non-empty
+          (itest was composed in and ran).
+  
+          3. If a PR for this branch already existed before this push (this is a revise
              run, not a first-time creation), respond to review feedback:
              a. Find the PR number: use the github MCP tool to list pull requests by
                head branch feature/{{params.slug}}.
