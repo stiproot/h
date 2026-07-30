@@ -1,8 +1,9 @@
+import type { WorkflowError } from "core";
 import { Effect, Option, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
-import { registerChainForFire } from "../../domain/chain-scan.ts";
+import { disarmChain, registerChainForFire } from "../../domain/chain-scan.ts";
 import { ChainMember, ChainStrategy } from "../../domain/models/chain.model.ts";
 import { ChainStore } from "../../domain/ports/IChainStore.ts";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";
@@ -75,6 +76,31 @@ export function registerChainRoutes(
         const row = yield* cs.getRow(request.params.chainId);
         if (Option.isNone(row)) return yield* new NotFoundError({ message: "Chain not found" });
         return row.value;
+      }),
+    ),
+  );
+
+  const DisarmBody = Schema.Struct({ chainId: Schema.String });
+
+  fastify.post("/chain/disarm", (request, reply) =>
+    runRoute(
+      runtime,
+      reply,
+      Effect.gen(function* () {
+        const body = yield* Schema.decodeUnknown(DisarmBody)(request.body);
+        const row = yield* disarmChain(body.chainId).pipe(
+          Effect.mapError((e) =>
+            "_tag" in e && e._tag === "NotFound"
+              ? new NotFoundError({ message: `chain not found: ${body.chainId}` })
+              : (e as WorkflowError),
+          ),
+        );
+        return {
+          disarmed: body.chainId,
+          status: row.status,
+          outcome: row.outcome,
+          currentInstanceId: row.currentInstanceId ?? null,
+        };
       }),
     ),
   );

@@ -852,6 +852,42 @@ export const tallyChainCost = (
   });
 
 // ---------------------------------------------------------------------------
+// Disarm (operator-initiated deactivation — mirrors disarmCron in cron-scan.ts)
+// ---------------------------------------------------------------------------
+
+export type DisarmChainError = { readonly _tag: "NotFound" } | WorkflowError;
+
+export const disarmChain = (
+  chainId: string,
+): Effect.Effect<ChainRow, DisarmChainError, ChainStore> =>
+  Effect.gen(function* () {
+    const cs = yield* ChainStore;
+    const nowMs = Date.now();
+    const now = new Date(nowMs).toISOString();
+    const existing = yield* cs.getRow(chainId);
+    if (Option.isNone(existing)) return yield* Effect.fail<DisarmChainError>({ _tag: "NotFound" });
+    const row = existing.value;
+    // idempotent: any terminal chain state — mirrors disarmCron's status check
+    if (row.status === "finalized") return row;
+    const disarmed: ChainRow = {
+      ...row,
+      epoch: row.epoch + 1,
+      status: "finalized",
+      outcome: "disarmed",
+      note: "disarmed by operator",
+      endedAt: now,
+      updatedAt: now,
+    };
+    const saved = yield* saveFenced(row.epoch, disarmed);
+    if (!saved)
+      return yield* Effect.fail<DisarmChainError>(
+        new WorkflowError({ cause: "concurrent modification, retry", instanceId: chainId }),
+      );
+    yield* cs.bumpLedger(chainLedgerDate(nowMs), { chainsFinalized: 1 });
+    return disarmed;
+  });
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -872,6 +908,8 @@ function runtimeStatusOf(outcome: ChainOutcome): string {
       return "TERMINATED";
     case "orphaned":
       return "UNKNOWN";
+    case "disarmed":
+      return "DISARMED";
   }
 }
 

@@ -2,7 +2,7 @@ import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
+import { disarmChain, registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
 import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "./models/chain.model.ts";
 import { emptyChainLedger } from "./models/chain.model.ts";
 import type { WfIdentity, WfRow } from "./models/wf.model.ts";
@@ -1385,5 +1385,209 @@ describe("--after unfulfilled activation (issue #91)", () => {
     // Input missing: review-pr requires prNumber
     expect(child?.note).toContain("stage 0 required inputs not produced");
     expect(inv.invokes).toHaveLength(0); // child finalized before firing
+  });
+});
+
+describe("disarmChain", () => {
+  it("disarms a running chain with status=finalized, outcome=disarmed, bumped epoch", async () => {
+    const mem = memoryChainStore();
+    const startRow: ChainRow = {
+      chainId: "my-chain",
+      epoch: 3,
+      slug: "my-chain",
+      members: [{ kind: "implement-pr", key: "implement-pr" }],
+      strategy: "sequential",
+      cursor: 0,
+      currentInstanceId: "my-chain-w0",
+      data: {},
+      status: "running",
+      lastStatus: "RUNNING",
+      unknownStreak: 0,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mem.rows.set("my-chain", startRow);
+
+    const result = await Effect.runPromise(
+      disarmChain("my-chain").pipe(Effect.provide(Layer.succeed(ChainStore, mem.service))),
+    );
+
+    expect(result.status).toBe("finalized");
+    expect(result.outcome).toBe("disarmed");
+    expect(result.epoch).toBe(4);
+    expect(result.note).toBe("disarmed by operator");
+    expect(result.endedAt).toBeDefined();
+    expect(result.currentInstanceId).toBe("my-chain-w0");
+
+    const stored = mem.rows.get("my-chain");
+    expect(stored?.status).toBe("finalized");
+    expect(stored?.outcome).toBe("disarmed");
+
+    const ledgerDate = new Date().toISOString().slice(0, 10);
+    expect(mem.ledgers.get(ledgerDate)?.chainsFinalized).toBe(1);
+  });
+
+  it("is idempotent: already-disarmed row returns unchanged with no ledger bump", async () => {
+    const mem = memoryChainStore();
+    const disarmedRow: ChainRow = {
+      chainId: "already-gone",
+      epoch: 7,
+      slug: "already-gone",
+      members: [{ kind: "implement-pr", key: "implement-pr" }],
+      strategy: "sequential",
+      cursor: 0,
+      data: {},
+      status: "finalized",
+      outcome: "disarmed",
+      lastStatus: "COMPLETED",
+      unknownStreak: 0,
+      note: "disarmed by operator",
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+    };
+    mem.rows.set("already-gone", disarmedRow);
+
+    const result = await Effect.runPromise(
+      disarmChain("already-gone").pipe(Effect.provide(Layer.succeed(ChainStore, mem.service))),
+    );
+
+    expect(result.epoch).toBe(7);
+    expect(result.outcome).toBe("disarmed");
+
+    const ledgerDate = new Date().toISOString().slice(0, 10);
+    expect(mem.ledgers.get(ledgerDate)?.chainsFinalized ?? 0).toBe(0);
+  });
+
+  it.each([
+    ["completed", "finalized-completed"],
+    ["failed", "finalized-failed"],
+    ["terminated", "finalized-terminated"],
+  ] as const)(
+    "is idempotent for status=finalized, outcome=%s — row unchanged, no ledger bump",
+    async (outcome, chainId) => {
+      const mem = memoryChainStore();
+      const existingRow: ChainRow = {
+        chainId,
+        epoch: 5,
+        slug: chainId,
+        members: [{ kind: "implement-pr", key: "implement-pr" }],
+        strategy: "sequential",
+        cursor: 0,
+        data: {},
+        status: "finalized",
+        outcome,
+        lastStatus: "COMPLETED",
+        unknownStreak: 0,
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        endedAt: new Date().toISOString(),
+      };
+      mem.rows.set(chainId, existingRow);
+
+      const result = await Effect.runPromise(
+        disarmChain(chainId).pipe(Effect.provide(Layer.succeed(ChainStore, mem.service))),
+      );
+
+      expect(result.epoch).toBe(5);
+      expect(result.outcome).toBe(outcome);
+      expect(result.status).toBe("finalized");
+
+      const ledgerDate = new Date().toISOString().slice(0, 10);
+      expect(mem.ledgers.get(ledgerDate)?.chainsFinalized ?? 0).toBe(0);
+    },
+  );
+
+  it("returns NotFound for a missing chain", async () => {
+    const mem = memoryChainStore();
+
+    const result = await Effect.runPromise(
+      disarmChain("ghost").pipe(
+        Effect.flip,
+        Effect.provide(Layer.succeed(ChainStore, mem.service)),
+      ),
+    );
+
+    expect(result).toMatchObject({ _tag: "NotFound" });
+  });
+});
+
+describe("scanChainsEffect: disarmed rows", () => {
+  it("skips disarmed rows during scan", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const disarmed: ChainRow = {
+      chainId: "disarmed-skip",
+      epoch: 1,
+      slug: "disarmed-skip",
+      members: [{ kind: "implement-pr", key: "implement-pr" }],
+      strategy: "sequential",
+      cursor: 0,
+      data: {},
+      status: "finalized",
+      outcome: "disarmed",
+      lastStatus: "COMPLETED",
+      unknownStreak: 0,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+    };
+    mem.rows.set("disarmed-skip", disarmed);
+
+    const report = await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+
+    expect(report.scanned).toBe(0);
+    expect(inv.invokes).toHaveLength(0);
+  });
+
+  it("aborts --after child when parent is disarmed", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const parent: ChainRow = {
+      chainId: "parent",
+      epoch: 1,
+      slug: "parent",
+      members: [{ kind: "implement-pr", key: "implement-pr" }],
+      strategy: "sequential",
+      cursor: 3,
+      data: {},
+      status: "finalized",
+      outcome: "disarmed",
+      note: "disarmed by operator",
+      lastStatus: "COMPLETED",
+      unknownStreak: 0,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+    };
+    const child: ChainRow = {
+      chainId: "child",
+      epoch: 1,
+      slug: "child",
+      members: [{ kind: "implement-pr", key: "implement-pr" }],
+      strategy: "sequential",
+      cursor: 0,
+      data: {},
+      status: "scheduling",
+      after: "parent",
+      lastStatus: "SCHEDULED",
+      unknownStreak: 0,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    mem.rows.set("parent", parent);
+    mem.rows.set("child", child);
+
+    await Effect.runPromise(
+      scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
+    );
+
+    expect(inv.invokes).toHaveLength(0);
+    const childAfter = mem.rows.get("child");
+    expect(childAfter?.status).toBe("finalized");
+    expect(childAfter?.outcome).toBe("terminated");
+    expect(childAfter?.note).toContain("disarmed");
   });
 });
