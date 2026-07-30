@@ -152,6 +152,8 @@ def test_compose_implement_verify_create_pr_creates_five_steps() -> None:
     assert "===ACCEPTANCE CHECK===" in implement_task
     # commit prose is in the implement step (composable mode)
     assert "ONLY what the feature touched" in implement_task
+    # commit instruction must appear BEFORE the acceptance check (forward-reference ordering)
+    assert implement_task.index("ONLY what the feature touched") < implement_task.index("===ACCEPTANCE CHECK===")
     create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
     # PR-opening prose is in the create-pr step, not implement
     assert "open (or update) a pull request" in create_pr["input"]["task"]

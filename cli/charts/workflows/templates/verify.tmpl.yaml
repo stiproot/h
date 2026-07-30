@@ -63,5 +63,7 @@ steps:
         from this step) and halt. The itest machine gate will also catch any locally
         committed changes that did not pass, but the check here is the earlier, cheaper gate.
 
-        If it passes, carry out any remaining instructions below — the run continues.
+        If it passes, commit per the instructions at the top of this composable section
+        (the commit block that appeared before this acceptance check), then halt this
+        step — the workflow engine proceeds to the next step.
 {{- end }}
