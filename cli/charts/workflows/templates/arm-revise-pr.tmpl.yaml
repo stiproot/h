@@ -10,7 +10,7 @@ Guard: the register-cron activity only arms if `create-pr`'s structured output b
 URL — a create-pr run that SKIPPED the push opens no PR and arms nothing (a valid no-op).
 
 Compose (the intended path — the h-builds-h feature-pr key):
-  h template compose implement verify create-pr arm-revise-pr --save implement-pr
+  h template compose implement verify run-itest create-pr arm-revise-pr --save implement-pr
 Render alone (for inspection):
   helm template arm-revise-pr cli/charts/workflows -s templates/arm-revise-pr.tmpl.yaml --set template=arm-revise-pr
 */ -}}

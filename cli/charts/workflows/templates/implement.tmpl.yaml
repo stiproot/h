@@ -31,9 +31,9 @@ its `required` calls) only runs when the renderer selects it via --set template=
 role: base
 {{- $f := .Values.implement }}
 {{- $publish := .Values.publish | default false }}
-{{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement ends neutrally
-at the plan (no standalone commit-decision closer) so verify/create-pr overlays can append their
-prose to its tail. See docs/plans/impl/workflow-composition.md. `h template compose` sets this. */ -}}
+{{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement commits locally
+without pushing (no PR) so a composed-in create-pr step can own the push and PR opening.
+See docs/plans/impl/workflow-composition.md. `h template compose` sets this. */ -}}
 {{- $composable := .Values.composable | default false }}
 {{- /* The activity that runs the plan/implement steps — run-claude by default, or run-openhands
 to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}

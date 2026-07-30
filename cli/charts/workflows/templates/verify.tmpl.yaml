@@ -58,10 +58,9 @@ steps:
 
         This check GATES everything below it. If the commands STILL fail after your
         attempts, STOP here: do not commit, do not push, do not open a pull request —
-        and report the failure in your final json block: `"verify": "FAIL"` plus a
-        `skipped` field summarizing the failing command output as evidence.
+        report the failure in plain output (the check outcome; no json block is needed
+        from this step) and halt. The itest machine gate will also catch any pushed
+        code that did not pass, but the check here is the earlier, cheaper gate.
 
-        If it passes, include `"verify": "PASS"` in your final json block along with
-        a brief summary of what you ran and why that is sufficient, then carry out any
-        remaining instructions below.
+        If it passes, carry out any remaining instructions below — the run continues.
 {{- end }}

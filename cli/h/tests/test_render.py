@@ -273,7 +273,7 @@ def test_branch_unsafe_slug_fails_schema(hostile_spec: Path) -> None:
 
 
 def test_create_pr_golden(snapshot) -> None:
-    """The create-pr overlay atom (publish-native): a lone implement step with the PR epilogue."""
+    """The create-pr overlay atom (publish-native): a lone create-pr step carrying the push/PR-opening epilogue."""
     rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
@@ -332,9 +332,9 @@ def test_compose_implement_create_pr_appends_create_pr_step() -> None:
     assert "ONLY what the feature touched" in implement
     assert "open (or update) a pull request" not in implement
     create_pr_step = next(s for s in merged["steps"] if s["id"] == "create-pr")
-    # create-pr step carries fire-time identity, cwd, and outputContract.
+    # create-pr step carries fire-time identity, cwd (inside input), and outputContract.
     assert create_pr_step["activity"] == "{{params.runActivity}}"
-    assert create_pr_step["cwd"] == "{{worktree.worktreePath}}"
+    assert create_pr_step["input"]["cwd"] == "{{worktree.worktreePath}}"
     assert "outputContract" in create_pr_step["input"]
     # PR-opening prose and fire-time params are in the create-pr step.
     assert "open (or update) a pull request" in create_pr_step["input"]["task"]

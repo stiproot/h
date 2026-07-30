@@ -105,6 +105,7 @@ def test_template_compose_prints_merged_definition() -> None:
     assert result.exit_code == 0, _all_output(result)
     # The merged YAML carries implement's steps plus create-pr appended as its own step.
     assert "worktree" in result.output and "ITEST EVIDENCE" in result.output
+    assert "OUTPUT CONTRACT" in result.output
     assert "implement ⊕ create-pr" in result.output
 
 
