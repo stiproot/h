@@ -18,7 +18,7 @@ import { runActivity } from "../activity-runtime.ts";
  * registration failure throws → generic.workflow's closing bracket records `wf:failed`. That is the
  * durable audit of "did this cron get armed?" (§10).
  *
- * The arm-at-birth guard: when `requirePrFrom` is set (create-pr's `{{implement.output}}`), only arm
+ * The arm-at-birth guard: when `requirePrFrom` is set (create-pr's `{{create-pr.output}}`), only arm
  * if a PR actually opened — read the `pr` field of the step's structured output block (a skip or a
  * missing block → a valid no-op, NOT a failure), and thread that PR number into the fired
  * workflow's params.
@@ -54,7 +54,7 @@ export type CronPlan =
   | { armed: false; reason: string }
   | { armed: true; registration: CronRegistration };
 
-// Parse a PR number out of a single step's RAW agent output (a `{{implement.output}}` string): the
+// Parse a PR number out of a single step's RAW agent output (a `{{create-pr.output}}` string): the
 // last fenced ```json block is the step's validated structured output (the rung-2 seam already
 // enforced it against the declared contract — docs/plans/impl/structured-workflow-outputs.md), and its
 // `pr` field is the number. A skip (`skipped` instead of `pr`) or no block → undefined.

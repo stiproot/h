@@ -446,9 +446,9 @@ entirely (item 7d's `POST /cron/discover` and item 6a's run-route cron field mig
    recur registration and, for the arm-at-birth guard, an optional `requirePrFrom` output blob: parse
    `===PR===` (reuse the chain's `/\/pull\/(\d+)/`); a URL → arm a recur cron on `revise` with
    `{repo, slug, pr}` under instance `revise-<slug>`; SKIPPED/no-URL → no-op (report "no PR, not
-   armed"). A `arm-revise.yaml` overlay adds the step (references `{{implement.output}}` — the PR
-   marker lands there, since verify+create-pr both overlay `implement`); `feature-pr` recomposes as
-   `feature verify create-pr arm-revise`. This is Job 2: discover issue → feature-pr → opens PR → arms
+   armed"). A `arm-revise-pr.yaml` overlay adds the step (references `{{create-pr.output}}` — the
+   PR structured output lands there, in the append-only create-pr step); `implement-pr` composes as
+   `implement verify run-itest create-pr arm-revise-pr`. This is Job 2: discover issue → feature-pr → opens PR → arms
    a revise-until-merged recur cron (the recur cron + `revise` + the `===GOAL===RESOLVED` handshake
    already exist).
 2. ✅ **`watch:` stays in the fire handler — NOT migrated.** The watcher is the sole exception: its row

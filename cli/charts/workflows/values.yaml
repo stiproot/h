@@ -17,9 +17,9 @@ runActivity: run-claude
 # run_saved_workflow + fire-time params. Template config still bakes in from values.
 publish: false
 
-# Composable (overlay) mode: render a template as an overlay-able atom — omit the standalone
-# closers a create-pr/verify overlay will supply (feature ends its implement step neutrally at
-# the plan). Set by `h template compose`; see docs/plans/impl/workflow-composition.md.
+# Composable (overlay) mode: render a template as an overlay-able atom — implement commits
+# locally without pushing so a composed-in create-pr step owns the push and PR opening.
+# Set by `h template compose`; see docs/plans/impl/workflow-composition.md.
 composable: false
 
 # implement workflow (templates/implement.tmpl.yaml): worktree → setup → plan → implement. A pure atom —
@@ -52,17 +52,17 @@ implement:
     implement: claude-haiku-4-5
 
 # verify overlay template (templates/verify.tmpl.yaml): an acceptance check that gates the run,
-# extending a composable implement's implement step. Replaces implement.verifyCmd — verification is
-# only ever composed in (`h template compose implement verify create-pr`).
+# appended to the implement step's task as an overlay. Replaces implement.verifyCmd — verification
+# is only ever composed in (`h template compose implement verify run-itest create-pr`).
 verify:
   # Acceptance command (e.g. "bun install && bun run lint"), run in the worktree by the implement
   # agent after the change; a failure stops the run before any commit/PR. Required when composed.
   cmd: ""
 
-# create-pr overlay template (templates/create-pr.tmpl.yaml): the commit/push/open-PR epilogue as an
-# overlay fragment that extends a composable implement's implement step. Publish-native — slug and
-# issueNumber are fire-time {{params.*}}; only gitAuth bakes here (mirrors implement.gitAuth: "" =
-# agent default, "pat" = one-shot GH_TOKEN URL, "ssh" = ssh transport).
+# create-pr overlay template (templates/create-pr.tmpl.yaml): the push/open-PR step as an
+# append-only overlay fragment that adds its own `create-pr` step after the itest gate.
+# Publish-native — slug and issueNumber are fire-time {{params.*}}; only gitAuth bakes here
+# (mirrors implement.gitAuth: "" = agent default, "pat" = one-shot GH_TOKEN URL, "ssh" = ssh).
 createPr:
   gitAuth: ""
 

@@ -1,16 +1,16 @@
 {{- /*
 arm-revise overlay template — the "arm at birth" step (docs/plans/impl/workflow-watcher-registry.md §10,
-Job 2). Composed onto feature ⊕ verify ⊕ create-pr, it appends a NEW step (`arm-revise`, a new id, so
-it lands after `implement`) that registers a revise-until-merged RECUR cron for the PR the run just
-opened. This is the `arm-*` pattern: a workflow arms its own follow-on recurrence via an activity
+Job 2). Composed onto feature ⊕ verify ⊕ run-itest ⊕ create-pr, it appends a NEW step (`arm-revise-pr`,
+a new id, so it lands after `create-pr`) that registers a revise-until-merged RECUR cron for the PR the
+run just opened. This is the `arm-*` pattern: a workflow arms its own follow-on recurrence via an activity
 (sibling of write-wf-row), not the fire edge — the recurrence still lives in the cron engine; this
 step only writes the cron:sub row (LOUD on failure, so a botched arm records wf:failed).
 
-Guard: the register-cron activity only arms if `implement`'s structured output block carries a `pr`
+Guard: the register-cron activity only arms if `create-pr`'s structured output block carries a `pr`
 URL — a create-pr run that SKIPPED the push opens no PR and arms nothing (a valid no-op).
 
 Compose (the intended path — the h-builds-h feature-pr key):
-  h template compose implement verify create-pr arm-revise-pr --save implement-pr
+  h template compose implement verify run-itest create-pr arm-revise-pr --save implement-pr
 Render alone (for inspection):
   helm template arm-revise-pr cli/charts/workflows -s templates/arm-revise-pr.tmpl.yaml --set template=arm-revise-pr
 */ -}}
@@ -31,6 +31,6 @@ steps:
       slug: {{ include "h.token" "params.slug" | quote }}
       cadence: {{ $cadence | quote }}
       maxFires: {{ $maxFires }}
-      # Only arm if the PR actually opened: register-cron reads the `pr` field of this output's json block.
-      requirePrFrom: {{ include "h.token" "implement.output" | quote }}
+      # Only arm if the PR actually opened: register-cron reads the `pr` field of create-pr's output json block.
+      requirePrFrom: {{ include "h.token" "create-pr.output" | quote }}
 {{- end }}

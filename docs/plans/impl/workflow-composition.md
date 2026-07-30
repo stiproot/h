@@ -56,22 +56,26 @@ The stack: **templates —(overlay)→ workflow definition —(execute)→ workf
 The two operators are not redundant — they map onto a real technical boundary: **where the agent's
 context breaks.**
 
-- **Overlay** composes units that run in the **same context** — the same worktree, one continuous
-  agent run. `implement ⊕ create-pr ⊕ verify`: the agent commits what it just wrote; no context
-  re-establishment. One workflow, one instanceId.
+- **Overlay** composes units into **one workflow** — the same worktree, one instanceId. Two variants:
+  *merge-by-id* (same step id → task prose appended, one continuous agent context; e.g. `implement ⊕
+  verify`); *append-only* (new step id → a fresh agent context that re-reads the worktree state;
+  e.g. `create-pr`, which re-reads the plan file and the local commit since PR #103, 2026-07-30).
+  Shared worktree; agent sessions may be separate.
 - **Chain** composes units across a **context handoff** — a *different* agent, reading fresh.
   `review` runs as `claude-coder` reading the PR; `revise` is a separate run addressing comments.
   Separate workflows, separate instanceIds.
 
-The canonical "feature → reviewed PR" decomposition:
+The canonical "feature → reviewed PR" decomposition (implement → itest → create-pr, since PR #103):
 
 ```
-[ implement ⊕ create-pr ⊕ verify ]  →  [ review ]  →  [ revise ]
-        one workflow (overlay)          chain           chain
+[ implement ⊕ verify ⊕ run-itest ⊕ create-pr ]  →  [ review ]  →  [ revise ]
+              one workflow (overlay)                   chain           chain
 ```
 
-Overlay is chosen partly for **performance** (avoid N context re-reads), not only aesthetics — this is
-why `implement`+`create-pr` must overlay, not chain.
+Overlay keeps `create-pr` in the same workflow as `implement` for **pre-PR gate ordering**: `implement`
+commits locally, `run-itest` runs as a machine gate, and `create-pr` fires only when itest passes —
+all in one workflow definition. The original "avoid context re-establishment" rationale is superseded
+(`create-pr` has its own agent context since PR #103, 2026-07-30).
 
 ---
 
@@ -145,11 +149,13 @@ h chain run -t feature -t pr-review -t revise \
 ### The overlay-inside-a-chain-hop corner
 
 If `--chain` made *every* `-t` a separate workflow, `implement` and `create-pr` would split into
-separate runs — re-introducing the context re-establishment overlay exists to avoid. Resolution for
-v1: **overlay is authoring-time, chain is invocation-time.** Pre-compose `implement ⊕ create-pr ⊕
-verify` into a named template, then chain flat single-template hops. This mirrors compose exactly (`-f`
-merges *before* `up`; you don't nest merges inside a sequence). Inline overlay-in-a-hop is a possible
-v2 nicety, deferred until needed.
+separate chain members — losing the pre-PR gate ordering where `run-itest` blocks `create-pr` within
+the same workflow. Resolution: **overlay is authoring-time, chain is invocation-time.** Pre-compose
+`implement ⊕ verify ⊕ run-itest ⊕ create-pr` into a named template (`implement-pr`), then chain flat
+single-template hops. Note: `create-pr` is an append-only overlay (step id `create-pr`, fresh agent
+context — re-reads plan file and local commit since PR #103, 2026-07-30), not a merge-by-id extension
+of `implement`. This mirrors compose exactly (`-f` merges *before* `up`; you don't nest merges inside
+a sequence). Inline overlay-in-a-hop is a possible v2 nicety, deferred until needed.
 
 ---
 

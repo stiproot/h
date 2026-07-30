@@ -4,13 +4,15 @@ implement workflow — worktree → setup → plan → implement.
 Renders a run_workflow request body: a run-specific worktree
 of the pre-cloned target repo on branch feature/<slug>, h skills + runtime steering installed,
 a read-only plan pass over the spec, then an implement pass that leaves the result as
-uncommitted working-tree changes.
+uncommitted working-tree changes (standalone) or commits locally without pushing (composable mode).
 
 implement is a pure atom: it does NOT verify and does NOT open a PR — both are separate, explicit
 compositions. Overlay the verify template to gate the run on an acceptance check, and the create-pr
-template to commit/push/open a PR: `h template compose implement verify create-pr` (create-pr
-last — it is the finishing move, gated by verify's "stop on FAIL"). There is no verifyCmd or
---pr/createPr flag: if you want a check or a PR, you compose one in. See
+template to push/open a PR as a dedicated step after implement commits: `h template compose implement
+verify run-itest create-pr arm-revise-pr` (create-pr appends its own step after itest; it is the
+finishing move, gated by itest's nonzero-exit fail). In composable mode (--set composable=true),
+implement's task ends with commit instructions (no push, no PR) — the create-pr overlay owns those.
+There is no verifyCmd or --pr/createPr flag: if you want a check or a PR, you compose one in. See
 docs/plans/impl/workflow-composition.md.
 
 Render (YAML is the artifact; JSON only at the wire boundary — see cli/scripts/_render.sh):
@@ -29,9 +31,9 @@ its `required` calls) only runs when the renderer selects it via --set template=
 role: base
 {{- $f := .Values.implement }}
 {{- $publish := .Values.publish | default false }}
-{{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement ends neutrally
-at the plan (no standalone commit-decision closer) so verify/create-pr overlays can append their
-prose to its tail. See docs/plans/impl/workflow-composition.md. `h template compose` sets this. */ -}}
+{{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement commits locally
+without pushing (no PR) so a composed-in create-pr step can own the push and PR opening.
+See docs/plans/impl/workflow-composition.md. `h template compose` sets this. */ -}}
 {{- $composable := .Values.composable | default false }}
 {{- /* The activity that runs the plan/implement steps — run-claude by default, or run-openhands
 to drive the flow on the openhands-agent. Both take the same {cwd,model,task} input. */ -}}
@@ -142,7 +144,17 @@ steps:
 
         Then implement the feature described under ===FEATURE SPEC=== below, following the
         plan. If the feature already appears implemented, make no changes and say so.
-        {{- if $composable }}{{- /* overlay base: end neutrally; a create-pr overlay appends the closer */}}
+        {{- if $composable }}
+        Once the implementation and any checks appended below pass, commit
+        ONLY what the feature touched on branch feature/{{ $slug }}, with a
+        concise conventional commit message. Add files individually (never
+        `git add -A` or `git commit -a`). Two harness artifacts must NEVER
+        ship: restore the runner's MCP merge with
+        `git checkout -- .mcp.json` (when the repo tracks that file), and
+        leave plan-feature-{{ $slug }}.md uncommitted (run context, not
+        feature code).
+        Do NOT push the branch and do NOT open a pull request — a
+        composed-in create-pr step owns those.
         {{- else }}
         Leave the result as uncommitted working-tree changes — do not commit or push.
         {{- end }}
