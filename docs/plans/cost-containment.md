@@ -1,6 +1,8 @@
 # Cost containment — budgets the engines enforce, accounting the ledger can't lose
 
-Status: Active — Phase 1 audit complete (findings below); Phase 0 decisions being settled
+Status: Active — Phases 0–4 done (B1/B2/B3/C3/A1 built + e2e-validated 2026-07-30); A2
+deferred (premise refuted); remaining: kimi budget decision + audit follow-ups (codex
+first-turn tokens, py cost population)
 Established: 2026-07-30
 
 ## Problem (evidence: 2026-07-30, the Moonshot $20 day)
@@ -57,15 +59,15 @@ agent shape.
   budget + today-spend columns (GET /exec/policy now returns `budgets`/`todaySpend`/
   `todayCostGapRuns` off the day ledger) plus a gap warning line; the url column was dropped
   (it truncated to noise at table width).
-- **A2. Per-run cost ceiling — `maxCostUsd` in the watch policy.** The watcher terminates a
-  running workflow whose tallied-so-far cost crosses the ceiling, finalizing
-  `outcome: cost-capped`. Requires a **live cost signal** (today mirrors land at run end):
-  the cheapest sufficient design is the ledger flushing a cumulative-usage snapshot to the
-  `run:` mirror periodically (e.g. every N events / M seconds, best-effort like all ledger
-  writes) — the scan already reads mirrors each tick. Alternatives to weigh at design review:
-  events.jsonl tailing by the scan (couples engine to fs), or app-side self-report. A2 is
-  gated on B1's partial-usage capture; if live flushing proves heavy, A2 degrades gracefully
-  to "cap enforced at next mirror flush," which still bounds spend.
+- **A2. Per-run cost ceiling — `maxCostUsd` in the watch policy. DEFERRED 2026-07-30,
+  refuted by Phase 1 evidence.** The Phase 0 decision ("mirror flush + A2") assumed the
+  ledger's running tally includes COST — it does not, for ANY current strategy: claude's
+  stream carries per-event usage but cost only in the terminal result event (a timed-out run
+  never has one), and codex/openhands/pi never report cost at all. Deriving live cost from
+  tokens needs a pricing table, an explicit non-goal. So a mid-run `maxCostUsd` has nothing
+  to compare against; per-run spend is bounded by `maxDurationMs` (existing) and the day is
+  bounded by A1. Revisit when: any strategy's stream gains per-event cost, or the
+  no-pricing-table non-goal is deliberately reversed.
 - **A3. Panel quorum (cost-adjacent).** An N-1 quorum for panel groups — a failed branch is
   surfaced in the judge's synthesis instead of failing the whenAll — so one throttled provider
   stops erasing (and re-billing) whole rounds. Scoped here only as the cost rationale; the
@@ -205,15 +207,16 @@ Table: agent × the five checks. ✅ pass, ◐ partial, ❌ gap. File pointers a
 
 ## Phases
 
-- **Phase 0 — this plan reviewed** (panel), decisions A1/A2 design settled.
-- **Phase 1 — Workstream C audit** (read-only; produces the table + filed gaps). First,
-  because A/B implementation details depend on what each shape actually emits.
-- **Phase 2 — Workstream B** (partial usage, orphan reaping, honest gaps) — the tally becomes
-  trustworthy.
-- **Phase 3 — Workstream A1** (daily budget auto-deny) on the now-trustworthy tally; then A2
-  (`maxCostUsd`) if the live-signal design holds up.
-- **Phase 4 — e2e validation**: a deliberately cheap-budgeted executor crosses its ceiling in
-  a controlled run; observe fence, refusal, and ledger honesty; cookbook-stamp.
+- **Phase 0 — DONE 2026-07-30** (operator + assistant review, no panel): decisions above.
+- **Phase 1 — DONE 2026-07-30**: the audit table + mechanics above.
+- **Phase 2 — DONE 2026-07-30**: B1 + C3 (commit d1c6bc1), B3 (same), B2 (177f473).
+- **Phase 3 — A1 DONE 2026-07-30** (22fa568); A2 deferred, premise refuted (see A2).
+- **Phase 4 — DONE 2026-07-30, e2e validated live**: workflow-svc restarted on the new build;
+  `h agents budget claude 0.01` → a watched `answer` run booked $0.0555 → the scan tick wrote
+  `{claude, cost-budget, until 2026-07-31T00:00:00Z}` (budget table preserved) → the next fire
+  FAILED at the gate with the cost-budget refusal text → `h agents list` showed
+  `auto-denied | $0.01/day | $0.06` + provenance line → `allow` + `budget --clear` restored
+  the prior state. Cookbook-stamped (docs/cookbook.md "Daily cost budget on an executor").
 
 ## Phase 0 decisions (settled 2026-07-30, operator + assistant review — no panel)
 

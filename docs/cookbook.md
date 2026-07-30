@@ -197,3 +197,21 @@ h agents allow codex    # re-enable
 Validated 2026-07-29: with codex denied, a fired `run-codex` workflow FAILED at the activity
 gate with `executor 'codex' is denied by the exec:config policy` — before any agent invoke, no
 quota spent (docs/plans/live-state-containment.md §2.3).
+
+## Daily cost budget on an executor — spend caps the engine enforces
+
+```sh
+h agents budget claude 5        # fence claude at $5/day (shortname, USD)
+h agents list                   # budget + today's tallied spend columns, gap-run warning
+h agents budget claude --clear  # remove the budget
+h agents allow claude           # lift a tripped cost-budget fence early
+```
+
+When the watcher's finalization tally (`watch:ledger:<date>` per-agent subtotals) crosses an
+executor's budget, it writes a `cost-budget` deny expiring at the next UTC midnight — the
+activity-registry gate then refuses that executor on every fire path; an operator deny is
+never downgraded. Validated 2026-07-30 (docs/plans/cost-containment.md A1 e2e): with claude
+budgeted at $0.01, a watched `answer` run booked $0.0555 → the scan fenced claude
+(`cost-budget, until next UTC midnight`), the next fire FAILED at the gate with
+`executor 'claude' is denied … (auto: daily cost budget crossed …)`, and `h agents list`
+showed `auto-denied | $0.01/day | $0.06`.
