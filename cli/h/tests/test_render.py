@@ -153,7 +153,8 @@ def test_compose_implement_verify_create_pr_creates_five_steps() -> None:
     # commit prose is in the implement step (composable mode)
     assert "ONLY what the feature touched" in implement_task
     # commit instruction must appear BEFORE the acceptance check (forward-reference ordering)
-    assert implement_task.index("ONLY what the feature touched") < implement_task.index("===ACCEPTANCE CHECK===")
+    commit_idx = implement_task.index("ONLY what the feature touched")
+    assert commit_idx < implement_task.index("===ACCEPTANCE CHECK===")
     create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
     # PR-opening prose is in the create-pr step, not implement
     assert "open (or update) a pull request" in create_pr["input"]["task"]
@@ -275,7 +276,7 @@ def test_branch_unsafe_slug_fails_schema(hostile_spec: Path) -> None:
 
 
 def test_create_pr_golden(snapshot) -> None:
-    """The create-pr overlay atom (publish-native): a lone create-pr step carrying the push/PR-opening epilogue."""
+    """The create-pr overlay atom (publish-native): a lone create-pr step with the PR epilogue."""
     rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 
@@ -293,7 +294,7 @@ def test_create_pr_task_requires_direct_markdown_without_shell_wrapper() -> None
 
 
 def test_composable_implement_commits_without_pushing(hostile_spec: Path) -> None:
-    """composable=true ends implement with commit-but-no-push instructions (no PR; create-pr owns those)."""
+    """composable=true ends implement with commit-but-no-push prose (create-pr owns the PR)."""
     rendered = helm.render_workflow(
         "implement",
         values={"implement.slug": "hostile-fixture", "composable": "true"},
@@ -305,12 +306,12 @@ def test_composable_implement_commits_without_pushing(hostile_spec: Path) -> Non
     implement = definition["steps"][3]["input"]["task"]
     assert "ONLY what the feature touched" in implement  # commit prose present
     assert "do not push" in implement.lower()  # no push
-    assert "do not commit or push" not in implement  # standalone closer is absent in composable mode
+    assert "do not commit or push" not in implement  # standalone closer absent in composable mode
     assert "open (or update) a pull request" not in implement  # PR-opening is create-pr's job
 
 
 def test_compose_implement_create_pr_appends_create_pr_step() -> None:
-    """overlay(feature[composable], create-pr) appends a new create-pr step — NOT extending implement."""
+    """overlay(feature[composable], create-pr) appends a create-pr step, NOT extending implement."""
     from h_cli.infrastructure.overlay import overlay
 
     feature = json.loads(
@@ -327,7 +328,8 @@ def test_compose_implement_create_pr_appends_create_pr_step() -> None:
     )
     merged = overlay(feature, create_pr)
     # create-pr appends a NEW step (id: create-pr), separate from implement.
-    assert [s["id"] for s in merged["steps"]] == ["worktree", "setup", "plan", "implement", "create-pr"]
+    expected_ids = ["worktree", "setup", "plan", "implement", "create-pr"]
+    assert [s["id"] for s in merged["steps"]] == expected_ids
     implement = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
     # Implement has commit prose but no PR-opening prose.
     assert "First persist the plan" in implement
@@ -619,7 +621,7 @@ def test_run_itest_skip_emits_skip_flag() -> None:
 
 
 def test_compose_implement_run_itest_create_pr_appends_itest_step() -> None:
-    """implement ⊕ run-itest ⊕ create-pr: itest gates BEFORE create-pr; create-pr embeds itest tokens."""
+    """implement ⊕ run-itest ⊕ create-pr: itest gates BEFORE create-pr, embedding itest tokens."""
     from h_cli.infrastructure.overlay import overlay
 
     def _atom(name: str, **vals: str) -> dict:

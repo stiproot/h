@@ -3,9 +3,9 @@
 Phase 2 of the workflow-composition plan (docs/plans/impl/workflow-composition.md). Overlay is the
 compose-file operator (`docker compose -f a -f b`): later layers extend earlier ones, producing a
 single workflow definition that runs as ONE workflow (one instanceId, one worktree, one agent
-context). It is how `-t implement -t create-pr` produces a single workflow — `create-pr` appends its own
-`create-pr` step after `implement` rather than extending implement's prose (each template owns
-its own step id, enabling append-only composition without per-template id coupling).
+context). It is how `-t implement -t create-pr` produces a single workflow — `create-pr` appends
+its own `create-pr` step after `implement` rather than extending implement's prose (each
+template owns its own step id, enabling append-only composition without per-template id coupling).
 
 Merge semantics (a later layer over the accumulator):
 - Top-level keys (instanceId, workspaceId, …): later wins.
