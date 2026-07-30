@@ -85,11 +85,15 @@ down MCP silently drops tools from a `implement-pr` run.
 ## Publish, seed, arm
 
 ```sh
-# 1. The implement-pr template (implement ⊕ verify ⊕ create-pr ⊕ arm-revise-pr; params: slug, spec,
-#    issueNumber). Each run implements the issue, gates on the acceptance check, and opens its PR —
-#    all in the one implement agent — then arm-revise-pr arms a revise-until-merged recur cron for the
-#    PR it just opened (§10, Job 2; a SKIPPED push arms nothing).
-uv run h template compose implement verify create-pr arm-revise-pr --save implement-pr
+# 1. The implement-pr template (implement ⊕ verify ⊕ run-itest ⊕ create-pr ⊕ arm-revise-pr; params:
+#    slug, spec, issueNumber). Each run implements the issue, gates on the acceptance check, and opens
+#    its PR — all in the one implement agent — then the MACHINE-executed itest step runs the worktree
+#    integration gate (docs/plans/worktree-integration-gate.md: ephemeral k8s namespace, base-ref
+#    harness, infra/assertion taxonomy; a red gate fails the workflow), then arm-revise-pr arms a
+#    revise-until-merged recur cron for the PR it just opened (§10, Job 2; a SKIPPED push arms
+#    nothing). run-itest is part of the implementor's definition of done — do not compose the h
+#    feature key without it.
+uv run h template compose implement verify run-itest create-pr arm-revise-pr --save implement-pr
 
 # 2. Also publish `revise-pr` (the per-PR loop's target) so the arm-revise-pr cron has a key to re-fire.
 uv run h workflow publish revise
