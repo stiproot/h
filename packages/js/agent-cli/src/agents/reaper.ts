@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 /**
- * Orphan reaping (docs/plans/cost-containment.md B2): the invoker owns its CLI subprocess — no CLI
+ * Orphan reaping: the invoker owns its CLI subprocess — no CLI
  * (or grandchild it spawned) may outlive its contract and keep billing a provider invisibly.
  * Observed live on the Moonshot $20 day: an agent app died mid-run and its CLI subprocess survived
  * re-parented, ran to completion, and billed with no ledger entry at all.

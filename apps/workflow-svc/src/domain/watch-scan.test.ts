@@ -353,7 +353,7 @@ describe("scanWatchesEffect", () => {
     expect(pub.events[0]).toMatchObject({ outcome: "usage-limited" });
   });
 
-  it("auto-denies the limited executor on a usage-limited finalize (docs/plans/impl/usage-limit-auto-deny.md)", async () => {
+  it("auto-denies the limited executor on a usage-limited finalize", async () => {
     // The fleet fence: the run key carries the agentId (claude-agent), so the finalize writes a
     // usage-limited exec:config entry for `claude` — every subsequent fire on any path is refused
     // at the activity gate until the entry expires or the operator lifts it.

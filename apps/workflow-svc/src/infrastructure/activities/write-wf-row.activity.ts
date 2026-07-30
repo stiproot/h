@@ -18,7 +18,7 @@ type Input = {
 
 /**
  * Writes the run's OWN `wf:<repo>:<slug>:<workflow>` status row
- * (docs/plans/impl/workflow-watcher-registry.md §3). generic.workflow calls this to bracket a
+ *. generic.workflow calls this to bracket a
  * wf-identified run — `running` before its steps, `done`/`failed` after — so the workflow
  * self-reports its status (via its own activity, which runs on workflow-svc, so an executor's MCP
  * surface is irrelevant).

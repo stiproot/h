@@ -194,7 +194,7 @@ export const CodexRunnerLive: Layer.Layer<
             error: msg,
             stopReason: result.stopReason ?? null,
             // What the run DID spend before failing — a failed run must not ledger null cost
-            // when usage is known (docs/plans/cost-containment.md B1).
+            // when usage is known.
             costUsd: result.costUsd ?? null,
             costPartial: result.costPartial ?? null,
             tokens: result.tokenUsage ?? null,

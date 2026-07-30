@@ -1,7 +1,7 @@
 #!/bin/sh
 # Shared agent entrypoint (Debian-based images; requires gosu). Used by EVERY agent image.
 #
-# The single privileged moment in the design (docs/plans/impl/agent-process-identity.md): the
+# The single privileged moment in the design: the
 # bind-mounted /workspace is owned by the host user, so as root at container start we ensure the
 # agent's workspace roots exist and are owned AGENT_UID:AGENT_GID — group-writable + setgid, so files
 # the dropped CLI subprocess (SUB_AGENT_UID, same AGENT_GID) creates stay group-accessible — then

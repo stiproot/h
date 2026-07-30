@@ -111,8 +111,7 @@ def run_steps(
 
     `arm_cron` ({cadence, workflow, budget?, inline:true}) makes the run register its OWN recurrence
     over an EMBEDDED source built from these very steps — the inline sibling of `run_saved`'s cron,
-    for a definition that was never published
-    (docs/plans/impl/inline-chain-cron-composition.md D1). It
+    for a definition that was never published. It
     needs `wf` ({repo, slug, workflow}) so the recurring runs write the goal-handshake status row
     the cron engine reads to stop."""
     body: dict[str, Any] = {"steps": steps}
@@ -222,8 +221,8 @@ def exec_policy_set(denied: list[Any]) -> Any:
 
 
 def exec_budget_set(name: str, daily_budget_usd: float | None) -> Any:
-    """Set (a number) or clear (None) one executor's daily cost budget
-    (docs/plans/cost-containment.md A1). workflow-svc owns writing the exec: registry."""
+    """Set (a number) or clear (None) one executor's daily cost budget.
+    workflow-svc owns writing the exec: registry."""
     resp = httpx.post(
         f"{WORKFLOW_URL}/exec/budget",
         json={"name": name, "dailyBudgetUsd": daily_budget_usd},

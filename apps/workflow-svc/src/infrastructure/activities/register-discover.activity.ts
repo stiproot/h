@@ -6,7 +6,7 @@ import { runActivity } from "../activity-runtime.ts";
 
 /**
  * Registers a DISCOVERY cron from inside a (provision) workflow — the `arm-*` pattern applied to the
- * standing patrol (docs/plans/impl/workflow-watcher-registry.md §10). A discovery cron has no natural host
+ * standing patrol. A discovery cron has no natural host
  * run, so `h cron discover add` fires a one-step provision workflow whose sole step is this activity;
  * its `wf:` bracket audits whether the patrol was actually armed. Sibling of `register-cron` /
  * `write-wf-row`: runs on workflow-svc, calls the same `registerDiscover` the deleted `POST

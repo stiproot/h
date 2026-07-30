@@ -1,6 +1,6 @@
 /**
  * Classify WHY an agent CLI run stopped — orthogonal to `success` (which stays `exitCode === 0`).
- * The one signal the runtime lacked (docs/plans/impl/schedule-and-fallback.md): a usage/rate limit is
+ * The one signal the runtime lacked: a usage/rate limit is
  * today indistinguishable from a crash, and a limited Claude run can even exit 0 (emitting a
  * `{type:"result", is_error:true}` event with the limit text). This heuristic reads the exit code,
  * the kill signal, stderr, AND the terminal result event so the watcher can arm a delayed fallback
@@ -42,7 +42,7 @@ const NOT_USAGE: readonly RegExp[] = [
  * `usage-limited` instead of `timeout`: provider throttling stretched the run into its budget, and
  * `timeout` would hide the limit from the watcher's fallback/auto-deny (observed live 2026-07-30:
  * a Moonshot run with 20 `api_retry` 429 events finalized `timeout`, so the fence never saw it —
- * docs/plans/cost-containment.md C3). Threshold >1 keeps the positive-match posture: one stray
+ * the fence never saw it). Threshold >1 keeps the positive-match posture: one stray
  * retry early in an otherwise-slow run must not re-route the fallback.
  */
 const RATE_LIMIT_RETRIES_FOR_TIMEOUT = 3;

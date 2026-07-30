@@ -64,7 +64,7 @@ def create_router(runner: ITaskRunner, store: ITaskStore) -> APIRouter:
         # No subscriptions. The plugin-feedback → plugin-improvement flow moved out of this
         # service: it is now the `plugin-improvement` chart template (cli/charts) fired by
         # workflow-svc's generic `workflow-trigger` topic — a template + an event, no domain
-        # routes in any agent service. See docs/plans/impl/workflow-unification.md.
+        # routes in any agent service.
         return []
 
     return router

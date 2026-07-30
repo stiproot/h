@@ -56,7 +56,7 @@ export type RunOutcome = {
   /**
    * True when tokens/model were folded from a PARTIAL event stream (run ended without a terminal
    * result — timeout/kill), so the tally is cumulative-up-to-the-stop, not a final accounting
-   * (docs/plans/cost-containment.md B1). Never a substitute for costUsd — a partial run with no
+   *. Never a substitute for costUsd — a partial run with no
    * cost still reads as a cost gap.
    */
   costPartial?: boolean | null;

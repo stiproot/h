@@ -56,7 +56,7 @@ describe("classifyStop", () => {
   });
 
   it("usage-limited: a timeout whose stream carried >=3 rate-limit retries is a throttle, not a timeout", () => {
-    // The Moonshot $20 day (docs/plans/cost-containment.md C3): 429-throttled runs stretched into
+    // The Moonshot $20 day: 429-throttled runs stretched into
     // their 30-min budgets and finalized `timeout`, so the auto-deny fence never saw the limit.
     expect(classifyStop({ exitCode: 124, signal: null, stderr: "", rateLimitRetries: 3 })).toBe(
       "usage-limited",

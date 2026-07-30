@@ -26,7 +26,7 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 import { decide, settle } from "./watch-engine.ts";
 
 /**
- * The effectful half of the watch engine (docs/plans/impl/watcher-primitive.md §4): registration on
+ * The effectful half of the watch engine: registration on
  * the fire paths, and the per-tick scan that reads every active row, asks the pure engine
  * (watch-engine.ts) what to do, and executes the closed action vocabulary — terminate (own
  * subject only), record (own watch:* row only), publish (workflow-events), retry (re-fire the
@@ -43,7 +43,7 @@ const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 // CronStore is required because the usage-limit fallback arms a cron:sched row (a deferred
 // continuation under a different agent) — the watcher never sleeps; the schedule engine fires it.
 // ExecPolicyStore: the auto-deny — a usage-limited finalize fences the executor engine-wide
-// (docs/plans/impl/usage-limit-auto-deny.md).
+//.
 export type WatchScanEnv =
   | WatchStore
   | WorkflowInvoker
@@ -303,7 +303,7 @@ const saveFenced = (
   });
 
 /**
- * The auto-deny (docs/plans/impl/usage-limit-auto-deny.md): a usage-limited finalize fences the
+ * The auto-deny: a usage-limited finalize fences the
  * limited EXECUTOR engine-wide by merging a usage-limited entry into `exec:config`, so the
  * whole fleet stops trying that provider instead of every chain discovering the limit
  * independently. The executor is read off the run key that carried the usage-limited stop
@@ -344,7 +344,7 @@ const executeAutoDeny = (
   );
 
 /**
- * The daily cost-budget fence (docs/plans/cost-containment.md A1): read the day ledger's
+ * The daily cost-budget fence: read the day ledger's
  * per-agent subtotals (trustworthy since B1/B3), sum each BUDGETED executor's spend across its
  * agent ids, and fence any executor at-or-over its `exec:config` budget with an expiring
  * `cost-budget` deny (mergeBudgetDeny: never downgrades an operator entry, idempotent across
@@ -440,7 +440,7 @@ const executeFinalize = (
     if (outcome === "usage-limited") {
       yield* executeAutoDeny(row.instanceId, endedAt, report);
     }
-    // A1 (docs/plans/cost-containment.md): with this run's spend booked, check every budgeted
+    // A1: with this run's spend booked, check every budgeted
     // executor's day total and fence the ones over budget. After the bump so the tally includes
     // the finalizing run; best-effort like the auto-deny — a failed check never fails a finalize.
     yield* executeBudgetCheck(ledgerDate(nowMs), endedAt, report);
@@ -596,8 +596,8 @@ const executeEscalate = (
 /**
  * The usage-limit fallback: on a matching outcome (typically "usage-limited"), arm a cron:sched row
  * that re-fires the SAME steps after `after` ms under a DIFFERENT agent/model, reusing the workspace.
- * The watcher does NOT sleep or invoke — it hands off to the schedule engine (docs/plans/
- * schedule-and-fallback.md). Fail-closed twice: no `maxEngineFiresPerDay` → no fallback (same gate as
+ * The watcher does NOT sleep or invoke — it hands off to the schedule engine (the cron:sched
+ * one-shot variant). Fail-closed twice: no `maxEngineFiresPerDay` → no fallback (same gate as
  * escalate), and `maxHandoffs <= 0` → the chain stops. The continuation's own watch policy carries a
  * decremented `maxHandoffs`, so a fallback agent that ALSO limits eventually stops.
  */
@@ -729,8 +729,8 @@ export const tallyCost = (
 
 /**
  * Refines a terminal outcome to "usage-limited" when a run mirror under this instance reports
- * stopReason "usage-limited" (agent-cli classify-stop). THE OUTCOME INVERSION (docs/plans/
- * schedule-and-fallback.md): a usage-limited run can be COMPLETED at the Dapr level (Claude exits 0),
+ * stopReason "usage-limited" (agent-cli classify-stop). THE OUTCOME
+ * INVERSION: a usage-limited run can be COMPLETED at the Dapr level (Claude exits 0),
  * so this reads the run:<id> LEDGER, deliberately out of band of decide() — do NOT fold it back into
  * decide(), whose axis is run status. Only completed/failed are refined; budget-terminated/
  * terminated/orphaned are never usage limits.

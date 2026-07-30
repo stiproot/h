@@ -4,10 +4,10 @@ A chain is a registered policy the chain engine (workflow-svc) sequences on the 
 mirroring the watcher engine. `h chain run` REGISTERS the chain and returns immediately — the
 workflows run fire-and-forget and survive a closed laptop; `h chain list` inspects the durable
 registry. State threads workflow-to-workflow IN THE ENGINE (it reads each workflow's validated
-structured output — docs/plans/impl/structured-workflow-outputs.md — into the chain's chain data and
+structured output — into the chain's chain data and
 builds the next workflow's params), so the chained workflows stay chain-agnostic.
 
-The workflow list is the chain EXPRESSION (docs/plans/impl/chain-composition-surface.md §1.5),
+The workflow list is the chain EXPRESSION,
 hand-parsed from the tokens Typer doesn't consume (chain_expr.py — Typer must never declare the
 EXPR flag names). Chain-level flags (--slug/--strategy/--max-iterations) and value hydration
 (`-p key=value`, seeding the shared data) are ordinary Typer options — Typer consumes them
@@ -22,7 +22,7 @@ wherever they sit; everything workflow-scoped is positional in the expression:
 
 A `-t` group composes-on-fire: the templates overlay into ONE workflow, published under the
 chain-scoped key `<slug>-w<N>` by default, or EMBEDDED in the chain row with `--inline` (D1).
-Concurrency is stages (docs/plans/impl/inline-chain-cron-composition.md D3): --parallel
+Concurrency is stages: --parallel
 (or an explicit --stage N) groups members into one concurrent stage the engine joins
 before advancing. A `--cron`
 member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:resolved (D2/D4);
@@ -30,7 +30,7 @@ member self-arms a recurrence (forces inline) the chain only OBSERVES via wf:res
 `--input PARAM=id.field` (D5). Identity flags become fire-time params (§1.9): --agent maps to
 {runActivity, agentId}, --model to the workflow kind's model params.
 
-`--agent` with SEVERAL names is a panel ROSTER (docs/plans/impl/panels-as-a-modifier.md): the member
+`--agent` with SEVERAL names is a panel ROSTER: the member
 is panelized — its contract-carrying step is replicated into a parallel step group, one branch
 per roster agent, and a pinned judge synthesizes under the member's own contract, so every seam
 downstream (loop-until-clean, captures, the watcher) is unchanged. A roster forces
@@ -80,7 +80,7 @@ KNOWN_KINDS = ("implement-pr", "review-pr", "revise-pr", "answer")
 # own saved definition — `revise-pr` fires the `revise-pr` template (which reads the PR's
 # review threads itself), no longer a re-fire of implement-pr's definition. `answer` is the
 # bare "answer this task" member (the panelizable degenerate case,
-# docs/plans/impl/panels-as-a-modifier.md — successor of the
+# panels-as-a-modifier — successor of the
 # retired agent-panel): reads `task` off the chain data, captures `answer`; an --agent roster
 # panelizes it at fire time. Coded threading contracts live in
 # workflow-svc/domain/chain-members.ts (a novel kind is added on both sides, per chain.model.ts).
@@ -122,14 +122,14 @@ KIND_CONTRACT_SUPPLIES: dict[str, frozenset[str]] = {
 # setup step — empty deliberately means "install none".
 ALWAYS_OPTIONAL_PARAMS = frozenset({"plugins"})
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
-# (docs/plans/reviewer-identity-security.md — never an error, never silent compliance). A ROSTER
-# is the explicit relaxation (docs/plans/impl/panels-as-a-modifier.md decision 7):
+#. A ROSTER
+# is the explicit relaxation:
 # the panelists run as named, the pin migrates to the synthesis judge
 # (panelize.JUDGE_ACTIVITY, claude).
 FROZEN_EXECUTOR_KINDS = {"review-pr"}
 # Write kinds share ONE branch/worktree per member — a roster of N writers would clobber it; the
 # isolated form of "N implementations" is --parallel stage composition (the two-substrate table,
-# docs/plans/impl/panels-as-a-modifier.md).
+# panels-as-a-modifier).
 WRITE_KINDS = frozenset({"implement-pr", "revise-pr"})
 # -t group kind inference: the terminal atom's declared output contract IS the threading contract.
 TERMINAL_ATOM_KIND = {"create-pr": "implement-pr"}
@@ -173,7 +173,7 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
         if kind in FROZEN_EXECUTOR_KINDS:
             _warn(
                 f"--agent '{agent}' ignored on '{label}': the {kind} executor is frozen "
-                "(untrusted-input security invariant — docs/plans/reviewer-identity-security.md); "
+                "; "
                 "keeping the published executor"
             )
         else:
@@ -298,7 +298,7 @@ def _member_input_gaps(
     fire_params: dict[str, str],
     repo_seeded: bool,
 ) -> list[str]:
-    """Registration-time INPUT validation (docs/plans/impl/member-input-validation.md) — the input
+    """Registration-time INPUT validation — the input
     half of the asymmetry _check_output_mappings closes for outputs: every `{{params.X}}` the
     member's definition references must be satisfiable at fire time, else the run dies minutes
     later inside an activity with an error about something else entirely (the live case:
@@ -387,7 +387,7 @@ def _resolve_workflow(
         _fail(f"unknown --kind '{kind}' — known: {', '.join(KNOWN_KINDS)}")
 
     # A roster (several --agent names) panelizes the member
-    # (docs/plans/impl/panels-as-a-modifier.md):
+    #:
     # read/judge kinds only. When --model is given alongside a roster, it is applied to every
     # branch step input; without it each panelist falls back to its own AGENT_MODEL.
     roster = cfg.agents if len(cfg.agents) > 1 else ()
@@ -435,7 +435,7 @@ def _resolve_workflow(
         declared_outputs = merged.get("outputs")
         merged_params = merged.get("params") or {}
         # Input validation BEFORE the publish below — a refused chain must leave no durable
-        # footprint (docs/plans/impl/member-input-validation.md).
+        # footprint.
         declared_inputs = dict(cfg.inputs) if cfg.inputs else None
         gaps = _member_input_gaps(merged, kind, declared_inputs, params, repo_seeded)
         if gaps:

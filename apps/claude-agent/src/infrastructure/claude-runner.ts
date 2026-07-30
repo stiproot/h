@@ -128,7 +128,7 @@ const runClaude = (
     // may surface as exit 0 (completed) or non-zero (failed); either way the watcher reads it.
     let capturedStopReason: string | undefined;
     // Metrics captured before the nonzero-exit failure below, so the failure-path ledger finish
-    // records what the run DID spend instead of dropping it (docs/plans/cost-containment.md B1).
+    // records what the run DID spend instead of dropping it.
     let capturedMetrics: Partial<
       Pick<RunOutcome, "costUsd" | "costPartial" | "tokens" | "model" | "turns">
     > = {};

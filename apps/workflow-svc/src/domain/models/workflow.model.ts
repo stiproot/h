@@ -24,7 +24,7 @@ export const StepDefinition = Schema.Struct({
 });
 export type StepDefinition = Schema.Schema.Type<typeof StepDefinition>;
 
-// A parallel step group (docs/plans/impl/multi-agent-panel.md): branches are plain steps run
+// A parallel step group: branches are plain steps run
 // concurrently by the engine through ONE whenAll — groups do not nest, and branches cannot
 // reference each other (inputs resolve against the results map as it stood before the group).
 // Results land under each branch's id exactly like sequential steps; a group id additionally
@@ -59,14 +59,14 @@ export const WorkflowRequest = Schema.Struct({
   // returned as-is (Dapr durability is the standard; purge-and-rerun was a test-flow
   // convenience and must be asked for). RUNNING/PENDING instances are always reused.
   fresh: Schema.optional(Schema.Boolean),
-  // Watcher registration (docs/plans/impl/watcher-primitive.md): when set, the fire path writes a
+  // Watcher registration: when set, the fire path writes a
   // durable watch:sub:<instanceId> row in the same handler that schedules — supervision is
   // decoupled from the caller, never from the invocation. The routes strip this field before
   // handing the request to the workflow runtime.
   watch: Schema.optional(WatchPolicy),
   // Opaque passthrough stamped onto the watch row for row consumers (e.g. {owner: "discover"}).
   watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-  // Registry identity (docs/plans/impl/workflow-watcher-registry.md §3): when set, generic.workflow
+  // Registry identity: when set, generic.workflow
   // brackets its steps with the write-wf-row activity so the run writes its OWN status row at
   // `wf:<repo>:<slug>:<workflow>` (running before, done/failed after). Opt-in — absent means no row.
   wf: Schema.optional(WfIdentity),
@@ -76,7 +76,7 @@ export const WorkflowRequest = Schema.Struct({
   // slug/params/instanceId come from the run's own input at arm time. (ArmCron's `budget` is inlined
   // rather than reusing cron.model's CronBudget to avoid a cron.model↔workflow.model import cycle.)
   //
-  // `inline` (docs/plans/impl/inline-chain-cron-composition.md D1): recur an EMBEDDED source built from the
+  // `inline`: recur an EMBEDDED source built from the
   // run's OWN steps instead of the saved `workflow` key — for an inline-composed run with nothing
   // published to re-hydrate. generic.workflow forwards `input.steps` + `workspaceId` to register-cron,
   // which builds a `{mode:"embedded"}` source. `workflow` stays the wf-identity workflow name (the cron
@@ -106,7 +106,7 @@ export const SaveWorkflowRequest = Schema.Struct({
   // Stored watch policy: every fire of this saved workflow (HTTP, trigger event, cron tick)
   // registers a watch row — how trigger- and cron-fired runs gain supervision (agreement 9).
   watch: Schema.optional(WatchPolicy),
-  // Declared output schema (docs/plans/impl/structured-workflow-outputs.md §1, D5): the structured
+  // Declared output schema: the structured
   // summary this workflow promises — the workflow's typed output signature. Top-level so chain
   // registration can validate capture/input mappings against it via get. Enforcement happens at
   // the step that carries the matching outputContract input, not here.
@@ -157,7 +157,7 @@ export type AgentResult = {
   sessionId: string | null;
   output: string;
   workspacePath?: string;
-  // The validated structured-output block (docs/plans/impl/structured-workflow-outputs.md): present iff
+  // The validated structured-output block: present iff
   // the step carried an outputContract — code-guaranteed by the rung-2 seam, never raw prose.
   structured?: unknown;
 };

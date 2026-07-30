@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Shared base for the bun-stack CLI agents (claude, openhands, pi). Bakes the
-# process-identity model ONCE (docs/plans/impl/agent-process-identity.md): the non-root service user
+# process-identity model ONCE: the non-root service user
 # (AGENT_UID / agent-svc), the dropped-CLI user (SUB_AGENT_UID / agent-cli), the shared group
 # (AGENT_GID), the scoped sudoers drop, and the shared entrypoint. Agents `FROM h-agent-base-bun`,
 # then add their own CLI + app build. Build this before the agent images:

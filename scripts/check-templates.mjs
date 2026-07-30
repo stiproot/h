@@ -2,8 +2,8 @@
 // Chart-template content guard — fail LOUDLY when a workflow template's agent prose tells an
 // agent to force-push UNSAFELY.
 //
-// The `revise` workflow rebases a stale PR branch onto main and force-pushes (docs/plans/impl/
-// revise-rebase-stale.md — the first force-push in the codebase). The sanctioned convention is
+// The `revise` workflow rebases a stale PR branch onto main and force-pushes (the
+// first force-push in the codebase). The sanctioned convention is
 // ALWAYS `git push --force-with-lease`, NEVER a bare `git push --force` / `git push -f`: the lease
 // protects commits pushed since the last fetch from being clobbered. This guard scans every chart
 // template for a bare force-push in a `git push` command and fails the lint if it finds one, so the

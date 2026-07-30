@@ -122,7 +122,7 @@ export interface InvocationResult {
    * without a terminal result event (timeout/kill) — cumulative usage up to the stop, not a
    * final accounting. costUsd is typically absent on such a result (per-event usage carries no
    * cost); the ledger records the flag so a partial tally is never mistaken for a measured total
-   * (docs/plans/cost-containment.md B1).
+   *.
    */
   costPartial?: boolean;
 }

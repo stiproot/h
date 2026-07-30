@@ -19,8 +19,7 @@ publish: false
 
 # Composable (overlay) mode: render a template as an overlay-able atom — implement commits
 # locally without pushing so a composed-in create-pr step owns the push and PR opening.
-# Set by `h template compose`; see docs/plans/impl/workflow-composition.md.
-composable: false
+# Set by `h template compose`: false
 
 # implement workflow (templates/implement.tmpl.yaml): worktree → setup → plan → implement. A pure atom —
 # it neither verifies nor opens a PR (compose the verify / create-pr templates for those).
@@ -67,7 +66,7 @@ createPr:
   gitAuth: ""
 
 # arm-revise overlay template (templates/arm-revise-pr.tmpl.yaml): the "arm at birth" step
-# (docs/plans/impl/workflow-watcher-registry.md §10, Job 2). Appended after implement, it registers a
+#. Appended after implement, it registers a
 # revise-until-merged recur cron for the PR the run just opened — via the register-cron activity
 # (the arm-* pattern), not the fire edge. cadence/maxFires are execution machinery, baked here.
 armRevisePr:
@@ -145,7 +144,7 @@ reviewPr:
     review: ""
 
 # answer workflow (templates/answer.tmpl.yaml): one bare "answer this task" step — the panelizable
-# degenerate case (docs/plans/impl/panels-as-a-modifier.md; successor of the retired agent-panel).
+# degenerate case.
 # Identity is fire-time params; an --agent roster panelizes it at fire time.
 answer:
   models:
@@ -155,7 +154,7 @@ answer:
 
 # plan workflow (templates/plan.tmpl.yaml): implement's planning half, split out so the plan is a
 # chain-visible artifact — a distinct planning agent, and a panel review of the plan before it
-# becomes a prompt (docs/plans/impl/chain-plan-atom.md, docs/plans/spec-review-pipeline.md).
+# becomes a prompt.
 plan:
   # Git-branch-safe token; the run reads a worktree on branch feature/<slug>. Required at render.
   slug: ""

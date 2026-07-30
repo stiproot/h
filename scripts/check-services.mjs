@@ -7,7 +7,7 @@
 // layouts (.zellij/dev.kdl, .zellij/h-builds-h.kdl). They MUST agree — a service present in one
 // path but not the other means the driver an agent uses and the panes a human watches are running
 // different stacks. This guard asserts set-equality per mode so the lists can't silently drift as
-// services are added/removed. See docs/plans/impl/agent-local-mode-bringup.md + the *Harden by encoding*
+// services are added/removed. See the *Harden by encoding*
 // principle in ARCHITECTURE.md.
 //
 // _services.sh stays the single source of truth: we EXECUTE its services_for_mode() (authoritative)

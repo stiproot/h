@@ -73,7 +73,7 @@ MODEL_PARAM_SLOTS: tuple[str, ...] = (
 
 # Saved keys whose executor is pinned: --agent is warned-and-ignored, never applied. review-pr's
 # executor is the loop's consistent reviewer (claude-agent). Under the trust model this pin is an
-# operational default, not a security boundary (docs/plans/reviewer-identity-security.md — a
+# operational default, not a security boundary (a
 # minimal-surface reviewer returns as a per-run trust profile if untrusted repos do).
 FROZEN_EXECUTOR_KEYS: frozenset[str] = frozenset({"review-pr"})
 

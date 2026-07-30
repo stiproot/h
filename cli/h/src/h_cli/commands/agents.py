@@ -1,7 +1,7 @@
 """h agents — list the workflow-invokable agents and maintain the executor policy.
 
 The list reads from the existing config tables (no new data source); deny/allow maintain the
-engine-enforced `exec:config` row on workflow-svc (docs/plans/live-state-containment.md §2.3) —
+engine-enforced `exec:config` row on workflow-svc —
 the activity-registry gate refuses a denied executor at fire time, on every path."""
 
 import typer
@@ -64,7 +64,7 @@ def _print_denied(entries: list[dict]) -> None:
 def list_() -> None:
     """List all workflow-invokable agents, their identities, the denied set (with provenance:
     operator denies never expire; auto usage-limited/cost-budget denies carry an expiry), and
-    each executor's daily budget vs today's tallied spend (docs/plans/cost-containment.md A1)."""
+    each executor's daily budget vs today's tallied spend."""
     policy: dict = {}
     try:
         policy = workflow_svc.exec_policy_get()
@@ -131,7 +131,7 @@ def budget(
     ),
     clear: bool = typer.Option(False, "--clear", help="Remove this executor's budget."),
 ) -> None:
-    """Set or clear an executor's daily cost budget (docs/plans/cost-containment.md A1): when
+    """Set or clear an executor's daily cost budget: when
     the watcher's day tally crosses it, the executor is auto-denied until the next UTC midnight
     (`cost-budget` entry — never overrides an operator deny; lift early with `h agents allow`)."""
     shortname = _executor_shortname(name)

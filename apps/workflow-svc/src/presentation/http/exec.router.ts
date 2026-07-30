@@ -15,15 +15,15 @@ const SetPolicyBody = Schema.Struct({
 });
 
 /** Body of POST /exec/budget — set (a number) or clear (null/absent) one executor's daily
- * budget (docs/plans/cost-containment.md A1). */
+ * budget. */
 const SetBudgetBody = Schema.Struct({
   name: Schema.String,
   dailyBudgetUsd: Schema.optional(Schema.NullOr(Schema.Number)),
 });
 
 /**
- * The executor-policy surface (docs/plans/live-state-containment.md §2.3 + provenance/expiry
- * per docs/plans/impl/usage-limit-auto-deny.md): one of the exec: registry's two writers — the
+ * The executor-policy surface (the exec: registry in CLAUDE.md + provenance/expiry
+ * ): one of the exec: registry's two writers — the
  * other is the watcher's auto-deny (both live in workflow-svc; the single-writer COMPONENT
  * invariant holds). GET returns the row normalized to entries (absent ⇒ allow-all); POST
  * replaces the denied set and stamps updatedAt. Enforcement lives in the activity-registry

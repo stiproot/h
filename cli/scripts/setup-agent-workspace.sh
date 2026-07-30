@@ -3,7 +3,7 @@ set -euo pipefail
 
 # One-time HOST setup for a workspace shared by BOTH modes — host run-scripts (your uid) and the
 # compose agents (agent-svc, uid/gid 10001) — so host ⇄ compose are truly interchangeable on the
-# SAME workspace (docs/plans/impl/agent-process-identity.md; the AGENT_GID group-ownership model).
+# SAME workspace.
 #
 # Without this, whichever mode ran first owns the pre-clone/worktrees, and the other mode (a
 # different uid) can't write them — the same cross-uid problem as the poisoned bun cache. The fix:

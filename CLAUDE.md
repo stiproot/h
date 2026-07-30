@@ -22,7 +22,10 @@ under the gitignored `docs/plans/domain/`. Never leave a plan in the harness scr
 location (`~/.claude/plans/`). Before archiving a core plan, **lift every piece of
 lasting context to its one long-lived home** (ARCHITECTURE.md, a skill, a lint rule +
 CLAUDE.md, an auto-memory, or a code comment) — plans are transient, so knowledge left
-inside one is lost when it's filed away.
+inside one is lost when it's filed away. The same discipline applies at WRITE time:
+**source code never references `docs/plans/*`** — state the rationale in the comment
+itself or cite the durable home; `scripts/check-plans.mjs` fails the build on a plan
+path in a source tree.
 
 Every plan declares `Status:` (one of `Planning | Active | Blocked | Deferred | Complete`)
 and `Established:`; an archived one also declares `Lifted to:`. **`scripts/check-plans.mjs`

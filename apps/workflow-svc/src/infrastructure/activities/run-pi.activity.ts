@@ -14,7 +14,7 @@ type Input = {
   cwd?: string;
   // Per-step LLM model override; falls back to the service default (AGENT_MODEL).
   model?: string;
-  // Structured-output contract (docs/plans/impl/structured-workflow-outputs.md): when set, the
+  // Structured-output contract: when set, the
   // agent's final output must end with a fenced json block matching it — validated here on
   // return; a missing or mismatching block FAILS THE STEP (rung 2, D3).
   outputContract?: Record<string, unknown>;

@@ -1,8 +1,8 @@
 {{- /*
 answer workflow — one bare "answer this task" step, the panelizable degenerate case.
 
-Successor of the hand-built agent-panel template (retired 2026-07-24 — docs/plans/
-panels-as-a-modifier.md): a panel is no longer a separate workflow but a CARDINALITY of
+Successor of the hand-built agent-panel template (retired 2026-07-24 by
+panels-as-a-modifier): a panel is no longer a separate workflow but a CARDINALITY of
 `--agent`. Run this with one agent and it answers; run it with a roster
 (`--agent claude codex openhands`) and the CLI panelizes it — the answer step fans into a
 parallel branch per agent (each working independently, no cross-talk) and a pinned judge
@@ -74,7 +74,7 @@ steps:
 outputs:
   {{- include "h.contract.answer" . | nindent 2 }}
 {{- /*
-panelSynthesis — "how to synthesize a panel of me" (docs/plans/impl/panels-as-a-modifier.md): spliced
+panelSynthesis — "how to synthesize a panel of me": spliced
 into the judge's task when this workflow runs under an --agent roster; inert otherwise.
 */}}
 panelSynthesis: |-

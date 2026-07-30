@@ -1,7 +1,7 @@
 """The chain expression parser — the ordered workflow grammar of `h chain run`.
 
 Pure and dependency-free (sibling of overlay.py): tokens in, structure out, no Typer/click/network.
-The grammar (docs/plans/impl/chain-composition-surface.md §1.5):
+The grammar:
 
     EXPR    := FLAG* STAGE STAGE*        # FLAGs before the first workflow = chain-wide defaults
     STAGE   := WF ( "--parallel" WF )*    # infix --parallel joins workflows into one parallel stage
@@ -18,13 +18,13 @@ their position.
 
 `--agent` consumes operands greedily (the `-t` atom idiom): ONE name is the identity flag as
 before; SEVERAL are a panel ROSTER
-(docs/plans/impl/panels-as-a-modifier.md — the member is panelized:
+(panels-as-a-modifier — the member is panelized:
 each roster agent answers concurrently, a judge synthesizes under the member's own contract). A
 roster is per-workflow only — a panel is one member's shape — so a multi-name prefix is rejected
 while a single-name prefix stays a chain-wide default.
 
 --capture/--input/--until are the declarative structured-output mappings
-(docs/plans/impl/structured-workflow-outputs.md §4-5): per-workflow ONLY
+: per-workflow ONLY
 (like --kind — a mapping is a member’s contract, never a chain-wide default),
 repeatable for --capture/--input, assignment-
 ordered destination=source.
@@ -43,7 +43,7 @@ VALUE_FLAGS = (
     "--budget",
     "--kind",
     "--until",
-    # Phase-6 per-member composition flags (docs/plans/impl/inline-chain-cron-composition.md):
+    # Phase-6 per-member composition flags:
     "--stage",  # explicit concurrency stage index (else positional, from --parallel grouping)
     "--cron",  # cron cadence — the member self-arms a recurrence (forces --inline)
     "--max-fires",  # cron budget (requires --cron)
@@ -71,14 +71,14 @@ class WorkflowConfig:
     """Per-workflow config carried by FLAGs; every field optional (None/False = not given)."""
 
     # The --agent operands: () = not given, one name = identity, several = a panel ROSTER
-    # (docs/plans/impl/panels-as-a-modifier.md — cardinality is the panel dimension,
+    # (panels-as-a-modifier — cardinality is the panel dimension,
     # not a new flag).
     agents: tuple[str, ...] = ()
     model: str | None = None
     budget: str | None = None  # raw duration token, validated against _BUDGET_RE
     fresh: bool = False
     kind: str | None = None
-    # Phase-6 composition (docs/plans/impl/inline-chain-cron-composition.md):
+    # Phase-6 composition:
     # stage = explicit stage idx
     # (str; else positional); cron = cadence (member self-arms a recurrence, forces inline);
     # max_fires = cron budget; id = the member's chain data namespace (D5); inline = embed the

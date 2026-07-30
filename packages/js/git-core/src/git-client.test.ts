@@ -102,7 +102,7 @@ describe("GitClient (ExecGitClient layer)", () => {
     const url = "https://github.com/acme/private-repo.git";
     // A stub git that logs its argv and succeeds: `git clone` would persist the tokened URL as
     // origin, so cloneEffect must follow up with a set-url back to the caller's clean URL
-    // (docs/plans/live-state-containment.md — the /clone path's credential-at-rest defect).
+    //.
     const stubDir = join(root, "stub-bin");
     mkdirSync(stubDir);
     const log = join(root, "git-calls.log");

@@ -2,7 +2,7 @@
 
 The list reads config data; the policy half (deny/allow, the policy column) talks to
 workflow-svc's /exec/policy and is respx-mocked. Entries carry provenance
-(docs/plans/impl/usage-limit-auto-deny.md): operator denies never expire, auto usage-limited
+: operator denies never expire, auto usage-limited
 denies carry an expiry."""
 
 import json
@@ -126,7 +126,7 @@ def test_agents_budget_refuses_a_missing_amount() -> None:
 
 @respx.mock
 def test_agents_list_shows_budget_and_today_spend_columns() -> None:
-    # The A1 surface (docs/plans/cost-containment.md): budget vs tallied day spend at a glance,
+    # The A1 surface: budget vs tallied day spend at a glance,
     # plus the gap warning when runs finalized with no usable cost.
     respx.get(f"{WORKFLOW_URL}/exec/policy").mock(
         return_value=Response(

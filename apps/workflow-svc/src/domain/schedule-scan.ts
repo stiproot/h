@@ -16,7 +16,7 @@ import { invokeWithWatch } from "./watch-scan.ts";
 export type DisarmSchedError = { readonly _tag: "NotFound" } | WorkflowError;
 
 /**
- * The effectful half of the SCHEDULED-FIRE cron (docs/plans/impl/schedule-and-fallback.md), the one-shot
+ * The effectful half of the SCHEDULED-FIRE cron, the one-shot
  * sibling of cron-scan.ts / discover-scan.ts: the arm path (the run route's `--at`/`--in`, and the
  * watcher's fallback action), and the per-tick scan that reads each armed row, asks the pure engine
  * (schedule-engine.ts) whether to fire/expire/wait, and executes the closed vocabulary — FIRE (invoke

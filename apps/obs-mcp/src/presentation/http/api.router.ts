@@ -6,7 +6,7 @@ import type { ObsMcpRuntime } from "./mcp.router.ts";
 
 /**
  * Plain read-only JSON routes over the same observability port the MCP tools use — the run
- * ledger for HTTP consumers that can't speak MCP (docs/plans/workflow-viz.md increment 1:
+ * ledger for HTTP consumers that can't speak MCP (the workflow-viz sandbox's read path:
  * the viz frontend reads runs through its dev-server proxy). No writes, no new port surface.
  */
 export function registerApiRoutes(fastify: FastifyInstance, runtime: ObsMcpRuntime): void {

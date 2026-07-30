@@ -116,7 +116,7 @@ describe("mergeAutoDeny (the watcher's fence — never downgrades, always idempo
   });
 });
 
-describe("mergeBudgetDeny (the daily-budget fence — docs/plans/cost-containment.md A1)", () => {
+describe("mergeBudgetDeny", () => {
   it("fences with a cost-budget entry expiring at the next UTC midnight (the day-ledger reset)", () => {
     const next = mergeBudgetDeny({ denied: [], updatedAt: NOW, budgets: { kimi: 5 } }, "kimi", NOW);
     expect(next).not.toBeNull();

@@ -6,7 +6,7 @@ import { SourceReader, type SourceItem } from "../domain/ports/ISourceReader.ts"
 
 /**
  * The `ISourceReader` adapter: GitHub open-issue enumeration, backed by git-core's `GitHubClient`
- * (docs/plans/impl/workflow-watcher-registry.md §9). The GitHub I/O machinery lives in the core package;
+ *. The GitHub I/O machinery lives in the core package;
  * this adapter only reads the token from the environment and maps the port's error into the domain's
  * `WorkflowError`. `GH_TOKEN` is the same private-repo-clone token wired for the `/clone` activity;
  * omitted, public repos still read.

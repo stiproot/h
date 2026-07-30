@@ -22,7 +22,7 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 import { invokeWithWatch } from "./watch-scan.ts";
 
 /**
- * The effectful half of the DISCOVERY cron (docs/plans/impl/workflow-watcher-registry.md §9), the fan-out
+ * The effectful half of the DISCOVERY cron, the fan-out
  * sibling of cron-scan.ts: registration on the CLI/route path, and the per-tick scan that reads each
  * active discovery row, asks the pure engine (discover-engine.ts) whether to enumerate, and — when it
  * says discover — reads the SOURCE (open issues, oldest-first), dedups each candidate against the

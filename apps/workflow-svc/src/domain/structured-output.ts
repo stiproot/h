@@ -1,5 +1,5 @@
 /**
- * Structured workflow outputs (docs/plans/impl/structured-workflow-outputs.md §3, rung 2): the
+ * Structured workflow outputs: the
  * validation boundary that makes an agent's output contract deterministic. A step whose input
  * carries an `outputContract` (a JSON-Schema subset) requires the agent's final output to end with
  * a fenced ```json block matching it; the run activity validates the block here and FAILS THE STEP

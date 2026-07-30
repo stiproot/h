@@ -326,7 +326,7 @@ h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the curre
 # stack and know when it is ready, using detached, RETURNING commands. Reuses the
 # same run scripts, stop_stale idempotency, and _supervise.sh restart logic — only
 # the orchestration layer differs (detached process groups + log files, not zellij
-# panes). MODE=dev (default) or MODE=h-builds-h. See docs/plans/impl/agent-local-mode-bringup.md.
+# panes). MODE=dev (default) or MODE=h-builds-h.
 
 .PHONY: up-local wait-local up-local-wait down-local
 up-local: infra-up ## Start all host-mode services detached (MODE=dev|h-builds-h); returns immediately

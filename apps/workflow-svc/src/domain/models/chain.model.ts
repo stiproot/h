@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { WorkflowStep } from "./workflow.model.ts";
 
 /**
- * The chain primitive's data shapes (docs/plans/impl/workflow-composition.md): a chain is a durable
+ * The chain primitive's data shapes: a chain is a durable
  * registration — a `chain:sub:<chainId>` row — that the scan engine reads on the cron tick,
  * advancing the sequence when the current workflow reaches terminal. It mirrors the watcher primitive
  * exactly (watch.model.ts): a fixed-struct policy, every behavior in engine code, epoch-fenced,
@@ -78,13 +78,13 @@ export const ChainMember = Schema.Struct({
   cron: Schema.optional(
     Schema.Struct({ cadence: Schema.String, maxFires: Schema.optional(Schema.Number) }),
   ),
-  // The member's chain data NAMESPACE (docs/plans/impl/inline-chain-cron-composition.md D5): declared
+  // The member's chain data NAMESPACE: declared
   // `captures` write under `data[id]` (namespace-implicit — a member writes under its own id, so
   // concurrent members of a stage never clobber), and a downstream member's dotted `inputs`
   // (`id.field`) read it back. Optional: absent ⇒ declared captures thread FLAT (the degenerate
   // one-member-per-stage case where nothing can clobber). The CLI defaults it to the `-t`/`-w` name.
   id: Schema.optional(Schema.String),
-  // The concurrency STAGE this member runs in (docs/plans/impl/inline-chain-cron-composition.md D3):
+  // The concurrency STAGE this member runs in:
   // members sharing a stage run concurrently, and the chain advances stage-by-stage, joining on ALL
   // members of a stage completing before firing the next. `cursor` is the CURRENT stage index.
   // Optional for back-compat: absent ⇒ the member's own index, i.e. pure sequential, one member per
@@ -102,7 +102,7 @@ export const ChainMember = Schema.Struct({
   // model*, mapped by the CLI from workflow flags). Merged OVER the kind contract's buildParams output
   // at fire time — the CLI never sets threading keys (slug/spec/pr), so the sets stay disjoint.
   params: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-  // Declarative threading over STRUCTURED output (docs/plans/impl/structured-workflow-outputs.md §4).
+  // Declarative threading over STRUCTURED output.
   // Each field, when present, replaces its half of the kind's coded contract; the DSL is
   // deliberately tiny (rename / require / equals) — anything needing a transform or a conditional
   // earns a coded kind instead. Assignment-ordered: destination ← source.

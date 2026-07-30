@@ -4,7 +4,7 @@ import { Context, type Effect, type Option } from "effect";
 import type { ExecPolicy } from "../models/exec.model.ts";
 
 /**
- * The executor-policy registry store (docs/plans/live-state-containment.md §2.3) — one row,
+ * The executor-policy registry store — one row,
  * `exec:config`. Sibling of IWfStore in shape; only workflow-svc writes the key (the
  * POST /exec/policy route), everyone else reads. Read on every `run-*` activity dispatch by
  * the activity-registry gate; a failed read fails the activity (fail-closed — if the

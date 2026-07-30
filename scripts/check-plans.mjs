@@ -14,11 +14,16 @@
 //      ARCHIVED plan additionally declares a `Lifted to:` list (the archiving checklist's central
 //      gate: if you cannot say where a finding now lives, it is not lifted).
 //
-//   2. LINK ROT ON ARCHIVE. ~120 references point into docs/plans/ from code comments,
-//      ARCHITECTURE.md, CLAUDE.md, README.md, the charts, and the skills. Moving one plan to
-//      impl/ breaks every one of them, silently — a code comment citing a design record that no
-//      longer resolves is worse than no comment. So every `docs/plans/**.md` path mentioned
-//      OUTSIDE docs/plans/ must resolve to a real file.
+//   2. PLAN REFERENCES. Two rules by file genre (decided 2026-07-30, when a sweep removed ~160
+//      plan citations from source):
+//        a. SOURCE CODE never references docs/plans/ AT ALL. Plans are transient — a plan
+//           pointer in a code comment is rationale parked in a file that will be archived and
+//           forgotten. State the rationale in the comment itself, or cite the durable home
+//           (ARCHITECTURE.md, CLAUDE.md, a skill, the cookbook). This is the lift-on-archive
+//           discipline applied at write time.
+//        b. NON-source files (steering docs, runbooks, READMEs — where pointing at in-flight
+//           work is legitimate): every cited `docs/plans/**.md` path must resolve to a real
+//           file, because archiving a plan silently rots such citations.
 //
 // What this guard deliberately does NOT do: infer that a plan *should* be archived. An earlier
 // proposal to fail lint on headline words like DONE|SHIPPED was rejected during the hardening
@@ -138,7 +143,7 @@ for (const file of planFiles) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. References into docs/plans/ must resolve
+// 2. Plan references: prohibited in source, must resolve elsewhere
 // ---------------------------------------------------------------------------
 
 // Tracked files only, and never a plan itself (bodies are point-in-time records — see the header
@@ -148,6 +153,11 @@ const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" 
   .split("\n")
   .filter(Boolean)
   .filter((f) => !f.startsWith("docs/plans/") && !SKIP_EXT.test(f));
+
+// SOURCE = everything that is not markdown and not this guard (whose own comments must name the
+// path shapes it enforces). Markdown anywhere — docs/, READMEs beside code, the skills — is the
+// documentation genre, where citing an in-flight plan is legitimate.
+const isSource = (f) => !f.endsWith(".md") && f !== "scripts/check-plans.mjs";
 
 // Two citation shapes, both of which broke when plans were archived:
 //   - a repo-root-style path in prose or a code comment: docs/plans/<name>.md
@@ -181,7 +191,20 @@ for (const rel of tracked) {
   };
 
   if (text.includes("docs/plans/")) {
-    for (const m of text.matchAll(PLAN_PATH)) check(m[0], join(root, m[0]));
+    if (isSource(rel)) {
+      // Rule (a): a plan path in source is an error regardless of whether it resolves.
+      for (const m of text.matchAll(PLAN_PATH)) {
+        if (m[0].includes("<")) continue;
+        fail(
+          abs,
+          `source code references "${m[0]}" — plans are transient; state the rationale in the ` +
+            `comment or cite the durable home (ARCHITECTURE.md, CLAUDE.md, a skill, the cookbook)`,
+        );
+        break; // one error per file is enough to point at the sweep
+      }
+    } else {
+      for (const m of text.matchAll(PLAN_PATH)) check(m[0], join(root, m[0]));
+    }
   }
   if (rel.endsWith(".md")) {
     for (const m of text.matchAll(MD_LINK)) {

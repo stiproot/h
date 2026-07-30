@@ -756,7 +756,7 @@ def test_chain_run_answer_bad_capture_field_fails_loud(tmp_path: Path) -> None:
     assert "no field(s) notafield" in _all_output(result)
 
 
-# --- the --agent roster (docs/plans/impl/panels-as-a-modifier.md) ---------------------------------
+# --- the --agent roster ---------------------------------
 
 
 @needs_helm
@@ -933,7 +933,7 @@ def test_loop_refuses_concurrent_stages_in_the_loop_segment(tmp_path: Path) -> N
     assert "single-member stages" in _all_output(result)
 
 
-# ── Member-input validation at registration (docs/plans/impl/member-input-validation.md) ──────────
+# ── Member-input validation at registration ──────────
 
 
 @needs_helm

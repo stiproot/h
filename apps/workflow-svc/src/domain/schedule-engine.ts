@@ -1,7 +1,7 @@
 import { type SchedRow } from "./models/schedule.model.ts";
 
 /**
- * The pure half of the SCHEDULED-FIRE cron (docs/plans/impl/schedule-and-fallback.md) — the third variant
+ * The pure half of the SCHEDULED-FIRE cron — the third variant
  * of the cron siblings, sibling of cron-engine.ts (recur) and discover-engine.ts (fan-out). Given one
  * scheduled-fire row and the clock, decide whether this tick fires it once, expires it, or waits. No
  * I/O — the scan (schedule-scan.ts) executes the decision (fire the source through invokeWithWatch,

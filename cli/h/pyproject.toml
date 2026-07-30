@@ -32,7 +32,7 @@ dev = [
 [tool.pytest.ini_options]
 # Fail-closed network: an unmocked outbound HTTP call in this suite must fail LOUDLY instead of
 # reaching a live workflow-svc. A test missing its @respx.mock once registered a REAL chain and
-# fired a live review panel on an excluded executor (docs/plans/live-state-containment.md §2).
+# fired a live review panel on an excluded executor.
 # respx-mocked calls never reach a socket; helm renders in a child process (unaffected, offline).
 # A test that genuinely needs a socket opts in explicitly with @pytest.mark.enable_socket.
 addopts = "--disable-socket"

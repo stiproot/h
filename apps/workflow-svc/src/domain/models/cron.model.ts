@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { WorkflowParams, WorkflowStep } from "./workflow.model.ts";
 
 /**
- * The cron primitive's data shapes (docs/plans/impl/workflow-watcher-registry.md §5) — the THIRD sibling
+ * The cron primitive's data shapes — the THIRD sibling
  * of the watcher + chain build-pattern. A cron is a durable registration (`cron:sub:<repo>:<slug>:
  * <workflow>`) that the scan engine reads on the cron tick and, when due and its subject is neither
  * in-flight nor resolved, RE-INVOKES the workflow. Where a watch re-fires ONE instance on a failure
@@ -37,7 +37,7 @@ export type CronSourceSaved = Schema.Schema.Type<typeof CronSourceSaved>;
 
 // Source mode 2 (§5): recur an EMBEDDED hydrated definition as-is — no publish, no re-hydration. This is
 // what lets an inline run (`h workflow run <template> -p … --inline --cron …`) recur with nothing saved
-// separately (docs/plans/impl/inline-chain-cron-composition.md D1). `steps` is the full WorkflowStep union
+// separately. `steps` is the full WorkflowStep union
 // (plain steps + parallel groups) so an inline-composed definition recurs verbatim.
 export const CronSourceEmbedded = Schema.Struct({
   mode: Schema.Literal("embedded"),
@@ -111,7 +111,7 @@ export type CronRow = Schema.Schema.Type<typeof CronRow>;
 export const cronId = (id: { repo: string; slug: string; workflow: string }): string =>
   `${id.repo}:${id.slug}:${id.workflow}`;
 
-// The pub/sub topic a finalizing chain publishes disarm requests to (docs/plans/
+// The pub/sub topic a finalizing chain publishes disarm requests to (the chain's
 // inline-chain-cron-composition.md D6): payload is the recur cron's identity `{repo, slug, workflow}`.
 // A LOOSE edge — the chain never writes cron:sub (D2); the subscriber (cron-scan's disarmEventEffect,
 // wired in cron.router) stays the single writer, exactly like POST /cron/disarm.

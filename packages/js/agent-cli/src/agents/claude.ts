@@ -74,7 +74,7 @@ export const claudeStrategy: AgentStrategy = {
     const resultEvent = events.find((event) => event.type === "result");
     // No terminal result event — the run timed out or was killed mid-stream. Fold the partial
     // per-call usage off the assistant events instead of reporting nothing (B1,
-    // docs/plans/cost-containment.md): two 30-minute kimi runs billed their full duration and
+    // the Moonshot $20 day): two 30-minute kimi runs billed their full duration and
     // ledgered zero because this path returned {}.
     if (!resultEvent) return foldPartialClaudeUsage(events);
     const metrics = resultEvent.modelUsage ? normalizeClaudeModelUsage(resultEvent.modelUsage) : {};

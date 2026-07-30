@@ -61,7 +61,7 @@ describe("claudeStrategy.validateEnvironment", () => {
 });
 
 describe("claudeStrategy.extractMetrics partial fold (no terminal result event)", () => {
-  // The B1 shape (docs/plans/cost-containment.md): a timed-out/killed run has assistant events
+  // The B1 shape: a timed-out/killed run has assistant events
   // carrying per-API-call usage but no result event — fold them instead of reporting nothing.
   const usageEvent = (id: string, usage: Record<string, number>, model = "kimi-k3") => ({
     type: "assistant",

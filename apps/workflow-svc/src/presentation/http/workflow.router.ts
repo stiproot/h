@@ -379,7 +379,7 @@ export function registerWorkflowRoutes(
       ),
   );
 
-  // Pause a running workflow and resume it later (stop-and-continue, docs/plans/schedule-and-fallback):
+  // Pause a running workflow and resume it later:
   // terminate the instance NOW, and arm a cron:sched row that re-fires the saved workflow after the
   // delay, REUSING the paused run's workspace (worktree/state carry over). The continuation re-enters
   // the workflow from the top; progress rides the persisted worktree + the agent's session resume.

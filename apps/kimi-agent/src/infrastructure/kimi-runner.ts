@@ -107,7 +107,7 @@ const runKimi = (
     let capturedOutput = "";
     let capturedStopReason: string | undefined;
     // Metrics captured before the nonzero-exit failure below, so the failure-path ledger finish
-    // records what the run DID spend instead of dropping it (docs/plans/cost-containment.md B1:
+    // records what the run DID spend instead of dropping it (the cost-containment fix:
     // failed/timed-out runs used to ledger costUsd: null even when usage was known).
     let capturedMetrics: Partial<
       Pick<RunOutcome, "costUsd" | "costPartial" | "tokens" | "model" | "turns">

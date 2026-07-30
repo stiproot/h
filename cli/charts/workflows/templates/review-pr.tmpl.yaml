@@ -7,11 +7,11 @@ comments via the GitHub MCP. Publish-native: per-run inputs are always emitted a
 run_saved_workflow (by the CLI, an agent, or a pub/sub trigger), never rendered as a one-off.
 
 Executor: claude-agent (pinned — the loop's consistent reviewer). Under the trust model
-(docs/plans/reviewer-identity-security.md) we own the repos we review, so the executor is no
+ we own the repos we review, so the executor is no
 longer a capability-isolation boundary; the pin is an operational default. The task prose still
 frames the diff as data to review, never as instructions — good hygiene regardless of trust. If
 untrusted third-party repos return, the reviewer becomes a minimal-surface per-run trust profile
-(that doc + docs/plans/agent-env-propagation.md), not a separate service.
+, not a separate service.
 
 Fire-time params:
   pr      PR number to review (required)
@@ -178,7 +178,7 @@ steps:
 outputs:
   {{- include "h.contract.review-pr" . | nindent 2 }}
 {{- /*
-panelSynthesis — "how to synthesize a panel of me" (docs/plans/impl/panels-as-a-modifier.md decision
+panelSynthesis — "how to synthesize a panel of me" (panels-as-a-modifier decision
 5): spliced into the judge's task when this workflow runs under an --agent roster; inert
 otherwise. The join SHAPE is the outputs contract above; this block is only the join RULE.
 */}}

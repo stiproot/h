@@ -2,7 +2,7 @@
 // Credential-at-rest guard — fail LOUDLY when a git config in this repo or the shared agent
 // workspace carries an embedded credential (a tokened remote URL).
 //
-// The invariant (docs/plans/live-state-containment.md): credentials are injected PER-OPERATION
+// The invariant: credentials are injected PER-OPERATION
 // (git-core's resolveUrl, clone.sh's one-shot URL) and must never rest in a persisted remote URL.
 // Observed live 2026-07-28/29: the shared pre-clone's origin carried the maintainer's PAT,
 // readable by every agent uid — including the dropped SUB_AGENT_UID that exists specifically to
@@ -103,7 +103,7 @@ export function checkGitCredentials() {
     console.error("✗ check-git-credentials: a git config carries an embedded credential.\n");
     console.error("  Credentials are injected per-operation and must never rest in a remote URL.");
     console.error("  Fix: git -C <clone> remote set-url origin <clean-url> — then ROTATE the token,");
-    console.error("  it has been readable by every agent uid. See docs/plans/live-state-containment.md.\n");
+    console.error;
     // File + line only — never echo the credential itself.
     for (const v of violations) console.error(`  ${v.file}:${v.line}`);
     return 1;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { isolatedSubAgentEnv } from "./run-process.ts";
 
-// The dropped-uid bun-cache isolation (docs/plans/impl/agent-process-identity.md): when the untrusted
+// The dropped-uid bun-cache isolation: when the untrusted
 // CLI runs as SUB_AGENT_UID, its `bun install` must use a per-uid cache it OWNS — never one shared
 // with a different uid, which under fs.protected_hardlinks=1 would leave 0-byte stubs that break the
 // native toolchain (the `Toolchain guard` gotcha in CLAUDE.md). The helper is pure, so this is a

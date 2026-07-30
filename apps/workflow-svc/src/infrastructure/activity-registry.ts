@@ -26,7 +26,7 @@ import { writeWfRowActivity } from "./activities/write-wf-row.activity.ts";
 type ActivityFn = (ctx: WorkflowActivityContext, input: unknown) => Promise<unknown>;
 
 /**
- * The executor-policy gate (docs/plans/live-state-containment.md §2.3): before a `run-*`
+ * The executor-policy gate: before a `run-*`
  * activity invokes its agent, read `exec:config` and REFUSE a denied executor loudly. This is
  * the one choke point every fire path shares — chains, crons, watcher re-fires, sched
  * continuations, the usage-limit fallback's agent switch, panel branches — because fire-time

@@ -105,7 +105,7 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
   it("timeout with a partial stream keeps the collected events: partial usage folded, throttle classified (B1/C3)", async () => {
     // Emits claude-shaped events — 2 API calls' usage + 3 rate-limit retries — then hangs past
     // the timeout. The result must carry the partial fold and classify usage-limited, not lose
-    // everything to a bare synthetic 124 (docs/plans/cost-containment.md).
+    // everything to a bare synthetic 124.
     const { claudeStrategy } = await import("./agents/claude.ts");
     const script = `
       const emit = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
@@ -133,7 +133,7 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
   it.runIf(process.platform === "linux")(
     "timeout kills the whole process GROUP — a grandchild the CLI spawned dies too (B2)",
     async () => {
-      // The orphan hole (docs/plans/cost-containment.md B2): the CLI spawns children; killing only
+      // The orphan hole: the CLI spawns children; killing only
       // the direct child on timeout leaves grandchildren billing invisibly. With setsid group
       // leadership the scope finalizer takes the group. Linux-only: macOS has no setsid.
       const script = `

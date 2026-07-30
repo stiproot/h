@@ -6,7 +6,7 @@ import { lastFencedJson } from "../../domain/structured-output.ts";
 import { runActivity } from "../activity-runtime.ts";
 
 /**
- * Registers a RECUR cron from inside a workflow (docs/plans/impl/workflow-watcher-registry.md §10 — the
+ * Registers a RECUR cron from inside a workflow (the §10 arm-* pattern in CLAUDE.md — the
  * `arm-*` pattern). Sibling of `write-wf-row`: an activity on workflow-svc that writes registry state
  * a run PRODUCES, so a workflow arms its own follow-on recurrence as a step rather than the fire edge
  * doing it. The recurrence still lives in the cron engine (this only writes the row) — the workflow is
@@ -38,7 +38,7 @@ export type RegisterCronInput = {
   /** The fixed instance the recur cron fires under; defaults to `<workflow>-<slug>`. */
   instanceId?: string;
   /** Inline (embedded) recurrence: recur these steps verbatim instead of the saved `workflow` key
-   *  (docs/plans/impl/inline-chain-cron-composition.md D1). When set, the plan builds a `{mode:"embedded"}`
+   * . When set, the plan builds a `{mode:"embedded"}`
    *  source. Forwarded by generic.workflow from the run's OWN steps. */
   inline?: boolean;
   steps?: ReadonlyArray<WorkflowStep>;
@@ -56,7 +56,7 @@ export type CronPlan =
 
 // Parse a PR number out of a single step's RAW agent output (a `{{create-pr.output}}` string): the
 // last fenced ```json block is the step's validated structured output (the rung-2 seam already
-// enforced it against the declared contract — docs/plans/impl/structured-workflow-outputs.md), and its
+// enforced it against the declared contract ), and its
 // `pr` field is the number. A skip (`skipped` instead of `pr`) or no block → undefined.
 const prNumberFrom = (blob: string | undefined): string | undefined => {
   if (typeof blob !== "string") return undefined;

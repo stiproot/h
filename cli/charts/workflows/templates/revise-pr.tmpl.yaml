@@ -1,10 +1,10 @@
 {{- /*
 revise workflow — worktree → setup → revise. A STANDALONE, first-class workflow
-(docs/plans/impl/workflow-watcher-registry.md — the standalone-workflow principle): given a PR number
+: given a PR number
 and its branch slug, it REFRESHES the PR — rebasing its branch onto the latest origin/main and
 resolving conflicts when the branch is stale (force-push-with-lease) — AND reads the PR's UNRESOLVED
 review threads ITSELF (durable state, via the github MCP), addresses each in a worktree of the PR's
-branch, replies inline + resolves them, and pushes — updating the PR (docs/plans/impl/revise-rebase-stale.md).
+branch, replies inline + resolves them, and pushes — updating the PR.
 It reads its subject from GitHub, not chain data, so it runs standalone:
 
   h workflow run revise-pr -p pr=30 -p slug=pi-agent --agent claude-agent

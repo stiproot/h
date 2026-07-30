@@ -1,5 +1,5 @@
 {{- /*
-arm-revise overlay template — the "arm at birth" step (docs/plans/impl/workflow-watcher-registry.md §10,
+arm-revise overlay template — the "arm at birth" step (the §10 arm-* pattern,
 Job 2). Composed onto feature ⊕ verify ⊕ run-itest ⊕ create-pr, it appends a NEW step (`arm-revise-pr`,
 a new id, so it lands after `create-pr`) that registers a revise-until-merged RECUR cron for the PR the
 run just opened. This is the `arm-*` pattern: a workflow arms its own follow-on recurrence via an activity

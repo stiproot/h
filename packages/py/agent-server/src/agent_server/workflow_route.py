@@ -1,7 +1,7 @@
 """The standard POST /workflow route — Python sibling of js/agent-server's
 workflow-route.ts. Submit-and-forward, not submit-and-supervise.
 
-Supervision is durable and engine-owned in workflow-svc (docs/plans/impl/watcher-primitive.md):
+Supervision is durable and engine-owned in workflow-svc:
 its run routes accept a `watch` field, write a durable `watch:sub:<instanceId>` statestore
 row in the same handler that schedules, and a cron-tick scan enforces the budget, retries,
 publishes terminal `workflow-events`, and tallies cost. This route only translates the

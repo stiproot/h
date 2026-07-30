@@ -37,7 +37,7 @@ export function resolveRefs(
 
 /**
  * Resolves {{token}} placeholders in ONE string — the activity-name case (fire-time identity:
- * a step's `activity` may be `"{{params.runActivity}}"`, docs/plans/impl/chain-composition-surface.md
+ * a step's `activity` may be `"{{params.runActivity}}"` — fire-time identity,
  * §1.9). Unlike step-input resolution, an unresolvable token here must fail LOUD: an activity
  * name that silently collapses to "" would surface as a cryptic registry miss.
  */

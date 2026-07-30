@@ -6,7 +6,7 @@ import type { DiscoverRow } from "../models/discover.model.ts";
 import type { SchedRow } from "../models/schedule.model.ts";
 
 /**
- * The cron registry store (docs/plans/impl/workflow-watcher-registry.md §5) — the recur primitive's rows
+ * The cron registry store — the recur primitive's rows
  * under `cron:sub:*`, plus the `cron:config` kill switch, the `cron:__tick__` heartbeat, and the daily
  * `cron:ledger:<date>`. Sibling of IChainStore/IWatchStore; only workflow-svc writes these keys.
  * `cronId` is the coord tuple `<repo>:<slug>:<workflow>` (see cron.model.ts). The engine reads the

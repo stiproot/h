@@ -1,6 +1,6 @@
 {{- /*
 run-itest overlay template — appends a machine-executed integration-test step as a pre-PR gate
-(docs/plans/worktree-integration-gate.md Phase 2).
+.
 The implement step commits locally (no push, no PR); run-itest runs the integration test; a nonzero
 exit fails the workflow HERE — the create-pr step never fires, so no PR is opened for a failed run.
 In the composed order: implement → itest → create-pr → arm-revise-pr. Set itest.skip=true as a

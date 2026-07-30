@@ -2,7 +2,7 @@ import { type DiscoverRow } from "./models/discover.model.ts";
 import { isDue } from "./scheduling.ts";
 
 /**
- * The pure half of the DISCOVERY cron (docs/plans/impl/workflow-watcher-registry.md §9): given one
+ * The pure half of the DISCOVERY cron: given one
  * discovery row, the last-fired instance's observed runtime status, today's fan-out fire count, and
  * the clock, decide whether this tick should ENUMERATE the source. No I/O — the scan (discover-scan.ts)
  * reads the ledger + the live instance, executes the decision (read source → dedup vs `wf:*` → fire the

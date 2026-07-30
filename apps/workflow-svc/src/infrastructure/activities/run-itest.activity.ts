@@ -9,7 +9,7 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 // the backstop if the harness hangs (e.g. kubectl wait stalls, registry unreachable).
 const HARD_TIMEOUT_MS = 20 * 60 * 1000;
 
-// Exit-code taxonomy (docs/plans/worktree-integration-gate.md §B):
+// Exit-code taxonomy:
 //   0  — all assertions passed
 //   10 — assertion failure (workflow not COMPLETED, wf row wrong, watch not finalised)
 //   11 — infra failure (cluster/build/push/deploy/pod-ready timeout)

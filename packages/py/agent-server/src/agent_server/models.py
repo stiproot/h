@@ -33,6 +33,6 @@ class AgentResponse:
     # Why the run stopped ("completed" | "usage-limited" | "timeout" | "failed") — the JS agents'
     # classify-stop vocabulary; None = this runner does not classify. Mirror-contract parity: the
     # watcher's usage-limit refinement reads stopReason off every run:<id> mirror
-    # (docs/plans/cost-containment.md audit — py agents had no field at all, so a py-agent usage
+    # (the cost-containment audit found py agents had no field at all, so a py-agent usage
     # limit could never reach the fence).
     stop_reason: str | None = None

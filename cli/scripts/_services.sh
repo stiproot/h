@@ -2,7 +2,7 @@
 # Canonical service list for host/local mode, keyed by MODE — the single source of truth the
 # headless launcher (up-local.sh), readiness probe (wait-local.sh), and teardown (down-local.sh)
 # all read. The zellij layouts (.zellij/dev.kdl, .zellij/h-builds-h.kdl) enumerate the SAME sets for
-# the interactive path; keep them in step (a drift guard is a follow-up — docs/plans/impl/agent-local-mode-bringup.md).
+# the interactive path; keep them in step.
 #
 # Sourced, not executed. Ports and app-ids are NOT duplicated here — they are parsed from each
 # run-*.sh on demand (service_health_port / service_stopspec), so this file only owns the membership.

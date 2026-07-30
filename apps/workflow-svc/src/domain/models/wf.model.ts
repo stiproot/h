@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 /**
  * The `wf:` registry — one per-workflow status row per (repo, slug, workflow).
- * Key: `wf:<repo>:<slug>:<workflow>` (docs/plans/impl/workflow-watcher-registry.md §3). The workflow
+ * Key: `wf:<repo>:<slug>:<workflow>`. The workflow
  * NAME is the leaf, and the workflow that names the row is its SOLE writer — single-writer is a
  * property of the key structure (no shared key ⇒ no lost-update race), which is what lets many
  * workflows track the same (repo, slug) target without an actor.
@@ -24,7 +24,7 @@ export const WfRow = Schema.Struct({
   // the workflow name (its saved key) — the leaf of the key and the row's SOLE writer.
   workflow: Schema.String,
   status: WfStatus,
-  // Goal handshake (docs/plans/impl/workflow-watcher-registry.md §6, decision (b)): the SUBJECT is resolved
+  // Goal handshake (see the Cron primitive's goal/resolved contract in CLAUDE.md): the SUBJECT is resolved
   // (e.g. the PR merged) — distinct from run-status `done` (the steps finished). The workflow reports
   // it via a `goal: "RESOLVED"` field in its validated structured output (structured-workflow-outputs)
   // that write-wf-row records here; the cron engine READS it to deactivate. Absent/false = not yet
@@ -54,7 +54,7 @@ export const wfKey = (id: WfIdentity): string => `wf:${id.repo}:${id.slug}:${id.
 
 /**
  * Build a run's wf-identity from its params + workflow name — workflow-svc owns key construction
- * (docs/plans/impl/workflow-watcher-registry.md §3c), so the two fire paths (run-route by saved key,
+ *, so the two fire paths (run-route by saved key,
  * chain-scan by kind) share this one function. OPT-IN: returns undefined unless BOTH `repo`
  * (owner/name) and `slug` are present and non-empty, so a run with no identity writes no row.
  */

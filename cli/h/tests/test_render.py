@@ -547,7 +547,7 @@ def test_bootstrap_repo_contract_in_three_places() -> None:
 
 def test_answer_publish_golden(snapshot) -> None:
     """answer publish mode: the bare panelizable task template
-    (docs/plans/impl/panels-as-a-modifier.md -- successor of the retired hand-built agent-panel;
+    (panels-as-a-modifier -- successor of the retired hand-built agent-panel;
     a roster panelizes it at fire time)."""
     rendered = helm.render_workflow("answer", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
@@ -570,7 +570,7 @@ def test_answer_is_one_contract_step_with_panel_synthesis() -> None:
 
 def test_plan_publish_golden(snapshot) -> None:
     """plan publish mode: implement's planning half, split out so the plan is a chain-visible
-    artifact (docs/plans/impl/chain-plan-atom.md, docs/plans/spec-review-pipeline.md)."""
+    artifact."""
     rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
     assert rendered == snapshot
 

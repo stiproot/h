@@ -186,7 +186,7 @@ export const codexStrategy: AgentStrategy = {
     // Only pin a model when one is explicitly set. A ChatGPT-account (Plus/Pro/Team) plan REJECTS
     // explicit API model ids (`o4-mini`, `gpt-5-codex`, …) with a 400 — omitting --model lets the
     // codex CLI use the account's own default. In API-key mode the runner supplies AGENT_MODEL
-    // (e.g. o4-mini); in chatgpt mode it leaves it empty. See docs/plans/impl/codex-chatgpt-auth.md.
+    // (e.g. o4-mini); in chatgpt mode it leaves it empty (see the codex gotcha in CLAUDE.md).
     if (request.model) args.push("--model", request.model);
     args.push(request.taskPrompt);
     return Effect.succeed({

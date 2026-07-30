@@ -2,7 +2,7 @@
 
 The third sibling of `h watch` / `h chain list`. Every list render leads with the `cron:__tick__`
 heartbeat: a missing or stale (>5 min) heartbeat means the scan engine is not running and the rows
-are not truth (docs/plans/impl/workflow-watcher-registry.md §5). Crons are REGISTERED by
+are not truth. Crons are REGISTERED by
 `h workflow run <key> --cron <cadence>` (workflow-svc is the sole writer); this surface inspects
 them.
 """

@@ -26,7 +26,7 @@ import { WorkflowStore } from "./ports/IWorkflowStore.ts";
 /**
  * The effectful half of the chain engine, sibling of watch-scan.ts: registration on the fire path,
  * and the per-tick scan that reads each active chain row, observes every member of the CURRENT STAGE
- * (docs/plans/impl/inline-chain-cron-composition.md D3), asks the pure engine (chain-engine.ts) what to
+ *, asks the pure engine (chain-engine.ts) what to
  * do, and executes the closed vocabulary — wait, ADVANCE (capture every completed member's output
  * into the chain data, then fire the next stage's members), finalize (record + publish + cost tally),
  * budget-terminate. Where the watch engine RE-fires one instance, the chain FIRES THE NEXT STAGE (a

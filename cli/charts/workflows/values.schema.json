@@ -89,7 +89,7 @@
     },
     "armRevise": {
       "type": "object",
-      "$comment": "arm-revise overlay (templates/arm-revise.tmpl.yaml, docs/plans/impl/workflow-watcher-registry.md \u00a710): appends a register-cron step that arms a revise-until-merged recur cron at PR birth. cadence/maxFires are execution machinery, baked here.",
+      "$comment": "arm-revise overlay: appends a register-cron step that arms a revise-until-merged recur cron at PR birth. cadence/maxFires are execution machinery, baked here.",
       "properties": {
         "cadence": {
           "type": "string"

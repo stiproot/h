@@ -3,8 +3,8 @@ import { Context, Data, Effect, Layer } from "effect";
 /**
  * A read-only GitHub REST capability, sibling of {@link GitClient} — the git *transport* client does
  * subprocess `git` (clone/worktree); this does GitHub *API* reads over HTTP. It lives in git-core so
- * the GitHub I/O machinery has ONE home: workflow-svc's discovery cron (docs/plans/
- * workflow-watcher-registry.md §9) consumes it through a domain `ISourceReader` port rather than
+ * the GitHub I/O machinery has ONE home: workflow-svc's discovery cron
+ * consumes it through a domain `ISourceReader` port rather than
  * growing its own GitHub client. If more non-agent GitHub ops accrue, a dedicated service can capture
  * this port without touching callers.
  *

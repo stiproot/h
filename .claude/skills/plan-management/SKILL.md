@@ -95,9 +95,14 @@ archaeology exercise.
 - a `Deferred` plan with no `Revisit when:` trigger;
 - a `Complete` plan still sitting in `docs/plans/`, or a non-`Complete` plan in `impl/`;
 - an archived plan with no `Lifted to:` list (the archiving checklist's central gate);
-- **any `docs/plans/**.md` path referenced from outside `docs/plans/` that does not
-  resolve** — archiving a plan breaks every code comment and steering doc citing it,
-  silently, and there are well over a hundred such citations.
+- **any `docs/plans/` reference in SOURCE CODE** (`apps/`, `packages/`, `cli/`, `web/`,
+  `scripts/`, the charts) — plans are transient, so a plan pointer in code is rationale
+  parked in a file that will be archived and forgotten. State the rationale in the comment
+  itself, or cite the durable home (`ARCHITECTURE.md`, `CLAUDE.md`, a skill, the cookbook).
+  This is the lift-on-archive discipline applied at WRITE time (swept clean 2026-07-30);
+- any `docs/plans/**.md` path cited from a NON-source file outside `docs/plans/` (steering
+  docs, runbooks — where pointing at in-flight work is legitimate) that does not resolve —
+  archiving a plan silently rots such citations.
 
 Two deliberate non-rules. The guard never infers that a plan *should* be archived —
 several are legitimately long-lived, and archiving is gated on a lift-then-archive
@@ -182,10 +187,10 @@ Before you move a plan to `impl/`, confirm:
       "Lifted to:" list — nothing unique is left only in the plan.
 - [ ] Deferred leftovers are in `docs/plans/carried-followups.md`, not stranded.
 - [ ] Sub-plans it spawned are themselves resolved or have their own status.
-- [ ] **Citations still resolve.** Code comments, `ARCHITECTURE.md`, `CLAUDE.md`, the
-      charts and the skills cite plans by path; moving one to `impl/` breaks every
-      citation. Rewrite them in the same change — `check-plans.mjs` will fail the build
-      if you don't, but fixing them yourself keeps the diff coherent.
+- [ ] **Citations still resolve.** `ARCHITECTURE.md`, `CLAUDE.md`, and the skills may cite
+      plans by path (source code may NOT — see Enforced above); moving one to `impl/`
+      breaks every citation. Rewrite them in the same change — `check-plans.mjs` will fail
+      the build if you don't, but fixing them yourself keeps the diff coherent.
 - [ ] Relative links INSIDE the moved file still resolve — it just gained a directory
       level, so `../../ARCHITECTURE.md` becomes `../../../ARCHITECTURE.md`.
 

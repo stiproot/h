@@ -1,8 +1,8 @@
 import type { DeniedEntry, ExecPolicy } from "./models/exec.model.ts";
 
 /**
- * The executor-policy decision (docs/plans/live-state-containment.md §2.3, extended by
- * docs/plans/impl/usage-limit-auto-deny.md with provenance + expiry) — the pure half of the
+ * The executor-policy decision (provenance + expiry per the usage-limit auto-deny; see the
+ * exec: registry entry in CLAUDE.md) — the pure half of the
  * activity-registry gate and of the watcher's auto-deny, in the decide-on-a-row shape the
  * engines use. The gate wraps every `run-*` activity: nothing reaches a model without
  * passing through one, so a denial here is enforcement, not convention.
@@ -96,7 +96,7 @@ export function deniedMessage(executor: string, entry?: DeniedEntry): string {
 }
 
 /**
- * The watcher's auto-deny merge (docs/plans/impl/usage-limit-auto-deny.md): fence `executor` with
+ * The watcher's auto-deny merge: fence `executor` with
  * a usage-limited entry expiring after DEFAULT_AUTO_DENY_MS. Returns the next policy to save,
  * or null when nothing should change: an operator entry for the executor exists (an auto
  * action never downgrades an operator decision — it is already denied anyway), or an ACTIVE
@@ -135,7 +135,7 @@ export function endOfUtcDayIso(nowIso: string): string {
 }
 
 /**
- * The watcher's daily-budget merge (docs/plans/cost-containment.md A1), sibling of
+ * The watcher's daily-budget merge, sibling of
  * {@link mergeAutoDeny} with the same safety posture: fence `executor` with a `cost-budget`
  * entry expiring at the next UTC midnight (the day-ledger reset). Returns null when nothing
  * should change — an operator entry exists (never downgraded), or ANY active entry already

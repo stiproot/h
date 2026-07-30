@@ -2,7 +2,7 @@ import type { WorkflowError } from "core";
 import { Context, type Effect } from "effect";
 
 /**
- * The discovery cron's enumeration port (docs/plans/impl/workflow-watcher-registry.md §9) — the outbound
+ * The discovery cron's enumeration port — the outbound
  * boundary through which the pure-engine fan-out reads its SOURCE on the tick. Today the sole adapter
  * lists open GitHub issues (backed by git-core's `GitHubClient`, so the GitHub I/O stays in the core
  * package); the port is the seam so the domain stays free of any GitHub type and a future source (a
