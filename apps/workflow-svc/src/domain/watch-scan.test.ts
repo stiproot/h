@@ -27,6 +27,7 @@ type MemoryWatchStore = {
   heartbeats: WatchHeartbeat[];
   runRecords: Map<string, number | null>;
   runStopReasons: Map<string, string>;
+  runKinds: Map<string, string>;
 };
 
 function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
@@ -35,6 +36,7 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
   const heartbeats: WatchHeartbeat[] = [];
   const runRecords = new Map<string, number | null>();
   const runStopReasons = new Map<string, string>();
+  const runKinds = new Map<string, string>();
   const service: WatchStoreService = {
     getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
     listRows: () => Effect.succeed([...rows.values()]),
@@ -47,18 +49,36 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
     bumpLedger: (date, delta) =>
       Effect.sync(() => {
         const current = ledgers.get(date) ?? emptyLedger;
+        const costByAgent = { ...(current.costByAgent ?? {}) };
+        for (const [agent, usd] of Object.entries(delta.costByAgent ?? {})) {
+          costByAgent[agent] = (costByAgent[agent] ?? 0) + usd;
+        }
         ledgers.set(date, {
           runsFired: current.runsFired + (delta.runsFired ?? 0),
           runsFinalized: current.runsFinalized + (delta.runsFinalized ?? 0),
           engineFires: current.engineFires + (delta.engineFires ?? 0),
           costUsd: current.costUsd + (delta.costUsd ?? 0),
+          costByAgent,
+          costGapRuns: (current.costGapRuns ?? 0) + (delta.costGapRuns ?? 0),
         });
       }),
     listRunKeys: () => Effect.succeed([...runRecords.keys()]),
-    getRunCost: (key) => Effect.succeed(runRecords.get(key) ?? null),
-    getRunStopReason: (key) => Effect.succeed(runStopReasons.get(key) ?? null),
+    // Meta derived from the two seed maps; agentId parsed off the ledger key shape
+    // (`run:<instanceId>:<agentId>:<ts>`), kind null (an agent run, not an activity).
+    getRunMeta: (key) =>
+      Effect.succeed(
+        runRecords.has(key) || runStopReasons.has(key)
+          ? {
+              costUsd: runRecords.get(key) ?? null,
+              costPartial: false,
+              stopReason: runStopReasons.get(key) ?? null,
+              agentId: key.split(":").at(-2) ?? null,
+              kind: runKinds.get(key) ?? null,
+            }
+          : null,
+      ),
   };
-  return { service, rows, ledgers, heartbeats, runRecords, runStopReasons };
+  return { service, rows, ledgers, heartbeats, runRecords, runStopReasons, runKinds };
 }
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
@@ -825,10 +845,55 @@ describe("tallyCost", () => {
     const mem = memoryWatchStore();
     mem.runRecords.set("run:wf-1:claude-agent:1", 1.2);
     mem.runRecords.set("run:wf-1:setup:2", null); // activity record, no cost — not a gap
+    mem.runKinds.set("run:wf-1:setup:2", "activity");
     mem.runRecords.set("run:wf-10:claude-agent:3", 50); // wf-10 is NOT wf-1 (issue #10's trap)
     const result = await Effect.runPromise(
       tallyCost("wf-1").pipe(Effect.provide(Layer.succeed(WatchStore, mem.service))),
     );
-    expect(result).toEqual({ costUsd: 1.2, costGap: false });
+    expect(result).toEqual({
+      costUsd: 1.2,
+      costGap: false,
+      gapRuns: 0,
+      costByAgent: { "claude-agent": 1.2 },
+    });
+  });
+
+  it("an AGENT run with no usable cost is a per-run gap, never a silent $0 (B3)", async () => {
+    // The Moonshot $20 day's hole 1: a timed-out kimi run mirrors costUsd null — before B3 the
+    // tally skipped it silently (costGap only fired when NO mirror matched at all).
+    const mem = memoryWatchStore();
+    mem.runRecords.set("run:wf-1:claude-agent:1", 2.5);
+    mem.runRecords.set("run:wf-1:kimi-agent:2", null); // timed out — usage lost, cost unknown
+    const result = await Effect.runPromise(
+      tallyCost("wf-1").pipe(Effect.provide(Layer.succeed(WatchStore, mem.service))),
+    );
+    expect(result).toEqual({
+      costUsd: 2.5,
+      costGap: true,
+      gapRuns: 1,
+      costByAgent: { "claude-agent": 2.5 },
+    });
+  });
+
+  it("per-agent subtotals and gap counts land on the day ledger at finalize", async () => {
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:claude-agent:1", 3.1);
+    mem.runRecords.set("run:wf-1:kimi-agent:2", null); // timed out — cost unknown, a gap
+    await Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+          ),
+        ),
+      ),
+    );
+    const ledger = mem.ledgers.get(today())!;
+    expect(ledger.costByAgent).toEqual({ "claude-agent": 3.1 });
+    expect(ledger.costGapRuns).toBe(1);
   });
 });

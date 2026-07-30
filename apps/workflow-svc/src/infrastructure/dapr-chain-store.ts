@@ -10,6 +10,7 @@ import {
   ChainRow,
   emptyChainLedger,
 } from "../domain/models/chain.model.ts";
+import { type RunMirrorMeta, runMirrorMetaFrom } from "../domain/models/watch.model.ts";
 import { ChainStore } from "../domain/ports/IChainStore.ts";
 
 const STORE = "statestore";
@@ -136,11 +137,18 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
     ): Effect.Effect<void, WorkflowError> =>
       Effect.gen(function* () {
         const current = yield* getLedger(date);
+        // Per-agent subtotals merge key-by-key, mirroring the watch ledger (cost-containment B3).
+        const costByAgent = { ...(current.costByAgent ?? {}) };
+        for (const [agent, usd] of Object.entries(delta.costByAgent ?? {})) {
+          costByAgent[agent] = Math.round(((costByAgent[agent] ?? 0) + usd) * 10_000) / 10_000;
+        }
         const next: ChainLedger = {
           chainsRegistered: current.chainsRegistered + (delta.chainsRegistered ?? 0),
           workflowsFired: current.workflowsFired + (delta.workflowsFired ?? 0),
           chainsFinalized: current.chainsFinalized + (delta.chainsFinalized ?? 0),
           costUsd: Math.round((current.costUsd + (delta.costUsd ?? 0)) * 10_000) / 10_000,
+          costByAgent,
+          costGapRuns: (current.costGapRuns ?? 0) + (delta.costGapRuns ?? 0),
         };
         yield* tryState(LEDGER_PREFIX + date, () =>
           client.state.save(STORE, [{ key: LEDGER_PREFIX + date, value: next }]),
@@ -152,13 +160,9 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
 
-    const getRunCost = (key: string): Effect.Effect<number | null, WorkflowError> =>
+    const getRunMeta = (key: string): Effect.Effect<RunMirrorMeta | null, WorkflowError> =>
       rawGet(key).pipe(
-        Effect.map((value) => {
-          if (Option.isNone(value)) return null;
-          const cost = (value.value as { costUsd?: unknown }).costUsd;
-          return typeof cost === "number" ? cost : null;
-        }),
+        Effect.map((value) => (Option.isNone(value) ? null : runMirrorMetaFrom(value.value))),
       );
 
     return {
@@ -172,7 +176,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
       getLedger,
       bumpLedger,
       listRunKeys,
-      getRunCost,
+      getRunMeta,
     };
   }),
 );

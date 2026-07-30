@@ -4,11 +4,13 @@ import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
 import {
+  type RunMirrorMeta,
   WatchConfig,
   WatchHeartbeat,
   WatchLedger,
   WatchRow,
   emptyLedger,
+  runMirrorMetaFrom,
 } from "../domain/models/watch.model.ts";
 import { WatchStore } from "../domain/ports/IWatchStore.ts";
 
@@ -140,11 +142,19 @@ export const WatchStoreLive: Layer.Layer<WatchStore> = Layer.scoped(
     ): Effect.Effect<void, WorkflowError> =>
       Effect.gen(function* () {
         const current = yield* getLedger(date);
+        // Per-agent subtotals merge key-by-key (cost-containment B3): a delta's agent adds to
+        // the day's running subtotal for that agent.
+        const costByAgent = { ...(current.costByAgent ?? {}) };
+        for (const [agent, usd] of Object.entries(delta.costByAgent ?? {})) {
+          costByAgent[agent] = Math.round(((costByAgent[agent] ?? 0) + usd) * 10_000) / 10_000;
+        }
         const next: WatchLedger = {
           runsFired: current.runsFired + (delta.runsFired ?? 0),
           runsFinalized: current.runsFinalized + (delta.runsFinalized ?? 0),
           engineFires: current.engineFires + (delta.engineFires ?? 0),
           costUsd: Math.round((current.costUsd + (delta.costUsd ?? 0)) * 10_000) / 10_000,
+          costByAgent,
+          costGapRuns: (current.costGapRuns ?? 0) + (delta.costGapRuns ?? 0),
         };
         yield* tryState(LEDGER_PREFIX + date, () =>
           client.state.save(STORE, [{ key: LEDGER_PREFIX + date, value: next }]),
@@ -156,22 +166,9 @@ export const WatchStoreLive: Layer.Layer<WatchStore> = Layer.scoped(
         Effect.map((result) => (Array.isArray(result) ? (result as string[]) : [])),
       );
 
-    const getRunCost = (key: string): Effect.Effect<number | null, WorkflowError> =>
+    const getRunMeta = (key: string): Effect.Effect<RunMirrorMeta | null, WorkflowError> =>
       rawGet(key).pipe(
-        Effect.map((value) => {
-          if (Option.isNone(value)) return null;
-          const cost = (value.value as { costUsd?: unknown }).costUsd;
-          return typeof cost === "number" ? cost : null;
-        }),
-      );
-
-    const getRunStopReason = (key: string): Effect.Effect<string | null, WorkflowError> =>
-      rawGet(key).pipe(
-        Effect.map((value) => {
-          if (Option.isNone(value)) return null;
-          const reason = (value.value as { stopReason?: unknown }).stopReason;
-          return typeof reason === "string" ? reason : null;
-        }),
+        Effect.map((value) => (Option.isNone(value) ? null : runMirrorMetaFrom(value.value))),
       );
 
     return {
@@ -185,8 +182,7 @@ export const WatchStoreLive: Layer.Layer<WatchStore> = Layer.scoped(
       getLedger,
       bumpLedger,
       listRunKeys,
-      getRunCost,
-      getRunStopReason,
+      getRunMeta,
     };
   }),
 );

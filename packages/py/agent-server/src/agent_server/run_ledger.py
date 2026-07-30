@@ -62,6 +62,12 @@ def record_run(
         "turns": response.turns if response else None,
         "tokens": response.usage if response else None,
         "costUsd": response.cost_usd if response else None,
+        # Parity with the JS ledger's mirror contract (docs/plans/cost-containment.md): the
+        # watcher reads stopReason off every run:<id> mirror; costPartial marks a partial tally.
+        # Python runners don't classify stops or fold partial usage yet, so these are honest
+        # None/False — never fabricated.
+        "costPartial": None,
+        "stopReason": response.stop_reason if response else None,
         "toolCalls": response.tool_calls if response else None,
         "sessionId": response.session_id if response else None,
         "startedAt": started_at,

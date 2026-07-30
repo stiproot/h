@@ -137,6 +137,13 @@ export const PiRunnerLive: Layer.Layer<
             output: result.stdout ?? "",
             error: msg,
             stopReason: result.stopReason ?? null,
+            // What the run DID spend before failing — a failed run must not ledger null cost
+            // when usage is known (docs/plans/cost-containment.md B1).
+            costUsd: result.costUsd ?? null,
+            costPartial: result.costPartial ?? null,
+            tokens: result.tokenUsage ?? null,
+            model: result.model ?? null,
+            turns: result.numTurns ?? null,
           });
           return yield* Effect.fail(new PiRunError({ cause: new Error(msg) }));
         }

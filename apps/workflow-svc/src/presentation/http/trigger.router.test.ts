@@ -41,8 +41,7 @@ const stubWatchStore = (): WatchStoreService => ({
   getLedger: () => Effect.succeed(emptyLedger),
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
-  getRunCost: () => Effect.succeed(null),
-  getRunStopReason: () => Effect.succeed(null),
+  getRunMeta: () => Effect.succeed(null),
 });
 
 // The trigger router never touches chains, but the shared runtime type now includes ChainStore.
@@ -57,7 +56,7 @@ const stubChainStore = (): ChainStoreService => ({
   getLedger: () => Effect.succeed(emptyChainLedger),
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
-  getRunCost: () => Effect.succeed(null),
+  getRunMeta: () => Effect.succeed(null),
 });
 
 // The trigger router never touches crons either, but the shared runtime type now includes them.

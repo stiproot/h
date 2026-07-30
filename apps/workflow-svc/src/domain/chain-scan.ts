@@ -770,7 +770,7 @@ const executeFinalize = (
   Effect.gen(function* () {
     const cs = yield* ChainStore;
     const publisher = yield* DaprPublisherTag;
-    const { costUsd, costGap } = yield* tallyChainCost(row);
+    const { costUsd, costGap, gapRuns, costByAgent } = yield* tallyChainCost(row);
     const endedAt = new Date().toISOString();
     const final: ChainRow = {
       ...row,
@@ -783,7 +783,12 @@ const executeFinalize = (
     const saved = yield* saveFenced(row.epoch, final);
     if (!saved) return;
     report.finalized.push(`${row.chainId}:${outcome}`);
-    yield* cs.bumpLedger(chainLedgerDate(nowMs), { chainsFinalized: 1, costUsd });
+    yield* cs.bumpLedger(chainLedgerDate(nowMs), {
+      chainsFinalized: 1,
+      costUsd,
+      costByAgent,
+      costGapRuns: gapRuns,
+    });
     yield* publisher
       .publish(PUBSUB, EVENTS_TOPIC, {
         instanceId: row.chainId,
@@ -829,11 +834,17 @@ const finalizeFailed = (
  * A chain's cost is every member's cost: sum costUsd over run mirrors grouping under any instanceId of
  * a member whose stage the chain has reached (stage ≤ cursor; a shared instanceId, e.g. feature+revise,
  * is counted once via the set). Zero matching records is a LEDGER GAP — flagged, never a silent $0
- * (the watch tally's rule).
+ * (the watch tally's rule). Since cost-containment B3 the gap is also PER-RUN (an agent-run mirror
+ * with costUsd 0/null counts as a gap; `kind: "activity"` records excluded), and per-agent
+ * subtotals feed the chain ledger — mirroring watch-scan's tallyCost.
  */
 export const tallyChainCost = (
   row: ChainRow,
-): Effect.Effect<{ costUsd: number; costGap: boolean }, WorkflowError, ChainStore> =>
+): Effect.Effect<
+  { costUsd: number; costGap: boolean; gapRuns: number; costByAgent: Record<string, number> },
+  WorkflowError,
+  ChainStore
+> =>
   Effect.gen(function* () {
     const cs = yield* ChainStore;
     const ran = new Set<string>();
@@ -842,13 +853,28 @@ export const tallyChainCost = (
     }
     const keys = yield* cs.listRunKeys();
     const mine = keys.filter((key) => [...ran].some((id) => key.startsWith(`run:${id}:`)));
-    if (mine.length === 0) return { costUsd: 0, costGap: true };
+    if (mine.length === 0) return { costUsd: 0, costGap: true, gapRuns: 0, costByAgent: {} };
     let cost = 0;
+    let gapRuns = 0;
+    const costByAgent: Record<string, number> = {};
     for (const key of mine) {
-      const usd = yield* cs.getRunCost(key);
-      if (typeof usd === "number") cost += usd;
+      const meta = yield* cs.getRunMeta(key);
+      if (meta === null || meta.kind === "activity") continue;
+      if (typeof meta.costUsd === "number" && meta.costUsd > 0) {
+        cost += meta.costUsd;
+        const agent = meta.agentId ?? "(unknown)";
+        costByAgent[agent] =
+          Math.round(((costByAgent[agent] ?? 0) + meta.costUsd) * 10_000) / 10_000;
+      } else {
+        gapRuns += 1;
+      }
     }
-    return { costUsd: Math.round(cost * 10_000) / 10_000, costGap: false };
+    return {
+      costUsd: Math.round(cost * 10_000) / 10_000,
+      costGap: gapRuns > 0,
+      gapRuns,
+      costByAgent,
+    };
   });
 
 // ---------------------------------------------------------------------------

@@ -118,18 +118,10 @@ function invokeAgent(
 
     return runAgentProcessEffect(strategy, request);
   }).pipe(
-    // Behaviour flag: a timeout must not fail the call — it resolves
-    // the legacy exit-124 structured result. Spawn failures likewise resolved
-    // as exit-1 results (exit-127 when the command is not found).
+    // Behaviour flag: a timeout must not fail the call — run-process resolves it as an exit-124
+    // structured result built from the events collected so far (partial usage capture, B1). Spawn
+    // failures resolved as exit-1 results (exit-127 when the command is not found).
     Effect.catchTags({
-      AgentTimeoutError: (error) =>
-        Effect.succeed<InvocationResult>({
-          success: false,
-          stopReason: "timeout",
-          stdout: `Task timed out after ${error.timeoutMs}ms`,
-          stderr: "Task timed out",
-          exitCode: 124,
-        }),
       AgentSpawnError: (error) => {
         const notFound = isPlatformNotFoundError(error.cause);
         return Effect.succeed<InvocationResult>({

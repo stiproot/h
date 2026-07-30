@@ -117,6 +117,14 @@ export interface InvocationResult {
   costUsd?: number;
   numTurns?: number;
   sessionId?: string;
+  /**
+   * True when tokenUsage/model were folded from the PARTIAL event stream of a run that ended
+   * without a terminal result event (timeout/kill) — cumulative usage up to the stop, not a
+   * final accounting. costUsd is typically absent on such a result (per-event usage carries no
+   * cost); the ledger records the flag so a partial tally is never mistaken for a measured total
+   * (docs/plans/cost-containment.md B1).
+   */
+  costPartial?: boolean;
 }
 
 export interface StreamEventModelUsage {
@@ -146,10 +154,22 @@ export interface StreamEvent {
   is_error?: boolean;
   result?: string;
   message?: {
+    /** The API message id — several stream events can carry the SAME message (verified live:
+     * 30 assistant events / 14 distinct ids on a kimi run), so usage folds dedupe by id. */
+    id?: string;
+    model?: string;
     content?: Array<{
       type: string;
       text?: string;
     }>;
+    /** Per-API-call usage on assistant events (claude CLI stream-json) — the B1 partial-capture
+     * source when a run ends without a terminal result event. */
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
   };
   usage?: {
     input_tokens?: number;

@@ -61,8 +61,7 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
       getLedger: () => Effect.succeed(emptyLedger),
       bumpLedger: () => Effect.void,
       listRunKeys: () => Effect.succeed([]),
-      getRunCost: () => Effect.succeed(null),
-      getRunStopReason: () => Effect.succeed(null),
+      getRunMeta: () => Effect.succeed(null),
     },
   };
 }
@@ -83,7 +82,7 @@ const emptyChainStore: ChainStoreService = {
   getLedger: () => Effect.succeed(emptyChainLedger),
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
-  getRunCost: () => Effect.succeed(null),
+  getRunMeta: () => Effect.succeed(null),
 };
 
 // Empty cron + wf stores: like the chain, the cron scan rides the same tick but finds no rows here, a

@@ -102,6 +102,34 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
     expect(Date.now() - startedAt).toBeLessThan(5000);
   });
 
+  it("timeout with a partial stream keeps the collected events: partial usage folded, throttle classified (B1/C3)", async () => {
+    // Emits claude-shaped events — 2 API calls' usage + 3 rate-limit retries — then hangs past
+    // the timeout. The result must carry the partial fold and classify usage-limited, not lose
+    // everything to a bare synthetic 124 (docs/plans/cost-containment.md).
+    const { claudeStrategy } = await import("./agents/claude.ts");
+    const script = `
+      const emit = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+      emit({ type: "assistant", message: { id: "m1", model: "kimi-k3", usage: { input_tokens: 100, output_tokens: 10 }, content: [{ type: "text", text: "partial answer" }] } });
+      emit({ type: "assistant", message: { id: "m2", model: "kimi-k3", usage: { input_tokens: 200, output_tokens: 20 }, content: [] } });
+      for (let i = 0; i < 3; i++) emit({ type: "system", subtype: "api_retry", attempt: i + 1, error_status: 429, error: "rate_limit" });
+      setTimeout(() => {}, 30000);
+    `;
+
+    const result = await invoke(
+      nodeStrategy(script, { extractMetrics: claudeStrategy.extractMetrics }),
+      baseParams({ timeout: 1500 }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBe(124);
+    expect(result.stopReason).toBe("usage-limited");
+    expect(result.tokenUsage).toEqual({ input: 300, output: 30 });
+    expect(result.model).toBe("kimi-k3");
+    expect(result.costPartial).toBe(true);
+    expect(result.stdout).toBe("partial answer");
+    expect(result.stderr).toBe("Task timed out");
+  });
+
   it("resolves a non-zero exit as an unsuccessful result with stderr captured", async () => {
     const script = `console.error("boom"); process.exit(3);`;
 

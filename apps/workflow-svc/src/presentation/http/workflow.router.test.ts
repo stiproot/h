@@ -62,8 +62,7 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
       getLedger: () => Effect.succeed(emptyLedger),
       bumpLedger: () => Effect.void,
       listRunKeys: () => Effect.succeed([]),
-      getRunCost: () => Effect.succeed(null),
-      getRunStopReason: () => Effect.succeed(null),
+      getRunMeta: () => Effect.succeed(null),
     },
   };
 }
@@ -80,7 +79,7 @@ const stubChainStore: ChainStoreService = {
   getLedger: () => Effect.succeed(emptyChainLedger),
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
-  getRunCost: () => Effect.succeed(null),
+  getRunMeta: () => Effect.succeed(null),
 };
 
 // Same for crons + the wf store — the run routes don't touch them, but the shared runtime type does.

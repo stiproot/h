@@ -1,6 +1,6 @@
 # Cost containment — budgets the engines enforce, accounting the ledger can't lose
 
-Status: Planning — design + audit scope only; nothing here is implemented yet
+Status: Active — Phase 1 audit complete (findings below); Phase 0 decisions being settled
 Established: 2026-07-30
 
 ## Problem (evidence: 2026-07-30, the Moonshot $20 day)
@@ -69,18 +69,31 @@ agent shape.
 
 ## Workstream B — accounting integrity: a tally that can't silently lose money
 
-- **B1. Partial-usage capture on timeout/kill.** Strategies stream per-event usage; the
-  ledger must tally cumulative usage/cost from received events when the run ends WITHOUT a
-  final result (timeout, kill, crash), instead of defaulting to null/0. `stopReason` already
-  lands on the summary — cost must too, flagged `costPartial: true`.
+- **B1. Partial-usage capture on timeout/kill. DONE 2026-07-30.** Landed at the STRATEGY layer,
+  not the ledger: `run-process.ts` now handles the timeout where `streamEvents` is in scope and
+  builds the exit-124 result via `buildInvocationResult` + `extractMetrics` (previously
+  `AgentTimeoutError` short-circuited past both, discarding every collected event). claude's
+  `extractMetrics` folds per-API-call `message.usage` off assistant events when no terminal
+  result event exists — deduped by `message.id` (verified live: 30 events / 14 ids), flagged
+  `costPartial: true` (tokens/model/turns; per-event cost does not exist in the stream, so
+  costUsd stays absent → a B3 gap). All five JS runners' FAILED-exit ledger finish now carries
+  the result's metrics instead of dropping them (the audit's hole-1b). `costPartial` threads
+  `InvocationResult → RunOutcome → RunSummary → run: mirror`; py `record_run` gained
+  `stopReason`/`costPartial` parity (honest None — py runners don't classify yet).
+  **C3 fixed in the same change**: `buildInvocationResult` counts `system/api_retry` events
+  (429/rate_limit — the captured marker shape) and `classifyStop` classifies a timeout with
+  ≥3 such retries as `usage-limited`, so a throttle-stretched run reaches the fence/fallback.
 - **B2. Orphan reaping.** The invoker owns its CLI subprocess: on run timeout and on app
   shutdown it must kill the **process group** (the CLI spawns children), so no orphan can
   bill invisibly. (Same class as the sub-agent cache-poisoning fix: child processes must not
   outlive their contract.)
-- **B3. Honest gaps.** A run that completed with nonzero duration and a run-capable agent but
-  `costUsd: 0/null` is a **gap, not a zero** — the watcher's tally marks `costGap` per-run
-  (today costGap only fires when NO mirror matches). `watch:ledger:<date>` gains per-agent
-  subtotals + gap counts so a day's spend is auditable per executor at a glance.
+- **B3. Honest gaps. DONE 2026-07-30.** `tallyCost` (watch) and `tallyChainCost` (chain) now
+  read a `RunMirrorMeta` slice per mirror (the port cutover: `getRunCost`/`getRunStopReason` →
+  one `getRunMeta`, shared pure parser `runMirrorMetaFrom` in watch.model.ts): `kind:
+  "activity"` records excluded, an agent-run mirror with costUsd 0/null counts as a PER-RUN gap
+  (`costGap` no longer fires only on zero matches), and per-agent subtotals land on the day
+  ledgers — `WatchLedger`/`ChainLedger` gained optional `costByAgent` + `costGapRuns` (optional
+  so pre-existing ledgers decode).
 
 ## Workstream C — the audit: every agent shape, same questions
 
@@ -114,6 +127,56 @@ Per agent/strategy:
 
 Audit output: a table in this plan (agent × the five checks), each cell pass/gap + fix filed.
 
+## Phase 1 audit findings (2026-07-30, manual read of every strategy + both ledgers + the tally)
+
+Table: agent × the five checks. ✅ pass, ◐ partial, ❌ gap. File pointers are the fix sites.
+
+| Check | claude | kimi (=claude strategy) | codex | openhands | pi | py agents (`record_run`) |
+|---|---|---|---|---|---|---|
+| 1. cost→disk | ◐ success-path only | ◐ same, worse in practice | ❌ no cost (tokens only) | ❌ nothing ever | ❌ nothing (documented) | ❌ `cost_usd` never populated |
+| 2. caching visible | ✅ cacheRead/Creation per model | ❌ provider returns cached:0 | ◐ cached_tokens folded into input | ❌ unobservable | ❌ unobservable | ❌ unobservable |
+| 3. limit→`usage-limited` | ◐ timeout outranks limit | ❌ observed live miss | ◐ error events not in haystack | ◐ ConversationErrorEvent path ok (unverified live) | ◐ stderr regexes only (unverified) | ❌ no `stopReason` field at all |
+| 4. watcher reads mirror | ✅ | ✅ | ◐ null cost → silent 0 | ◐ null cost → silent 0 | ◐ null cost → silent 0 | ◐ mirror exists; no stopReason |
+| 5. timeout knob encoded | ❌ nowhere | ❌ nowhere | ❌ nowhere | ❌ nowhere | ❌ nowhere | n/a (in-process) |
+
+**Mechanics behind the table (the fix sites):**
+
+- **Hole 1 has TWO layers, not one.** (a) Timeout: `run-process.ts` raises `AgentTimeoutError`
+  from `Effect.timeoutFail`, which short-circuits past `buildInvocationResult` — the accumulated
+  `streamEvents` (with every per-turn usage event) are unreachable from the invoker's catch
+  (`invoker.ts:124`), so the synthetic exit-124 result carries no usage. (b) **Every JS runner's
+  failed-exit path drops metrics even when present**: `exitCode !== 0` → `Effect.fail` →
+  `tapErrorCause → ledger.finish({status, output, error, stopReason})` — costUsd/tokens/model are
+  omitted from the failure finish (kimi-runner.ts:144–148 & 172–179; same shape in claude/codex/
+  openhands/pi runners). A nonzero-exit claude run that DID emit `total_cost_usd` ledgers
+  `costUsd: null`.
+- **The ledger already has the B1 seam**: `events.jsonl` receives every event incrementally
+  (`onEvent` fires during the run), and `startRunLedgerEffect` already takes an injected
+  per-strategy fold (`tallyToolCalls`). A sibling `tallyUsage` fold gives cumulative
+  usage/cost during the run; `finish` uses it when the outcome carries none → `costPartial: true`.
+- **C3 is a two-lock miss.** `classifyStop` (classify-stop.ts:50) returns `timeout` on
+  signal/exit-124 BEFORE the usage-limit match, and its haystack is stderr + the terminal result
+  event — kimi's 460 rate-limit markers were mid-stream events, so even without the ordering the
+  markers never reach the classifier. And `refineUsageLimited` (watch-scan.ts:657) deliberately
+  refines only `completed|failed`. Fix direction: classify from the event stream too (a strategy
+  that saw N rate-limit events + timeout → `usage-limited`), not by loosening the refiner's
+  outcome guard (budget-terminated/terminated stay non-limits).
+- **Codex tokens may undercount**: `extractMetrics` takes the FIRST `type:"result"` event
+  (codex.ts:204) = the first `turn.completed`; multi-turn runs would drop later turns' usage.
+  Verify against a captured multi-turn events.jsonl before fixing.
+- **Orphans (hole 2)**: the Effect scope finalizer kills the child only on fiber interruption
+  (timeout) — an app death (OOM/SIGTERM) orphans the CLI; and the kill targets the direct child
+  pid, not the process GROUP the CLI spawned (grandchildren survive even the timeout path).
+- **Timeout knob (C5)**: `AGENT_RUN_TIMEOUT_MS` is read by all five runners (30-min code default)
+  but set in NO run script, compose file, or `.env.example` — any operator override lives in a
+  shell export today, exactly the zombie-supervisor anti-pattern the check exists to prevent.
+- **Kimi cost caveat (C2)**: the ~$3.1/review "booked" figures are the claude CLI's own computed
+  `total_cost_usd` — priced at Anthropic rates for a Moonshot model. Treat booked kimi cost as
+  an estimate, not invoice truth; the audit documents this blind spot per the non-goals.
+- **Python agents**: `record_run` writes `costUsd` (always null in practice — no py runner
+  populates `cost_usd`) and has **no `stopReason` field**, so a py-agent usage limit can never
+  reach the fence. Same fields, same semantics as the JS ledger is the parity bar.
+
 ## Non-goals
 
 - No new pricing tables in h. Cost figures come from what providers/CLIs report; the audit
@@ -134,16 +197,21 @@ Audit output: a table in this plan (agent × the five checks), each cell pass/ga
 - **Phase 4 — e2e validation**: a deliberately cheap-budgeted executor crosses its ceiling in
   a controlled run; observe fence, refusal, and ledger honesty; cookbook-stamp.
 
-## Open questions (for plan review)
+## Phase 0 decisions (settled 2026-07-30, operator + assistant review — no panel)
 
-1. A2's live cost signal: periodic mirror flush vs scan-side event tailing vs skipping A2
-   entirely (is A1 + duration caps enough in practice?).
-2. Budget scope: per-executor only, or also per-chain (a runaway loop-until-clean burns
-   through any single-run cap)?
-3. Should `cost-budget` denies block ONLY expensive kinds (review/implement) while allowing
-   cheap `answer` tasks — i.e., is the deny binary or class-scoped?
-4. Kimi's future: budget + quorum + no-caching documented — is $X/day of uncached Moonshot
-   worth the roster diversity, and what is X?
+1. **A2: build it, on the mirror-flush design.** B1's cumulative-usage fold makes a periodic
+   flush of the running tally to the `run:` mirror nearly free; the watch scan reads mirrors
+   each tick, so `maxCostUsd` enforces with ≤1-tick lag. Scan-side event tailing rejected
+   (couples engine to fs).
+2. **Budget scope: per-executor-per-day only.** Loop chains stay bounded by their own loop
+   budget; a per-chain cost axis waits for evidence.
+3. **`cost-budget` deny is BINARY** — same semantics as operator/usage-limited entries, plus
+   expiry. The gate stays one check; class-scoping (denying only expensive kinds) can be added
+   later without unwinding anything, but threading a task-class through every fire path is not
+   paid for today.
+4. **Kimi stays operator-denied until A1 + Workstream B land.** The daily-budget number is
+   decided then, with trustworthy tallies in hand — not pre-committed on estimated figures
+   (the booked kimi costs are CLI-computed at Anthropic rates, see audit caveat).
 
 ## Related
 

@@ -2,6 +2,7 @@ import type { WorkflowError } from "core";
 import { Context, type Effect, type Option } from "effect";
 
 import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "../models/chain.model.ts";
+import type { RunMirrorMeta } from "../models/watch.model.ts";
 
 /**
  * The chain-registry port, sibling of IWatchStore: `chain:sub:<chainId>` rows + `chain:index`, the
@@ -26,8 +27,8 @@ export interface ChainStoreService {
   ) => Effect.Effect<void, WorkflowError>;
   /** All `run:` mirror keys from `runs:index` (for the prefix-match cost tally). */
   readonly listRunKeys: () => Effect.Effect<readonly string[], WorkflowError>;
-  /** costUsd off one `run:<runId>` mirror record; null when absent/non-numeric. */
-  readonly getRunCost: (key: string) => Effect.Effect<number | null, WorkflowError>;
+  /** The cost-relevant slice of one `run:<runId>` mirror (see IWatchStore.getRunMeta). */
+  readonly getRunMeta: (key: string) => Effect.Effect<RunMirrorMeta | null, WorkflowError>;
 }
 
 /** Service tag for the chain store. Yield it to call: `const cs = yield* ChainStore`. */

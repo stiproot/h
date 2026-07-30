@@ -145,6 +145,11 @@ export const WatchLedger = Schema.Struct({
   runsFinalized: Schema.Number,
   engineFires: Schema.Number,
   costUsd: Schema.Number,
+  // Per-agent spend subtotals + how many agent runs finalized with NO usable cost (a gap,
+  // not a zero) — the day's spend auditable per executor at a glance (cost-containment B3).
+  // Optional so ledgers written before the field decode unchanged.
+  costByAgent: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Number })),
+  costGapRuns: Schema.optional(Schema.Number),
 });
 export type WatchLedger = Schema.Schema.Type<typeof WatchLedger>;
 
@@ -154,6 +159,36 @@ export const emptyLedger: WatchLedger = {
   engineFires: 0,
   costUsd: 0,
 };
+
+/**
+ * The cost-relevant slice of one `run:<runId>` mirror record, read by the tallies and the
+ * usage-limit refinement. Loosely typed at the store boundary (the mirror is written by every
+ * agent's ledger, JS and Python): absent/malformed fields read as null, never throw.
+ * `kind: "activity"` rows (setup/clone/worktree) carry no cost by design and are excluded from
+ * gap accounting (cost-containment B3).
+ */
+export interface RunMirrorMeta {
+  costUsd: number | null;
+  costPartial: boolean;
+  stopReason: string | null;
+  agentId: string | null;
+  kind: string | null;
+}
+
+/** Parse a raw mirror value into {@link RunMirrorMeta} — pure, shared by both registry stores. */
+export function runMirrorMetaFrom(value: unknown): RunMirrorMeta {
+  const record = (typeof value === "object" && value !== null ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  return {
+    costUsd: typeof record.costUsd === "number" ? record.costUsd : null,
+    costPartial: record.costPartial === true,
+    stopReason: typeof record.stopReason === "string" ? record.stopReason : null,
+    agentId: typeof record.agentId === "string" ? record.agentId : null,
+    kind: typeof record.kind === "string" ? record.kind : null,
+  };
+}
 
 // watch:__tick__ — the scan heartbeat. `enabled: false` distinguishes a deliberate disarm
 // from a dead engine, so a staleness check (the sweep's guard) can tell the two apart.

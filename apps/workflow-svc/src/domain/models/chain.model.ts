@@ -191,6 +191,10 @@ export const ChainLedger = Schema.Struct({
   workflowsFired: Schema.Number,
   chainsFinalized: Schema.Number,
   costUsd: Schema.Number,
+  // Per-agent spend subtotals + gap-run count, mirroring WatchLedger (cost-containment B3).
+  // Optional so ledgers written before the field decode unchanged.
+  costByAgent: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Number })),
+  costGapRuns: Schema.optional(Schema.Number),
 });
 export type ChainLedger = Schema.Schema.Type<typeof ChainLedger>;
 

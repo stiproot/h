@@ -2,7 +2,7 @@ import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
-import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
+import { AgentRunner, RunLedger, type RunOutcome, startRunLedgerEffect } from "agent-server";
 import { AgentRunError, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
 import { Cause, Config, Effect, Layer, Option } from "effect";
@@ -106,6 +106,12 @@ const runKimi = (
 
     let capturedOutput = "";
     let capturedStopReason: string | undefined;
+    // Metrics captured before the nonzero-exit failure below, so the failure-path ledger finish
+    // records what the run DID spend instead of dropping it (docs/plans/cost-containment.md B1:
+    // failed/timed-out runs used to ledger costUsd: null even when usage was known).
+    let capturedMetrics: Partial<
+      Pick<RunOutcome, "costUsd" | "costPartial" | "tokens" | "model" | "turns">
+    > = {};
     return yield* Effect.gen(function* () {
       const invoker = yield* AgentInvoker;
       const result = yield* invoker
@@ -140,6 +146,13 @@ const runKimi = (
 
       capturedOutput = result.stdout ?? "";
       capturedStopReason = result.stopReason;
+      capturedMetrics = {
+        costUsd: result.costUsd ?? null,
+        costPartial: result.costPartial ?? null,
+        tokens: result.tokenUsage ?? null,
+        model: result.model ?? null,
+        turns: result.numTurns ?? null,
+      };
 
       if (result.exitCode !== undefined && result.exitCode !== 0) {
         return yield* Effect.fail(
@@ -155,6 +168,7 @@ const runKimi = (
         turns: result.numTurns ?? 1,
         tokens: result.tokenUsage ?? { input: 0, output: 0 },
         costUsd: result.costUsd ?? null,
+        costPartial: result.costPartial ?? null,
         stopReason: result.stopReason ?? null,
       });
 
@@ -175,6 +189,7 @@ const runKimi = (
           output: capturedOutput,
           error: String(Cause.squash(cause)),
           stopReason: capturedStopReason ?? null,
+          ...capturedMetrics,
         }),
       ),
     );

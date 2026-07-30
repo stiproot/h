@@ -322,7 +322,7 @@ const executeAutoDeny = (
     const keys = yield* ws.listRunKeys();
     const mine = keys.filter((key) => key.startsWith(`run:${instanceId}:`));
     for (const key of mine) {
-      const reason = yield* ws.getRunStopReason(key);
+      const reason = (yield* ws.getRunMeta(key))?.stopReason;
       if (reason !== "usage-limited") continue;
       const agentId = key.slice(`run:${instanceId}:`.length).split(":")[0];
       if (!agentId) return;
@@ -356,7 +356,7 @@ const executeFinalize = (
     // The outcome inversion: upgrade completed/failed → usage-limited off the run: ledger before
     // recording, so the row/event/escalate/fallback all see the refined outcome.
     const outcome = yield* refineUsageLimited(row.instanceId, observedOutcome);
-    const { costUsd, costGap } = yield* tallyCost(row.instanceId);
+    const { costUsd, costGap, gapRuns, costByAgent } = yield* tallyCost(row.instanceId);
     const endedAt = new Date().toISOString();
     const final: WatchRow = {
       ...row,
@@ -372,7 +372,12 @@ const executeFinalize = (
     // Stale epoch: a re-fire created a new incarnation mid-decision; its lifecycle owns the row.
     if (!saved) return;
     report.finalized.push(`${row.instanceId}:${outcome}`);
-    yield* ws.bumpLedger(ledgerDate(nowMs), { runsFinalized: 1, costUsd });
+    yield* ws.bumpLedger(ledgerDate(nowMs), {
+      runsFinalized: 1,
+      costUsd,
+      costByAgent,
+      costGapRuns: gapRuns,
+    });
     // Terminal event: best-effort observability, never fails the scan (the babysitter's policy).
     yield* publisher
       .publish(PUBSUB, EVENTS_TOPIC, {
@@ -620,25 +625,57 @@ const executeFallback = (
 // Cost tally (the sweep's prose, now code — issue #10's prefix-match included)
 // ---------------------------------------------------------------------------
 
+/** What a finalize's cost tally reports: the sum, per-agent subtotals, and honest gap accounting. */
+export interface CostTally {
+  costUsd: number;
+  /** True when NO mirrors matched, or any AGENT run finalized with no usable cost (B3):
+   *  a run that plainly spent (nonzero duration, run-capable agent) but ledgered 0/null is a
+   *  gap, never a measured zero. */
+  costGap: boolean;
+  /** How many agent-run mirrors carried no usable cost (0/null). */
+  gapRuns: number;
+  /** Spend subtotals keyed by agentId (activity records excluded — they never carry cost). */
+  costByAgent: Record<string, number>;
+}
+
 /**
  * Sums costUsd over the run mirrors whose runId groups under this instance
  * (`run:<instanceId>:<agentId>:<ts>`). Zero matching records is a LEDGER GAP — flagged,
- * never a silent $0 (the prose rule that caught the original undercount, preserved).
+ * never a silent $0 (the prose rule that caught the original undercount, preserved). Since
+ * cost-containment B3 the gap is also PER-RUN: an agent-run mirror with costUsd 0/null counts
+ * as a gap even though other runs booked cost — before this, one openhands/pi/codex run (which
+ * never report cost) or one timed-out run silently vanished from a day's spend. `kind:
+ * "activity"` records (setup/clone/worktree) are excluded — they carry no cost by design.
  */
 export const tallyCost = (
   instanceId: string,
-): Effect.Effect<{ costUsd: number; costGap: boolean }, WorkflowError, WatchStore> =>
+): Effect.Effect<CostTally, WorkflowError, WatchStore> =>
   Effect.gen(function* () {
     const ws = yield* WatchStore;
     const keys = yield* ws.listRunKeys();
     const mine = keys.filter((key) => key.startsWith(`run:${instanceId}:`));
-    if (mine.length === 0) return { costUsd: 0, costGap: true };
+    if (mine.length === 0) return { costUsd: 0, costGap: true, gapRuns: 0, costByAgent: {} };
     let cost = 0;
+    let gapRuns = 0;
+    const costByAgent: Record<string, number> = {};
     for (const key of mine) {
-      const usd = yield* ws.getRunCost(key);
-      if (typeof usd === "number") cost += usd;
+      const meta = yield* ws.getRunMeta(key);
+      if (meta === null || meta.kind === "activity") continue;
+      if (typeof meta.costUsd === "number" && meta.costUsd > 0) {
+        cost += meta.costUsd;
+        const agent = meta.agentId ?? "(unknown)";
+        costByAgent[agent] =
+          Math.round(((costByAgent[agent] ?? 0) + meta.costUsd) * 10_000) / 10_000;
+      } else {
+        gapRuns += 1;
+      }
     }
-    return { costUsd: Math.round(cost * 10_000) / 10_000, costGap: false };
+    return {
+      costUsd: Math.round(cost * 10_000) / 10_000,
+      costGap: gapRuns > 0,
+      gapRuns,
+      costByAgent,
+    };
   });
 
 /**
@@ -659,7 +696,7 @@ export const refineUsageLimited = (
     const keys = yield* ws.listRunKeys();
     const mine = keys.filter((key) => key.startsWith(`run:${instanceId}:`));
     for (const key of mine) {
-      const reason = yield* ws.getRunStopReason(key);
+      const reason = (yield* ws.getRunMeta(key))?.stopReason;
       if (reason === "usage-limited") return "usage-limited";
     }
     return outcome;

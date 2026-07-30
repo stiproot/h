@@ -1,7 +1,13 @@
 import type { WorkflowError } from "core";
 import { Context, type Effect, type Option } from "effect";
 
-import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "../models/watch.model.ts";
+import type {
+  RunMirrorMeta,
+  WatchConfig,
+  WatchHeartbeat,
+  WatchLedger,
+  WatchRow,
+} from "../models/watch.model.ts";
 
 /**
  * The watch-registry port: `watch:sub:<instanceId>` rows + `watch:index`, the `watch:config`
@@ -26,11 +32,10 @@ export interface WatchStoreService {
   ) => Effect.Effect<void, WorkflowError>;
   /** All `run:` mirror keys from `runs:index` (for the prefix-match cost tally). */
   readonly listRunKeys: () => Effect.Effect<readonly string[], WorkflowError>;
-  /** costUsd off one `run:<runId>` mirror record; null when absent/non-numeric. */
-  readonly getRunCost: (key: string) => Effect.Effect<number | null, WorkflowError>;
-  /** stopReason off one `run:<runId>` mirror record; null when absent. Feeds the usage-limit
-   *  outcome refinement (a limited run's mirror carries stopReason "usage-limited"). */
-  readonly getRunStopReason: (key: string) => Effect.Effect<string | null, WorkflowError>;
+  /** The cost-relevant slice of one `run:<runId>` mirror (cost, stopReason, agentId, kind);
+   *  null when the mirror is absent. One read serves the cost tally, the gap accounting, and
+   *  the usage-limit refinement. */
+  readonly getRunMeta: (key: string) => Effect.Effect<RunMirrorMeta | null, WorkflowError>;
 }
 
 /** Service tag for the watch store. Yield it to call: `const ws = yield* WatchStore`. */

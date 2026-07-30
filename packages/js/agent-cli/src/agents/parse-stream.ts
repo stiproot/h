@@ -8,6 +8,20 @@ interface BuildInvocationResultOptions {
   signal: NodeJS.Signals | null;
   sessionId?: string;
   metrics?: Partial<InvocationResult>;
+  /** Set when the run was cut off by the invoker's timeout — names the exit and caps stderr. */
+  timedOutAfterMs?: number;
+}
+
+/**
+ * A rate-limit retry the CLI reported as a stream event (claude CLI shape, verified live:
+ * `{type:"system", subtype:"api_retry", error_status:429, error:"rate_limit"}`). Counted so a
+ * throttle-stretched timeout classifies `usage-limited` — the markers never reach stderr or a
+ * result event on such runs, so the classifier's haystack alone misses them.
+ */
+function isRateLimitRetryEvent(event: StreamEvent): boolean {
+  if (event.type !== "system" || event.subtype !== "api_retry") return false;
+  const { error_status, error } = event as { error_status?: unknown; error?: unknown };
+  return error_status === 429 || (typeof error === "string" && /rate.?limit/i.test(error));
 }
 
 /**
@@ -45,6 +59,7 @@ export function buildInvocationResult({
   signal,
   sessionId,
   metrics,
+  timedOutAfterMs,
 }: BuildInvocationResultOptions): InvocationResult {
   const textOutput = events
     .filter((event) => event.type === "assistant")
@@ -53,20 +68,25 @@ export function buildInvocationResult({
     .map((content) => content.text ?? "")
     .join("\n");
 
-  const exitDescription = signal
-    ? `Process killed by signal ${signal}`
-    : `Process exited with code ${exitCode}`;
+  const exitDescription =
+    timedOutAfterMs !== undefined
+      ? `Task timed out after ${timedOutAfterMs}ms`
+      : signal
+        ? `Process killed by signal ${signal}`
+        : `Process exited with code ${exitCode}`;
 
   const numTurns = events.filter((event) => event.type === "assistant").length;
 
   // The terminal `result` event carries the limit text even when the process exits 0 (Claude CLI),
-  // so the classifier reads it alongside exit/signal/stderr.
+  // so the classifier reads it alongside exit/signal/stderr — plus the stream's rate-limit retry
+  // count, which is the only place throttling shows on a timed-out run.
   const resultEvent = events.find((event) => event.type === "result");
   const stopReason = classifyStop({
     exitCode,
     signal,
     stderr,
     resultEventText: resultEvent?.result,
+    rateLimitRetries: events.filter(isRateLimitRetryEvent).length,
   });
 
   return {
@@ -76,7 +96,7 @@ export function buildInvocationResult({
     success: metrics?.success ?? exitCode === 0,
     stopReason,
     stdout: metrics?.stdout ?? (textOutput || exitDescription),
-    stderr: stderr || undefined,
+    stderr: stderr || (timedOutAfterMs !== undefined ? "Task timed out" : undefined),
     exitCode: exitCode ?? undefined,
     tokenUsage: metrics?.tokenUsage,
     model: metrics?.model,
@@ -84,5 +104,6 @@ export function buildInvocationResult({
     costUsd: metrics?.costUsd,
     numTurns: metrics?.numTurns ?? (numTurns > 0 ? numTurns : undefined),
     sessionId,
+    ...(metrics?.costPartial ? { costPartial: true } : {}),
   };
 }

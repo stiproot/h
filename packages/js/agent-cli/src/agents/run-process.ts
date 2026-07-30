@@ -23,7 +23,7 @@ export function runAgentProcessEffect(
   request: AgentInvocationRequest,
 ): Effect.Effect<
   InvocationResult,
-  AgentSpawnError | AgentTimeoutError | LiteLlmError,
+  AgentSpawnError | LiteLlmError,
   CommandExecutor.CommandExecutor | HttpClient.HttpClient
 > {
   return Effect.gen(function* () {
@@ -85,11 +85,7 @@ function runPreparedInvocation(
   request: AgentInvocationRequest,
   prepared: PreparedAgentInvocation,
   envOverrides: Record<string, string> | undefined,
-): Effect.Effect<
-  InvocationResult,
-  AgentSpawnError | AgentTimeoutError,
-  CommandExecutor.CommandExecutor
-> {
+): Effect.Effect<InvocationResult, AgentSpawnError, CommandExecutor.CommandExecutor> {
   return Effect.gen(function* () {
     const childEnv = envOverrides ? { ...request.env, ...envOverrides } : request.env;
 
@@ -160,6 +156,10 @@ function runPreparedInvocation(
       }),
     ).pipe(Effect.mapError((cause) => new AgentSpawnError({ command: prepared.command, cause })));
 
+    // A timeout is handled HERE, where `streamEvents` is still in scope — the interruption kills
+    // the child via the scope finalizer, and the result is built from the events collected so far
+    // (partial usage, rate-limit retries) instead of a bare synthetic 124 that discards them
+    // (docs/plans/cost-containment.md B1: two 30-minute runs billed their duration, ledgered zero).
     const timedProcess =
       request.timeout > 0
         ? runProcess.pipe(
@@ -167,10 +167,19 @@ function runPreparedInvocation(
               duration: Duration.millis(request.timeout),
               onTimeout: () => new AgentTimeoutError({ timeoutMs: request.timeout }),
             }),
+            Effect.catchTag("AgentTimeoutError", () =>
+              Effect.succeed({
+                exitCode: 124 as number | null,
+                signal: null as NodeJS.Signals | null,
+                stderrText: "",
+                timedOut: true,
+              }),
+            ),
           )
         : runProcess;
 
-    const [duration, { exitCode, signal, stderrText }] = yield* Effect.timed(timedProcess);
+    const [duration, { exitCode, signal, stderrText, ...rest }] = yield* Effect.timed(timedProcess);
+    const timedOut = "timedOut" in rest && rest.timedOut === true;
 
     yield* Effect.logDebug(
       `${strategy.name} exited (code=${exitCode}, signal=${signal}, ms=${Duration.toMillis(duration)})`,
@@ -195,6 +204,7 @@ function runPreparedInvocation(
       signal,
       sessionId: strategy.extractSessionId(streamEvents),
       metrics: strategy.extractMetrics(streamEvents, request),
+      timedOutAfterMs: timedOut ? request.timeout : undefined,
     });
   });
 }

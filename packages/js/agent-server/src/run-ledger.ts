@@ -53,6 +53,13 @@ export type RunOutcome = {
   turns?: number | null;
   tokens?: { input: number; output: number } | null;
   costUsd?: number | null;
+  /**
+   * True when tokens/model were folded from a PARTIAL event stream (run ended without a terminal
+   * result — timeout/kill), so the tally is cumulative-up-to-the-stop, not a final accounting
+   * (docs/plans/cost-containment.md B1). Never a substitute for costUsd — a partial run with no
+   * cost still reads as a cost gap.
+   */
+  costPartial?: boolean | null;
   error?: string | null;
   /**
    * Why the run stopped (agent-cli's classify-stop; e.g. "usage-limited"). Orthogonal to `status` —
@@ -74,6 +81,8 @@ export type RunSummary = {
   turns: number | null;
   tokens: { input: number; output: number } | null;
   costUsd: number | null;
+  /** True when tokens were folded from a partial stream (timeout/kill) — see RunOutcome. */
+  costPartial: boolean | null;
   /** null = this agent's stream shape is not one we can count; NOT a measured zero. */
   toolCalls: number | null;
   /** What this agent's event stream actually looked like — evidence, not assumption. */
@@ -176,6 +185,7 @@ function buildRunSummary(
     turns: outcome.turns ?? null,
     tokens: outcome.tokens ?? null,
     costUsd: outcome.costUsd ?? null,
+    costPartial: outcome.costPartial ?? null,
     toolCalls,
     eventShape,
     sessionId: outcome.sessionId ?? null,

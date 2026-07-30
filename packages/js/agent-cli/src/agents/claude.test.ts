@@ -60,6 +60,69 @@ describe("claudeStrategy.validateEnvironment", () => {
   });
 });
 
+describe("claudeStrategy.extractMetrics partial fold (no terminal result event)", () => {
+  // The B1 shape (docs/plans/cost-containment.md): a timed-out/killed run has assistant events
+  // carrying per-API-call usage but no result event — fold them instead of reporting nothing.
+  const usageEvent = (id: string, usage: Record<string, number>, model = "kimi-k3") => ({
+    type: "assistant",
+    message: { id, model, usage, content: [{ type: "text", text: "…" }] },
+  });
+
+  it("folds assistant usage deduped by message.id (several events share one API call's usage)", () => {
+    // Verified live: 30 assistant events / 14 distinct message ids on a timed-out kimi run.
+    const metrics = claudeStrategy.extractMetrics(
+      [
+        usageEvent("msg-1", { input_tokens: 100, output_tokens: 10 }),
+        usageEvent("msg-1", { input_tokens: 100, output_tokens: 10 }), // same call, second block
+        usageEvent("msg-2", {
+          input_tokens: 200,
+          output_tokens: 20,
+          cache_read_input_tokens: 50,
+        }),
+      ],
+      baseRequest(),
+    );
+
+    expect(metrics).toEqual({
+      tokenUsage: { input: 350, output: 30 },
+      model: "kimi-k3",
+      numTurns: 2,
+      costPartial: true,
+    });
+  });
+
+  it("returns {} when the partial stream has no usage at all (never a fake zero)", () => {
+    expect(
+      claudeStrategy.extractMetrics(
+        [
+          { type: "system", subtype: "init" },
+          { type: "assistant", message: { content: [] } },
+        ],
+        baseRequest(),
+      ),
+    ).toEqual({});
+  });
+
+  it("prefers the terminal result event when present (unchanged final accounting)", () => {
+    const metrics = claudeStrategy.extractMetrics(
+      [
+        usageEvent("msg-1", { input_tokens: 999, output_tokens: 99 }),
+        {
+          type: "result",
+          total_cost_usd: 1.25,
+          num_turns: 7,
+          modelUsage: { "kimi-k3": { inputTokens: 10, outputTokens: 5, costUSD: 1.25 } },
+        },
+      ],
+      baseRequest(),
+    );
+
+    expect(metrics.costUsd).toBe(1.25);
+    expect(metrics.numTurns).toBe(7);
+    expect(metrics.costPartial).toBeUndefined();
+  });
+});
+
 describe("claudeStrategy.buildInvocation permission mode", () => {
   it("uses --permission-mode plan and omits skip-permissions when permissionMode is 'plan'", async () => {
     const { args } = await buildInvocation(baseRequest({ permissionMode: "plan" }));

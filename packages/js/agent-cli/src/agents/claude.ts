@@ -12,6 +12,7 @@ import type {
   AgentStrategy,
   InvocationResult,
   PreparedAgentInvocation,
+  StreamEvent,
   StreamEventModelUsage,
 } from "./types.ts";
 
@@ -71,14 +72,17 @@ export const claudeStrategy: AgentStrategy = {
 
   extractMetrics(events) {
     const resultEvent = events.find((event) => event.type === "result");
-    const metrics = resultEvent?.modelUsage
-      ? normalizeClaudeModelUsage(resultEvent.modelUsage)
-      : {};
+    // No terminal result event — the run timed out or was killed mid-stream. Fold the partial
+    // per-call usage off the assistant events instead of reporting nothing (B1,
+    // docs/plans/cost-containment.md): two 30-minute kimi runs billed their full duration and
+    // ledgered zero because this path returned {}.
+    if (!resultEvent) return foldPartialClaudeUsage(events);
+    const metrics = resultEvent.modelUsage ? normalizeClaudeModelUsage(resultEvent.modelUsage) : {};
 
     return {
       ...metrics,
-      costUsd: resultEvent?.total_cost_usd ?? metrics.costUsd,
-      numTurns: resultEvent?.num_turns,
+      costUsd: resultEvent.total_cost_usd ?? metrics.costUsd,
+      numTurns: resultEvent.num_turns,
     };
   },
 
@@ -114,6 +118,53 @@ function buildClaudeInvocation(
     stdinSupport: true,
     supportsResume: true,
   });
+}
+
+/**
+ * Cumulative usage from a PARTIAL stream (no terminal result event): fold assistant events'
+ * per-API-call `message.usage`, deduped by `message.id` keeping the LAST usage per id — the CLI
+ * emits several assistant events per API call (one per content block) all carrying that call's
+ * usage (verified live: 30 assistant events / 14 distinct ids on a timed-out kimi run). No
+ * per-event cost exists in the stream, so costUsd stays absent — `costPartial` marks the shape.
+ */
+function foldPartialClaudeUsage(
+  events: StreamEvent[],
+): Pick<InvocationResult, "tokenUsage" | "model" | "numTurns" | "costPartial"> {
+  const byMessageId = new Map<string, NonNullable<NonNullable<StreamEvent["message"]>["usage"]>>();
+  let model: string | undefined;
+  let unkeyed = 0;
+  let unkeyedInput = 0;
+  let unkeyedOutput = 0;
+  for (const event of events) {
+    if (event.type !== "assistant" || !event.message?.usage) continue;
+    model ??= event.message.model;
+    const usage = event.message.usage;
+    const id = event.message.id;
+    if (id) {
+      byMessageId.set(id, usage);
+    } else {
+      // No message id to dedupe on — count it once, conservatively.
+      unkeyed += 1;
+      unkeyedInput += usage.input_tokens ?? 0;
+      unkeyedOutput += usage.output_tokens ?? 0;
+    }
+  }
+  if (byMessageId.size === 0 && unkeyed === 0) return {};
+  let input = unkeyedInput;
+  let output = unkeyedOutput;
+  for (const usage of byMessageId.values()) {
+    input +=
+      (usage.input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0);
+    output += usage.output_tokens ?? 0;
+  }
+  return {
+    tokenUsage: { input, output },
+    model,
+    numTurns: byMessageId.size + unkeyed,
+    costPartial: true,
+  };
 }
 
 function normalizeClaudeModelUsage(

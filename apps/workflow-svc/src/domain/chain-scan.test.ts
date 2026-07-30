@@ -50,7 +50,20 @@ function memoryChainStore(config?: ChainConfig): MemoryChainStore {
         });
       }),
     listRunKeys: () => Effect.succeed([...runRecords.keys()]),
-    getRunCost: (key) => Effect.succeed(runRecords.get(key) ?? null),
+    // Meta derived from the seed map; agentId parsed off the ledger key shape
+    // (`run:<instanceId>:<agentId>:<ts>`), kind null (an agent run, not an activity).
+    getRunMeta: (key) =>
+      Effect.succeed(
+        runRecords.has(key)
+          ? {
+              costUsd: runRecords.get(key) ?? null,
+              costPartial: false,
+              stopReason: null,
+              agentId: key.split(":").at(-2) ?? null,
+              kind: null,
+            }
+          : null,
+      ),
   };
   return { service, rows, ledgers, heartbeats, runRecords };
 }

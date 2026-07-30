@@ -108,8 +108,7 @@ const stubWatch: WatchStoreService = {
   getLedger: () => Effect.succeed(emptyWatchLedger),
   bumpLedger: () => Effect.void,
   listRunKeys: () => Effect.succeed([]),
-  getRunCost: () => Effect.succeed(null),
-  getRunStopReason: () => Effect.succeed(null),
+  getRunMeta: () => Effect.succeed(null),
 };
 
 function env(

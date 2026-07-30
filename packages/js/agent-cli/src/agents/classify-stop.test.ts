@@ -54,4 +54,27 @@ describe("classifyStop", () => {
   it("timeout wins over a usage marker (a killed process is a timeout, not a limit)", () => {
     expect(classifyStop({ exitCode: 124, signal: null, stderr: "rate limit" })).toBe("timeout");
   });
+
+  it("usage-limited: a timeout whose stream carried >=3 rate-limit retries is a throttle, not a timeout", () => {
+    // The Moonshot $20 day (docs/plans/cost-containment.md C3): 429-throttled runs stretched into
+    // their 30-min budgets and finalized `timeout`, so the auto-deny fence never saw the limit.
+    expect(classifyStop({ exitCode: 124, signal: null, stderr: "", rateLimitRetries: 3 })).toBe(
+      "usage-limited",
+    );
+    expect(
+      classifyStop({ exitCode: null, signal: "SIGTERM", stderr: "", rateLimitRetries: 20 }),
+    ).toBe("usage-limited");
+  });
+
+  it("timeout: fewer than 3 rate-limit retries stays a timeout (one stray retry must not re-route)", () => {
+    expect(classifyStop({ exitCode: 124, signal: null, stderr: "", rateLimitRetries: 2 })).toBe(
+      "timeout",
+    );
+  });
+
+  it("rate-limit retries do NOT affect a non-timeout stop (completed stays completed)", () => {
+    expect(classifyStop({ exitCode: 0, signal: null, stderr: "", rateLimitRetries: 20 })).toBe(
+      "completed",
+    );
+  });
 });

@@ -2,7 +2,7 @@ import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
-import { AgentRunner, RunLedger, startRunLedgerEffect } from "agent-server";
+import { AgentRunner, RunLedger, type RunOutcome, startRunLedgerEffect } from "agent-server";
 import { AgentRunError, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
 import { Cause, Config, Effect, Layer, Option } from "effect";
@@ -127,6 +127,11 @@ const runClaude = (
     // Captured so BOTH ledger paths (completed + failed) record why the run stopped — a usage-limit
     // may surface as exit 0 (completed) or non-zero (failed); either way the watcher reads it.
     let capturedStopReason: string | undefined;
+    // Metrics captured before the nonzero-exit failure below, so the failure-path ledger finish
+    // records what the run DID spend instead of dropping it (docs/plans/cost-containment.md B1).
+    let capturedMetrics: Partial<
+      Pick<RunOutcome, "costUsd" | "costPartial" | "tokens" | "model" | "turns">
+    > = {};
     return yield* Effect.gen(function* () {
       const invoker = yield* AgentInvoker;
       const model = modelOverride ?? cfg.model;
@@ -147,6 +152,13 @@ const runClaude = (
 
       capturedOutput = result.stdout ?? "";
       capturedStopReason = result.stopReason;
+      capturedMetrics = {
+        costUsd: result.costUsd ?? null,
+        costPartial: result.costPartial ?? null,
+        tokens: result.tokenUsage ?? null,
+        model: result.model ?? null,
+        turns: result.numTurns ?? null,
+      };
 
       // A resolved InvocationResult may carry a non-zero exit code (timeout → 124,
       // spawn failure → 1, or the agent itself exited with an error). Fail here so the
@@ -166,6 +178,7 @@ const runClaude = (
         turns: result.numTurns ?? 1,
         tokens: result.tokenUsage ?? { input: 0, output: 0 },
         costUsd: result.costUsd ?? null,
+        costPartial: result.costPartial ?? null,
         // Orthogonal to status: a usage-limited run can still be "completed" (Claude exits 0).
         stopReason: result.stopReason ?? null,
       });
@@ -192,6 +205,7 @@ const runClaude = (
           // A usage-limit that surfaced as a non-zero exit is still recorded, so the watcher's
           // fallback can distinguish it from a generic failure on a FAILED instance.
           stopReason: capturedStopReason ?? null,
+          ...capturedMetrics,
         }),
       ),
     );
