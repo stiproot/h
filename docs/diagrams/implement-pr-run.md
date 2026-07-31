@@ -22,57 +22,65 @@ sequenceDiagram
     participant CLI as claude CLI<br/>(subprocess)
     participant Watch as Watcher engine<br/>(60s cron tick)
 
-    Op->>Router: POST /workflow/run/implement-pr {slug, spec, watch}
+    Op->>+Router: POST /workflow/run/implement-pr {slug, spec, watch}
     Note over Router: fire-time params merge over stored defaults<br/>(identity-as-params: runActivity/agentId/model)
     Router->>Reg: watch:sub:instanceId (mark-BEFORE-fire)
     Router->>Wf: schedule instance
-    Router-->>Op: 202 {instanceId, watching: true}
+    activate Wf
+    Router-->>-Op: 202 {instanceId, watching: true}
 
     Wf->>Reg: wf: row = running
 
-    Wf->>Act: create-worktree
-    Act->>Agent: POST /worktree
-    Agent-->>Act: worktreePath (feature/slug off origin/main)
-    Wf->>Act: setup
+    Wf->>+Act: create-worktree
+    Act->>+Agent: POST /worktree
+    Agent-->>-Act: worktreePath (feature/slug off origin/main)
+    Act-->>-Wf: worktree ready
+    Wf->>+Act: setup
     Act->>Agent: POST /setup (skills + .mcp.json — idempotent spec-hash)
+    Act-->>-Wf: setup done
 
     loop agent steps — plan then implement (verify prose folded in)
-        Wf->>Act: resolve {{params.runActivity}} → run-claude
+        Wf->>+Act: resolve {{params.runActivity}} → run-claude
         Act->>Reg: read exec:config
         alt executor denied (operator | usage-limited | cost-budget)
             Act--xWf: REFUSED loudly — step fails before any model call
         else allowed
-            Act->>Agent: POST /run {task, cwd: worktree}
-            Agent->>CLI: spawn (detached group leader, reaper-registered)
+            Act->>+Agent: POST /run {task, cwd: worktree}
+            Agent->>+CLI: spawn (detached group leader, reaper-registered)
             CLI--)Agent: event stream → events.jsonl (run ledger)
-            CLI-->>Agent: exit + terminal result (or timeout → partial usage fold)
+            CLI-->>-Agent: exit + terminal result (or timeout → partial usage fold)
             Agent->>Agent: validate ===OUTPUT CONTRACT=== json block
             Agent->>Reg: run: mirror {costUsd, stopReason, costPartial}
-            Agent-->>Act: AgentResponse
+            Agent-->>-Act: AgentResponse
         end
+        deactivate Act
     end
     Note over Wf,CLI: implement COMMITS LOCALLY — no push, no PR yet
 
-    Wf->>Act: run-itest (harness materialised from origin/main, never the worktree)
+    Wf->>+Act: run-itest (harness materialised from origin/main, never the worktree)
     alt itest RED
         Act--xWf: nonzero exit — workflow FAILS HERE, no PR is opened
         Wf->>Reg: wf: row = failed
     else itest GREEN
         Wf->>Act: run-claude (create-pr step)
-        Act->>Agent: push feature/slug + open PR (+ itest evidence in body)
-        Agent-->>Act: structured {pr, goal}
+        Act->>+Agent: push feature/slug + open PR (+ itest evidence in body)
+        Agent-->>-Act: structured {pr, goal}
         Wf->>Act: register-cron (arm-revise-pr — idempotent ensure-exists)
         Act->>Reg: cron:sub row (the revise loop, armed by the run itself)
         Wf->>Reg: wf: row = done (+ resolved via the goal handshake)
     end
+    deactivate Act
+    deactivate Wf
 
     loop every 60s — independent of any run
+        activate Watch
         Watch->>Reg: read watch:sub rows + live instance status
         Note over Watch: pure decide(): wait | terminate(budget) |<br/>retry | finalize — epoch-fenced
         Watch->>Reg: on terminal: tally cost off run: mirrors<br/>(per-agent subtotals — a missing cost is a GAP, not $0)
         Watch->>Reg: finalize watch row + bump day ledger
         Watch->>Reg: fences: usage-limited auto-deny,<br/>daily cost-budget deny (expiring exec:config entries)
         Watch--)Op: publish workflow-events (terminal outcome)
+        deactivate Watch
     end
 ```
 

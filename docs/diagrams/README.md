@@ -21,6 +21,7 @@ The protocol lives in the `diagrams` skill (`.claude/skills/diagrams/`). In shor
 | --- | --- | --- |
 | [implement-pr-run](./implement-pr-run.md) | sequence | The flagship workflow end to end: fire → watch registration → worktree/setup → gated agent steps → the itest gate → create-pr → arm-revise-pr, with the watcher engine's supervision lane |
 | [agent-cli-components](./agent-cli-components.md) | C4 component | Inside `packages/js/agent-cli`: the AgentInvoker port, process runner, the four strategies (the one per-agent seam), pure result/classifier leaves, the reaper, and the consumer/CLI/LiteLLM collaborators |
+| [agent-cli-uml-components](./agent-cli-uml-components.md) | UML component (classDiagram encoding) | The interface-centric view: what each agent-cli component PROVIDES vs REQUIRES (`IAgentStrategy` as the integration seam; `IEventSink` inverting the ledger dependency; `IPlatform` as the only outward requirement) |
 | [agent-cli-code](./agent-cli-code.md) | C4 code (classDiagram), **generated** | The `AgentStrategy` contract + the types that flow through a run (`InvocationResult`, `StopReason`, `PreparedAgentInvocation`) — the exact shapes an `integrate-agent` addition is written against |
 
 ## Planned (add as the need arises, one per interaction that keeps needing explaining)

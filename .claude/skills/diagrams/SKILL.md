@@ -101,11 +101,21 @@ their members go stale.
 - **Kinds**: sequence diagrams for interactions (the default — this is a runtime whose
   interesting facts are message flows); C4 (via the c4-mermaid-plugin skills — load the
   matching `c4-*` skill and follow its syntax + required validation step) for structure;
+  UML COMPONENT diagrams for the interface-centric view (what a component PROVIDES vs
+  REQUIRES — distinct from C4 component, which shows collaboration; mermaid has no native
+  type, so the encoding is `classDiagram` with `<<component>>`/`<<interface>>` stereotypes,
+  provides = `..|>`, requires = `..>`; exemplar: docs/diagrams/agent-cli-uml-components.md);
   state diagrams for lifecycle rows (watch/chain/cron statuses). The `code-comprehension`
   plugin produces EPHEMERAL diagrams in answers; when one keeps getting redrawn, it
   graduates into docs/diagrams/ under these rules.
 - **Scope**: one diagram = one story a reader keeps needing told. 6–9 participants max in a
   sequence; compress repetition with `loop` ("the run-* pattern") and show it in detail once.
+- **Activation bars are required in sequence diagrams** — a lane without activations hides
+  who is busy when. Use `->>+`/`-->>-` on request/reply pairs and explicit
+  `activate`/`deactivate` for long-lived spans (an engine active across steps; a subprocess
+  from spawn to exit — deactivated by its terminator when that differs from the caller).
+  TRAP: never `deactivate` the same activation inside BOTH `alt` branches — mermaid counts
+  statically and errors; deactivate ONCE after the `end`.
 - **Annotate the invariants**, not just the arrows — the reading-notes section names the
   load-bearing properties (mark-before-fire, the gate, fail-before-PR) with step numbers.
 - **Register it**: add a row to `docs/diagrams/README.md`'s table in the same change.

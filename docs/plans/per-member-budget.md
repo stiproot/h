@@ -31,26 +31,34 @@ sequenceDiagram
     participant Member as Member instance<br/>(Dapr workflow)
 
     rect rgb(220,252,231)
-        Op->>Reg: h chain run … -w review-pr [CHANGED] budget 10m accepted (was refused)
+        Op->>+Reg: h chain run … -w review-pr [CHANGED] budget 10m accepted (was refused)
         Reg->>WReg: chain:sub row — member carries watch policy {maxDurationMs}
     end
-    Reg-->>Op: registered (scheduling)
+    Reg-->>-Op: registered (scheduling)
 
+    activate Chain
     Chain->>WReg: tick — fire current stage's members
     rect rgb(220,252,231)
         Note over Chain,WReg: [CHANGED] fireWorkflow registers the member's<br/>watch row BEFORE invoking (mark-before-fire)<br/>— today members are fired UNWATCHED
         Chain->>WReg: watch:sub:member-instanceId {policy from member.watch}
     end
     Chain->>Member: invoke (unchanged)
+    deactivate Chain
+    activate Member
 
     Note over Watch,Member: the member overruns its 10m budget…
+    activate Watch
     Watch->>WReg: tick — read watch:sub rows (existing scan, no change)
     Watch->>Member: TERMINATE own subject (existing closed vocabulary)
+    deactivate Member
     Watch->>WReg: finalize watch row — outcome budget-terminated, cost tally
+    deactivate Watch
 
+    activate Chain
     Chain->>WReg: tick — observe current stage members (existing)
     Note over Chain: member TERMINATED ⇒ failed member ⇒<br/>D6 ATOMIC TEARDOWN (existing): terminate<br/>siblings, cron-disarm, finalize chain failed
     Chain--)Op: workflow-events — chain failed (budget-terminated member)
+    deactivate Chain
 ```
 
 ## What changes, in the contracts (class diagram)
