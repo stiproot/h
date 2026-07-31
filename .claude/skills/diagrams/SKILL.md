@@ -37,6 +37,25 @@ workspace — puppeteer/chromium must never burden CI or the app images). `rende
 gitignored; render on demand and share the PNG (in a Claude session: `SendUserFile` the PNG,
 or publish the .md as an artifact — both render the diagram).
 
+## Generated diagrams (C4 code level) — the AST is the truth for members
+
+Level-4 diagrams date fastest, so they are GENERATED, not hand-drawn:
+`scripts/gen-code-diagram.mjs` extracts members (interface methods/props, union arms, module
+function signatures) from the TypeScript AST, while SCOPE, TOPOLOGY, and NOTES stay curated
+in a manifest embedded in the doc (`<!-- gen:c4-code {json} -->`). This keeps the c4-code
+guide's story-members-only rule honest: curation picks the symbols, the parser never lets
+their members go stale.
+
+- **Never hand-edit a generated fence** — edit the manifest (scope/relations/notes) or the
+  code, then `node scripts/gen-code-diagram.mjs`. Drift is a LINT FAILURE
+  (`--check` runs in `bun run lint`), so a refactor that changes a diagrammed contract
+  fails the build until the diagram regenerates.
+- The division of labor with the c4-mermaid-plugin: the PLUGIN defines what the diagram
+  types are (conventions, syntax, validation); OUR tooling automates producing them to
+  those conventions.
+- Manifest gotcha: it lives in an HTML comment, so no `--` sequences anywhere in the JSON
+  (relations use `null` for the default arrow; notes avoid literal `--flags`).
+
 ## Authoring guidance
 
 - **Kinds**: sequence diagrams for interactions (the default — this is a runtime whose
