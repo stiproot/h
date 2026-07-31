@@ -132,6 +132,14 @@ classDiagram
   mark-before-fire when that member's STAGE advances (step 5). Arming early would start the
   budget clock (`startedAt`) while earlier stages still run and mis-terminate a member that
   never fired.
+- **Whoever fires, carries — supervision is a property of a FIRE, not a definition.**
+  (Operator question, 2026-07-31.) Standalone: the fire REQUEST carries `watch` (transient;
+  stripped off before the workflow sees it). Chain: the MEMBER entry in the chain:sub row
+  carries it (durable, because the fire moment is deferred to stage advance). The discovery
+  cron's row and sched continuations' resubmits are the same pattern. Every carrier converges
+  on the one choke point, `registerWatchForFire`, at fire time; a SAVED workflow never
+  persists a policy. Members even get the stronger mark-before-fire form always — their ids
+  are deterministic, where a standalone generated-id fire registers just after scheduling.
 - **Two budgets compose as whichever-trips-first.** A member can be terminated by its own
   watcher (member budget) or by the chain engine (chain-wide `budgetMs`, D6). Safe: terminate
   is idempotent and both engines only read the resulting terminal status.
