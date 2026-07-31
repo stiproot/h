@@ -1,8 +1,19 @@
 # Containment: what can reach live state, and what can read a credential
 
-Status: Active — all engineering work landed + live-verified 2026-07-29; ONE item open: the PAT
-rotation (1.1), an operator action
+Status: Complete — both defects closed + live-verified 2026-07-29 (tokenless pre-clone +
+credential guard; socket-blocked tests + engine-enforced executor policy); the PAT rotation
+carried as the one open operator action
 Established: 2026-07-29
+
+Lifted to:
+- CLAUDE.md — the `exec:` registry bullet (the §2.3 executor policy: single row, gate at the
+  activity registry, `h agents` surface) and the `GH_TOKEN` gotcha (in-process injection)
+- docs/cookbook.md — "Deny an executor engine-wide" (validated commands)
+- scripts/check-git-credentials.mjs — the credential-pattern guard (encodes the
+  never-persist-a-tokened-remote rule; its header carries the incident rationale)
+- packages/js/git-core/src/git-client.ts — the post-clone `remote set-url` scrub + comment
+- cli/h `pyproject.toml` — pytest-socket (`--disable-socket`), the unmocked-call fail-closed
+- [carried-followups](../carried-followups.md) §19 — the PAT rotation (operator)
 
 ## Why this plan exists
 
@@ -133,13 +144,13 @@ passing through a `run-*` activity in workflow-svc.
 
 ## Relationship to other plans
 
-- [reviewer-identity-security](./reviewer-identity-security.md) — moved Deferred → Active by
+- [reviewer-identity-security](../reviewer-identity-security.md) — moved Deferred → Active by
   the same incident. It owns the *capability* question (what MCP surface and credentials an
   executing agent holds). This plan owns the two concrete defects; that plan owns the general
   posture. Keep them distinct: this one is finishable, that one is a standing design question.
-- [local-ci-execution](./impl/local-ci-execution.md) — owns the verification-integrity half
+- [local-ci-execution](./local-ci-execution.md) — owns the verification-integrity half
   (CI does not run; a panel cannot catch a build failure).
--  [impl/usage-limit-auto-deny](./impl/usage-limit-auto-deny.md) — the follow-on: the watcher writing
+-  [impl/usage-limit-auto-deny](./usage-limit-auto-deny.md) — the follow-on: the watcher writing
   the §2.3 deny row itself when a run finalizes `usage-limited`. Spawned 2026-07-29.
 
 ## Log

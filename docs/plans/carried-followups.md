@@ -243,3 +243,83 @@ requiring it on `main` is safe — the old "never add branch protection, the che
 reports" warning is inverted. An operator repo-settings action (plus deciding whether the
 h-builds-h loop's merges go through PRs only). *Revisit when:* the next time a red-CI
 commit lands on main, or when tightening the merge protocol in `docs/DRIVER.md`.
+
+---
+
+## From [live-state-containment](./impl/live-state-containment.md)
+
+### 19. Rotate the exposed GitHub PAT
+
+The PAT was readable by every agent process (including the dropped SUB_AGENT_UID) for an
+unknown period via the pre-clone's tokened remote URL. The URL is scrubbed, the guard
+(`scripts/check-git-credentials.mjs`) prevents recurrence, but the token itself was never
+rotated — an operator action on github.com.
+
+*Revisit when:* immediately, at the operator's next console session — this is the only
+carried item that is a standing exposure rather than a parked improvement.
+
+---
+
+## From [cost-containment](./impl/cost-containment.md)
+
+### 20. Kimi's daily budget number
+
+Kimi is operator-denied; the budget machinery (`h agents budget kimi <usd>`) is built and
+e2e-validated. The remaining decision is the NUMBER — whether $X/day of uncached Moonshot
+(~$3+/review, no prompt caching honored) is worth the roster diversity, decided against
+honest tallies now that B1/B3 landed.
+
+*Revisit when:* the operator wants kimi back on rosters — re-allow + set the budget in two
+commands, no build needed.
+
+### 21. A2 — per-run maxCostUsd ceiling (premise refuted)
+
+Deferred with evidence: no current strategy stream carries per-event COST (claude reports
+cost only in the terminal result event; codex/openhands/pi never), and pricing tables are a
+non-goal — so a mid-run ceiling has nothing to compare against. Per-run spend is bounded by
+`maxDurationMs`; days by the A1 budget fence.
+
+*Revisit when:* any strategy's stream gains per-event cost, or the no-pricing-table
+non-goal is deliberately reversed.
+
+### 22. Audit follow-ups: codex first-turn tokens; py agents never populate cost
+
+Two gaps the Phase 1 audit filed but did not fix: codex's `extractMetrics` reads the FIRST
+`turn.completed` event (multi-turn runs would drop later turns' usage — verify against a
+captured multi-turn events.jsonl before fixing), and the Python agents' `record_run` mirrors
+always carry `costUsd: null` (their runners never populate `cost_usd`), so every py run is a
+permanent cost gap.
+
+*Revisit when:* a codex or py-agent run's spend matters to a budget decision — today both
+executors are low-volume.
+
+---
+
+## From [harness-batch-continuation](./impl/harness-batch-continuation.md)
+
+### 23. Decide whether agent pushes run the pre-push hook
+
+An agent silently set `core.hooksPath` on the SHARED agent clone (disarmed since). Real
+arguments both ways: PR #98 broke oxfmt three times (a hook would have caught it), but a
+blocked push mid-run is a failure mode agents handle badly. Decide explicitly and set it in
+provisioning, not by accident.
+
+*Revisit when:* the next formatting-broken agent PR, or the next provisioning-surface change.
+
+### 24. `.env` AGENT_MODEL stopgap — revert or keep
+
+`AGENT_MODEL=claude-sonnet-4-6` (raised from haiku) was a stopgap for panelize's silent
+model downgrade; #99 fixed the defect properly (loud strip, `--model` works with rosters),
+so the raise can probably revert — but that is a deliberate cost/quality call, not a
+mechanical one.
+
+*Revisit when:* the next cost review of default-model spend.
+
+### 25. `x-w0` saved-workflow litter
+
+A row published by the once-unmocked test (cause fixed via pytest-socket). Deleting it needs
+an operator-allowed `state_delete` on `x-w0` + removing it from `__workflow_index__` — the
+write was permission-blocked 2026-07-29 and again 2026-07-31. The 14 finalized chain rows
+noted alongside it are NOT litter: finalized rows are by-design audit retention.
+
+*Revisit when:* an operator session with state-write permission — two one-line calls.

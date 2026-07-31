@@ -1,6 +1,12 @@
 # Model fallback & session continuity — surviving the subscription limit
 
-Status: Active — Phase 1 COMPLETE 2026-07-26; next: Phase 2/3 design pass + Phase 4 live-fire
+Status: Deferred — Phase 1 (executor-side fallback enhancements) complete 2026-07-26; the
+driver-session fallback story (Phases 2–4) is designed in outline only and untouched since.
+Note the executor half kept moving without this plan: classify-stop gained throttle-aware
+timeout classification and the auto-deny fence gained the cost-budget sibling (2026-07-30).
+Revisit when: the driver session next hits a subscription limit mid-arc — the incident that
+motivates Phases 2–4 — or when unattended multi-hour arcs become routine enough that
+supervisor continuity is the bottleneck.
 Established: 2026-07-26
 
 ## Origin

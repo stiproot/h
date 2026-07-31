@@ -1,7 +1,15 @@
 # Continuation: the 2026-07-28/29 harness batch
 
-Status: Active — the resume point for a fresh session; work in flight, environment mutated, litter to clean
+Status: Complete — the 2026-07-28/29 batch fully landed (#98 merged, #97 merged 2026-07-30,
+all threads resolved into their owning plans); undecided leftovers carried
 Established: 2026-07-29
+
+Lifted to:
+- Every open thread's owning plan (the §2 table pointed at them; none restated here)
+- [carried-followups](../carried-followups.md) §23–§25 — the pre-push-hook-on-agent-clones
+  decision, the AGENT_MODEL stopgap revert decision, the `x-w0` litter row
+- Dropped with reason: the "14 finalized chain rows" litter item — finalized rows are
+  by-design audit retention, not litter
 
 **Read this FIRST if you are picking up after a session break.** It is the handoff: what is
 in flight, what the machine's state actually is, and which plan owns each open thread. It
@@ -15,7 +23,7 @@ does not restate work that already has a home — it points at it.
 result, live tool-using e2e through the whole plumbing, PR CI green on the new self-hosted
 runner, review loop finalized CLEAN after one unattended revise iteration). The stray
 :8017 agent, the ephemeral `/tmp/kimi-live` worktree, and every kimi branch/worktree are
-cleaned. See [impl/moonshot-kimi-integration](./impl/moonshot-kimi-integration.md). The
+cleaned. See [impl/moonshot-kimi-integration](./moonshot-kimi-integration.md). The
 only PR of the batch still open is #97 (`h chain rm`, predates the batch, unreviewed).
 
 <details><summary>Original state (historical)</summary>
@@ -49,7 +57,7 @@ worktree that will not survive a reboot**. Do not treat it as part of the stack.
 (`dapr stop --app-id kimi-agent`) or restart from a real checkout. It is NOT in
 `cli/scripts/_services.sh` (deliberately opt-in) and NOT in any compose profile default.
 
-Owning plan: [moonshot-kimi-integration](./impl/moonshot-kimi-integration.md).
+Owning plan: [moonshot-kimi-integration](./moonshot-kimi-integration.md).
 
 </details>
 
@@ -62,17 +70,17 @@ Nothing below is restated here — go to the plan.
 | Thread | Plan | Note |
 | --- | --- | --- |
 | Exposed PAT; tests firing real chains; executor allowlist | [live-state-containment](./live-state-containment.md) | **All engineering DONE + live-verified 2026-07-29** — PAT rotation (operator) is the one open item |
-| CI does not execute; a panel cannot catch a build failure | [impl/local-ci-execution](./impl/local-ci-execution.md) | **DONE 2026-07-29** — self-hosted runner live (tools/ci-runner/); branch-protection follow-up carried |
-| Minimal-surface executors / per-run trust profile | [reviewer-identity-security](./reviewer-identity-security.md) | Moved Deferred → Active on this batch's evidence |
-| Remaining audit items (phases 2, 4, 5) | [hardening-audit/](./hardening-audit/) | **Re-verify before working any of them** — 5 of 11 phase-1 items were already fixed |
-| Kimi integration | [impl/moonshot-kimi-integration](./impl/moonshot-kimi-integration.md) | **MERGED 2026-07-29** — see §1 |
-| Member-input validation at registration | [impl/member-input-validation](./impl/member-input-validation.md) | **BUILT 2026-07-29** (operator-approved) — registration refuses unsatisfiable members pre-publish |
-| Auto-deny an executor on a usage-limited run |  [impl/usage-limit-auto-deny](./impl/usage-limit-auto-deny.md) | **BUILT 2026-07-29** (green-lit) — watcher auto-fences a usage-limited executor; live-fire on the next real limit |
+| CI does not execute; a panel cannot catch a build failure | [impl/local-ci-execution](./local-ci-execution.md) | **DONE 2026-07-29** — self-hosted runner live (tools/ci-runner/); branch-protection follow-up carried |
+| Minimal-surface executors / per-run trust profile | [reviewer-identity-security](../reviewer-identity-security.md) | Moved Deferred → Active on this batch's evidence |
+| Remaining audit items (phases 2, 4, 5) | [hardening-audit/](../hardening-audit/) | **Re-verify before working any of them** — 5 of 11 phase-1 items were already fixed |
+| Kimi integration | [impl/moonshot-kimi-integration](./moonshot-kimi-integration.md) | **MERGED 2026-07-29** — see §1 |
+| Member-input validation at registration | [impl/member-input-validation](./member-input-validation.md) | **BUILT 2026-07-29** (operator-approved) — registration refuses unsatisfiable members pre-publish |
+| Auto-deny an executor on a usage-limited run |  [impl/usage-limit-auto-deny](./usage-limit-auto-deny.md) | **BUILT 2026-07-29** (green-lit) — watcher auto-fences a usage-limited executor; live-fire on the next real limit |
 
 ### Homeless items that still need doing
 
 1. **Member-input validation at registration** — DONE 2026-07-29: spec rescued into
-   [impl/member-input-validation](./impl/member-input-validation.md), operator-approved, built
+   [impl/member-input-validation](./member-input-validation.md), operator-approved, built
    the same day (all four of the batch's harness defects now resolved or carried).
 2. **Decide whether agent pushes run the pre-push hook.** An agent had silently set
    `core.hooksPath` on the SHARED agent clone while testing #100; it would have armed itself
@@ -80,7 +88,7 @@ Nothing below is restated here — go to the plan.
    untested environment. **Disarmed** for now. Real arguments both ways — #98 broke `oxfmt`
    three times, so a hook would help; but a blocked push mid-run is a failure mode agents
    handle badly. Decide explicitly and set it in provisioning, not by accident.
-3. **A first-class `plan` member kind** — [carried-followups](./carried-followups.md) §2,
+3. **A first-class `plan` member kind** — [carried-followups](../carried-followups.md) §2,
    now with a concrete failure behind it (item 1 above is its symptom).
 
 ---

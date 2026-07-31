@@ -1,9 +1,18 @@
 # Cost containment — budgets the engines enforce, accounting the ledger can't lose
 
-Status: Active — Phases 0–4 done (B1/B2/B3/C3/A1 built + e2e-validated 2026-07-30); A2
-deferred (premise refuted); remaining: kimi budget decision + audit follow-ups (codex
-first-turn tokens, py cost population)
+Status: Complete — B1/B2/B3/C3/A1 built + e2e-validated 2026-07-30; A2 deferred with refuting
+evidence; leftovers carried
 Established: 2026-07-30
+
+Lifted to:
+- CLAUDE.md — the `exec:` registry bullet (budgets table, `cost-budget` reason, the two
+  auto-fences, `h agents budget` surface)
+- docs/cookbook.md — "Daily cost budget on an executor" (validated commands + fence behavior)
+- Code comments at the fix sites — partial-usage fold (agent-cli claude strategy), throttle
+  classification threshold (classify-stop), reaper semantics (agent-cli reaper.ts), per-run
+  gap accounting (watch-scan/chain-scan tallies)
+- [carried-followups](../carried-followups.md) §19–§22 — kimi budget number, A2
+  (premise refuted, with revisit trigger), codex/py audit follow-ups
 
 ## Problem (evidence: 2026-07-30, the Moonshot $20 day)
 

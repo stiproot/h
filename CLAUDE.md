@@ -154,14 +154,14 @@ used here. This section is the terse runtime-facing index.
   written only by workflow-svc: `POST /exec/policy`, `POST /exec/budget`, and the watcher's two
   auto-fences — AUTO-DENY, an expiring usage-limited entry when a run finalizes usage-limited
   (docs/plans/impl/usage-limit-auto-deny.md), and the DAILY-BUDGET fence
-  (docs/plans/cost-containment.md A1), a cost-budget entry expiring at the next UTC midnight
+  (docs/plans/impl/cost-containment.md A1), a cost-budget entry expiring at the next UTC midnight
   when the day ledger's per-agent tally crosses the executor's budget. Both never downgrade an
   operator entry and are idempotent across ticks; a SAME-agent fallback continuation is
   deliberately refused while a fence holds — fail-fast. The activity-registry gate wraps every
   `run-*` activity and REFUSES a denied executor loudly at fire time on every path — chains,
   crons, watcher re-fires, sched continuations, fallback switches, panel branches. Surface:
   `h agents list|deny|allow|budget` (operator denies never expire; allow lifts any kind; list
-  shows budget vs today's tallied spend + gap-run count); docs/plans/live-state-containment.md
+  shows budget vs today's tallied spend + gap-run count); docs/plans/impl/live-state-containment.md
   §2.3).
   The convention: a registry prefix names the single component that owns writing it.
 

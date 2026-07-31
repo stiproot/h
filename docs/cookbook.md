@@ -131,8 +131,8 @@ them. The child holds until the parent finalizes `completed`, then activates SEE
 parent's finalized data — including its last stage's captures (issue #77), so `--input
 task=handoff` reads what the parent captured. A failed parent terminates the child instead.
 `--at <iso>` / `--in <dur>` gate on time the same way — chains are schedulable. *(Validated
-2026-07-25 — the child's task was literally the parent's answer; docs/plans/
-chain-engine-followups.md.)*
+2026-07-25 — the child's task was literally the parent's answer;
+docs/plans/impl/chain-engine-followups.md.)*
 
 ## The zero-glue pipeline shape — implement, then an --after review loop
 
@@ -196,7 +196,7 @@ h agents allow codex    # re-enable
 
 Validated 2026-07-29: with codex denied, a fired `run-codex` workflow FAILED at the activity
 gate with `executor 'codex' is denied by the exec:config policy` — before any agent invoke, no
-quota spent (docs/plans/live-state-containment.md §2.3).
+quota spent (docs/plans/impl/live-state-containment.md §2.3).
 
 ## Daily cost budget on an executor — spend caps the engine enforces
 
@@ -210,7 +210,7 @@ h agents allow claude           # lift a tripped cost-budget fence early
 When the watcher's finalization tally (`watch:ledger:<date>` per-agent subtotals) crosses an
 executor's budget, it writes a `cost-budget` deny expiring at the next UTC midnight — the
 activity-registry gate then refuses that executor on every fire path; an operator deny is
-never downgraded. Validated 2026-07-30 (docs/plans/cost-containment.md A1 e2e): with claude
+never downgraded. Validated 2026-07-30 (docs/plans/impl/cost-containment.md A1 e2e): with claude
 budgeted at $0.01, a watched `answer` run booked $0.0555 → the scan fenced claude
 (`cost-budget, until next UTC midnight`), the next fire FAILED at the gate with
 `executor 'claude' is denied … (auto: daily cost budget crossed …)`, and `h agents list`
