@@ -36,19 +36,26 @@ curl -s -H "Authorization: Bearer $GH_TOKEN" \
   | jq -r '.runners[] | "\(.name) \(.status) \([.labels[].name]|join(","))"'
 ```
 
-## Point the workflows at it / back
+## The toggle (one command each way)
+
+`toggle.sh` bundles the whole switch — container lifecycle, runner registration, and the
+`RUNNER_LABEL` variable — in the safe order (register before pointing the fleet here; point
+back at hosted before draining), and verifies the end state:
 
 ```sh
-# to self-hosted:
-curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  https://api.github.com/repos/stiproot/h/actions/variables \
-  -d '{"name":"RUNNER_LABEL","value":"h-dev"}'
-
-# back to hosted (|| treats undefined/empty as falsy — no YAML change):
-curl -s -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
-  https://api.github.com/repos/stiproot/h/actions/variables/RUNNER_LABEL
+tools/ci-runner/toggle.sh on       # start + register the runner, then RUNNER_LABEL=h-dev
+tools/ci-runner/toggle.sh off      # delete RUNNER_LABEL, stop + de-register, verify 0 registered
+tools/ci-runner/toggle.sh status   # visibility, RUNNER_LABEL, registered runners, container
 ```
+
+**`on` REFUSES while the repo is public** (fork PRs would run untrusted code on this box —
+see Security below); `--force-public` overrides with a loud warning, for the case where you
+have consciously locked down fork-PR approval and accept the risk. `off` also force-removes
+any stale runner registration — the registration list, not the container, is what GitHub's
+public-repo runner warning keys on.
+
+The raw switch, for reference (`|| treats undefined/empty as falsy — no YAML change`):
+POST/DELETE `repos/stiproot/h/actions/variables` for `RUNNER_LABEL=h-dev`.
 
 ## Day-to-day
 
@@ -73,8 +80,36 @@ every push. If GitHub is unreachable entirely, run those directly.
 
 ## Security
 
-**Never attach a self-hosted runner to a public repository** — a fork PR can execute
-arbitrary code on the host. `stiproot/h` is private and single-owner. **If this repo is
-ever made public, delete the runner first.** The runner deliberately does not mount the
-docker socket. Accepted risk: repo secrets materialise as plaintext env vars on this
-machine while a job runs — inherent to self-hosting.
+**Never attach a self-hosted runner to a public repository** — `guards.yml` runs on
+`pull_request` and executes repo-controlled code (`bun install`, the package scripts), so a
+fork of a public repo can run arbitrary code on this host by opening a PR. This rule is
+ENCODED: `toggle.sh on` reads the repo's visibility and refuses when it is not private
+(`--force-public` overrides, loudly). Detach before any private→public flip is simply
+`toggle.sh off` — hosted runners are free for public repos, so the runner's raison d'être
+(billed minutes) disappears while public anyway. The runner deliberately does not mount
+the docker socket. Accepted risk while attached (private): repo secrets materialise as
+plaintext env vars on this machine while a job runs — inherent to self-hosting.
+
+### Going public — the checklist (executed 2026-07-31; keep for the next flip)
+
+1. `tools/ci-runner/toggle.sh off` — fleet back to hosted, ZERO registered runners
+   (verified via `GET /actions/runners`; this silences GitHub's runner warning).
+2. Secret-scan the full history: `docker run --rm -v "$PWD":/repo
+   zricethezav/gitleaks:latest git /repo --no-banner --redact` (461 commits clean).
+3. Actions policy is `selected`: github-owned + `oven-sh/setup-bun@*`,
+   `astral-sh/setup-uv@*`, `azure/setup-helm@*` (exactly what guards.yml uses); workflow
+   token permissions are read-only, no PR-approval rights.
+4. AFTER the flip (these APIs only exist for public repos):
+
+   ```sh
+   # require approval for fork-PR workflows from ALL outside collaborators
+   curl -s -X PUT -H "Authorization: Bearer $GH_TOKEN" \
+     -H "Accept: application/vnd.github+json" \
+     https://api.github.com/repos/stiproot/h/actions/permissions/fork-pr-contributor-approval \
+     -d '{"approval_policy":"all_external_contributors"}'
+   # secret scanning + push protection
+   curl -s -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+     -H "Accept: application/vnd.github+json" \
+     https://api.github.com/repos/stiproot/h \
+     -d '{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}'
+   ```

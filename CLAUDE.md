@@ -586,14 +586,18 @@ uv run --package h-cli pytest            # its test suite (incl. golden snapshot
 
 ## CI (self-hosted runner)
 
-CI (`.github/workflows/guards.yml`) runs on a **self-hosted runner** (`tools/ci-runner/` —
-Dockerfile + compose + runbook README) whenever the `RUNNER_LABEL` repo variable is set
-(=`h-dev`); delete the variable to fall back to GitHub-hosted (`runs-on:
-${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` — no YAML change either way). Self-hosted
-execution is free of Actions minutes, so CI survives a billing lapse; if the dev box is off,
-jobs queue ~24h then cancel. Live-verified 2026-07-29
-(docs/plans/impl/local-ci-execution.md). The repo must stay PRIVATE while a runner is
-attached — delete the runner first if it is ever made public.
+CI (`.github/workflows/guards.yml`) can run on a **self-hosted runner** (`tools/ci-runner/`
+— Dockerfile + compose + runbook README) whenever the `RUNNER_LABEL` repo variable is set
+(=`h-dev`); without it, GitHub-hosted (`runs-on: ${{ vars.RUNNER_LABEL ||
+'ubuntu-latest' }}` — no YAML change either way). **The switch is
+`tools/ci-runner/toggle.sh on|off|status`** (uses the exported `GH_TOKEN`; nothing
+committed). Self-hosted execution is free of Actions minutes, so CI survives a billing
+lapse; if the dev box is off, jobs queue ~24h then cancel. Live-verified 2026-07-29
+(docs/plans/impl/local-ci-execution.md). **A self-hosted runner must never be attached
+while the repo is public** (fork PRs run untrusted code on the host) — the rule is encoded:
+`toggle.sh on` refuses on a non-private repo. Detached + swept for the 2026-07-31 public
+flip (history gitleaks-clean; Actions restricted to github-owned + the three pinned
+setup actions; post-flip steps in the runner README's "Going public" checklist).
 
 ## Docker build context
 

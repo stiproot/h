@@ -26,10 +26,11 @@ services:
       RUNNER_NAME: h-runner-1
       RUNNER_WORKDIR: /home/runner/_work
       LABELS: h-dev
-      # Persistent, not ephemeral: private single-owner repo, and guards.yml's
-      # pull_request trigger only ever fires for branches of THIS repo (no forks) —
-      # so per-job isolation buys little, while a warm checkout and tool cache buy a
-      # lot on one serialised runner.
+      # Persistent, not ephemeral: only ever attached while the repo is PRIVATE and
+      # single-owner (toggle.sh refuses `on` otherwise), so guards.yml's pull_request
+      # trigger only fires for branches of THIS repo (no forks) — per-job isolation
+      # buys little, while a warm checkout and tool cache buy a lot on one serialised
+      # runner.
       #
       # DO NOT set EPHEMERAL here, not even to 'false'. The base image's entrypoint
       # tests `[ -n "${EPHEMERAL}" ]` — non-EMPTY, not "true" — so EPHEMERAL='false'
