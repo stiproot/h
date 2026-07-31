@@ -20,6 +20,7 @@ The protocol lives in the `diagrams` skill (`.claude/skills/diagrams/`). In shor
 | Diagram | Kind | Models |
 | --- | --- | --- |
 | [implement-pr-run](./implement-pr-run.md) | sequence | The flagship workflow end to end: fire → watch registration → worktree/setup → gated agent steps → the itest gate → create-pr → arm-revise-pr, with the watcher engine's supervision lane |
+| [agent-cli-components](./agent-cli-components.md) | C4 component | Inside `packages/js/agent-cli`: the AgentInvoker port, process runner, the four strategies (the one per-agent seam), pure result/classifier leaves, the reaper, and the consumer/CLI/LiteLLM collaborators |
 
 ## Planned (add as the need arises, one per interaction that keeps needing explaining)
 

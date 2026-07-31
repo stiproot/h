@@ -40,17 +40,25 @@ or publish the .md as an artifact — both render the diagram).
 ## Authoring guidance
 
 - **Kinds**: sequence diagrams for interactions (the default — this is a runtime whose
-  interesting facts are message flows); C4 (via the c4-mermaid-plugin skills) for structure;
-  state diagrams for lifecycle rows (watch/chain/cron statuses).
+  interesting facts are message flows); C4 (via the c4-mermaid-plugin skills — load the
+  matching `c4-*` skill and follow its syntax + required validation step) for structure;
+  state diagrams for lifecycle rows (watch/chain/cron statuses). The `code-comprehension`
+  plugin produces EPHEMERAL diagrams in answers; when one keeps getting redrawn, it
+  graduates into docs/diagrams/ under these rules.
 - **Scope**: one diagram = one story a reader keeps needing told. 6–9 participants max in a
   sequence; compress repetition with `loop` ("the run-* pattern") and show it in detail once.
 - **Annotate the invariants**, not just the arrows — the reading-notes section names the
   load-bearing properties (mark-before-fire, the gate, fail-before-PR) with step numbers.
 - **Register it**: add a row to `docs/diagrams/README.md`'s table in the same change.
-- **Mermaid syntax traps** (both bit the first diagram): no commas in `loop`/`alt`/`opt`
+- **Mermaid syntax traps** (each bit a real diagram): no commas in `loop`/`alt`/`opt`
   LABELS, and no semicolons ANYWHERE in message text (`;` is a statement separator — the rest
   of the line parses as a new statement). Render before committing:
   `scripts/render-diagrams.sh <name>` is the syntax check.
+- **Mermaid C4 layout traps**: `UpdateLayoutConfig` goes at the TOP (after `title`), and —
+  the big one — LONG element descriptions stretch shapes to full row width, silently
+  collapsing the grid to one component per row. Keep descriptions to a phrase (≤ ~40 chars;
+  file name in the technology slot); put the detail in the reading notes. Compiling is not
+  enough for C4 — LOOK at the render before committing.
 
 ## The set and its growth
 
