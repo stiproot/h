@@ -122,6 +122,19 @@ classDiagram
 
 ## Design notes (why this shape)
 
+- **The watcher stays 1:1 with a workflow instance — nothing becomes plural.** (Operator
+  question, 2026-07-31.) A member IS a workflow instance (`<chainId>-wN`); today it is fired
+  UNWATCHED (chain observation is sequencing, not supervision). The design gives each
+  budgeted member its own ordinary single registration — three budgeted members ⇒ three
+  instances ⇒ three independent watch rows.
+- **Policy at registration, watcher at fire — deliberately two moments.** The chain:sub row
+  CARRIES the member's policy from registration (diagram step 2); the watch row is armed
+  mark-before-fire when that member's STAGE advances (step 5). Arming early would start the
+  budget clock (`startedAt`) while earlier stages still run and mis-terminate a member that
+  never fired.
+- **Two budgets compose as whichever-trips-first.** A member can be terminated by its own
+  watcher (member budget) or by the chain engine (chain-wide `budgetMs`, D6). Safe: terminate
+  is idempotent and both engines only read the resulting terminal status.
 - **No new vocabulary anywhere.** The watcher already budget-terminates its subject; the
   chain already treats a TERMINATED member as a failed member and tears down atomically
   (D6, incl. cron-disarm). The whole feature is two seams: carry the policy on the member,
