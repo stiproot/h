@@ -28,31 +28,40 @@ at (or diffing) a diagram, not by re-narrating the system.
 ## Rendering to images (for chat, Slack, a phone)
 
 ```sh
-scripts/render-diagrams.sh                    # all diagrams → docs/diagrams/rendered/*.png
-scripts/render-diagrams.sh implement-pr-run   # just one
+tools/diagrams/render.sh                      # all diagrams → docs/diagrams/rendered/*.png
+tools/diagrams/render.sh implement-pr-run     # just one
 ```
 
-Self-provisioning: mermaid-cli lives in the gitignored `.diagram-tools/` (NOT the bun
-workspace — puppeteer/chromium must never burden CI or the app images). `rendered/` is
+Self-provisioning: mermaid-cli lives in the gitignored `tools/diagrams/.deps/` (installed
+with `bun add`, NOT a bun-workspace member — puppeteer/chromium must never burden CI or the
+app images). `rendered/` is
 gitignored; render on demand and share the PNG (in a Claude session: `SendUserFile` the PNG,
 or publish the .md as an artifact — both render the diagram).
 
 ## Generated diagrams (C4 code level) — the AST is the truth for members
 
 Level-4 diagrams date fastest, so they are GENERATED, not hand-drawn:
-`scripts/gen-code-diagram.mjs` extracts members (interface methods/props, union arms, module
+`tools/diagrams/gen-code-diagram.mjs` extracts members (interface methods/props, union arms, module
 function signatures) from the TypeScript AST, while SCOPE, TOPOLOGY, and NOTES stay curated
 in a manifest embedded in the doc (`<!-- gen:c4-code {json} -->`). This keeps the c4-code
 guide's story-members-only rule honest: curation picks the symbols, the parser never lets
 their members go stale.
 
 - **Never hand-edit a generated fence** — edit the manifest (scope/relations/notes) or the
-  code, then `node scripts/gen-code-diagram.mjs`. Drift is a LINT FAILURE
+  code, then `node tools/diagrams/gen-code-diagram.mjs`. Drift is a LINT FAILURE
   (`--check` runs in `bun run lint`), so a refactor that changes a diagrammed contract
   fails the build until the diagram regenerates.
 - The division of labor with the c4-mermaid-plugin: the PLUGIN defines what the diagram
   types are (conventions, syntax, validation); OUR tooling automates producing them to
   those conventions.
+- The tooling is a composable toolkit at `tools/diagrams/` (sanitize / ts-extract /
+  mermaid-class / managed-doc; unit-tested via `node --test`, wired into root test), with
+  thin CLIs on top; `tools/` is the dev-tooling home beside `tools/ci-runner/`. Its README
+  records WHY it is deliberately not a `packages/js/*` workspace member (zero-build lint
+  ordering; never ships in app images; source-level extraction needs no dependency edge)
+  and the in-place graduation path (add a package.json there — a standalone bun package on
+  the `web/` precedent) if the family grows. A new generator = new extractor + assembler +
+  thin CLI; the doc plumbing and sanitizer are shared.
 - Manifest gotcha: it lives in an HTML comment, so no `--` sequences anywhere in the JSON
   (relations use `null` for the default arrow; notes avoid literal `--flags`).
 
@@ -72,7 +81,7 @@ their members go stale.
 - **Mermaid syntax traps** (each bit a real diagram): no commas in `loop`/`alt`/`opt`
   LABELS, and no semicolons ANYWHERE in message text (`;` is a statement separator — the rest
   of the line parses as a new statement). Render before committing:
-  `scripts/render-diagrams.sh <name>` is the syntax check.
+  `tools/diagrams/render.sh <name>` is the syntax check.
 - **Mermaid C4 layout traps**: `UpdateLayoutConfig` goes at the TOP (after `title`), and —
   the big one — LONG element descriptions stretch shapes to full row width, silently
   collapsing the grid to one component per row. Keep descriptions to a phrase (≤ ~40 chars;

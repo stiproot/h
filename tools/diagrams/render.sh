@@ -6,27 +6,30 @@
 #
 # Tooling is self-provisioning and OUT of the bun workspace: @mermaid-js/mermaid-cli drags in
 # puppeteer/chromium, which the CI install and the app images must never pay for. It lives in
-# a gitignored .diagram-tools/ dir with its own package.json (bun's global cache makes the
+# the gitignored tools/diagrams/.deps/ dir with its own package.json (bun's global cache makes the
 # second install cheap; chromium caches under ~/.cache/puppeteer).
 #
 # Usage:
-#   scripts/render-diagrams.sh              # render every docs/diagrams/*.md (except README)
-#   scripts/render-diagrams.sh <name>       # render one, e.g. implement-pr-run
+#   tools/diagrams/render.sh                # render every docs/diagrams/*.md (except README)
+#   tools/diagrams/render.sh <name>         # render one, e.g. implement-pr-run
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_DIR="$ROOT/docs/diagrams"
 OUT_DIR="$SRC_DIR/rendered"
-TOOLS="$ROOT/.diagram-tools"
+DEPS="$ROOT/tools/diagrams/.deps"
 
 # Self-provision mermaid-cli (idempotent; first run may download chromium).
-if [ ! -x "$TOOLS/node_modules/.bin/mmdc" ]; then
-  echo "render-diagrams: provisioning mermaid-cli into .diagram-tools/ (first run only)"
-  mkdir -p "$TOOLS"
-  [ -f "$TOOLS/package.json" ] || printf '{"name":"h-diagram-tools","private":true}\n' > "$TOOLS/package.json"
-  (cd "$TOOLS" && bun add @mermaid-js/mermaid-cli >/dev/null)
+if [ ! -x "$DEPS/node_modules/.bin/mmdc" ]; then
+  echo "render: provisioning mermaid-cli into tools/diagrams/.deps/ (first run only — bun add)"
+  mkdir -p "$DEPS"
+  [ -f "$DEPS/package.json" ] || printf '{"name":"h-diagram-deps","private":true}\n' > "$DEPS/package.json"
+  # puppeteer's postinstall (chromium fetch) flakes on first run — observed twice live;
+  # one retry against bun's now-warm cache reliably lands it.
+  (cd "$DEPS" && bun add @mermaid-js/mermaid-cli >/dev/null) \
+    || (cd "$DEPS" && bun add @mermaid-js/mermaid-cli >/dev/null)
 fi
-MMDC="$TOOLS/node_modules/.bin/mmdc"
+MMDC="$DEPS/node_modules/.bin/mmdc"
 
 mkdir -p "$OUT_DIR"
 

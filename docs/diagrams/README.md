@@ -10,9 +10,9 @@ The protocol lives in the `diagrams` skill (`.claude/skills/diagrams/`). In shor
 
 - **Sources are the truth** — one `<name>.md` per diagram here, a mermaid fence plus a short
   prose frame and reading notes. No duplicate copies elsewhere; other docs link here.
-- **Render to images on demand** — `scripts/render-diagrams.sh [<name>]` →
-  `docs/diagrams/rendered/<name>.png` (gitignored; the tool provisions itself into the
-  gitignored `.diagram-tools/`).
+- **Render to images on demand** — `tools/diagrams/render.sh [<name>]` →
+  `docs/diagrams/rendered/<name>.png` (gitignored; the toolkit provisions mermaid-cli into
+  its gitignored `.deps/` via bun).
 - **Update-with-the-change** — same rule as the cookbook: a stale diagram is worse than none.
 
 ## The set

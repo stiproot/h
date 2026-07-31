@@ -52,4 +52,4 @@ docs/plans/domain/
 
 # diagram communication layer — sources are the truth; renders + tooling are local
 docs/diagrams/rendered/
-.diagram-tools/
+tools/diagrams/.deps/
