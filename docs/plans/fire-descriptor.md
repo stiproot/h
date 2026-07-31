@@ -1,7 +1,7 @@
 # The fire descriptor — one shape for "fire this workflow", every carrier
 
-Status: Planning — design + change diagrams for review; grew out of the 2026-07-31
-consolidation conversation on the per-member-budget review; nothing built
+Status: Active — design LOCKED 2026-07-31 (naming: grow Trigger; ids: key-date-time with
+loud collision suffix); Phases 1–4 unstarted — build per-member-budget first, then this
 Established: 2026-07-31
 
 ## Origin
@@ -111,19 +111,20 @@ The descriptor makes the id a property of the CORE, so every carrier supplies or
   UUID, so mark-before-fire holds universally, and every run is human-addressable (workspace
   dir, runs ledger, traces, `h workflow status`).
 
-**Decision for review:** the derivation scheme above, or `<key>-<n>` with a persisted
-counter (prettier, but a new write per fire), or keep UUID fallback (rejected: it is the
-weak form).
+**DECIDED 2026-07-31:** the scheme above — `<key>-<yymmdd>-<hhmmss>`, collision → loud
+`-2` suffix, zero new state. Rejected: a persisted counter (a write per fire), and the UUID
+fallback (it IS the weak registration form this kills).
 
-## The naming question (vocabulary — operator's call)
+## Naming — DECIDED 2026-07-31: grow `Trigger` (option a)
 
 The glossary already says **"Triggers are data"**, and the `workflow-trigger` topic's
-`{key, params}` payload is the DEGENERATE descriptor. Options:
-
-- **(a) Grow `Trigger`**: "a trigger's payload is the fire descriptor" — stays inside the
-  canonical dictionary, no new term; the topic name already matches.
-- **(b) Mint `FireDescriptor`** (or `Fire`): sharper (a trigger is the EDGE that fires; the
-  descriptor is WHAT it fires), but a new vocabulary entry + glossary/lint updates.
+`{key, params}` payload is the DEGENERATE descriptor. Decision: no new vocabulary term —
+the `Trigger` entry grows to "a trigger's PAYLOAD is the fire descriptor: {key|steps,
+params, instanceId, workspaceId?, watch?}"; the type is named `Trigger` (or
+`TriggerPayload` if the collision with the edge concept reads badly in code — settle at
+Phase 1 with the glossary edit in the same change). Rejected: minting `FireDescriptor`
+(sharper but a new dictionary entry; the vocabulary discipline favors deepening existing
+terms over minting siblings).
 
 ## The rejected consolidation — and why (sequence)
 
@@ -164,7 +165,8 @@ Revisit when: standalone runs need captures/threading (the one capability only c
 
 ## Scope and phases
 
-1. **Phase 0 — this review**: naming decision (a/b), id-derivation scheme.
+1. **Phase 0 — DONE 2026-07-31**: naming (grow Trigger) and id scheme (key-date-time +
+   loud collision suffix) decided by the operator; both suggestions accepted as proposed.
 2. **Phase 1 — the shape**: descriptor type in workflow.model.ts (JS) + the Python sibling;
    `WorkflowRequest`/`ChainMember` re-expressed over it (wire-compatible: flattened JSON
    stays identical, so no surface breaks — the consolidation is in the TYPES and the seams,

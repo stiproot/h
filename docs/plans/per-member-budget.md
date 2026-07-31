@@ -1,7 +1,7 @@
 # Per-member `--budget` — a chain member the watcher can budget-terminate
 
-Status: Planning — design + change diagrams for review; the CLI parses this today and refuses
-it at registration ("not yet enforced"); nothing built
+Status: Active — design reviewed via the change diagrams + two operator Q&As (pinned below),
+APPROVED TO BUILD 2026-07-31; nothing built yet — first of the pair, fire-descriptor follows
 Established: 2026-07-31
 
 The carried item (carried-followups §1, from chain-composition-surface Slice E): `h chain run`
