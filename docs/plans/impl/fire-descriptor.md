@@ -208,12 +208,20 @@ fire path registers it mark-before-fire at stage advance. Only its CLI mapping r
 - 2026-07-31 — Naming settled at Phase 1: plain `Trigger` (no `TriggerPayload` needed — the
   only in-code neighbor is trigger.router's `TriggerEvent`, now documented as the
   DEGENERATE descriptor `{key, params}`).
-- 2026-07-31 — Discover/sched "re-typed" decision: PROJECTIONS, not persisted-field
-  renames. The wire-compatibility principle extends to REGISTRY rows — renaming
-  `DiscoverRow.workflow→key` / restructuring `SchedRow.source` would orphan every live row
-  in Redis. So the row types keep their persisted names and gain a pure projection to the
-  descriptor (`discoverTrigger(row, issue)`, `schedTrigger(row)`), which the scans consume;
-  the hand-built request construction in `fireDiscovered`/`fireSched` is what got deleted.
+- 2026-07-31 — Discover/sched "re-typed" decision, first pass: PROJECTIONS, not
+  persisted-field renames — restructuring the rows would orphan every live row in Redis.
+  **OVERRULED by the operator the same day**: Redis was declared fully wipeable ("nothing
+  in there we are tied to"), so the constraint dissolved and the STRUCTURAL embed landed
+  (the atomic-cutover posture): `DiscoverRow.trigger` (a `DiscoverTemplate` — TriggerFields
+  with `key` required; replaces `workflow`/`fireParams`/`watch`) and `SchedRow.trigger`
+  (a `SchedTrigger` — TriggerFields with `instanceId` required; replaces `source` +
+  `instanceId`/`workspaceId`/`watch`, collapsing the CronSource saved|embedded union into
+  the descriptor's key|steps for sched rows — the recur cron keeps CronSource). The
+  `schedTrigger` projection is deleted (the row field IS it); `discoverTrigger` remains as
+  the template→per-issue INSTANTIATION, not a legacy-name shim. Registrations
+  (`SchedRegistration.trigger`, `DiscoverRegistration.trigger`) and the fallback's row
+  build follow; the register-discover ACTIVITY keeps its CLI wire (workflow/fireParams)
+  and maps at the boundary. Redis FLUSHALL executed after the cutover (1303 keys).
 - 2026-07-31 — Derivation lives in the choke point: `WorkflowRequest` carries the
   descriptor's `key` as inert provenance (stripped before the invoke, never workflow
   input); `invokeWithWatch` derives `<key ?? wf.workflow ?? "run">-<yymmdd>-<hhmmss>` and

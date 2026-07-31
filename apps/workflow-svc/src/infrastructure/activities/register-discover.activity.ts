@@ -40,11 +40,15 @@ export async function registerDiscoverActivity(
     registerDiscover({
       repo,
       label,
-      workflow,
       cadence,
       ...(maxFiresPerDay !== undefined ? { gates: { maxFiresPerDay } } : {}),
-      ...(fireParams ? { fireParams } : {}),
-      ...(watch ? { watch } : {}),
+      // The activity input is the CLI wire (h cron discover add); the row embeds it as its
+      // fire-descriptor TEMPLATE: workflow → key, fireParams → params.
+      trigger: {
+        key: workflow,
+        ...(fireParams ? { params: fireParams } : {}),
+        ...(watch ? { watch } : {}),
+      },
     }),
     traceparent,
   );

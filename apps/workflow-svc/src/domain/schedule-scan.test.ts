@@ -8,7 +8,7 @@ import {
   scanSchedEffect,
 } from "./schedule-scan.ts";
 import { type CronLedger, emptyCronLedger } from "./models/cron.model.ts";
-import { type SchedRow, schedTrigger } from "./models/schedule.model.ts";
+import type { SchedRow } from "./models/schedule.model.ts";
 import type { WatchLedger } from "./models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
 import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
@@ -133,8 +133,7 @@ const armedRow = (over: Partial<SchedRow> = {}): SchedRow => ({
   id: "sched-abc",
   status: "armed",
   fireAt: PAST,
-  source: { mode: "saved", key: "implement-pr" },
-  instanceId: "sched-abc",
+  trigger: { key: "implement-pr", instanceId: "sched-abc" },
   epoch: 1,
   createdAt: "2020-01-01T00:00:00Z",
   updatedAt: "2020-01-01T00:00:00Z",
@@ -145,12 +144,12 @@ describe("registerSchedForFire", () => {
   const arm = (cs: CronStoreService, reg: Parameters<typeof registerSchedForFire>[0]) =>
     Effect.runPromise(registerSchedForFire(reg).pipe(Effect.provide(Layer.succeed(CronStore, cs))));
 
-  it("writes an armed row (epoch 1) with fireAt and source", async () => {
+  it("writes an armed row (epoch 1) with fireAt and its embedded descriptor", async () => {
     const cs = memoryCronStore();
     const res = await arm(cs.service, {
       id: "sched-abc",
       fireAt: FUTURE,
-      source: { mode: "saved", key: "implement-pr" },
+      trigger: { key: "implement-pr" },
       origin: "at",
     });
     expect(res).toEqual({ schedId: "sched-abc", armed: true });
@@ -159,6 +158,8 @@ describe("registerSchedForFire", () => {
     expect(row.epoch).toBe(1);
     expect(row.fireAt).toBe(FUTURE);
     expect(row.origin).toBe("at");
+    // The persisted descriptor's instance is concrete: the caller pinned none, so the row id.
+    expect(row.trigger).toEqual({ key: "implement-pr", instanceId: "sched-abc" });
   });
 
   it("is idempotent: re-arming an ARMED row is a no-op (epoch preserved)", async () => {
@@ -167,7 +168,7 @@ describe("registerSchedForFire", () => {
     await arm(cs.service, {
       id: "sched-abc",
       fireAt: FUTURE,
-      source: { mode: "saved", key: "implement-pr" },
+      trigger: { key: "implement-pr" },
     });
     expect(cs.sched.get("sched-abc")!.epoch).toBe(4);
   });
@@ -178,7 +179,7 @@ describe("registerSchedForFire", () => {
     await arm(cs.service, {
       id: "sched-abc",
       fireAt: FUTURE,
-      source: { mode: "saved", key: "implement-pr" },
+      trigger: { key: "implement-pr" },
     });
     const row = cs.sched.get("sched-abc")!;
     expect(row.status).toBe("armed");
@@ -229,14 +230,14 @@ describe("scanSchedEffect", () => {
     expect(cs.sched.get("sched-abc")!.status).toBe("expired");
   });
 
-  it("fires an embedded source with its own steps + workspaceId reuse (pause/fallback path)", async () => {
+  it("fires an embedded-steps descriptor with its workspaceId reuse (pause/fallback path)", async () => {
     const cs = memoryCronStore();
     cs.sched.set(
       "sched-abc",
       armedRow({
-        source: {
-          mode: "embedded",
+        trigger: {
           steps: [{ activity: "run-openhands", input: { task: "continue" } }],
+          instanceId: "sched-abc",
           workspaceId: "orig-workspace",
         },
         origin: "fallback:usage-limited",
@@ -250,12 +251,18 @@ describe("scanSchedEffect", () => {
     expect(inv.invokes[0].workspaceId).toBe("orig-workspace");
   });
 
-  it("a row-level workspaceId overrides the source-derived one (pause reuse of a saved run)", async () => {
+  it("the descriptor's workspaceId overrides the saved definition's (pause reuse of a saved run)", async () => {
     const cs = memoryCronStore();
-    cs.sched.set("wf-9--resume", armedRow({ id: "wf-9--resume", workspaceId: "wf-9" }));
+    cs.sched.set(
+      "wf-9--resume",
+      armedRow({
+        id: "wf-9--resume",
+        trigger: { key: "implement-pr", instanceId: "wf-9--resume", workspaceId: "wf-9" },
+      }),
+    );
     const inv = recordingInvoker();
     await scan(cs.service, inv.service);
-    // saved source → the resumed run reuses the paused instance's workspace, not the stored default.
+    // saved key → the resumed run reuses the paused instance's workspace, not the stored default.
     expect(inv.invokes[0].workspaceId).toBe("wf-9");
   });
 
@@ -343,50 +350,5 @@ describe("advanceSched (resume)", () => {
       advanceSched("nope").pipe(Effect.flip, Effect.provide(Layer.succeed(CronStore, cs.service))),
     );
     expect((err as { _tag: string })._tag).toBe("NotFound");
-  });
-});
-
-describe("schedTrigger (the row's resubmit IS a fire descriptor)", () => {
-  const base = {
-    id: "sched-1",
-    status: "armed",
-    fireAt: "2026-07-31T10:00:00Z",
-    instanceId: "sched-1",
-    epoch: 1,
-    createdAt: "2026-07-31T09:00:00Z",
-    updatedAt: "2026-07-31T09:00:00Z",
-  } as const;
-
-  it("projects a saved source into {key, params} under the row's instance", () => {
-    const row: SchedRow = {
-      ...base,
-      source: { mode: "saved", key: "feature-pr", params: { slug: "s" } },
-      watch: { maxDurationMs: 1000 },
-    };
-    expect(schedTrigger(row)).toEqual({
-      key: "feature-pr",
-      params: { slug: "s" },
-      instanceId: "sched-1",
-      watch: { maxDurationMs: 1000 },
-    });
-  });
-
-  it("projects an embedded source, the row-level workspaceId winning over the source's", () => {
-    const row: SchedRow = {
-      ...base,
-      source: {
-        mode: "embedded",
-        steps: [{ activity: "run-claude" }],
-        params: { a: "1" },
-        workspaceId: "source-ws",
-      },
-      workspaceId: "paused-run-ws",
-    };
-    expect(schedTrigger(row)).toEqual({
-      steps: [{ activity: "run-claude" }],
-      params: { a: "1" },
-      instanceId: "sched-1",
-      workspaceId: "paused-run-ws",
-    });
   });
 });

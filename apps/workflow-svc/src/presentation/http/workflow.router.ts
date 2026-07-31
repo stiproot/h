@@ -322,13 +322,15 @@ export function registerWorkflowRoutes(
             const armed = yield* registerSchedForFire({
               id: schedRowId,
               fireAt,
-              source: {
-                mode: "saved",
+              // The row embeds the fire descriptor: what fires at fireAt.
+              trigger: {
                 key: request.params.key,
                 ...(req.params ? { params: req.params } : {}),
+                ...((watch ?? workflow.value.watch)
+                  ? { watch: watch ?? workflow.value.watch }
+                  : {}),
               },
               ...(wf ? { wf } : {}),
-              ...((watch ?? workflow.value.watch) ? { watch: watch ?? workflow.value.watch } : {}),
               origin: "at",
             });
             return { scheduled: armed.schedId, fireAt };
@@ -419,11 +421,14 @@ export function registerWorkflowRoutes(
               // A distinct id so the resume runs under its own instance while reusing the workspace.
               id: `${paused}--resume`,
               fireAt,
-              source: { mode: "saved", key, ...(merged ? { params: merged } : {}) },
-              // Reuse the paused run's workspace (default: its own instance id was the workspace key).
-              workspaceId: workspaceId ?? paused,
+              trigger: {
+                key,
+                ...(merged ? { params: merged } : {}),
+                // Reuse the paused run's workspace (default: its own instance id was the workspace key).
+                workspaceId: workspaceId ?? paused,
+                ...(stored.value.watch ? { watch: stored.value.watch } : {}),
+              },
               ...(wf ? { wf } : {}),
-              ...(stored.value.watch ? { watch: stored.value.watch } : {}),
               origin: "pause",
             });
             return { paused, scheduled: armed.schedId, fireAt };

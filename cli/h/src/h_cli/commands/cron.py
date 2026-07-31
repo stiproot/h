@@ -112,7 +112,8 @@ def list_() -> None:
             disc_id,
             row.get("status", ""),
             row.get("cadence", ""),
-            row.get("workflow", ""),
+            # The row embeds its fire-descriptor template; the fired workflow is its key.
+            (row.get("trigger") or {}).get("key", ""),
             f"{row.get('fires', 0)} (≤{per_day}/day)",
             str(row.get("lastFiredIssue") or ""),
             row.get("lastRunAt") or "",

@@ -1,7 +1,6 @@
 import { Schema } from "effect";
 
-import { WatchPolicy } from "./watch.model.ts";
-import { WorkflowParams, type Trigger } from "./workflow.model.ts";
+import { TriggerFields, type Trigger } from "./workflow.model.ts";
 
 /**
  * The DISCOVERY cron's data shapes — the fan-out sibling
@@ -34,6 +33,18 @@ export const DiscoverGates = Schema.Struct({
 export type DiscoverGates = Schema.Schema.Type<typeof DiscoverGates>;
 
 /**
+ * The fire-descriptor TEMPLATE a discovery row carries — a Trigger with the saved `key` REQUIRED
+ * (what fires per discovered issue) and the per-issue identity left OPEN: `instanceId`/
+ * `workspaceId` are derived per issue at instantiation (discoverTrigger), and the engine-supplied
+ * identity params (repo/slug/issueNumber) merge over the template's own `params` (fire-time
+ * identity like runActivity/agentId/model*). `watch` supervises every fired run — so a hung run is
+ * terminated by the watcher engine rather than stalling the discovery cron on its serialize
+ * (in-flight) guard forever; omit to fire unsupervised.
+ */
+export const DiscoverTemplate = Schema.Struct({ ...TriggerFields, key: Schema.String });
+export type DiscoverTemplate = Schema.Schema.Type<typeof DiscoverTemplate>;
+
+/**
  * The persisted discovery row (`cron:discover:<repo>:<label>`), written ONLY by workflow-svc — its
  * registration path and the scan engine. `epoch` fences overlapping ticks; `fires` is the lifetime
  * fan-out count (distinct from the daily-cap tally on the ledger). The engine reads the last-fired
@@ -44,20 +55,13 @@ export const DiscoverRow = Schema.Struct({
   // Coords + query: the GitHub repo (owner/name — also the fired runs' wf-identity repo) and the label.
   repo: Schema.String,
   label: Schema.String,
-  // What to fire per discovered issue (a saved key, e.g. "implement-pr").
-  workflow: Schema.String,
   status: DiscoverStatus,
   // 5-field cron expression (UTC): the source is read when isDue since lastRunAt (else createdAt).
   cadence: Schema.String,
   source: DiscoverSource,
   gates: DiscoverGates,
-  // Extra params merged into every fire (e.g. fire-time identity: runActivity/agentId/model). `slug`,
-  // `repo`, and `issueNumber` are supplied per-issue by the engine and win over these.
-  fireParams: Schema.optional(WorkflowParams),
-  // Watch policy attached to every fired run: supervises each
-  // feature-pr so a hung run is terminated by the watcher engine rather than stalling the discovery
-  // cron on its serialize (in-flight) guard forever. Optional — omit to fire unsupervised.
-  watch: Schema.optional(WatchPolicy),
+  // The embedded fire-descriptor template — what fires per discovered issue (see DiscoverTemplate).
+  trigger: DiscoverTemplate,
   // Epoch fence — bumped on every re-registration and every fire, so a stale scan decision no-ops.
   epoch: Schema.Number,
   // Lifetime fan-out count (observability; the daily cap lives on the ledger).
@@ -88,26 +92,24 @@ export const issueSlug = (issueNumber: number): string => `issue-${issueNumber}`
 export const issueInstanceId = (issueNumber: number): string => `feature-issue-${issueNumber}`;
 
 /**
- * The row is a fire-descriptor TEMPLATE: instantiate the per-issue Trigger the scan hands to the
- * fire choke point — deterministic slug/instance per issue (the row's persisted names
- * `workflow`/`fireParams` predate the descriptor; this projection is where they become one).
- * The engine-supplied identity params (repo/slug/issueNumber) win over the row's fireParams.
+ * Instantiate the row's template for one discovered issue: the deterministic per-issue
+ * slug/instance/workspace land on the descriptor, and the engine-supplied identity params
+ * (repo/slug/issueNumber) merge OVER the template's own params.
  */
 export function discoverTrigger(
-  row: Pick<DiscoverRow, "repo" | "workflow" | "fireParams" | "watch">,
+  row: Pick<DiscoverRow, "repo" | "trigger">,
   issueNumber: number,
 ): Trigger & { readonly key: string; readonly instanceId: string; readonly workspaceId: string } {
   const instanceId = issueInstanceId(issueNumber);
   return {
-    key: row.workflow,
+    ...row.trigger,
     params: {
-      ...row.fireParams,
+      ...row.trigger.params,
       repo: row.repo,
       slug: issueSlug(issueNumber),
       issueNumber: String(issueNumber),
     },
     instanceId,
     workspaceId: instanceId,
-    ...(row.watch ? { watch: row.watch } : {}),
   };
 }

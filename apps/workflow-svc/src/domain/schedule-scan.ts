@@ -2,16 +2,10 @@ import { WorkflowError } from "core";
 import { Effect, Option } from "effect";
 
 import { decide } from "./schedule-engine.ts";
-import { type CronSource, cronLedgerDate } from "./models/cron.model.ts";
-import {
-  type SchedOutcome,
-  type SchedRow,
-  schedId,
-  schedTrigger,
-} from "./models/schedule.model.ts";
-import type { WatchPolicy } from "./models/watch.model.ts";
+import { cronLedgerDate } from "./models/cron.model.ts";
+import { type SchedOutcome, type SchedRow, schedId } from "./models/schedule.model.ts";
 import type { WfIdentity } from "./models/wf.model.ts";
-import { type WorkflowRequest, toRequest } from "./models/workflow.model.ts";
+import { type Trigger, type WorkflowRequest, toRequest } from "./models/workflow.model.ts";
 import { CronStore } from "./ports/ICronStore.ts";
 import { WatchStore } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
@@ -53,14 +47,12 @@ export type SchedRegistration = {
   readonly id: string;
   /** Absolute ISO fire time. */
   readonly fireAt: string;
-  /** What to fire (saved key or embedded steps); params carry any identity override + payload. */
-  readonly source: CronSource;
-  /** Workspace to REUSE on the fire (pause/resume + fallback continuation reuse the same worktree). */
-  readonly workspaceId?: string;
+  /** The fire descriptor the row embeds — what fires at fireAt (key|steps, params carrying any
+   *  identity override + payload, the workspace to REUSE, the watch policy for the continuation).
+   *  Its instanceId defaults to the row id when the caller pins none. */
+  readonly trigger: Trigger;
   /** Optional absolute deadline — expire without firing if now passes it before fireAt. */
   readonly notAfter?: string;
-  /** Watch policy for the fired continuation (supervised). */
-  readonly watch?: WatchPolicy;
   /** The wf-identity the fired run writes its own wf: row under. */
   readonly wf?: WfIdentity;
   /** Provenance: "at" | "pause" | "fallback:usage-limited". */
@@ -92,11 +84,10 @@ export const registerSchedForFire = (
       status: "armed",
       fireAt: reg.fireAt,
       ...(reg.notAfter ? { notAfter: reg.notAfter } : {}),
-      source: reg.source,
-      instanceId: id,
-      ...(reg.workspaceId ? { workspaceId: reg.workspaceId } : {}),
+      // The embedded descriptor persists with a CONCRETE instance (required-or-derived resolves at
+      // arm time for a sched row): the caller's pinned id wins, else the row id.
+      trigger: { ...reg.trigger, instanceId: reg.trigger.instanceId ?? id },
       epoch: (prior?.epoch ?? 0) + 1,
-      ...(reg.watch ? { watch: reg.watch } : {}),
       ...(reg.wf ? { wf: reg.wf } : {}),
       ...(reg.origin ? { origin: reg.origin } : {}),
       ...(reg.handoffsRemaining !== undefined ? { handoffsRemaining: reg.handoffsRemaining } : {}),
@@ -258,7 +249,7 @@ const executeFire = (
       epoch: row.epoch + 1,
       status: "fired",
       outcome: "fired",
-      firedInstanceId: row.instanceId,
+      firedInstanceId: row.trigger.instanceId,
       firedAt: now,
       note: `fired${row.origin ? ` (${row.origin})` : ""}`,
       updatedAt: now,
@@ -274,14 +265,14 @@ const executeFire = (
     yield* (yield* CronStore).bumpLedger(cronLedgerDate(nowMs), { scheduledFires: 1 });
   });
 
-/** Project the row's resubmit descriptor (schedTrigger), resolve its key|steps, and fire it
- *  through the choke point — fresh, supervised when the descriptor carries a watch. */
+/** Resolve the row's embedded descriptor's key|steps and fire it through the choke point —
+ *  fresh, supervised when the descriptor carries a watch. */
 const fireSched = (
   row: SchedRow,
   traceparent: string | undefined,
 ): Effect.Effect<void, WorkflowError, SchedScanEnv> =>
   Effect.gen(function* () {
-    const trigger = schedTrigger(row);
+    const { trigger } = row;
     let req: WorkflowRequest;
     let workspaceId = trigger.workspaceId;
     if (trigger.key !== undefined) {

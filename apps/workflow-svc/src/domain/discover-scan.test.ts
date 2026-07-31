@@ -155,7 +155,7 @@ const issues: SourceItem[] = [
 const activeRow = (over: Partial<DiscoverRow> = {}): DiscoverRow => ({
   repo: "stiproot/h",
   label: "agent-approved",
-  workflow: "implement-pr",
+  trigger: { key: "implement-pr" },
   status: "active",
   cadence: DUE,
   source: { mode: "github-issues" },
@@ -174,7 +174,7 @@ describe("registerDiscover", () => {
       registerDiscover({
         repo: "stiproot/h",
         label: "agent-approved",
-        workflow: "implement-pr",
+        trigger: { key: "implement-pr" },
         cadence: DUE,
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service, sourceReader([])))),
     );
@@ -197,7 +197,7 @@ describe("registerDiscover", () => {
       registerDiscover({
         repo: "stiproot/h",
         label: "agent-approved",
-        workflow: "implement-pr",
+        trigger: { key: "implement-pr" },
         cadence: "*/30 * * * *",
       }).pipe(Effect.provide(env(cs.service, recordingInvoker().service, sourceReader([])))),
     );
@@ -311,14 +311,16 @@ describe("scanDiscoverEffect", () => {
 });
 
 describe("discoverTrigger (the row is a fire-descriptor template)", () => {
-  it("instantiates the per-issue descriptor: deterministic id, engine params winning over fireParams", () => {
+  it("instantiates the per-issue descriptor: deterministic id, engine params winning over the template's", () => {
     expect(
       discoverTrigger(
         {
           repo: "o/r",
-          workflow: "implement-pr",
-          fireParams: { agentId: "pi-agent", slug: "stale-clobbered" },
-          watch: { maxDurationMs: 1000 },
+          trigger: {
+            key: "implement-pr",
+            params: { agentId: "pi-agent", slug: "stale-clobbered" },
+            watch: { maxDurationMs: 1000 },
+          },
         },
         42,
       ),
@@ -332,7 +334,7 @@ describe("discoverTrigger (the row is a fire-descriptor template)", () => {
   });
 
   it("omits watch when the row fires unsupervised", () => {
-    const trigger = discoverTrigger({ repo: "o/r", workflow: "implement-pr" }, 7);
+    const trigger = discoverTrigger({ repo: "o/r", trigger: { key: "implement-pr" } }, 7);
     expect(trigger).not.toHaveProperty("watch");
   });
 });

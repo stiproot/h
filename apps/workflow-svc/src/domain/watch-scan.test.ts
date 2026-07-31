@@ -745,15 +745,17 @@ describe("scanWatchesEffect", () => {
     const sched = [...cron.sched.values()][0]!;
     expect(sched.origin).toBe("fallback:usage-limited");
     expect(sched.status).toBe("armed");
-    expect(sched.workspaceId).toBe("ws-1"); // reuse the limited run's workspace
+    expect(sched.trigger.workspaceId).toBe("ws-1"); // reuse the limited run's workspace
     // The identity override wins over the resubmit params → a different agent re-enters the steps.
-    expect(sched.source).toMatchObject({
-      mode: "embedded",
-      params: { repo: "o/r", runActivity: "run-openhands", agentId: "openhands-agent" },
+    expect(sched.trigger.params).toMatchObject({
+      repo: "o/r",
+      runActivity: "run-openhands",
+      agentId: "openhands-agent",
     });
+    expect(sched.trigger.instanceId).toBe(sched.id);
     expect(sched.handoffsRemaining).toBe(1);
     // The continuation is itself supervised with the decremented budget (can't ping-pong forever).
-    expect(sched.watch?.fallback?.maxHandoffs).toBe(1);
+    expect(sched.trigger.watch?.fallback?.maxHandoffs).toBe(1);
     expect(mem.ledgers.get(today())).toMatchObject({ engineFires: 1 });
   });
 

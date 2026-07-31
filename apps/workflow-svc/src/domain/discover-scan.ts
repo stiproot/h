@@ -7,12 +7,12 @@ import {
   type DiscoverGates,
   type DiscoverRow,
   type DiscoverSource,
+  type DiscoverTemplate,
   discoverId,
   discoverTrigger,
   issueSlug,
 } from "./models/discover.model.ts";
-import type { WatchPolicy } from "./models/watch.model.ts";
-import { type WorkflowParams, toRequest } from "./models/workflow.model.ts";
+import { toRequest } from "./models/workflow.model.ts";
 import { CronStore } from "./ports/ICronStore.ts";
 import { SourceReader } from "./ports/ISourceReader.ts";
 import { WatchStore } from "./ports/IWatchStore.ts";
@@ -65,13 +65,12 @@ export type DiscoverScanReport = {
 export type DiscoverRegistration = {
   readonly repo: string;
   readonly label: string;
-  /** The saved key to fire per discovered issue (e.g. "implement-pr"). */
-  readonly workflow: string;
+  /** The fire-descriptor template fired per discovered issue (key required; params/watch optional —
+   *  the per-issue identity is instantiated by the engine, see DiscoverTemplate). */
+  readonly trigger: DiscoverTemplate;
   readonly cadence: string;
   readonly source?: DiscoverSource;
   readonly gates?: DiscoverGates;
-  readonly fireParams?: WorkflowParams;
-  readonly watch?: WatchPolicy;
 };
 
 /**
@@ -92,13 +91,11 @@ export const registerDiscover = (
     const row: DiscoverRow = {
       repo: reg.repo,
       label: reg.label,
-      workflow: reg.workflow,
       status: "active",
       cadence: reg.cadence,
       source: reg.source ?? { mode: "github-issues" },
       gates: reg.gates ?? { maxFiresPerDay: DEFAULT_MAX_FIRES_PER_DAY },
-      ...(reg.fireParams ? { fireParams: reg.fireParams } : {}),
-      ...(reg.watch ? { watch: reg.watch } : {}),
+      trigger: reg.trigger,
       epoch: (prior?.epoch ?? 0) + 1,
       fires: prior?.fires ?? 0,
       ...(prior?.currentInstanceId ? { currentInstanceId: prior.currentInstanceId } : {}),
@@ -214,7 +211,7 @@ const executeDiscover = (
     for (const issue of issues) {
       const slug = issueSlug(issue.number);
       const existing = yield* wfStore
-        .getRow({ repo: row.repo, slug, workflow: row.workflow })
+        .getRow({ repo: row.repo, slug, workflow: row.trigger.key })
         .pipe(Effect.catchAll(() => Effect.succeed(Option.none())));
       if (Option.isSome(existing)) continue; // dedup — already dispatched (running or done)
       return yield* fireDiscovered(scanned, issue.number, nowMs, traceparent, report);
@@ -251,7 +248,7 @@ const fireDiscovered = (
       instanceId: trigger.instanceId,
       workspaceId: trigger.workspaceId,
       fresh: true,
-      wf: { repo: scanned.repo, slug: issueSlug(issueNumber), workflow: scanned.workflow },
+      wf: { repo: scanned.repo, slug: issueSlug(issueNumber), workflow: trigger.key },
       ...(trigger.watch
         ? {
             watch: trigger.watch,

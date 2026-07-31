@@ -485,7 +485,7 @@ describe("POST /workflow/run/:key", () => {
     expect(savedSched).toHaveLength(1);
     expect(savedSched[0]!.status).toBe("armed");
     expect(savedSched[0]!.origin).toBe("at");
-    expect(savedSched[0]!.source).toMatchObject({ mode: "saved", key: "feature" });
+    expect(savedSched[0]!.trigger).toMatchObject({ key: "feature" });
     expect(savedSched[0]!.wf).toEqual({
       repo: "stiproot/h",
       slug: "pi-agent",
@@ -620,9 +620,9 @@ describe("POST /workflow/pause/:instanceId", () => {
     expect(terminated).toEqual(["wf-9"]);
     expect(savedSched).toHaveLength(1);
     expect(savedSched[0]!.origin).toBe("pause");
-    expect(savedSched[0]!.workspaceId).toBe("wf-9"); // reuse the paused run's workspace
+    // The embedded descriptor reuses the paused run's workspace and names the resume instance.
+    expect(savedSched[0]!.trigger).toMatchObject({ key: "feature", workspaceId: "wf-9" });
     expect(savedSched[0]!.id).toBe("wf-9--resume");
-    expect(savedSched[0]!.source).toMatchObject({ mode: "saved", key: "feature" });
     expect(res.json()).toMatchObject({ paused: "wf-9", scheduled: "wf-9--resume" });
   });
 
@@ -648,8 +648,7 @@ describe("POST /workflow/resume/:schedId", () => {
       id: "wf-9--resume",
       status: "armed",
       fireAt: "2999-01-01T00:00:00Z",
-      source: { mode: "saved", key: "feature" },
-      instanceId: "wf-9--resume",
+      trigger: { key: "feature", instanceId: "wf-9--resume" },
       epoch: 1,
       createdAt: "t",
       updatedAt: "t",

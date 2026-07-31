@@ -404,7 +404,7 @@ describe("GET /cron/list — discovery rows", () => {
       cron.service.saveDiscoverRow({
         repo: "stiproot/h",
         label: "agent-approved",
-        workflow: "implement-pr",
+        trigger: { key: "implement-pr" },
         status: "active",
         cadence: "0 * * * *",
         source: { mode: "github-issues" },

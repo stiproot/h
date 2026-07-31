@@ -675,17 +675,18 @@ const executeFallback = (
       id: schedRowId,
       status: "armed",
       fireAt: new Date(nowMs + (fb.after ?? 0)).toISOString(),
-      source: {
-        mode: "embedded",
-        // Identity override (runActivity/agentId/model*) wins over the resubmit's params → the
-        // continuation runs on a different agent while re-entering the SAME steps.
+      // The row's resubmit IS a fire descriptor: the stored steps re-entered under a NEW instance,
+      // in the SAME workspace, supervised by the decremented-handoff policy. The identity override
+      // (runActivity/agentId/model*) wins over the resubmit's params → the continuation runs on a
+      // different agent while re-entering the SAME steps.
+      trigger: {
         steps: (row.resubmit.steps ?? []) as readonly StepDefinition[],
         params: { ...(row.resubmit.params ?? {}), ...fb.identity } as WorkflowParams,
+        instanceId: schedRowId,
+        ...(row.resubmit.workspaceId ? { workspaceId: row.resubmit.workspaceId } : {}),
+        watch: childPolicy,
       },
-      instanceId: schedRowId,
-      ...(row.resubmit.workspaceId ? { workspaceId: row.resubmit.workspaceId } : {}),
       epoch: 1,
-      watch: childPolicy,
       origin: "fallback:usage-limited",
       handoffsRemaining: childFallback.maxHandoffs,
       note: `fallback from ${row.instanceId} after ${outcome}`,
