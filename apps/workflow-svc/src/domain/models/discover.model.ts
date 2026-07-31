@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 import { WatchPolicy } from "./watch.model.ts";
-import { WorkflowParams } from "./workflow.model.ts";
+import { WorkflowParams, type Trigger } from "./workflow.model.ts";
 
 /**
  * The DISCOVERY cron's data shapes — the fan-out sibling
@@ -86,3 +86,28 @@ export const issueSlug = (issueNumber: number): string => `issue-${issueNumber}`
 
 /** Deterministic fixed instance id for a discovered issue's run (matches the retired sweep's naming). */
 export const issueInstanceId = (issueNumber: number): string => `feature-issue-${issueNumber}`;
+
+/**
+ * The row is a fire-descriptor TEMPLATE: instantiate the per-issue Trigger the scan hands to the
+ * fire choke point — deterministic slug/instance per issue (the row's persisted names
+ * `workflow`/`fireParams` predate the descriptor; this projection is where they become one).
+ * The engine-supplied identity params (repo/slug/issueNumber) win over the row's fireParams.
+ */
+export function discoverTrigger(
+  row: Pick<DiscoverRow, "repo" | "workflow" | "fireParams" | "watch">,
+  issueNumber: number,
+): Trigger & { readonly key: string; readonly instanceId: string; readonly workspaceId: string } {
+  const instanceId = issueInstanceId(issueNumber);
+  return {
+    key: row.workflow,
+    params: {
+      ...row.fireParams,
+      repo: row.repo,
+      slug: issueSlug(issueNumber),
+      issueNumber: String(issueNumber),
+    },
+    instanceId,
+    workspaceId: instanceId,
+    ...(row.watch ? { watch: row.watch } : {}),
+  };
+}

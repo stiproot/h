@@ -6,7 +6,14 @@ Small primitives; everything larger is a composition of them.
 ## Primitives
 
 - **Workflow** — a durable run that does work. Never supervises or sequences itself.
-- **Trigger** — anything that fires a workflow (HTTP, a `workflow-trigger` event, or the cron tick).
+- **Trigger** — anything that fires a workflow (HTTP, a `workflow-trigger` event, or the cron
+  tick). Triggers are data: a trigger's *payload* is the **fire descriptor** — `{key|steps, params,
+  instanceId, workspaceId?, watch?}`, the one shape every fire carrier embeds (the run request, the
+  chain member) or projects per fire (the discovery cron's row per issue, the sched row's resubmit).
+  `instanceId` is required-or-derived: the caller's id wins, else the fire choke point derives a
+  readable `<key>-<yymmdd>-<hhmmss>` (loud `-N` collision suffix) — no fire path waits for Dapr to
+  mint a UUID, so mark-before-fire supervision holds universally. The type is `Trigger`
+  (workflow.model.ts); the `workflow-trigger` topic's `{key, params}` is its degenerate form.
 - **Registry** — durable rows under a single-writer prefix in the flat keyspace.
 - **Watcher** — a registered policy + engine that *supervises* one workflow on the cron tick
   (terminate / retry / escalate). Registry `watch:*`; `h watch list`.
@@ -62,6 +69,12 @@ The same authored-slot/target pattern appears at two levels:
 - **Panel** — a roster-generated parallel group. **Roster** — the plural `--agent` value.
   **Panelist/branch** — one roster agent's step. **Judge** — the pinned synthesis executor.
   **Synthesis** — the judge step emitting the workflow's own contract.
+- **Fire descriptor / trigger payload** — the data a trigger carries: `{key|steps, params,
+  instanceId (required-or-derived), workspaceId?, watch?}` — the core embedded by the run request
+  and the chain member, projected per fire by the discover/sched rows (the `Trigger` type,
+  workflow-svc's workflow.model.ts, mirrored in both agent-server packages). Carriers add their own
+  decorations: sequencing on a member (`kind`, `stage`, `id`, `captures`/`inputs`/`until`, `cron`),
+  fire-time mechanics on a request (`fresh`, `at`/`in`, `armCron`, wf identity, `watchMeta`).
 - **Fire / run / invoke** — *fire* starts a workflow (including fire-and-forget registration);
   *run* is reserved for agent runs and the literal `h workflow run` command; *invoke* is Dapr
   transport only. **Agent run** is one activity's agent invocation (run ledger, `run:` mirrors,

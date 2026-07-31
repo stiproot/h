@@ -1,7 +1,7 @@
 import { WorkflowError } from "core";
 import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Effect, Layer, Option } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { emptyCronLedger } from "./models/cron.model.ts";
 import type { SchedRow } from "./models/schedule.model.ts";
@@ -14,7 +14,12 @@ import type { ExecPolicy } from "./models/exec.model.ts";
 import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
-import { registerWatchForFire, scanWatchesEffect, tallyCost } from "./watch-scan.ts";
+import {
+  invokeWithWatch,
+  registerWatchForFire,
+  scanWatchesEffect,
+  tallyCost,
+} from "./watch-scan.ts";
 
 // ---------------------------------------------------------------------------
 // In-memory fixtures
@@ -263,6 +268,108 @@ describe("registerWatchForFire", () => {
     );
     expect(result).toEqual({ registered: false });
     expect(mem.rows.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// invokeWithWatch (the fire choke point: required-or-derived id, mark-before-fire)
+// ---------------------------------------------------------------------------
+
+describe("invokeWithWatch", () => {
+  // Echoes the scheduled id and reads unscheduled instances as UNKNOWN — the real invoker's
+  // contract, which the derived-id free-slot check rides on.
+  function echoInvoker(taken: string[] = []): {
+    service: WorkflowInvokerService;
+    invokes: WorkflowRequest[];
+  } {
+    const invokes: WorkflowRequest[] = [];
+    const live = new Set(taken);
+    return {
+      invokes,
+      service: {
+        invoke: (req) =>
+          Effect.sync(() => {
+            invokes.push(req);
+            return { instanceId: req.instanceId! };
+          }),
+        getStatus: (instanceId) =>
+          Effect.succeed({
+            instanceId,
+            runtimeStatus: live.has(instanceId) ? "RUNNING" : "UNKNOWN",
+          }),
+        terminate: () => Effect.void,
+      },
+    };
+  }
+  const chokeEnv = (ws: WatchStoreService, invoker: WorkflowInvokerService) =>
+    Layer.mergeAll(Layer.succeed(WatchStore, ws), Layer.succeed(WorkflowInvoker, invoker));
+
+  it("derives a readable id from the descriptor's key, registers mark-before-fire, strips descriptor fields", async () => {
+    const mem = memoryWatchStore();
+    const inv = echoInvoker();
+    const result = await Effect.runPromise(
+      invokeWithWatch({
+        key: "feature-pr",
+        steps: [{ activity: "run-claude" }],
+        watch: { maxDurationMs: 1000 },
+        watchMeta: { owner: "test" },
+      }).pipe(Effect.provide(chokeEnv(mem.service, inv.service))),
+    );
+    expect(result.instanceId).toMatch(/^feature-pr-\d{6}-\d{6}$/);
+    expect(result.watching).toBe(true);
+    // The watch row landed under the derived id (mark-before-fire, no weak form left).
+    expect(mem.rows.get(result.instanceId)).toMatchObject({ status: "scheduling" });
+    // The invoke saw the derived id but none of the registry/provenance fields.
+    expect(inv.invokes[0]!.instanceId).toBe(result.instanceId);
+    expect(inv.invokes[0]).not.toHaveProperty("key");
+    expect(inv.invokes[0]).not.toHaveProperty("watch");
+    expect(inv.invokes[0]).not.toHaveProperty("watchMeta");
+  });
+
+  it("falls back to the wf-identity workflow name, then 'run', as the derivation base", async () => {
+    const mem = memoryWatchStore();
+    const inv = echoInvoker();
+    const provided = chokeEnv(mem.service, inv.service);
+    const viaWf = await Effect.runPromise(
+      invokeWithWatch({
+        steps: [],
+        wf: { repo: "o/r", slug: "s", workflow: "revise-pr" },
+      }).pipe(Effect.provide(provided)),
+    );
+    expect(viaWf.instanceId).toMatch(/^revise-pr-\d{6}-\d{6}$/);
+    const bare = await Effect.runPromise(
+      invokeWithWatch({ steps: [] }).pipe(Effect.provide(provided)),
+    );
+    expect(bare.instanceId).toMatch(/^run-\d{6}-\d{6}$/);
+  });
+
+  it("suffixes -2 loudly when the derived id already names an instance", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-31T09:05:42Z"));
+    try {
+      const mem = memoryWatchStore();
+      // The same-second candidate is already claimed — the fire steps to a visible -2.
+      const collided = echoInvoker(["nightly-260731-090542"]);
+      const result = await Effect.runPromise(
+        invokeWithWatch({ key: "nightly", steps: [] }).pipe(
+          Effect.provide(chokeEnv(mem.service, collided.service)),
+        ),
+      );
+      expect(result.instanceId).toBe("nightly-260731-090542-2");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a caller-chosen instanceId always wins over derivation", async () => {
+    const mem = memoryWatchStore();
+    const inv = echoInvoker();
+    const result = await Effect.runPromise(
+      invokeWithWatch({ key: "feature-pr", steps: [], instanceId: "feature-x" }).pipe(
+        Effect.provide(chokeEnv(mem.service, inv.service)),
+      ),
+    );
+    expect(result.instanceId).toBe("feature-x");
   });
 });
 

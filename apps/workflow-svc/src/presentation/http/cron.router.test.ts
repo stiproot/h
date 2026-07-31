@@ -32,10 +32,30 @@ const stubExecPolicyStore: ExecPolicyStoreService = {
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
-  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  // A missing instance reads UNKNOWN (the port's legacy fallback) — the derived-id free-slot
+  // check depends on it; tests that need a live instance override per-id.
+  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
   terminate: () => Effect.void,
   ...overrides,
 });
+
+// An invoker whose instances go live once scheduled: invoke echoes the (derived) id and getStatus
+// reports RUNNING for it thereafter — what the same-tick watch scan observes after a cron fire.
+const liveInvoker = (): { service: WorkflowInvokerService; live: Set<string> } => {
+  const live = new Set<string>();
+  return {
+    live,
+    service: stubInvoker({
+      invoke: (input) =>
+        Effect.sync(() => {
+          live.add(input.instanceId!);
+          return { instanceId: input.instanceId! };
+        }),
+      getStatus: (instanceId) =>
+        Effect.succeed({ instanceId, runtimeStatus: live.has(instanceId) ? "RUNNING" : "UNKNOWN" }),
+    }),
+  };
+};
 
 const stubStore = (overrides: Partial<WorkflowStoreService> = {}): WorkflowStoreService => ({
   save: () => Effect.void,
@@ -254,9 +274,13 @@ describe("tickEffect compare-and-set", () => {
 
         const result = yield* tickEffect(ticking, "00-abc-def-01").pipe(Effect.provide(env));
         expect(result).toMatchObject({ fired: ["due"] });
-        expect(invoked).toEqual([
-          { steps: dueWorkflow.steps, workspaceId: undefined, traceparent: "00-abc-def-01" },
-        ]);
+        expect(invoked).toHaveLength(1);
+        expect(invoked[0]).toMatchObject({
+          steps: dueWorkflow.steps,
+          traceparent: "00-abc-def-01",
+        });
+        // Required-or-derived id: the fire carries a readable `<key>-<yymmdd>-<hhmmss>`.
+        expect(invoked[0]!.instanceId).toMatch(/^due-\d{6}-\d{6}$/);
         expect(stamped).toHaveLength(1);
         expect(stamped[0]!.key).toBe("due");
       }),
@@ -273,16 +297,17 @@ describe("tickEffect compare-and-set", () => {
           watch: { maxDurationMs: 60_000 },
         };
         const env = envLayer(
-          stubInvoker(),
+          liveInvoker().service,
           stubStore({ listScheduled: () => Effect.succeed([{ key: "sweep", workflow: watched }]) }),
           mem.service,
         );
         const result = yield* tickEffect(ticking, undefined).pipe(Effect.provide(env));
         expect(result).toMatchObject({ fired: ["sweep"] });
-        // The same tick's scan already saw the fresh row and promoted it to watching
-        // (the stub invoker reports RUNNING) — registration and first observation ride
-        // one tick.
-        expect(mem.rows.get("generated-id")).toMatchObject({
+        // The row landed under the DERIVED readable id (mark-before-fire), and the same tick's
+        // scan already saw the live instance and promoted it to watching — registration and
+        // first observation ride one tick.
+        const row = [...mem.rows.values()].find((r) => /^sweep-\d{6}-\d{6}$/.test(r.instanceId));
+        expect(row).toMatchObject({
           status: "watching",
           policy: { maxDurationMs: 60_000 },
           meta: { owner: "sweep" },

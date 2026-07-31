@@ -339,6 +339,9 @@ export function registerWorkflowRoutes(
           // register the cron itself (§10: crons via activities, idempotent so re-fires don't reset it).
           const result = yield* invokeWithWatch({
             ...req,
+            // The descriptor's key rides along as derivation provenance: no caller-chosen
+            // instanceId ⇒ the choke point derives a readable `<key>-<yymmdd>-<hhmmss>`.
+            key: request.params.key,
             ...(wf ? { wf } : {}),
             ...(instanceId ? { instanceId } : {}),
             ...(workspaceId ? { workspaceId } : {}),

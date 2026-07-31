@@ -89,7 +89,9 @@ const stubSourceReader: SourceReaderService = { listOpenIssues: () => Effect.suc
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
-  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  // A missing instance reads UNKNOWN (the port's legacy fallback) — the derived-id free-slot
+  // check depends on it.
+  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
   terminate: () => Effect.void,
   ...overrides,
 });

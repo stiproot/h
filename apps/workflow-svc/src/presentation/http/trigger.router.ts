@@ -18,7 +18,9 @@ import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./
 export const TRIGGER_TOPIC = "workflow-trigger";
 const ROUTE = "/workflow-trigger";
 
-/** The event payload inside the CloudEvents envelope. */
+/** The event payload inside the CloudEvents envelope — the DEGENERATE fire descriptor
+ *  (workflow.model's Trigger with only key + params; identity and supervision come from the
+ *  saved workflow + derivation at the choke point). */
 const TriggerEvent = Schema.Struct({
   key: Schema.String,
   params: Schema.optional(WorkflowParams),
@@ -64,9 +66,11 @@ export const triggerEffect = (
     if (workflow.value.disabled) return { skipped: `workflow '${key}' is disabled` };
 
     // Same choke point as the HTTP/cron paths: a stored watch policy registers the row here
-    // (agreement 9 — trigger-fired runs are supervised too).
+    // (agreement 9 — trigger-fired runs are supervised too). The event's key rides as the
+    // descriptor's derivation base — the fired run gets a readable `<key>-<yymmdd>-<hhmmss>` id.
     const { instanceId } = yield* invokeWithWatch({
       ...toRequest(workflow.value, traceparent, params),
+      key,
       ...(workflow.value.watch ? { watch: workflow.value.watch, watchMeta: { owner: key } } : {}),
     });
     return { fired: key, instanceId };

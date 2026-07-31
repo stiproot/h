@@ -8,7 +8,7 @@ import {
   type DiscoverRow,
   type DiscoverSource,
   discoverId,
-  issueInstanceId,
+  discoverTrigger,
   issueSlug,
 } from "./models/discover.model.ts";
 import type { WatchPolicy } from "./models/watch.model.ts";
@@ -223,7 +223,9 @@ const executeDiscover = (
     report.skipped.push(`${discoverId(row)}: nothing eligible`);
   });
 
-/** Fire one discovered issue's run (fresh, supervised if a watch is set), then stamp the fired state. */
+/** Instantiate the row's per-issue fire descriptor (discoverTrigger), resolve its key, and fire it
+ *  through the choke point (fresh, supervised when the descriptor carries a watch); then stamp the
+ *  fired state. */
 const fireDiscovered = (
   scanned: DiscoverRow,
   issueNumber: number,
@@ -232,34 +234,27 @@ const fireDiscovered = (
   report: DiscoverScanReport,
 ): Effect.Effect<void, WorkflowError, DiscoverScanEnv> =>
   Effect.gen(function* () {
+    const trigger = discoverTrigger(scanned, issueNumber);
     const store = yield* WorkflowStore;
-    const stored = yield* store.get(scanned.workflow);
+    const stored = yield* store.get(trigger.key);
     if (Option.isNone(stored) || stored.value.disabled) {
       return yield* Effect.fail(
         new WorkflowError({
-          cause: `discovery workflow key '${scanned.workflow}' missing or disabled`,
+          cause: `discovery workflow key '${trigger.key}' missing or disabled`,
           instanceId: discoverId(scanned),
         }),
       );
     }
-    const slug = issueSlug(issueNumber);
-    const instanceId = issueInstanceId(issueNumber);
-    const params: WorkflowParams = {
-      ...scanned.fireParams,
-      repo: scanned.repo,
-      slug,
-      issueNumber: String(issueNumber),
-    };
-    const req = toRequest(stored.value, traceparent, params);
+    const req = toRequest(stored.value, traceparent, trigger.params);
     yield* invokeWithWatch({
       ...req,
-      instanceId,
-      workspaceId: instanceId,
+      instanceId: trigger.instanceId,
+      workspaceId: trigger.workspaceId,
       fresh: true,
-      wf: { repo: scanned.repo, slug, workflow: scanned.workflow },
-      ...(scanned.watch
+      wf: { repo: scanned.repo, slug: issueSlug(issueNumber), workflow: scanned.workflow },
+      ...(trigger.watch
         ? {
-            watch: scanned.watch,
+            watch: trigger.watch,
             watchMeta: {
               owner: "discover",
               repo: scanned.repo,
@@ -273,7 +268,7 @@ const fireDiscovered = (
     const now = new Date(nowMs).toISOString();
     const fired: DiscoverRow = {
       ...scanned,
-      currentInstanceId: instanceId,
+      currentInstanceId: trigger.instanceId,
       fires: scanned.fires + 1,
       lastFiredIssue: issueNumber,
       note: `fired #${issueNumber}`,

@@ -29,20 +29,30 @@ export interface WatchPolicy {
   escalate?: { onOutcome: string[]; key: string; params?: Record<string, unknown> };
 }
 
-export interface WorkflowSubmit {
+/**
+ * The fire descriptor — a trigger's payload, the core every fire carrier embeds (mirrors
+ * workflow-svc's `Trigger` in workflow.model.ts): what to fire, its params, its identity, and how
+ * it is supervised.
+ */
+export interface Trigger {
   /** Saved-workflow key (a published template) to fire… */
   key?: string;
   /** …or inline step definitions. Exactly one of key/steps is required. */
   steps?: unknown[];
   params?: Record<string, unknown>;
+  /** Caller-chosen instance id; absent, workflow-svc derives a readable `<key>-<yymmdd>-<hhmmss>`. */
   instanceId?: string;
   workspaceId?: string;
+  /** Full watcher policy, forwarded verbatim to workflow-svc; wins over `policy`. */
+  watch?: WatchPolicy;
+}
+
+/** The submit body: the fire descriptor plus this request's fire-time mechanics. */
+export interface WorkflowSubmit extends Trigger {
   /** Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach). */
   fresh?: boolean;
   /** Legacy shorthand: policy.maxDurationMs becomes watch.maxDurationMs when no watch is given. */
   policy?: BabysitPolicy;
-  /** Full watcher policy, forwarded verbatim to workflow-svc; wins over `policy`. */
-  watch?: WatchPolicy;
   /** Opaque passthrough stamped onto the watch row (e.g. { owner: "discover" }). */
   watchMeta?: Record<string, unknown>;
 }

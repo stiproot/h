@@ -32,7 +32,9 @@ const stubExecPolicyStore: ExecPolicyStoreService = {
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
   invoke: () => Effect.succeed({ instanceId: "generated-id" }),
-  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "RUNNING" }),
+  // A missing instance reads UNKNOWN (the port's legacy fallback) — the derived-id free-slot
+  // check depends on it; tests that need a live instance override per-id.
+  getStatus: (instanceId) => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" }),
   terminate: () => Effect.void,
   ...overrides,
 });
@@ -532,14 +534,19 @@ describe("POST /workflow/run/:key", () => {
       watch: { maxDurationMs: 5_000, retry: { maxAttempts: 2 } },
     };
     const app = await makeApp(
-      stubInvoker(),
+      // Echo invoker: the choke point derives a readable id (no caller-chosen instanceId) and
+      // invokes under it — the watch row must land under that same id, mark-before-fire.
+      stubInvoker({ invoke: (input) => Effect.succeed({ instanceId: input.instanceId! }) }),
       stubStore({ get: () => Effect.succeed(Option.some(stored)) }),
       mem.service,
     );
     const res = await app.inject({ method: "POST", url: "/workflow/run/nightly" });
     expect(res.statusCode).toBe(202);
-    expect(res.json()).toEqual({ instanceId: "generated-id", watching: true });
-    expect(mem.rows.get("generated-id")!.policy.retry).toEqual({ maxAttempts: 2 });
+    const { instanceId, watching } = res.json() as { instanceId: string; watching: boolean };
+    expect(watching).toBe(true);
+    // Required-or-derived: `<key>-<yymmdd>-<hhmmss>`, readable and keyed on the fired template.
+    expect(instanceId).toMatch(/^nightly-\d{6}-\d{6}$/);
+    expect(mem.rows.get(instanceId)!.policy.retry).toEqual({ maxAttempts: 2 });
   });
 });
 

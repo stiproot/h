@@ -1,4 +1,4 @@
-import type { WorkflowError } from "core";
+import { WorkflowError } from "core";
 import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
@@ -15,6 +15,7 @@ import {
   type WorkflowStep,
   type WorkflowParams,
   type WorkflowRequest,
+  deriveInstanceId,
   toRequest,
 } from "./models/workflow.model.ts";
 import { executorFromAgentId, mergeAutoDeny, mergeBudgetDeny } from "./exec-policy.ts";
@@ -76,7 +77,8 @@ export type RegisterOptions = {
 
 /**
  * Registers (or epoch-refreshes) the watch row for a fire of `instanceId`. Mark-before-fire:
- * call this BEFORE invoking when the id is caller-chosen, so a crash between the two leaves a
+ * called BEFORE invoking — every fire path holds a concrete id (caller-chosen or derived, never
+ * a Dapr-minted UUID) — so a crash between the two leaves a
  * `scheduling` row the scan heals as orphaned instead of a silently unsupervised run.
  *
  * - `watch` set + no active row (or `fresh`): write a new incarnation (epoch+1, attempts+1).
@@ -147,11 +149,40 @@ function newIncarnation(
 }
 
 /**
+ * Derive a readable, unclaimed instance id for a fire whose caller chose none:
+ * `<base>-<yymmdd>-<hhmmss>`, and — should the candidate already name an instance (any status)
+ * — a loud `-2`, `-3`… suffix, visible in every surface keyed on the id. Bounded: more than 9
+ * same-second collisions fails loud rather than silently minting something unreadable. `getStatus`
+ * reads a missing instance as UNKNOWN (the port's legacy fallback), which is exactly the
+ * free-slot check.
+ */
+const deriveFreeInstanceId = (
+  base: string | undefined,
+): Effect.Effect<string, WorkflowError, WorkflowInvoker> =>
+  Effect.gen(function* () {
+    const invoker = yield* WorkflowInvoker;
+    const candidate = deriveInstanceId(base ?? "run", Date.now());
+    for (let n = 1; n <= 9; n++) {
+      const id = n === 1 ? candidate : `${candidate}-${n}`;
+      const { runtimeStatus } = yield* invoker.getStatus(id);
+      if (runtimeStatus === "UNKNOWN") return id;
+    }
+    return yield* Effect.fail(
+      new WorkflowError({
+        cause: `could not derive a free instance id from '${candidate}' (9 collisions)`,
+        instanceId: candidate,
+      }),
+    );
+  });
+
+/**
  * The one choke point every fire path goes through (ruling W6): registration cannot silently
- * detach from invocation because both happen in the same handler. Caller-chosen ids register
- * mark-before-fire (a crash between the two leaves a `scheduling` row the scan heals);
- * generated ids register right after the schedule returns them. The `watch` field is stripped
- * off the request here — it is registry data, not workflow input.
+ * detach from invocation because both happen in the same handler. It consumes the request's
+ * embedded fire descriptor: the instanceId is required-or-DERIVED — the caller's id wins, else a
+ * readable `<key>-<yymmdd>-<hhmmss>` — and `watch`/`watchMeta`/`key` are stripped off before the
+ * invoke (registry data and derivation provenance, not workflow input). Every fire registers
+ * mark-before-fire (a crash between the two leaves a `scheduling` row the scan heals); the weak
+ * form — invoke first, register after, waiting on a Dapr-minted UUID — is dead.
  */
 export const invokeWithWatch = (
   request: WorkflowRequest,
@@ -162,20 +193,16 @@ export const invokeWithWatch = (
 > =>
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
-    const { watch, watchMeta, ...req } = request;
+    const { watch, watchMeta, key, ...req } = request;
     const options: RegisterOptions = {
       ...(req.fresh !== undefined ? { fresh: req.fresh } : {}),
       ...(watchMeta ? { meta: watchMeta } : {}),
       ...(watch ? { resubmit: toResubmit(req) } : {}),
     };
-    if (req.instanceId) {
-      const { registered } = yield* registerWatchForFire(req.instanceId, watch, options);
-      const { instanceId } = yield* invoker.invoke(req);
-      return { instanceId, watching: registered };
-    }
-    const { instanceId } = yield* invoker.invoke(req);
+    const instanceId = req.instanceId ?? (yield* deriveFreeInstanceId(key ?? req.wf?.workflow));
     const { registered } = yield* registerWatchForFire(instanceId, watch, options);
-    return { instanceId, watching: registered };
+    const invoked = yield* invoker.invoke({ ...req, instanceId });
+    return { instanceId: invoked.instanceId, watching: registered };
   });
 
 // ---------------------------------------------------------------------------

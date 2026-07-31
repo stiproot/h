@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { WorkflowStep } from "./workflow.model.ts";
+import { TriggerFields } from "./workflow.model.ts";
 
 /**
  * The chain primitive's data shapes: a chain is a durable
@@ -10,8 +10,9 @@ import { WorkflowStep } from "./workflow.model.ts";
  * single-writer (workflow-svc). Where a watch RE-fires one instance (retry), a chain FIRES THE
  * NEXT workflow (advance) — that is the only structural difference.
  *
- * Import-light by design, like watch.model.ts: the only import is `WorkflowStep` (an embedded
- * inline member stores its own hydrated steps, D1 — the same exception cron.model makes), nothing
+ * Import-light by design, like watch.model.ts: the only import is `TriggerFields` — the fire
+ * descriptor a member EMBEDS (which brings `WorkflowStep` for an inline member's hydrated steps,
+ * D1 — the same exception cron.model makes) — nothing
  * else imports back from the request/store schemas. The row IS the chain's durable chain data
  * (`data`) as well as its sequencing state, replacing Phase 1's best-effort `chain:<slug>` mirror.
  */
@@ -62,15 +63,24 @@ export const ChainMember = Schema.Struct({
   // Selects the buildParams/capture contract in chain-members.ts. Distinct from `key`: e.g. the
   // `revise-pr` kind fires the `feature-pr` key but threads reviewFindings into its spec.
   kind: ChainMemberKind,
-  // Saved-workflow key this member fires (resolved via WorkflowStore.get + toRequest). Optional —
-  // EXACTLY ONE of `key` / `steps` (validateChain enforces the XOR). A member is either a reference
-  // to a saved definition (publish-default) or carries its own embedded steps (`--inline`, D1).
-  key: Schema.optional(Schema.String),
-  // Embedded (inline) definition this member fires verbatim (D1 inline storage): the composed steps
-  // live IN the chain:sub row, nothing published to re-hydrate. The alternative to `key`. A cron
-  // member MUST be inline — its self-armed recurrence has no key to reference, so it recurs these
-  // very steps over an embedded source (validateChain enforces cron ⟹ steps).
-  steps: Schema.optional(Schema.Array(WorkflowStep)),
+  // The EMBEDDED fire descriptor (Trigger, workflow.model.ts) — a member is a deferred fire, so it
+  // carries the same core every carrier does. Member-specific readings of the core:
+  //  - key / steps: EXACTLY ONE (validateChain enforces the XOR) — a reference to a saved
+  //    definition (publish-default, resolved via WorkflowStore.get + toRequest) or its own embedded
+  //    steps (`--inline`, D1 inline storage: the composed steps live IN the chain:sub row, nothing
+  //    published to re-hydrate). A cron member MUST be inline — its self-armed recurrence has no
+  //    key to reference, so it recurs these very steps over an embedded source (cron ⟹ steps).
+  //  - instanceId: for this member's run; when several members share one (feature + revise share
+  //    the branch) they name the same id. Absent → the engine derives `<chainId>-wN`.
+  //  - workspaceId: absent → the chain id (members are sequential work on ONE branch/PR, sharing a
+  //    worktree); set it only to opt a member out of the shared workspace.
+  //  - params: per-member fire-time params (identity like runActivity/agentId/model*, mapped by the
+  //    CLI from workflow flags). Merged UNDER the kind contract's threaded params at fire time —
+  //    the CLI never sets threading keys (slug/spec/pr), so the sets stay disjoint.
+  //  - watch: per-member supervision policy (e.g. a `--budget` becomes {maxDurationMs}) — carried
+  //    here because the fire moment is deferred to stage advance ("whoever fires, carries"), and
+  //    registered by the fire path at that moment, mark-before-fire.
+  ...TriggerFields,
   // Recur policy (D2): this member self-arms a recurrence via the §10 arm-* pattern — its own
   // generic.workflow closing bracket runs register-cron (the chain injects `armCron` into the ONE
   // fire, from this policy). The chain engine NEVER writes cron:sub and never re-fires; it only
@@ -95,13 +105,6 @@ export const ChainMember = Schema.Struct({
   // Re-fire semantics: purge a terminal instance and re-run (a revise workflow re-runs its feature-pr
   // instance fresh). Default false — attach to a RUNNING/PENDING instance, no-op a terminal one.
   fresh: Schema.optional(Schema.Boolean),
-  // Instance id for this workflow's run; when several members share one (feature + revise share the branch)
-  // they name the same instanceId. Absent → the engine derives one from the chain + workflow index.
-  instanceId: Schema.optional(Schema.String),
-  // Per-workflow fire-time params (chain-composition-surface §1.9: identity like runActivity/agentId/
-  // model*, mapped by the CLI from workflow flags). Merged OVER the kind contract's buildParams output
-  // at fire time — the CLI never sets threading keys (slug/spec/pr), so the sets stay disjoint.
-  params: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   // Declarative threading over STRUCTURED output.
   // Each field, when present, replaces its half of the kind's coded contract; the DSL is
   // deliberately tiny (rename / require / equals) — anything needing a transform or a conditional

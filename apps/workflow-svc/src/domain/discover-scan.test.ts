@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { registerDiscover, scanDiscoverEffect } from "./discover-scan.ts";
 import { type CronLedger, emptyCronLedger } from "./models/cron.model.ts";
-import type { DiscoverRow } from "./models/discover.model.ts";
+import { type DiscoverRow, discoverTrigger } from "./models/discover.model.ts";
 import type { WatchLedger } from "./models/watch.model.ts";
 import type { WfRow } from "./models/wf.model.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
@@ -307,5 +307,32 @@ describe("scanDiscoverEffect", () => {
     const row = cs.discoverRows.get("stiproot/h:agent-approved")!;
     expect(row.lastRunAt).toBeDefined();
     expect(row.epoch).toBe(2); // mark-scanned bumped the epoch
+  });
+});
+
+describe("discoverTrigger (the row is a fire-descriptor template)", () => {
+  it("instantiates the per-issue descriptor: deterministic id, engine params winning over fireParams", () => {
+    expect(
+      discoverTrigger(
+        {
+          repo: "o/r",
+          workflow: "implement-pr",
+          fireParams: { agentId: "pi-agent", slug: "stale-clobbered" },
+          watch: { maxDurationMs: 1000 },
+        },
+        42,
+      ),
+    ).toEqual({
+      key: "implement-pr",
+      params: { agentId: "pi-agent", repo: "o/r", slug: "issue-42", issueNumber: "42" },
+      instanceId: "feature-issue-42",
+      workspaceId: "feature-issue-42",
+      watch: { maxDurationMs: 1000 },
+    });
+  });
+
+  it("omits watch when the row fires unsupervised", () => {
+    const trigger = discoverTrigger({ repo: "o/r", workflow: "implement-pr" }, 7);
+    expect(trigger).not.toHaveProperty("watch");
   });
 });

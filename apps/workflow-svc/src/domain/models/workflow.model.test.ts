@@ -1,7 +1,13 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { StoredWorkflow, WorkflowRequest, toRequest } from "./workflow.model.ts";
+import {
+  StoredWorkflow,
+  Trigger,
+  WorkflowRequest,
+  deriveInstanceId,
+  toRequest,
+} from "./workflow.model.ts";
 
 const decodeStored = Schema.decodeUnknown(StoredWorkflow, { onExcessProperty: "preserve" });
 
@@ -91,5 +97,48 @@ describe("toRequest", () => {
 
   it("passes fire-time params through when nothing is stored", () => {
     expect(toRequest({ steps: [] }, undefined, { a: 1 }).params).toEqual({ a: 1 });
+  });
+});
+
+describe("Trigger (the fire descriptor)", () => {
+  it("decodes the full core and its degenerate {key, params} trigger-event form", async () => {
+    const full = {
+      key: "feature-pr",
+      params: { slug: "s" },
+      instanceId: "feature-x",
+      workspaceId: "ws",
+      watch: { maxDurationMs: 1000 },
+    };
+    expect(await Effect.runPromise(Schema.decodeUnknown(Trigger)(full))).toEqual(full);
+    const degenerate = { key: "improve-plugin", params: { finding: "f" } };
+    expect(await Effect.runPromise(Schema.decodeUnknown(Trigger)(degenerate))).toEqual(degenerate);
+  });
+
+  it("a WorkflowRequest embeds the descriptor flattened — same wire, key rides as provenance", async () => {
+    const wire = {
+      key: "review-pr",
+      steps: [{ activity: "run-claude" }],
+      params: { pr: "7" },
+      instanceId: "review-x",
+      watch: { maxDurationMs: 1000 },
+      fresh: true,
+    };
+    const decoded = await Effect.runPromise(Schema.decodeUnknown(WorkflowRequest)(wire));
+    expect(decoded).toEqual(wire);
+  });
+});
+
+describe("deriveInstanceId", () => {
+  it("derives <base>-<yymmdd>-<hhmmss> in UTC", () => {
+    expect(deriveInstanceId("feature-pr", Date.parse("2026-07-31T09:05:42.123Z"))).toBe(
+      "feature-pr-260731-090542",
+    );
+  });
+
+  it("sanitizes the base to id-safe chars and falls back to 'run'", () => {
+    const at = Date.parse("2026-07-31T09:05:42Z");
+    expect(deriveInstanceId("owner/repo review", at)).toBe("owner-repo-review-260731-090542");
+    expect(deriveInstanceId("", at)).toBe("run-260731-090542");
+    expect(deriveInstanceId("///", at)).toBe("run-260731-090542");
   });
 });

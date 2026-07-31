@@ -116,9 +116,11 @@ const scanAndFire = (
     for (const { key, workflow } of yield* store.listScheduled()) {
       if (workflow.disabled || !workflow.schedule || !isDue(workflow.schedule, now)) continue;
       // Same choke point as the HTTP paths: a stored watch policy registers the row here
-      // (agreement 9 — cron-fired runs are supervised too).
+      // (agreement 9 — cron-fired runs are supervised too). The saved key rides as the
+      // descriptor's derivation base for the readable instance id.
       yield* invokeWithWatch({
         ...toRequest(workflow, traceparent),
+        key,
         ...(workflow.watch ? { watch: workflow.watch, watchMeta: { owner: key } } : {}),
       });
       yield* store.markRun(key, now.toISOString());

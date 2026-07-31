@@ -1,7 +1,13 @@
 # Per-member `--budget` — a chain member the watcher can budget-terminate
 
 Status: Active — design reviewed via the change diagrams + two operator Q&As (pinned below),
-APPROVED TO BUILD 2026-07-31; nothing built yet — first of the pair, fire-descriptor follows
+APPROVED TO BUILD 2026-07-31. Build order REVERSED: fire-descriptor built first (operator
+instruction, 2026-07-31), and its descriptor embed delivered this plan's SERVER half —
+`ChainMember` carries `watch?` (inside the embedded Trigger core) and chain-scan's
+`fireWorkflow` fires through `invokeWithWatch`, registering the member's policy
+mark-before-fire (unit-tested). REMAINING: the CLI half — `chain.py`'s `--budget` refusal
+becomes the mapping to `watch.maxDurationMs`, the cron-member refusal, tests — and the
+live acceptance run.
 Established: 2026-07-31
 
 The carried item (carried-followups §1, from chain-composition-surface Slice E): `h chain run`
@@ -171,9 +177,18 @@ classDiagram
 
 ## Log
 
-- 2026-07-31 — Review spawned [fire-descriptor](./fire-descriptor.md): this plan's
+- 2026-07-31 — Review spawned [fire-descriptor](./impl/fire-descriptor.md): this plan's
   `ChainMember.watch?` field will land inside the descriptor; build THIS plan first, that
   one absorbs the placement.
+- 2026-07-31 — Order reversed by operator instruction: fire-descriptor built (and archived)
+  first. Its `Trigger` core CONTAINS `watch?`, so embedding it in `ChainMember` and routing
+  `fireWorkflow` through `invokeWithWatch` landed this plan's engine/server seams as a
+  consequence — with unit coverage (a member's watch policy registers as `watch:sub` under
+  the member's deterministic id at stage fire, `{owner: "chain", chainId, member}` meta,
+  stripped before the invoke). The sequence diagram's steps 2 and 5 are therefore DONE;
+  what remains is step 1 (the CLI: `chain_expr` already parses `--budget`; `chain.py` maps
+  it to `watch: {maxDurationMs}` instead of refusing, refuses it on a `--cron` member) and
+  the acceptance list below.
 - 2026-07-31 — Created from carried-followups §1 as the diagram-enrichment exercise of the
   `diagrams` skill (transient change diagrams, delta-color convention). Design reviewed via
   the rendered diagrams before any code.

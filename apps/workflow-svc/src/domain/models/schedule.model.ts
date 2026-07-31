@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { CronSource } from "./cron.model.ts";
 import { WatchPolicy } from "./watch.model.ts";
 import { WfIdentity } from "./wf.model.ts";
+import type { Trigger } from "./workflow.model.ts";
 
 /**
  * The SCHEDULED-FIRE cron's data shapes — the THIRD variant of
@@ -80,3 +81,26 @@ export type SchedRow = Schema.Schema.Type<typeof SchedRow>;
 
 /** The store id (index/key suffix) for a scheduled-fire row — the row carries its own `id`. */
 export const schedId = (id: string): string => id;
+
+/**
+ * The row's resubmit IS a fire descriptor: project the source + row identity into the Trigger the
+ * scan hands to the fire choke point at fireAt. A row-level `workspaceId` (pause/resume, the
+ * usage-limit fallback) overrides the source-embedded one — the continuation runs in the SAME
+ * worktree/state as the paused/limited run. The instanceId is always concrete (the row's).
+ */
+export function schedTrigger(row: SchedRow): Trigger & { readonly instanceId: string } {
+  const base =
+    row.source.mode === "saved"
+      ? { key: row.source.key, ...(row.source.params ? { params: row.source.params } : {}) }
+      : {
+          steps: row.source.steps,
+          ...(row.source.params ? { params: row.source.params } : {}),
+          ...(row.source.workspaceId ? { workspaceId: row.source.workspaceId } : {}),
+        };
+  return {
+    ...base,
+    instanceId: row.instanceId,
+    ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),
+    ...(row.watch ? { watch: row.watch } : {}),
+  };
+}

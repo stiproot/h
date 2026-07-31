@@ -40,30 +40,54 @@ export type ParallelGroup = Schema.Schema.Type<typeof ParallelGroup>;
 export const WorkflowStep = Schema.Union(StepDefinition, ParallelGroup);
 export type WorkflowStep = Schema.Schema.Type<typeof WorkflowStep>;
 
-export const WorkflowRequest = Schema.Struct({
-  steps: Schema.Array(WorkflowStep),
-  // Caller-chosen Dapr instance id. When set, the run uses it instead of a generated GUID, so the
-  // instance id — and therefore the per-run worktree/workspace key — is stable and readable. Starting
-  // a run with an id that already exists reuses that instance rather than creating a duplicate.
+/**
+ * The fire descriptor — a trigger's PAYLOAD ("triggers are data", the glossary's Trigger grown to
+ * its data half): ONE shape for "fire this workflow, supervised like this", embedded identically by
+ * every fire carrier. The run request (standalone fires) and the chain member (fire deferred to
+ * stage advance) EMBED these fields; the discovery cron's row (per discovered issue) and the sched
+ * row's resubmit (at fireAt) PROJECT one per fire. Carriers add their own decorations — sequencing
+ * on a member, fire-time mechanics on a request — the core stays this.
+ */
+export const TriggerFields = {
+  // What to fire — a saved-workflow key the carrier's fire path resolves… (exactly one of
+  // key/steps; each carrier enforces the XOR where it registers/decodes)
+  key: Schema.optional(Schema.String),
+  // …or embedded steps fired verbatim.
+  steps: Schema.optional(Schema.Array(WorkflowStep)),
+  // Named parameters resolved into step inputs as {{params.x}} / {"$ref": "params.x"}.
+  params: Schema.optional(WorkflowParams),
+  // The Dapr instance id — required-or-DERIVED, never Dapr-minted: the caller's id wins; absent,
+  // the fire choke point derives a readable `<key>-<yymmdd>-<hhmmss>` (loud `-N` collision
+  // suffix), so mark-before-fire holds universally and every run is human-addressable (workspace
+  // dir, run ledger, traces). Firing an id that already exists reuses that instance.
   instanceId: Schema.optional(Schema.String),
   // Stable workspace key. When set, every step targets the same reusable agent workspace dir
   // instead of one keyed on the per-run workflow instance id.
   workspaceId: Schema.optional(Schema.String),
+  // Watcher registration: when set, the fire path writes a
+  // durable watch:sub:<instanceId> row in the same handler that schedules — supervision is
+  // decoupled from the caller, never from the invocation. Whoever fires, carries: the policy
+  // rides the carrier and is stripped at the choke point, never workflow input.
+  watch: Schema.optional(WatchPolicy),
+} as const;
+export const Trigger = Schema.Struct(TriggerFields);
+export type Trigger = Schema.Schema.Type<typeof Trigger>;
+
+export const WorkflowRequest = Schema.Struct({
+  // The embedded fire descriptor. This is the post-resolution carrier — the run routes resolve a
+  // saved key to its steps before invoking — so `steps` narrows to REQUIRED here and `key` rides
+  // only as provenance (the derivation base for a derived instanceId; stripped at the fire choke
+  // point, never handed to the workflow runtime).
+  ...TriggerFields,
+  steps: Schema.Array(WorkflowStep),
   // W3C traceparent captured when the run was requested, carried as data so activities can
   // re-attach to the originating trace across the workflow's async/replay boundary.
   traceparent: Schema.optional(Schema.String),
-  // Named parameters resolved into step inputs as {{params.x}} / {"$ref": "params.x"}.
-  params: Schema.optional(WorkflowParams),
   // Opt-in re-run of a TERMINAL instance under the same instanceId: purge its state, then
   // schedule fresh. Default (absent/false) is attach — an existing terminal instance is
   // returned as-is (Dapr durability is the standard; purge-and-rerun was a test-flow
   // convenience and must be asked for). RUNNING/PENDING instances are always reused.
   fresh: Schema.optional(Schema.Boolean),
-  // Watcher registration: when set, the fire path writes a
-  // durable watch:sub:<instanceId> row in the same handler that schedules — supervision is
-  // decoupled from the caller, never from the invocation. The routes strip this field before
-  // handing the request to the workflow runtime.
-  watch: Schema.optional(WatchPolicy),
   // Opaque passthrough stamped onto the watch row for row consumers (e.g. {owner: "discover"}).
   watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   // Registry identity: when set, generic.workflow
@@ -151,6 +175,20 @@ export function toRequest(
 ): WorkflowRequest {
   const merged = stored.params || params ? { ...stored.params, ...params } : undefined;
   return { steps: stored.steps, workspaceId: stored.workspaceId, traceparent, params: merged };
+}
+
+/**
+ * The derived instance id for a fire whose caller chose none: `<base>-<yymmdd>-<hhmmss>` (UTC),
+ * base = the saved key (else the wf-identity workflow name, else "run"), sanitized to id-safe
+ * chars. Readable and collision-poor by construction; the fire choke point resolves an actual
+ * collision with a loud `-N` suffix rather than falling back to a Dapr-minted UUID — that weak
+ * form (invoke first, register the watch after) is dead: mark-before-fire holds universally.
+ */
+export function deriveInstanceId(base: string, nowMs: number): string {
+  const safe = (base || "run").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "run";
+  const iso = new Date(nowMs).toISOString(); // 2026-07-31T09:05:42.123Z
+  const stamp = `${iso.slice(2, 10).replace(/-/g, "")}-${iso.slice(11, 19).replace(/:/g, "")}`;
+  return `${safe}-${stamp}`;
 }
 
 export type AgentResult = {

@@ -8,7 +8,7 @@ import {
   scanSchedEffect,
 } from "./schedule-scan.ts";
 import { type CronLedger, emptyCronLedger } from "./models/cron.model.ts";
-import type { SchedRow } from "./models/schedule.model.ts";
+import { type SchedRow, schedTrigger } from "./models/schedule.model.ts";
 import type { WatchLedger } from "./models/watch.model.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
 import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
@@ -343,5 +343,50 @@ describe("advanceSched (resume)", () => {
       advanceSched("nope").pipe(Effect.flip, Effect.provide(Layer.succeed(CronStore, cs.service))),
     );
     expect((err as { _tag: string })._tag).toBe("NotFound");
+  });
+});
+
+describe("schedTrigger (the row's resubmit IS a fire descriptor)", () => {
+  const base = {
+    id: "sched-1",
+    status: "armed",
+    fireAt: "2026-07-31T10:00:00Z",
+    instanceId: "sched-1",
+    epoch: 1,
+    createdAt: "2026-07-31T09:00:00Z",
+    updatedAt: "2026-07-31T09:00:00Z",
+  } as const;
+
+  it("projects a saved source into {key, params} under the row's instance", () => {
+    const row: SchedRow = {
+      ...base,
+      source: { mode: "saved", key: "feature-pr", params: { slug: "s" } },
+      watch: { maxDurationMs: 1000 },
+    };
+    expect(schedTrigger(row)).toEqual({
+      key: "feature-pr",
+      params: { slug: "s" },
+      instanceId: "sched-1",
+      watch: { maxDurationMs: 1000 },
+    });
+  });
+
+  it("projects an embedded source, the row-level workspaceId winning over the source's", () => {
+    const row: SchedRow = {
+      ...base,
+      source: {
+        mode: "embedded",
+        steps: [{ activity: "run-claude" }],
+        params: { a: "1" },
+        workspaceId: "source-ws",
+      },
+      workspaceId: "paused-run-ws",
+    };
+    expect(schedTrigger(row)).toEqual({
+      steps: [{ activity: "run-claude" }],
+      params: { a: "1" },
+      instanceId: "sched-1",
+      workspaceId: "paused-run-ws",
+    });
   });
 });

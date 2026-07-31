@@ -142,6 +142,11 @@ used here. This section is the terse runtime-facing index.
   (`POST /cron/sched/disarm`).
 - **Trigger** — anything that fires a workflow: HTTP `/workflow/run*`, a `workflow-trigger` event
   `{key, params}`, or the cron tick over saved schedules. Triggers are data; one well-known topic.
+  A trigger's PAYLOAD is the fire descriptor `{key|steps, params, instanceId (required-or-derived
+  `<key>-<yymmdd>-<hhmmss>`, loud collision suffix — no Dapr-minted UUIDs, mark-before-fire holds
+  on every path), workspaceId?, watch?}` — the `Trigger` type (workflow.model.ts), EMBEDDED by
+  `WorkflowRequest` and `ChainMember` (which is how a member carries a per-member `watch?` policy)
+  and PROJECTED per fire by the discover row (per issue) and the sched row's resubmit.
 - **Registry** — durable rows under a claimed prefix in the flat Redis keyspace plus an index key
   (the `__workflow_index__` pattern): saved workflows, `run:*` mirrors, `watch:*`,
   `chain:*`, `cron:*` (recur rows `cron:sub:*` + the discovery/fan-out cron's `cron:discover:*` /

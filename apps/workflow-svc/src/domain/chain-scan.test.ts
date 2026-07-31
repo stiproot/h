@@ -5,10 +5,13 @@ import { describe, expect, it } from "vitest";
 import { disarmChain, registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
 import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "./models/chain.model.ts";
 import { emptyChainLedger } from "./models/chain.model.ts";
+import type { WatchRow } from "./models/watch.model.ts";
+import { emptyLedger } from "./models/watch.model.ts";
 import type { WfIdentity, WfRow } from "./models/wf.model.ts";
 import { wfKey } from "./models/wf.model.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
 import { ChainStore, type ChainStoreService } from "./ports/IChainStore.ts";
+import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
 import { WfStore, type WfStoreService } from "./ports/IWfStore.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
@@ -137,12 +140,34 @@ function memoryWfStore(rows: Record<string, WfRow> = {}): WfStoreService {
   };
 }
 
+// Minimal watch registry: member fires route through invokeWithWatch (the fire choke point),
+// which writes a row only when a member carries an embedded `watch` policy. Tests that assert on
+// per-member supervision inspect `rows`.
+function memoryWatchRegistry(): { service: WatchStoreService; rows: Map<string, WatchRow> } {
+  const rows = new Map<string, WatchRow>();
+  const service: WatchStoreService = {
+    getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
+    listRows: () => Effect.succeed([...rows.values()]),
+    saveRow: (row) => Effect.sync(() => void rows.set(row.instanceId, row)),
+    deleteRow: (id) => Effect.sync(() => void rows.delete(id)),
+    getConfig: () => Effect.succeed(Option.none()),
+    getHeartbeat: () => Effect.succeed(Option.none()),
+    heartbeat: () => Effect.void,
+    getLedger: () => Effect.succeed(emptyLedger),
+    bumpLedger: () => Effect.void,
+    listRunKeys: () => Effect.succeed([]),
+    getRunMeta: () => Effect.succeed(null),
+  };
+  return { service, rows };
+}
+
 function env(
   cs: ChainStoreService,
   invoker: WorkflowInvokerService,
   wfStore: WorkflowStoreService = stubWorkflowStore(),
   publisher: DaprPublisherService = capturingPublisher().service,
   wfRegistry: WfStoreService = memoryWfStore(),
+  watchRegistry: WatchStoreService = memoryWatchRegistry().service,
 ) {
   return Layer.mergeAll(
     Layer.succeed(ChainStore, cs),
@@ -150,6 +175,7 @@ function env(
     Layer.succeed(WorkflowStore, wfStore),
     Layer.succeed(WfStore, wfRegistry),
     Layer.succeed(DaprPublisherTag, publisher),
+    Layer.succeed(WatchStore, watchRegistry),
   );
 }
 
@@ -208,6 +234,75 @@ describe("registerChainForFire", () => {
       chainsRegistered: 1,
       workflowsFired: 1,
     });
+  });
+
+  it("a member's embedded watch policy registers its watch row at the fire moment (mark-before-fire)", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    const watches = memoryWatchRegistry();
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [
+            {
+              kind: "implement-pr",
+              key: "implement-pr",
+              instanceId: "feature-x",
+              watch: { maxDurationMs: 600_000 },
+            },
+            { kind: "review-pr", key: "review-pr", instanceId: "review-x" },
+          ],
+          data: { slug: "x", spec: "do it" },
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(
+          env(
+            mem.service,
+            inv.service,
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            memoryWfStore(),
+            watches.service,
+          ),
+        ),
+      ),
+    );
+    // The member IS a fire descriptor: its watch policy landed as a watch:sub row under the
+    // member's deterministic instance, BEFORE the invoke — per-member supervision, engine-owned.
+    expect(watches.rows.get("feature-x")).toMatchObject({
+      status: "scheduling",
+      policy: { maxDurationMs: 600_000 },
+      meta: { owner: "chain", chainId: "x", member: 0 },
+    });
+    // Only the watched, fired member registered (review-x is stage 1, not fired yet).
+    expect(watches.rows.size).toBe(1);
+    // Registry data never reaches the workflow input.
+    expect(inv.invokes[0]).not.toHaveProperty("watch");
+    expect(inv.invokes[0]).not.toHaveProperty("watchMeta");
+  });
+
+  it("a member's own workspaceId opts out of the chain-shared workspace", async () => {
+    const mem = memoryChainStore();
+    const inv = recordingInvoker();
+    await Effect.runPromise(
+      registerChainForFire(
+        {
+          slug: "x",
+          members: [
+            { kind: "implement-pr", key: "implement-pr", instanceId: "f-x", workspaceId: "own-ws" },
+          ],
+          data: { slug: "x", spec: "do it" },
+        },
+        undefined,
+      ).pipe(
+        Effect.tap(() => scanChainsEffect(undefined)),
+        Effect.provide(env(mem.service, inv.service)),
+      ),
+    );
+    expect(inv.invokes[0].workspaceId).toBe("own-ws");
   });
 
   it("stamps the wf-registry identity on the fired workflow when the chain data carries a repo", async () => {

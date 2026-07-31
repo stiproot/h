@@ -3,7 +3,12 @@ import { Effect, Option } from "effect";
 
 import { decide } from "./schedule-engine.ts";
 import { type CronSource, cronLedgerDate } from "./models/cron.model.ts";
-import { type SchedOutcome, type SchedRow, schedId } from "./models/schedule.model.ts";
+import {
+  type SchedOutcome,
+  type SchedRow,
+  schedId,
+  schedTrigger,
+} from "./models/schedule.model.ts";
 import type { WatchPolicy } from "./models/watch.model.ts";
 import type { WfIdentity } from "./models/wf.model.ts";
 import { type WorkflowRequest, toRequest } from "./models/workflow.model.ts";
@@ -269,47 +274,47 @@ const executeFire = (
     yield* (yield* CronStore).bumpLedger(cronLedgerDate(nowMs), { scheduledFires: 1 });
   });
 
-/** Build the fire request from the row's source, stamp identity + instance, invoke fresh + supervised. */
+/** Project the row's resubmit descriptor (schedTrigger), resolve its key|steps, and fire it
+ *  through the choke point — fresh, supervised when the descriptor carries a watch. */
 const fireSched = (
   row: SchedRow,
   traceparent: string | undefined,
 ): Effect.Effect<void, WorkflowError, SchedScanEnv> =>
   Effect.gen(function* () {
+    const trigger = schedTrigger(row);
     let req: WorkflowRequest;
-    let workspaceId: string | undefined;
-    if (row.source.mode === "saved") {
+    let workspaceId = trigger.workspaceId;
+    if (trigger.key !== undefined) {
       const wfStore = yield* WorkflowStore;
-      const stored = yield* wfStore.get(row.source.key);
+      const stored = yield* wfStore.get(trigger.key);
       if (Option.isNone(stored) || stored.value.disabled) {
         return yield* Effect.fail(
           new WorkflowError({
-            cause: `scheduled source key '${row.source.key}' missing or disabled`,
+            cause: `scheduled source key '${trigger.key}' missing or disabled`,
             instanceId: row.id,
           }),
         );
       }
-      req = toRequest(stored.value, traceparent, row.source.params);
-      workspaceId = stored.value.workspaceId;
+      req = toRequest(stored.value, traceparent, trigger.params);
+      // The descriptor's workspaceId (row-level override, else source-embedded) wins over the
+      // saved definition's own.
+      workspaceId = trigger.workspaceId ?? stored.value.workspaceId;
     } else {
       req = {
-        steps: [...row.source.steps],
-        ...(row.source.params ? { params: row.source.params } : {}),
+        steps: [...(trigger.steps ?? [])],
+        ...(trigger.params ? { params: trigger.params } : {}),
         traceparent,
       };
-      workspaceId = row.source.workspaceId;
     }
-    // A row-level workspaceId (pause/resume + fallback) overrides the source-derived one — the
-    // continuation runs in the SAME worktree/state as the paused/limited run.
-    if (row.workspaceId) workspaceId = row.workspaceId;
     yield* invokeWithWatch({
       ...req,
-      instanceId: row.instanceId,
+      instanceId: trigger.instanceId,
       ...(workspaceId ? { workspaceId } : {}),
       fresh: true,
       ...(row.wf ? { wf: row.wf } : {}),
-      ...(row.watch
+      ...(trigger.watch
         ? {
-            watch: row.watch,
+            watch: trigger.watch,
             watchMeta: { owner: "schedule", origin: row.origin ?? "at", schedId: row.id },
           }
         : {}),

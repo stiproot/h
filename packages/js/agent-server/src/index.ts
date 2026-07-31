@@ -17,6 +17,7 @@ export { WorkflowBabysitter } from "./workflow-babysitter.ts";
 export type {
   BabysitPolicy,
   BabysitterConfig,
+  Trigger,
   WatchPolicy,
   WorkflowSubmit,
 } from "./workflow-babysitter.ts";

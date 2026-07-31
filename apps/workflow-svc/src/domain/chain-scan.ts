@@ -19,9 +19,11 @@ import { CRON_DISARM_TOPIC } from "./models/cron.model.ts";
 import { wfIdentityFrom } from "./models/wf.model.ts";
 import { toRequest, type WorkflowRequest } from "./models/workflow.model.ts";
 import { ChainStore } from "./ports/IChainStore.ts";
+import { WatchStore } from "./ports/IWatchStore.ts";
 import { WfStore } from "./ports/IWfStore.ts";
 import { WorkflowInvoker } from "./ports/IWorkflowInvoker.ts";
 import { WorkflowStore } from "./ports/IWorkflowStore.ts";
+import { invokeWithWatch } from "./watch-scan.ts";
 
 /**
  * The effectful half of the chain engine, sibling of watch-scan.ts: registration on the fire path,
@@ -40,10 +42,13 @@ const PUBSUB = "pubsub";
 const EVENTS_TOPIC = "workflow-events";
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
+// WatchStore rides along because member fires go through invokeWithWatch (the fire choke point):
+// a member's embedded `watch` policy registers there, mark-before-fire, at its deferred fire moment.
 export type ChainScanEnv =
   | ChainStore
   | WorkflowInvoker
   | WorkflowStore
+  | WatchStore
   | WfStore
   | DaprPublisherTag;
 
@@ -152,7 +157,8 @@ export const registerChainForFire = (
 
 /**
  * Fires the member at `memberIndex`: build its params from the chain data (the engine-coded
- * contract), resolve its saved workflow, invoke under the member's instanceId, and bump the ledger.
+ * contract), resolve its saved workflow, and pass the member's embedded fire descriptor through
+ * the fire choke point (invokeWithWatch) under the member's instanceId, bumping the ledger.
  * Fails with a WorkflowError the caller turns into a failed-chain finalize. Assumes the row already
  * reflects the member's stage (registration and advance both mark-before-fire).
  */
@@ -163,7 +169,6 @@ const fireWorkflow = (
   forceFresh = false,
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
-    const invoker = yield* WorkflowInvoker;
     const wfStore = yield* WorkflowStore;
     const member = row.members[memberIndex];
     if (!member) return;
@@ -225,22 +230,31 @@ const fireWorkflow = (
       base = toRequest(stored.value, traceparent, params);
     }
     const instanceId = instanceIdAt(row.chainId, row.members, memberIndex);
-    yield* invoker.invoke({
+    // The member IS a fire descriptor; its deferred fire moment is now, so it goes through the
+    // same choke point as every other carrier — its embedded `watch` policy (if any) registers
+    // there, mark-before-fire (member ids are deterministic).
+    yield* invokeWithWatch({
       ...base,
       instanceId,
-      // Chain members are sequential work on ONE branch/PR, so they SHARE a workspace keyed by the
-      // chain id (the reusable-workspace pattern): every member's worktree/workspace dir resolves to
-      // the same path. Without this, member N's create-worktree cuts feature/<slug> at a
-      // per-instanceId path and collides with an earlier member's worktree of the same branch
+      // Chain members are sequential work on ONE branch/PR, so by default they SHARE a workspace
+      // keyed by the chain id (the reusable-workspace pattern): every member's worktree/workspace
+      // dir resolves to the same path. Without this, member N's create-worktree cuts feature/<slug>
+      // at a per-instanceId path and collides with an earlier member's worktree of the same branch
       // ("'feature/<slug>' is already used by worktree at …"). Idempotent: the first member creates
-      // the worktree, later members reuse it.
-      workspaceId: row.chainId,
+      // the worktree, later members reuse it. A member's own workspaceId opts it out.
+      workspaceId: member.workspaceId ?? row.chainId,
       // A loop re-fire (forceFresh) must purge the terminal prior instance to re-run.
       fresh: forceFresh || (member.fresh ?? false),
       ...(wf ? { wf } : {}),
       // A cron member arms its OWN recurrence in its closing bracket (register-cron reads input.steps
       // for the embedded source); the chain only observes it thereafter.
       ...(armCron ? { armCron } : {}),
+      ...(member.watch
+        ? {
+            watch: member.watch,
+            watchMeta: { owner: "chain", chainId: row.chainId, member: memberIndex },
+          }
+        : {}),
     });
     yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { workflowsFired: 1 });
   });

@@ -30,17 +30,26 @@ class BabysitPolicy(BaseModel):
     maxDurationMs: int | None = None
 
 
-class WorkflowSubmit(BaseModel):
+class Trigger(BaseModel):
+    """The fire descriptor — a trigger's payload, the core every fire carrier embeds
+    (sibling of workflow-svc's `Trigger` in workflow.model.ts and js/agent-server's)."""
+
     key: str | None = None
     steps: list[dict[str, Any]] | None = None
     params: dict[str, Any] | None = None
+    # Caller-chosen instance id; absent, workflow-svc derives a readable <key>-<yymmdd>-<hhmmss>.
     instanceId: str | None = None
     workspaceId: str | None = None
+    # Explicit engine watch spec — forwarded verbatim, wins over policy.
+    watch: dict[str, Any] | None = None
+
+
+class WorkflowSubmit(Trigger):
+    """The submit body: the fire descriptor plus this request's fire-time mechanics."""
+
     # Opt-in purge-and-rerun of a terminal instance under the given instanceId (default: attach).
     fresh: bool | None = None
     policy: BabysitPolicy | None = None
-    # Explicit engine watch spec — forwarded verbatim, wins over policy.
-    watch: dict[str, Any] | None = None
     watchMeta: dict[str, Any] | None = None
 
 
