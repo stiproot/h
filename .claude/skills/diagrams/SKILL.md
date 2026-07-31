@@ -6,11 +6,42 @@ description: The visual communication layer — canonical mermaid diagrams under
 # Diagrams — communicating through pictures, not prose walls
 
 The operator and the assistant iterate fast; prose summaries of changes pile up faster than
-they can be read. The fix: a CORE SET of canonical mermaid diagrams under `docs/diagrams/`
-that model the architecture and its interactions. Changes are then communicated by pointing
-at (or diffing) a diagram, not by re-narrating the system.
+they can be read. The fix: diagrams as the communication medium, in TWO GENRES:
 
-## The three rules
+- **Canonical** — the core set under `docs/diagrams/`, modeling the architecture AS IT IS.
+  Registered in the index, update-with-the-change, drift-checked where generated. The rules
+  below govern these.
+- **Transient** — diagrams that EXPRESS AN IDEA: a proposed change in a plan doc, a design
+  alternative in a conversation, a before/after in a PR body. They live inside their host
+  document and die with it (plans are transient; so are their pictures). NOT registered in
+  the index, NOT drift-checked, allowed to show intention rather than reality — that is
+  their whole job. Render them the same way (`tools/diagrams/render.sh <path/to/doc.md>`)
+  and share the PNGs.
+
+A transient diagram GRADUATES to canonical when, after its change lands, the picture keeps
+being the way the system gets explained — then it moves to `docs/diagrams/`, gets reframed
+to model reality, and joins the index.
+
+## Enriching a plan with change diagrams (the standard proposal workflow)
+
+When a plan item proposes a change to interactions or contracts, put the diagrams IN the
+plan doc (transient genre): typically one sequence diagram (how the flow changes) and one
+class diagram (how the contracts change), then render and share the images so the proposal
+is reviewable on any device.
+
+**The delta-color convention** — make what is NEW or CHANGED visually obvious:
+
+- classDiagram: `classDef added fill:#dcfce7,stroke:#16a34a` (green = new),
+  `classDef changed fill:#fef9c3,stroke:#ca8a04` (amber = behavior/shape changes),
+  untouched elements stay default. The `:::` tag must sit ON THE DECLARATION
+  (`class X:::added {`) — a standalone `class X:::added` after a bodied declaration is
+  silently ignored. Body lines must keep parens BALANCED per line (an unbalanced `(` crashes
+  mermaid's member parser). State the legend in prose.
+- sequenceDiagram: wrap NEW interaction segments in `rect rgb(220,252,231)` … `end`
+  (green tint); mark changed messages with a `[CHANGED]` prefix; leave unchanged machinery
+  untinted and say so in a Note.
+
+## The three rules (canonical genre)
 
 1. **Sources are the truth, one home each.** A diagram is one `docs/diagrams/<name>.md`:
    a short prose frame, ONE mermaid fence, reading notes. GitHub, IDEs, and Claude artifacts

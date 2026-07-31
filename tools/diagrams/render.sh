@@ -11,7 +11,9 @@
 #
 # Usage:
 #   tools/diagrams/render.sh                # render every docs/diagrams/*.md (except README)
-#   tools/diagrams/render.sh <name>         # render one, e.g. implement-pr-run
+#   tools/diagrams/render.sh <name>         # one canonical diagram, e.g. implement-pr-run
+#   tools/diagrams/render.sh <path/to.md>   # any markdown with mermaid fences (e.g. a plan
+#                                           # doc carrying TRANSIENT change diagrams)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -47,7 +49,12 @@ render_one() {
 }
 
 if [ $# -ge 1 ]; then
-  render_one "$SRC_DIR/$1.md"
+  # A path (contains / or ends .md) renders as-is — the transient-diagram case; a bare name
+  # resolves within the canonical set.
+  case "$1" in
+    */* | *.md) render_one "$1" ;;
+    *) render_one "$SRC_DIR/$1.md" ;;
+  esac
 else
   found=0
   for src in "$SRC_DIR"/*.md; do

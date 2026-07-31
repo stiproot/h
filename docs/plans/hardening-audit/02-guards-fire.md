@@ -1,12 +1,18 @@
 # Phase 2 — Make the guards fire
 
-Status: Active — 1 item(s), none started
+Status: Complete — the one item (A0) landed 2026-07-29 via PR #100; verified firing live
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
 The single high-severity finding: every encoded guard is manual-invocation-only. Everything in phases 3–5 only matters if something runs it.
 
-## [ ] A0. Entire guard surface runs only on manual invocation — no CI or git hook executes it
+## [x] A0. Entire guard surface runs only on manual invocation — no CI or git hook executes it
+
+> **VERIFIED COMPLETE 2026-07-31 (landed 2026-07-29, PR #100).** Both layers exist and FIRE:
+> `.github/workflows/guards.yml` runs the full lint→build→test→pytest surface on every push
+> (self-hosted `h-dev` runner, tools/ci-runner/ — it caught PR #103's ruff violations live on
+> 2026-07-30), and the pre-push hook (`scripts/hooks/pre-push`, `core.hooksPath`) runs the lint
+> half locally. The branch-protection follow-up is carried-followups §16.
 
 *Severity: high · effort: medium*
 

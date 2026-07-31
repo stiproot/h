@@ -34,6 +34,9 @@ per-member watch budget does not. Needs `ChainMember` to carry a watch policy an
 
 *Revisit when:* a chain has one member that legitimately needs a much tighter or looser
 budget than its siblings — today the chain-wide budget covers every observed case.
+*2026-07-31:* design written up with change diagrams in
+[per-member-budget](../per-member-budget.md) (Status: Planning) — the item leaves here when
+that plan builds.
 
 ---
 

@@ -1,6 +1,6 @@
 # Hardening audit — encode the unguarded invariants
 
-Status: Active — 29 verified hardening findings, split per-area into this directory's phase docs. Phase 3 done (PR #55, 2026-07-23); phases 1, 2, 4, 5 open.
+Status: Active — 29 verified hardening findings, split per-area into this directory's phase docs. Phases 2 (A0, PR #100), 3 (PR #55), and 5 complete; phase 1 partial (3/11); phase 4 open on A26 only.
 Established: 2026-07-23
 
 ## Phase docs

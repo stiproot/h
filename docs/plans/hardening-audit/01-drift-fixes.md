@@ -1,6 +1,6 @@
 # Phase 1 — Live drift & bug fixes
 
-Status: Active — 11 item(s), 2 complete (A16, A29 — both 2026-07-28)
+Status: Active — 11 item(s), 3 complete (A16, A29 2026-07-28; A1 verified 2026-07-31); remainder are doc/steering fixes
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
@@ -61,7 +61,13 @@ ImportError'd otherwise). Both zero-test apps gained a pytest suite, wired into 
 (5 tests each). Verified at runtime, not just by test: an absolute path and a `../../..` traversal
 are both refused and the victim file is never created, while legitimate writes still land.
 
-## [ ] A1. AGENT_IDENTITY table has already drifted from activity-registry (codex missing) and nothing checks the sync
+## [x] A1. AGENT_IDENTITY table has already drifted from activity-registry (codex missing) and nothing checks the sync
+
+> **VERIFIED COMPLETE 2026-07-31.** Both halves exist: the codex (and since, kimi) entries are
+> in AGENT_IDENTITY/AGENT_URLS, and the prescribed guard is `cli/h/tests/test_agent_identity_sync.py`
+> — regex-extracts the engine's run-* registry, classifies shared-input activities from their
+> Input declarations (no hand-maintained exclusion list), asserts both identity keys + the URL
+> entry per agent. Runs in the standard h-cli pytest.
 
 *Severity: medium · effort: small*
 
