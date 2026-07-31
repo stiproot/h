@@ -99,7 +99,12 @@ plaintext env vars on this machine while a job runs — inherent to self-hosting
 3. Actions policy is `selected`: github-owned + `oven-sh/setup-bun@*`,
    `astral-sh/setup-uv@*`, `azure/setup-helm@*` (exactly what guards.yml uses); workflow
    token permissions are read-only, no PR-approval rights.
-4. AFTER the flip (these APIs only exist for public repos):
+4. Branch protection on `main`: PRs required with the `Guard surface (lint → build → test
+   → pytest)` check green, conversations resolved, no force-push/deletion — but
+   `enforce_admins: false`, so the OWNER (and agents on the owner's PAT — same identity)
+   still push straight to main; everyone else contributes by PR. Applied via
+   `PUT /branches/main/protection` (body in git history of this file's commit).
+5. AFTER the flip (these APIs only exist for public repos):
 
    ```sh
    # require approval for fork-PR workflows from ALL outside collaborators
