@@ -40,6 +40,10 @@ is reviewable on any device.
 - sequenceDiagram: wrap NEW interaction segments in `rect rgb(220,252,231)` … `end`
   (green tint); mark changed messages with a `[CHANGED]` prefix; leave unchanged machinery
   untinted and say so in a Note.
+- RED = a REJECTED path or the conflict that killed it (`rect rgb(254,226,226)` in
+  sequences; `classDef rejected fill:#fee2e2,stroke:#dc2626` in class diagrams) — design
+  docs should show the alternative they refuse, not just the one they choose (exemplar:
+  the fire-descriptor plan's arbitration-conflict diagram).
 
 ## The three rules (canonical genre)
 

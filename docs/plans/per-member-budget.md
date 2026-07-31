@@ -171,6 +171,9 @@ classDiagram
 
 ## Log
 
+- 2026-07-31 — Review spawned [fire-descriptor](./fire-descriptor.md): this plan's
+  `ChainMember.watch?` field will land inside the descriptor; build THIS plan first, that
+  one absorbs the placement.
 - 2026-07-31 — Created from carried-followups §1 as the diagram-enrichment exercise of the
   `diagrams` skill (transient change diagrams, delta-color convention). Design reviewed via
   the rendered diagrams before any code.
