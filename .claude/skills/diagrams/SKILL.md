@@ -57,14 +57,14 @@ is reviewable on any device.
    A stale diagram is worse than none.
 3. **Model reality, not intention.** Verify the flow against code (or a live run) before
    drawing it. A diagram that shows what we meant to build communicates the wrong thing.
-   (Drawing implement-pr-run surfaced that the saved workflow was stale — modeling forces
+   (Drawing implement-pr-run-sequence surfaced that the saved workflow was stale — modeling forces
    verification.)
 
 ## Rendering to images (for chat, Slack, a phone)
 
 ```sh
 tools/diagrams/render.sh                      # all diagrams → docs/diagrams/rendered/*.png
-tools/diagrams/render.sh implement-pr-run     # just one
+tools/diagrams/render.sh implement-pr-run-sequence     # just one
 ```
 
 Self-provisioning: mermaid-cli lives in the gitignored `tools/diagrams/.deps/` (installed
@@ -73,14 +73,25 @@ app images). `rendered/` is
 gitignored; render on demand and share the PNG (in a Claude session: `SendUserFile` the PNG,
 or publish the .md as an artifact — both render the diagram).
 
-## Generated diagrams (C4 code level) — the AST is the truth for members
+## Generated diagrams (class / C4 code level) — the AST is the truth for members
 
-Level-4 diagrams date fastest, so they are GENERATED, not hand-drawn:
-`tools/diagrams/gen-code-diagram.mjs` extracts members (interface methods/props, union arms, module
-function signatures) from the TypeScript AST, while SCOPE, TOPOLOGY, and NOTES stay curated
-in a manifest embedded in the doc (`<!-- gen:c4-code {json} -->`). This keeps the c4-code
-guide's story-members-only rule honest: curation picks the symbols, the parser never lets
-their members go stale.
+**The rule: a canonical class diagram of code contracts is GENERATED, never hand-drawn.**
+Member lists date fastest, so hand-writing them is authoring instant drift. If the tooling
+can't express what you need — a language it doesn't parse, a symbol kind it doesn't extract —
+EXTEND THE TOOLKIT in the same change (a new extractor or kind beside the existing ones);
+do not fall back to hand-editing a fence. Hand-authoring is only for the genres no AST
+holds: sequence/state diagrams (runtime interaction — verify those against code instead)
+and C4 component/container framing.
+
+`tools/diagrams/gen-code-diagram.mjs` extracts members from the AST of BOTH stacks —
+TypeScript via the compiler API (`ts-extract.mjs`: interface methods/props, union arms,
+module function signatures) and Python via the stdlib `ast` module (`py-extract.py` +
+`py-extract.mjs`: dataclass/class fields + properties + public methods, module functions +
+consts), dispatched by the manifest entry's file extension. An `external` kind carries
+fully-curated collaborator boxes (a binary, a peer service). SCOPE, TOPOLOGY, and NOTES stay
+curated in a manifest embedded in the doc (`<!-- gen:c4-code {json} -->`). This keeps the
+c4-code guide's story-members-only rule honest: curation picks the symbols, the parser never
+lets their members go stale.
 
 - **Never hand-edit a generated fence** — edit the manifest (scope/relations/notes) or the
   code, then `node tools/diagrams/gen-code-diagram.mjs`. Drift is a LINT FAILURE
@@ -102,13 +113,21 @@ their members go stale.
 
 ## Authoring guidance
 
+- **File naming — the kind lives in the name**: `<scope>-<kind>.md`, kind one of
+  `-sequence`, `-class` (UML class / generated C4 code — both mermaid `classDiagram`),
+  `-c4-component`, `-uml-component`, `-c4-container`, `-c4-context`, `-state`. A reader must
+  be able to tell a C4 component diagram from a UML class diagram by file name alone
+  (`agent-cli-c4-component.md` vs `agent-cli-class.md`). Sequence and class are the
+  operator's primary kinds — when adding coverage for a component, those two come first:
+  the class diagram GENERATED (see Generated diagrams above — never hand-drawn), the
+  sequence diagram hand-authored and verified against the code.
 - **Kinds**: sequence diagrams for interactions (the default — this is a runtime whose
   interesting facts are message flows); C4 (via the c4-mermaid-plugin skills — load the
   matching `c4-*` skill and follow its syntax + required validation step) for structure;
   UML COMPONENT diagrams for the interface-centric view (what a component PROVIDES vs
   REQUIRES — distinct from C4 component, which shows collaboration; mermaid has no native
   type, so the encoding is `classDiagram` with `<<component>>`/`<<interface>>` stereotypes,
-  provides = `..|>`, requires = `..>`; exemplar: docs/diagrams/agent-cli-uml-components.md);
+  provides = `..|>`, requires = `..>`; exemplar: docs/diagrams/agent-cli-uml-component.md);
   state diagrams for lifecycle rows (watch/chain/cron statuses). The `code-comprehension`
   plugin produces EPHEMERAL diagrams in answers; when one keeps getting redrawn, it
   graduates into docs/diagrams/ under these rules.

@@ -1,7 +1,7 @@
 # agent-cli — UML component diagram
 
 The INTERFACE-centric view of `packages/js/agent-cli` — distinct from the
-[C4 component diagram](./agent-cli-components.md) (which shows collaboration structure):
+[C4 component diagram](./agent-cli-c4-component.md) (which shows collaboration structure):
 here the first-class citizens are the CONTRACT POINTS — what each component PROVIDES
 (realization, `..|>`) and REQUIRES (dependency, `..>`). This is the view that answers "what
 must I implement, and what may I depend on?"
@@ -92,4 +92,4 @@ classDiagram
   those two.
 - The C4 component diagram remains the "who collaborates with whom" view; use this one when
   the question is contracts, that one when the question is structure, and the
-  [code diagram](./agent-cli-code.md) when the question is exact member shapes.
+  [code diagram](./agent-cli-class.md) when the question is exact member shapes.

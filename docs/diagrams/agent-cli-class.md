@@ -1,9 +1,9 @@
-# agent-cli — code diagram (C4 level 4)
+# agent-cli — class diagram (C4 code level, generated)
 
 Zooming into the load-bearing seam of `packages/js/agent-cli`: the `AgentStrategy` contract
 and the types that flow through a run. GENERATED deterministically from the TypeScript AST by
 `tools/diagrams/gen-code-diagram.mjs` (members are code truth; scope/topology/notes are curated in
-the manifest comment below) — only the symbols that tell the story (the [component diagram](./agent-cli-components.md) is the level
+the manifest comment below) — only the symbols that tell the story (the [component diagram](./agent-cli-c4-component.md) is the level
 above; this level exists because every agent integration is written against exactly these
 shapes — the `integrate-agent` skill's "CLI strategy" piece).
 

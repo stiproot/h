@@ -23,16 +23,27 @@ import { fileURLToPath } from "node:url";
 
 import { generateClassDiagram } from "./mermaid-class.mjs";
 import { parseManifest, replaceFence } from "./managed-doc.mjs";
+import { extractPyClass } from "./py-extract.mjs";
 import { extractClass } from "./ts-extract.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DIAGRAMS = join(root, "docs/diagrams");
 
+// Extractor dispatch: `external` entries are fully curated (collaborators with no extractable
+// source — a binary, a peer service); otherwise the file extension picks the language extractor.
+function extractEntry(entry) {
+  if (entry.kind === "external") {
+    return { lines: entry.note ? [entry.note] : [], stereotype: entry.stereotype };
+  }
+  if (entry.file?.endsWith(".py")) return extractPyClass(root, entry, { join });
+  return extractClass(root, entry, { join });
+}
+
 function processDoc(path, check) {
   const text = readFileSync(path, "utf8");
   const manifest = parseManifest(text);
   if (manifest === null) return { managed: false };
-  const diagram = generateClassDiagram(manifest, (entry) => extractClass(root, entry, { join }));
+  const diagram = generateClassDiagram(manifest, extractEntry);
   const next = replaceFence(text, diagram);
   if (next === text) return { managed: true, changed: false };
   if (!check) writeFileSync(path, next);

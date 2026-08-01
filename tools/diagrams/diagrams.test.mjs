@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import { capLine, shortType } from "./sanitize.mjs";
 import { extractFromSource, fromSource } from "./ts-extract.mjs";
+import { extractPyFromSource } from "./py-extract.mjs";
 import { generateClassDiagram } from "./mermaid-class.mjs";
 import { parseManifest, replaceFence } from "./managed-doc.mjs";
 
@@ -94,6 +95,65 @@ test("a missing symbol fails loudly, never a silent empty class", () => {
   assert.throws(
     () => extractFromSource(fromSource(SRC), { kind: "interface", symbol: "Nope" }),
     /interface Nope not found/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// py-extract (source-text entry — shells the stdlib-ast script, no fixtures on disk)
+// ---------------------------------------------------------------------------
+
+const PY_SRC = `
+from dataclasses import dataclass
+
+JUDGE = "run-claude"
+TABLE: dict[str, tuple[str, str]] = {}
+
+@dataclass(frozen=True)
+class MemberRef:
+    key: str | None = None
+    templates: tuple[str, ...] = ()
+    _secret: int = 0
+
+    @property
+    def label(self) -> str:
+        return ""
+
+    def merge(self, other: "MemberRef") -> "MemberRef":
+        return other
+
+def parse_expr(tokens: list[str]) -> "ChainExpr":
+    ...
+`;
+
+test("py class extraction: public annotated fields, properties, public methods; frozen dataclass stereotype", () => {
+  const { lines, stereotype } = extractPyFromSource(PY_SRC, { kind: "class", symbol: "MemberRef" });
+  assert.equal(stereotype, "frozen dataclass");
+  assert.deepEqual(lines, [
+    "+key str | None",
+    "+templates tuple~str~",
+    "+label str",
+    "+merge(other) MemberRef",
+  ]);
+});
+
+test("py module extraction: consts (annotation or string value) then function signatures", () => {
+  const { lines, stereotype } = extractPyFromSource(PY_SRC, {
+    kind: "module",
+    functions: ["parse_expr"],
+    consts: ["JUDGE", "TABLE"],
+  });
+  assert.equal(stereotype, "module <source>");
+  assert.deepEqual(lines, [
+    "+JUDGE (run-claude)",
+    "+TABLE dict~str~",
+    "+parse_expr(tokens) ChainExpr",
+  ]);
+});
+
+test("py extraction fails loudly on a missing symbol, never a silent empty class", () => {
+  assert.throws(
+    () => extractPyFromSource(PY_SRC, { kind: "class", symbol: "Nope" }),
+    /class Nope not found/,
   );
 });
 

@@ -24,11 +24,18 @@ workspace glob) — still never `packages/js/*` unless runtime code imports it.
 | --- | --- | --- |
 | `sanitize.mjs` | text | Type-text → mermaid-safe member text (the 4 documented rules) |
 | `ts-extract.mjs` | source text (`fromSource`) | TS AST → class body lines per manifest entry (interface / union / const / module) |
+| `py-extract.py` + `py-extract.mjs` | source text (`extractPyFromSource`) | Python AST (stdlib `ast`, shelled via `python3`) → class body lines (class incl. dataclasses / module + consts); the sanitize rules translated to Python syntax live in the .py, line capping stays JS-side |
 | `mermaid-class.mjs` | manifest + injected extractor | classDiagram assembly; realization edges from const annotations |
 | `managed-doc.mjs` | doc text | `<!-- gen:c4-code {json} -->` manifest parse + fence replacement |
 
-Thin CLIs compose them: `gen-code-diagram.mjs` (regenerate / `--check`; the lint entry) and
+Thin CLIs compose them: `gen-code-diagram.mjs` (regenerate / `--check`; the lint entry —
+dispatches the extractor by the manifest entry's file extension, `.py` → py-extract, else
+ts-extract; the `external` kind is a fully-curated box for collaborators with no extractable
+source) and
 `render.sh` (mermaid → PNG; self-provisions mermaid-cli into the gitignored `.deps/` here via
-`bun add` — bun is the repo's package manager). Tests: `diagrams.test.mjs` on the repo's
+`bun add` — bun is the repo's package manager). `python3` on PATH is a lint-path requirement
+once a managed doc references a `.py` file — the same interpreter the repo's uv stack already
+needs. Tests: `diagrams.test.mjs` on the repo's
 `node --test` convention (root `bun run test`). A new generator (e.g. sequence-from-template) = a new extractor + a new
-assembler module + a thin CLI — the doc plumbing and sanitizer are shared.
+assembler module + a thin CLI — the doc plumbing and sanitizer are shared (the Python
+extractor is the first proof of that seam: `mermaid-class.mjs` composed it unchanged).
