@@ -32,6 +32,8 @@ stateDiagram-v2
     C_running --> C_scheduling : advance: all stage members done\nnext stage exists → cursor++ epoch+1
     C_running --> C_finalized : all stages done (completed)\nor member failed/terminated (D6)\nor budget-terminated / orphaned
     C_scheduling --> C_finalized : after-chain failed / unfulfilled\nor orphaned (parent absent streak)
+    C_scheduling --> C_finalized : disarmed (h chain disarm)
+    C_running --> C_finalized : disarmed (h chain disarm)
     C_finalized : finalized\n(outcome: completed / failed / terminated\n/ budget-terminated / orphaned\n/ unfulfilled / disarmed)
     C_finalized --> [*]
   }
@@ -88,7 +90,7 @@ stateDiagram-v2
   stage no-ops.
 - **`unfulfilled` and `disarmed`** on chain are set OUTSIDE `decide()`: `unfulfilled` (issue #91)
   fires when a parent's structured output didn't produce the inputs the child needs; `disarmed` is
-  an operator action (`h chain disarm`, not shown in the engine flow).
+  an operator action (`h chain disarm`) — not part of the engine's `decide()` cycle.
 - **Discovery cron's `inactive`** is OPERATOR-ONLY — the engine never deactivates it (no goal, no
   budget). An active discovery cron runs until `h cron rm` is called.
 - **Sched `armed` → `fired`** is a one-shot: the scan deactivates the row immediately after firing;
