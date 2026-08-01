@@ -98,6 +98,40 @@ test("a missing symbol fails loudly, never a silent empty class", () => {
   );
 });
 
+const SCHEMA_SRC = `
+export const TriggerFields = {
+  key: Schema.optional(Schema.String),
+  params: Schema.optional(WorkflowParams),
+} as const;
+export const Trigger = Schema.Struct(TriggerFields);
+export const WatchRow = Schema.Struct({
+  instanceId: Schema.String,
+  status: Schema.Literal("scheduling", "watching", "finalized"),
+  policy: WatchPolicy,
+  epoch: Schema.Number,
+  outcome: Schema.optionalWith(WatchOutcome, { exact: true }),
+  members: Schema.Array(ChainMember),
+}).pipe(Schema.annotations({ identifier: "WatchRow" }));
+`;
+
+test("schema extraction: Struct fields with optionality, literals, refs; pipe + shared-fields resolve", () => {
+  const { lines, stereotype } = extractFromSource(fromSource(SCHEMA_SRC), {
+    kind: "schema",
+    symbol: "WatchRow",
+  });
+  assert.equal(stereotype, "Effect Schema struct");
+  assert.deepEqual(lines, [
+    "+instanceId string",
+    "+status scheduling | watching | finalized",
+    "+policy WatchPolicy",
+    "+epoch number",
+    "+outcome? WatchOutcome",
+    "+members ChainMember[]",
+  ]);
+  const trigger = extractFromSource(fromSource(SCHEMA_SRC), { kind: "schema", symbol: "Trigger" });
+  assert.deepEqual(trigger.lines, ["+key? string", "+params? WorkflowParams"]);
+});
+
 // ---------------------------------------------------------------------------
 // py-extract (source-text entry — shells the stdlib-ast script, no fixtures on disk)
 // ---------------------------------------------------------------------------

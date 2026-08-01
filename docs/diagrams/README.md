@@ -37,6 +37,8 @@ interaction).
 | [agent-cli-class](./agent-cli-class.md) | class (C4 code level), **generated** | The `AgentStrategy` contract + the types that flow through a run (`InvocationResult`, `StopReason`, `PreparedAgentInvocation`) — the exact shapes an `integrate-agent` addition is written against |
 | [h-cli-class](./h-cli-class.md) | class, **generated** (Python AST) | The `h` command's structure: Typer command groups over the pure core (`chain_expr` grammar types, `overlay`, `panelize`) and the thin adapters (helm subprocess, httpx clients) — composes and registers, never executes |
 | [h-cli-chain-run-sequence](./h-cli-chain-run-sequence.md) | sequence | `h chain run` CLI-side: hand-parsed expression → per-member resolve (compose-on-fire, panelize, validate-before-publish) → one `POST /chain/run`; ends where the engine takes over |
+| [workflow-svc-class](./workflow-svc-class.md) | class, **generated** (Schema structs) | The engine spine: the five cron-siblings as row models + pure `decide` engines over the shared tick, the `Trigger` fire descriptor every carrier embeds/projects, the invoker/source-reader ports |
+| [workflow-svc-tick-sequence](./workflow-svc-tick-sequence.md) | sequence | One workflow-cron-tick: CAS gate → due-schedule fires (watch-before-fire) → the five scans' shared shape (rows → observe → pure decide → epoch-fenced act), each failure isolated to its report |
 
 ## Planned (add as the need arises, one per interaction that keeps needing explaining)
 
@@ -48,5 +50,3 @@ interaction).
   fleet, the MCP servers, Redis/Dapr, the observability spine
 - **cost-accounting-sequence** — an agent run's usage from CLI events to the day ledger and
   the budget fence
-- **workflow-svc-class / -sequence** — the next core component after the cli: the engines'
-  decide/scan split and a tick's walk across watch/chain/cron/discover/sched

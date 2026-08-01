@@ -23,7 +23,7 @@ workspace glob) — still never `packages/js/*` unless runtime code imports it.
 | Module | Pure over | Job |
 | --- | --- | --- |
 | `sanitize.mjs` | text | Type-text → mermaid-safe member text (the 4 documented rules) |
-| `ts-extract.mjs` | source text (`fromSource`) | TS AST → class body lines per manifest entry (interface / union / const / module) |
+| `ts-extract.mjs` | source text (`fromSource`) | TS AST → class body lines per manifest entry (interface / union / const / module / schema — Effect `Schema.Struct` consts, spreads + shared-fields + `as const` + `.pipe` resolved) |
 | `py-extract.py` + `py-extract.mjs` | source text (`extractPyFromSource`) | Python AST (stdlib `ast`, shelled via `python3`) → class body lines (class incl. dataclasses / module + consts); the sanitize rules translated to Python syntax live in the .py, line capping stays JS-side |
 | `mermaid-class.mjs` | manifest + injected extractor | classDiagram assembly; realization edges from const annotations |
 | `managed-doc.mjs` | doc text | `<!-- gen:c4-code {json} -->` manifest parse + fence replacement |
