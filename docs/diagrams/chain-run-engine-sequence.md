@@ -42,17 +42,17 @@ sequenceDiagram
           CS->>CS: executeFinalize(terminated)
         else parent completed (or no after gate)
           Note over CS: re-stamp startedAt at activation (budget resets — issue #78)
-          CS->>WS: get(member.key) — resolve saved definition
-          WS-->>CS: StoredWorkflow
+          CS->>+WS: get(member.key) — resolve saved definition
+          WS-->>-CS: StoredWorkflow
           CS->>+Inv: invokeWithWatch(member request workspaceId=chainId fresh?)
           Note over Inv: mark-before-fire — watch:sub row written BEFORE invoke
           Inv-->>-CS: instanceId fired
           CS->>CS: saveFenced(epoch status:"running" lastStatus:"SCHEDULED")
         end
       else status = "running" — observe stage
-        CS->>Inv: observeMember × each member of current stage
+        CS->>+Inv: observeMember × each member of current stage
         Note over Inv: cron member reads wf:<repo>:<slug>:<kind>.resolved (not runtime status)
-        Inv-->>CS: MemberRead[] {runtimeStatus done failed output}
+        Inv-->>-CS: MemberRead[] {runtimeStatus done failed output}
         CS->>+Eng: decide(row observations nowMs)
         Eng-->>-CS: ChainDecision
 
@@ -74,6 +74,9 @@ sequenceDiagram
           else
             CS->>CS: executeFinalize(row completed)
           end
+        else decision = finalize/orphaned — after-gate parent missing past streak limit
+          CS->>Pub: publish(cron-disarm {repo slug workflow}) × cron members
+          CS->>CS: executeFinalize(row orphaned)
         else decision = finalize/failed or terminated — D6
           CS->>Inv: terminate(still-running siblings)
           CS->>Pub: publish(cron-disarm {repo slug workflow}) × cron members
