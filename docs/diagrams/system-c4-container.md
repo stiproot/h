@@ -14,6 +14,8 @@ C4Container
   System_Ext(daprcp, "Dapr control plane", "Placement + scheduler")
   System_Ext(github, "GitHub", "PRs and issues")
   System_Ext(litellm, "LiteLLM proxy", "LLM routing")
+  System_Ext(zipkin, "Zipkin", "Distributed tracing")
+  System_Ext(loki, "Loki + Alloy", "Log aggregation")
 
   Container_Boundary(h, "h runtime") {
     Container(wfsvc, "workflow-svc", "TypeScript + Dapr", "Engine: watch/chain/cron/sched")
@@ -40,6 +42,9 @@ C4Container
   Rel(claude, litellm, "HTTP")
   Rel(wfmcp, wfsvc, "sidecar invoke")
   Rel(daprmcp, redis, "Dapr state API")
+  Rel(wfsvc, zipkin, "OTLP spans")
+  Rel(obsmcp, zipkin, "HTTP read")
+  Rel(obsmcp, loki, "HTTP read")
 ```
 
 ## Reading notes

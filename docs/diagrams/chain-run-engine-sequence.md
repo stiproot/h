@@ -62,12 +62,18 @@ sequenceDiagram
           CS->>CS: captureCompleted(reads) → ChainData (structured output)
           Note over CS: declarative captures write under member id namespace (D5)
           CS->>CS: saveFenced(epoch next{epoch+1 cursor++ status:"scheduling"})
-          CS->>Inv: fireStage(next stage members)
+          CS->>Inv: fireStage(next stage members forceFresh=false)
           CS->>CS: saveFenced(next.epoch status:"running")
-          Note over CS: loop-until-clean check: if cursor===startCursor and reviewIsClean → executeFinalize(completed)
+          Note over CS: loop-until-clean: cursor===startCursor → loopIsClean? → executeFinalize(completed) : fall through to advance above (forceFresh=false)
         else decision = finalize/completed — last stage done
           CS->>CS: captureCompleted(reads) → final ChainData
-          CS->>CS: executeFinalize(row completed)
+          alt strategy = loop-until-clean AND iterations + 1 < max — revise done, loop back
+            CS->>CS: saveFenced(epoch cursor=startCursor iterations+1 status:"scheduling")
+            CS->>Inv: fireStage(startCursor forceFresh=true)
+            CS->>CS: saveFenced(epoch status:"running")
+          else
+            CS->>CS: executeFinalize(row completed)
+          end
         else decision = finalize/failed or terminated — D6
           CS->>Inv: terminate(still-running siblings)
           CS->>Pub: publish(cron-disarm {repo slug workflow}) × cron members
@@ -91,8 +97,6 @@ sequenceDiagram
   CS->>CS: bumpLedger(date {chainsFinalized costUsd costByAgent})
   CS->>Pub: publish("workflow-events" {chainId outcome costUsd costGap})
 
-  Note over CS: loop-until-clean loop-back path
-  Note over CS: revise stage done: captureCompleted → saveFenced(startCursor epoch+1 iters+1) → fireStage(forceFresh=true)
 ```
 
 ## Reading notes
@@ -115,11 +119,14 @@ sequenceDiagram
   member's structured output into the chain data. A member with an `id` writes under `data[id]` so
   concurrent stage members never clobber; a downstream member's dotted `inputs` path (`id.field`)
   reads it back.
-- **Loop-until-clean intercept** (advance branch note): the pure engine sees every stage
-  completion as `advance` or `finalize/completed` — the strategy-agnostic view. The scan interprets
-  it: when `cursor === loop.startCursor` (the review stage just completed), `loopIsClean` decides;
-  clean → `executeFinalize(completed)`, not-clean → `executeAdvance(startCursor forceFresh=true)` and
-  `loop.iterations++`. The iteration budget is the backstop.
+- **Loop-until-clean intercepts** (two scan-side branches; the engine is strategy-agnostic): (1)
+  **advance / review stage done**: when `cursor === loop.startCursor` and `loopIsClean`, the scan
+  calls `executeFinalize(completed)` — stopping the loop; when NOT clean it falls through to
+  `executeAdvance(nextStage, false)` to fire the revise stage with `forceFresh=false`. (2)
+  **finalize/completed / revise stage done**: the revise stage is the last stage in the loop segment,
+  so the engine reports `finalize/completed`; if `iterations + 1 < maxIterations` the scan calls
+  `executeAdvance(startCursor, forceFresh=true)` + `loop.iterations++` to loop back to the review
+  stage. The iteration budget is the backstop.
 - **D6 atomic teardown** (finalize/failed branch): a non-completed finalize terminates the still-running
   siblings first, THEN publishes `cron-disarm` for every cron member (the chain never writes `cron:sub`;
   the subscriber is the cron scan's single writer), THEN finalizes the chain row — in that order, never
