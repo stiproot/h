@@ -39,14 +39,10 @@ interaction).
 | [h-cli-chain-run-sequence](./h-cli-chain-run-sequence.md) | sequence | `h chain run` CLI-side: hand-parsed expression → per-member resolve (compose-on-fire, panelize, validate-before-publish) → one `POST /chain/run`; ends where the engine takes over |
 | [workflow-svc-class](./workflow-svc-class.md) | class, **generated** (Schema structs) | The engine spine: the five cron-siblings as row models + pure `decide` engines over the shared tick, the `Trigger` fire descriptor every carrier embeds/projects, the invoker/source-reader ports |
 | [workflow-svc-tick-sequence](./workflow-svc-tick-sequence.md) | sequence | One workflow-cron-tick: CAS gate → due-schedule fires (watch-before-fire) → the five scans' shared shape (rows → observe → pure decide → epoch-fenced act), each failure isolated to its report |
+| [chain-run-engine-sequence](./chain-run-engine-sequence.md) | sequence | The chain engine's stage progression on the tick: registration → activation gates (after/notBefore) → stage fire → observe every current-stage member → join → captures into chain data → next stage → loop-until-clean → D6 atomic teardown |
+| [cron-siblings-state](./cron-siblings-state.md) | state | The five cron-sibling engine rows' lifecycles side-by-side: watch (scheduling→watching→finalized), chain (scheduling→running→finalized), recur cron (active→inactive), discovery cron (active→inactive), scheduled-fire (armed→fired/expired/disarmed) |
+| [system-c4-context](./system-c4-context.md) | C4 context | h as a black box: the operator, the h runtime, and the external systems it integrates with (GitHub, LiteLLM proxy, Zipkin, Loki+Alloy) |
+| [system-c4-container](./system-c4-container.md) | C4 container | The service topology inside h: workflow-svc (engines), agent fleet (claude/openhands/codex/dapr-agent), three MCP servers, Redis/Dapr, and the observability spine |
+| [cost-accounting-sequence](./cost-accounting-sequence.md) | sequence | An agent run's usage from CLI stream events → run-ledger mirror → watch-scan tallyCost → watch:ledger day rows → usage-limited auto-deny → daily-budget fence |
 
 ## Planned (add as the need arises, one per interaction that keeps needing explaining)
-
-- **chain-run-sequence** — `h chain run` registration → stage progression on the tick →
-  captures/inputs threading → loop-until-clean → atomic teardown
-- **cron-siblings** (sequence or state) — recur vs discovery vs one-shot sched: who fires,
-  who disarms, the goal handshake
-- **system-c4-context / -c4-container** — the service topology: workflow-svc, the agent
-  fleet, the MCP servers, Redis/Dapr, the observability spine
-- **cost-accounting-sequence** — an agent run's usage from CLI events to the day ledger and
-  the budget fence

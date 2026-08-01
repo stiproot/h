@@ -82,3 +82,24 @@ gate below.
 - 2026-08-01 — plan established after the first three pairs landed by the repo session
   (naming convention + py-extract + schema-kind extraction built en route; steering
   hardened: generated-vs-hand-authored split now explicit in the `diagrams` skill).
+- 2026-08-01 — all four remaining items implemented on `feature/core-diagrams` by the
+  h feature chain. Findings and decisions:
+  - **chain-run-engine-sequence**: the registration path (issue #79a) no longer fires stage 0
+    in the request handler — it lands a `scheduling` row and the SCAN fires stage 0 on the
+    first tick's activation branch. The diagram reflects this correctly; the plan's
+    "registration → fire stage 0" description was written before the #79a fix. Code wins.
+  - **cron-siblings-state**: status literals confirmed from model files. Discovery cron's
+    `inactive` transition is operator-only (no resolved handshake, no budget), not shown in
+    `decide()` — noted in reading notes. `unfulfilled` and `disarmed` on chain are set outside
+    the pure `decide()` function; `disarmed` is an operator `disarmChain()` action.
+  - **system-c4-context / -c4-container**: described ≤~40 char per element to avoid grid collapse.
+    Container diagram shows four agents; pi-agent and kimi-agent follow the same shape and are
+    omitted for readability (noted in reading notes). obs-mcp has no Dapr sidecar — noted.
+  - **cost-accounting-sequence**: `foldPartialClaudeUsage` is the B1 fix (Moonshot $20 day
+    incident reference in the source comment) — partial streams fold per-call usage off assistant
+    events, not just the terminal `result` event. The auto-deny `mergeAutoDeny` no-downgrade
+    guarantee is engine-code, not config — modeled in the alt branch.
+  - All five diagrams registered in `docs/diagrams/README.md`; planned-list items removed.
+  - `gen-code-diagram.mjs --check`, `diagrams.test.mjs`, and `bun run lint` pass (no class
+    diagrams were hand-edited; the four new diagrams are sequence/state/C4, outside the
+    generated-fence check).
