@@ -326,3 +326,13 @@ write was permission-blocked 2026-07-29 and again 2026-07-31. The 14 finalized c
 noted alongside it are NOT litter: finalized rows are by-design audit retention.
 
 *Revisit when:* an operator session with state-write permission — two one-line calls.
+
+### 26. system-c4-container layout polish
+
+The container diagram (PR #104) compiles and is complete, but its render is the scruffiest
+of the set: long crossing arrows and several relationship labels overlapping element boxes
+(the C4 grid did NOT collapse — this is UpdateRelStyle-offset polish, not a structure
+problem). Carried from docs/plans/impl/core-component-diagrams.md.
+
+*Revisit when:* the next time the container diagram is updated for a topology change — fix
+the offsets in the same change.

@@ -1,7 +1,14 @@
 # Core-component diagrams — sequence + class coverage for every core component
 
-Status: Active — remaining diagrams handed to an h feature chain (see Handoff below)
+Status: Complete — full core set landed: three generated-class + sequence pairs by the repo session, the four cross-cutting diagrams by the h chain (PR #104, merged 2026-08-01)
 Established: 2026-08-01
+
+Lifted to: the `diagrams` skill (`.claude/skills/diagrams/SKILL.md` — naming convention,
+generated-vs-hand-authored rule, mermaid/C4 traps), `tools/diagrams/README.md` (the
+extractor kinds: TS interface/union/const/module/schema, Python class/module),
+`docs/diagrams/README.md` (naming section + the index rows for all 13 diagrams). The
+per-diagram findings live in each diagram's reading notes; the container-diagram layout
+polish is parked in `docs/plans/carried-followups.md`.
 
 The operator communicates through diagrams. This plan tracks giving every CORE component a
 canonical diagram pair — a **class diagram (generated)** and a **sequence diagram
@@ -103,3 +110,11 @@ gate below.
   - `gen-code-diagram.mjs --check`, `diagrams.test.mjs`, and `bun run lint` pass (no class
     diagrams were hand-edited; the four new diagrams are sequence/state/C4, outside the
     generated-fence check).
+- 2026-08-01 — review arc: the in-chain review timed out at its 30-minute step budget under
+  API rate limiting (chain `core-diagrams` finalized failed AFTER the PR opened); recovered
+  with the cookbook review-loop chain (`core-diagrams-review`, review-pr → revise-pr,
+  loop-until-clean). Three rounds — 2, 2, 1 findings, all fixed with inline replies — then
+  max-iterations stop; the operator session re-ran the acceptance gate on the branch
+  (drift check, 17 toolkit tests, renders visually inspected) before merge. PR #104 squashed
+  to main (3284c6a); the arm-revise-pr cron was manually disarmed post-merge (its goal
+  handshake would have burned one more run discovering the PR was merged).
