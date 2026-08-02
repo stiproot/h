@@ -35,8 +35,9 @@
 // legitimately cite a doc that has since been retired or a path in another repo. This mirrors the
 // same exemption check-vocabulary.mjs makes for docs/plans/.
 //
-// See .claude/skills/plan-management/SKILL.md (the convention this enforces) and the
-// *Harden by encoding* principle in ARCHITECTURE.md. Wired into `bun run lint`. No skip flag.
+// See the plan-management plugin skill (v0.1.0) + the CLAUDE.md Plans section (the convention
+// this enforces) and the *Harden by encoding* principle in ARCHITECTURE.md. Wired into
+// `bun run lint`. No skip flag.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -46,8 +47,10 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PLANS = join(root, "docs/plans");
 
-// The closed status vocabulary. Kept in lockstep with the table in the plan-management skill —
-// adding a state means editing both, deliberately.
+// The closed status vocabulary. Kept in lockstep with the status table in the plan-management
+// PLUGIN skill — this mirrors plugin version 0.1.0 (+ the CLAUDE.md Plans section, h's concrete
+// policy). Adding a state means editing both, deliberately; a plugin bump that changes the
+// table must update this list AND the version named here.
 const STATUSES = ["Planning", "Active", "Blocked", "Deferred", "Complete"];
 
 // A Deferred plan is parked, not abandoned: it must name what would bring it back, so nobody has
@@ -113,7 +116,7 @@ for (const file of planFiles) {
       fail(
         file,
         `status "${declared}" is not in the vocabulary — use one of ${STATUSES.join(" | ")} ` +
-          `(see .claude/skills/plan-management/SKILL.md)`,
+          `(see the plan-management plugin skill v0.1.0 + the CLAUDE.md Plans section)`,
       );
     }
     if (declared === "Deferred" && !text.includes(DEFERRED_NEEDS)) {
@@ -221,7 +224,7 @@ if (errors.length > 0) {
   console.error("check-plans: plan-doc discipline violations\n");
   for (const e of errors) console.error(`  ✗ ${e}`);
   console.error(
-    `\n${errors.length} problem(s). The convention lives in .claude/skills/plan-management/SKILL.md.`,
+    `\n${errors.length} problem(s). The convention lives in the plan-management plugin skill (v0.1.0) + the CLAUDE.md Plans section.`,
   );
   process.exit(1);
 }

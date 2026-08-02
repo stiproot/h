@@ -1,9 +1,14 @@
 ---
 name: diagrams
-description: The visual communication layer — canonical mermaid diagrams under docs/diagrams/ that model h's architecture and interactions, updated in the same change that alters what they model, rendered to images for cross-device communication. Use when explaining a change to the operator, when a change alters an interaction a diagram models (update it in the same change), when asked to "show" or "diagram" how something works, or when adding a new canonical diagram to the set.
+description: h's canonical-diagram policy — the WHERE AND WHEN for diagrams in this repo. Canonical mermaid diagrams live under docs/diagrams/, registered in the index, named <scope>-<kind>.md, and REGENERATED/UPDATED in the same change that alters what they model; transient diagrams enrich plan docs and die with them. The mechanics (generated-diagram toolkit, mermaid/C4 traps, delta colors, rendering) are the generated-diagrams plugin skill — this skill says where and when in h, that one says how. Use when explaining a change to the operator, when a change touches a part of the system a canonical diagram models (regenerate/update it in the same change), when asked to "show" or "diagram" how something works, or when adding a new canonical diagram to the set.
 ---
 
-# Diagrams — communicating through pictures, not prose walls
+# Diagrams — h's canonical set and its rules
+
+**Composition: the `generated-diagrams` plugin skill (code-comprehension plugin) says HOW —
+the manifest format, extractors, mermaid/C4 syntax traps, the delta-color convention, the
+UML-component encoding, rendering. THIS skill says WHERE AND WHEN in h.** Load that skill
+for any mechanics question; everything below is h policy.
 
 The operator and the assistant iterate fast; prose summaries of changes pile up faster than
 they can be read. The fix: diagrams as the communication medium, in TWO GENRES:
@@ -15,35 +20,37 @@ they can be read. The fix: diagrams as the communication medium, in TWO GENRES:
   alternative in a conversation, a before/after in a PR body. They live inside their host
   document and die with it (plans are transient; so are their pictures). NOT registered in
   the index, NOT drift-checked, allowed to show intention rather than reality — that is
-  their whole job. Render them the same way (`tools/diagrams/render.sh <path/to/doc.md>`)
-  and share the PNGs.
+  their whole job. Render them the same way (see Rendering below) and share the PNGs.
 
 A transient diagram GRADUATES to canonical when, after its change lands, the picture keeps
 being the way the system gets explained — then it moves to `docs/diagrams/`, gets reframed
 to model reality, and joins the index.
+
+## The steering rule: regenerate-on-touch
+
+**When a change touches a part of the system a canonical diagram models — a diagrammed
+contract, an interaction with a new step/participant/moved responsibility — regenerate or
+update that diagram IN THE SAME CHANGE.** Concretely:
+
+- Generated (`-class`) docs: `gen-code-diagram --dir docs/diagrams` regenerates;
+  `gen-code-diagram --check --dir docs/diagrams` is the drift gate and runs in
+  `bun run lint` (the bin ships in the `@stiproot/code-comprehension` devDependency), so a
+  refactor that changes a diagrammed contract FAILS THE BUILD until the diagram regenerates.
+- Hand-authored docs (sequence/state/C4 framing): edit the doc, re-verify against the code.
+- Render to confirm: via the `generated-diagrams` plugin skill —
+  `bash "${CLAUDE_PLUGIN_ROOT}/skills/generated-diagrams/scripts/render.sh" docs/diagrams docs/diagrams/rendered`
+  (or a single doc as the first arg; fallback with no plugin:
+  `bunx -p @mermaid-js/mermaid-cli mmdc --quiet -i docs/diagrams/<name>.md -o docs/diagrams/rendered/<name>.png --scale 2 --backgroundColor white`).
+  `docs/diagrams/rendered/` is gitignored — render on demand and share the PNG.
 
 ## Enriching a plan with change diagrams (the standard proposal workflow)
 
 When a plan item proposes a change to interactions or contracts, put the diagrams IN the
 plan doc (transient genre): typically one sequence diagram (how the flow changes) and one
 class diagram (how the contracts change), then render and share the images so the proposal
-is reviewable on any device.
-
-**The delta-color convention** — make what is NEW or CHANGED visually obvious:
-
-- classDiagram: `classDef added fill:#dcfce7,stroke:#16a34a` (green = new),
-  `classDef changed fill:#fef9c3,stroke:#ca8a04` (amber = behavior/shape changes),
-  untouched elements stay default. The `:::` tag must sit ON THE DECLARATION
-  (`class X:::added {`) — a standalone `class X:::added` after a bodied declaration is
-  silently ignored. Body lines must keep parens BALANCED per line (an unbalanced `(` crashes
-  mermaid's member parser). State the legend in prose.
-- sequenceDiagram: wrap NEW interaction segments in `rect rgb(220,252,231)` … `end`
-  (green tint); mark changed messages with a `[CHANGED]` prefix; leave unchanged machinery
-  untinted and say so in a Note.
-- RED = a REJECTED path or the conflict that killed it (`rect rgb(254,226,226)` in
-  sequences; `classDef rejected fill:#fee2e2,stroke:#dc2626` in class diagrams) — design
-  docs should show the alternative they refuse, not just the one they choose (exemplar:
-  the fire-descriptor plan's arbitration-conflict diagram).
+is reviewable on any device. Use the delta-color convention (green = new, amber = changed,
+red = rejected — the plugin skill has the exact classDefs/tints); exemplar: the
+fire-descriptor plan's arbitration-conflict diagram.
 
 ## The three rules (canonical genre)
 
@@ -53,65 +60,25 @@ is reviewable on any device.
    diagram into another doc; link to it.
 2. **Update-with-the-change** (the cookbook's rule, applied to pictures). If a change alters
    an interaction a diagram models — a new step, a new participant, a moved responsibility —
-   the diagram updates IN THE SAME change set. The diagram diff is the change explanation.
-   A stale diagram is worse than none.
+   the diagram updates IN THE SAME change set (see the steering rule above for the exact
+   invocations). The diagram diff is the change explanation. A stale diagram is worse than none.
 3. **Model reality, not intention.** Verify the flow against code (or a live run) before
    drawing it. A diagram that shows what we meant to build communicates the wrong thing.
-   (Drawing implement-pr-run-sequence surfaced that the saved workflow was stale — modeling forces
-   verification.)
+   (Drawing implement-pr-run-sequence surfaced that the saved workflow was stale — modeling
+   forces verification.)
 
-## Rendering to images (for chat, Slack, a phone)
+## Generated class diagrams — h's conventions
 
-```sh
-tools/diagrams/render.sh                      # all diagrams → docs/diagrams/rendered/*.png
-tools/diagrams/render.sh implement-pr-run-sequence     # just one
-```
+**A canonical class diagram of code contracts is GENERATED, never hand-drawn** (the doctrine,
+manifest format, extractor contract, and extend-the-toolkit rule live in the
+`generated-diagrams` plugin skill). h's parameters: the managed docs live in
+`docs/diagrams/` (`--dir docs/diagrams`), manifests resolve file paths against the repo root
+(invoke from the root — `--root` defaults to cwd), and drift is a LINT FAILURE
+(`gen-code-diagram --check --dir docs/diagrams` in `bun run lint`). Hand-authoring is only
+for the genres no AST holds: sequence/state diagrams (verify against code) and C4
+component/container framing.
 
-Self-provisioning: mermaid-cli lives in the gitignored `tools/diagrams/.deps/` (installed
-with `bun add`, NOT a bun-workspace member — puppeteer/chromium must never burden CI or the
-app images). `rendered/` is
-gitignored; render on demand and share the PNG (in a Claude session: `SendUserFile` the PNG,
-or publish the .md as an artifact — both render the diagram).
-
-## Generated diagrams (class / C4 code level) — the AST is the truth for members
-
-**The rule: a canonical class diagram of code contracts is GENERATED, never hand-drawn.**
-Member lists date fastest, so hand-writing them is authoring instant drift. If the tooling
-can't express what you need — a language it doesn't parse, a symbol kind it doesn't extract —
-EXTEND THE TOOLKIT in the same change (a new extractor or kind beside the existing ones);
-do not fall back to hand-editing a fence. Hand-authoring is only for the genres no AST
-holds: sequence/state diagrams (runtime interaction — verify those against code instead)
-and C4 component/container framing.
-
-`tools/diagrams/gen-code-diagram.mjs` extracts members from the AST of BOTH stacks —
-TypeScript via the compiler API (`ts-extract.mjs`: interface methods/props, union arms,
-module function signatures) and Python via the stdlib `ast` module (`py-extract.py` +
-`py-extract.mjs`: dataclass/class fields + properties + public methods, module functions +
-consts), dispatched by the manifest entry's file extension. An `external` kind carries
-fully-curated collaborator boxes (a binary, a peer service). SCOPE, TOPOLOGY, and NOTES stay
-curated in a manifest embedded in the doc (`<!-- gen:c4-code {json} -->`). This keeps the
-c4-code guide's story-members-only rule honest: curation picks the symbols, the parser never
-lets their members go stale.
-
-- **Never hand-edit a generated fence** — edit the manifest (scope/relations/notes) or the
-  code, then `node tools/diagrams/gen-code-diagram.mjs`. Drift is a LINT FAILURE
-  (`--check` runs in `bun run lint`), so a refactor that changes a diagrammed contract
-  fails the build until the diagram regenerates.
-- The division of labor with the c4-mermaid-plugin: the PLUGIN defines what the diagram
-  types are (conventions, syntax, validation); OUR tooling automates producing them to
-  those conventions.
-- The tooling is a composable toolkit at `tools/diagrams/` (sanitize / ts-extract /
-  mermaid-class / managed-doc; unit-tested via `node --test`, wired into root test), with
-  thin CLIs on top; `tools/` is the dev-tooling home beside `tools/ci-runner/`. Its README
-  records WHY it is deliberately not a `packages/js/*` workspace member (zero-build lint
-  ordering; never ships in app images; source-level extraction needs no dependency edge)
-  and the in-place graduation path (add a package.json there — a standalone bun package on
-  the `web/` precedent) if the family grows. A new generator = new extractor + assembler +
-  thin CLI; the doc plumbing and sanitizer are shared.
-- Manifest gotcha: it lives in an HTML comment, so no `--` sequences anywhere in the JSON
-  (relations use `null` for the default arrow; notes avoid literal `--flags`).
-
-## Authoring guidance
+## Authoring guidance (h policy)
 
 - **File naming — the kind lives in the name**: `<scope>-<kind>.md`, kind one of
   `-sequence`, `-class` (UML class / generated C4 code — both mermaid `classDiagram`),
@@ -119,38 +86,28 @@ lets their members go stale.
   be able to tell a C4 component diagram from a UML class diagram by file name alone
   (`agent-cli-c4-component.md` vs `agent-cli-class.md`). Sequence and class are the
   operator's primary kinds — when adding coverage for a component, those two come first:
-  the class diagram GENERATED (see Generated diagrams above — never hand-drawn), the
-  sequence diagram hand-authored and verified against the code.
+  the class diagram GENERATED (never hand-drawn), the sequence diagram hand-authored and
+  verified against the code.
 - **Kinds**: sequence diagrams for interactions (the default — this is a runtime whose
   interesting facts are message flows); C4 (via the c4-mermaid-plugin skills — load the
   matching `c4-*` skill and follow its syntax + required validation step) for structure;
   UML COMPONENT diagrams for the interface-centric view (what a component PROVIDES vs
-  REQUIRES — distinct from C4 component, which shows collaboration; mermaid has no native
-  type, so the encoding is `classDiagram` with `<<component>>`/`<<interface>>` stereotypes,
-  provides = `..|>`, requires = `..>`; exemplar: docs/diagrams/agent-cli-uml-component.md);
-  state diagrams for lifecycle rows (watch/chain/cron statuses). The `code-comprehension`
-  plugin produces EPHEMERAL diagrams in answers; when one keeps getting redrawn, it
-  graduates into docs/diagrams/ under these rules.
+  REQUIRES — the encoding is in the plugin skill; exemplar:
+  docs/diagrams/agent-cli-uml-component.md); state diagrams for lifecycle rows
+  (watch/chain/cron statuses). The `code-comprehension` plugin produces EPHEMERAL diagrams
+  in answers; when one keeps getting redrawn, it graduates into docs/diagrams/ under these
+  rules.
 - **Scope**: one diagram = one story a reader keeps needing told. 6–9 participants max in a
   sequence; compress repetition with `loop` ("the run-* pattern") and show it in detail once.
 - **Activation bars are required in sequence diagrams** — a lane without activations hides
   who is busy when. Use `->>+`/`-->>-` on request/reply pairs and explicit
   `activate`/`deactivate` for long-lived spans (an engine active across steps; a subprocess
   from spawn to exit — deactivated by its terminator when that differs from the caller).
-  TRAP: never `deactivate` the same activation inside BOTH `alt` branches — mermaid counts
-  statically and errors; deactivate ONCE after the `end`.
 - **Annotate the invariants**, not just the arrows — the reading-notes section names the
   load-bearing properties (mark-before-fire, the gate, fail-before-PR) with step numbers.
 - **Register it**: add a row to `docs/diagrams/README.md`'s table in the same change.
-- **Mermaid syntax traps** (each bit a real diagram): no commas in `loop`/`alt`/`opt`
-  LABELS, and no semicolons ANYWHERE in message text (`;` is a statement separator — the rest
-  of the line parses as a new statement). Render before committing:
-  `tools/diagrams/render.sh <name>` is the syntax check.
-- **Mermaid C4 layout traps**: `UpdateLayoutConfig` goes at the TOP (after `title`), and —
-  the big one — LONG element descriptions stretch shapes to full row width, silently
-  collapsing the grid to one component per row. Keep descriptions to a phrase (≤ ~40 chars;
-  file name in the technology slot); put the detail in the reading notes. Compiling is not
-  enough for C4 — LOOK at the render before committing.
+- **Render before committing** — the render is the syntax check (mermaid traps live in the
+  plugin skill), and for C4 LOOK at the image, not just the exit code.
 
 ## The set and its growth
 

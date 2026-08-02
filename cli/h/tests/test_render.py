@@ -476,8 +476,14 @@ def test_plugin_setup_steps_with_marketplaces_golden(snapshot) -> None:
 
 
 def test_plugin_setup_steps_empty_is_noop() -> None:
-    """No plugins.marketplaces → helper emits nothing; setup has only the two h.setupSteps cmds."""
-    rendered = helm.render_workflow("test-plugin-setup", values={}, include_local=False)
+    """Empty plugins.marketplaces → helper emits nothing; setup has only the two h.setupSteps cmds.
+
+    The committed values.yaml now ships three marketplace URLs (the extracted-plugin provisioning
+    contract — covered by the bootstrap-repo golden), so this test nulls the list explicitly to
+    pin the helper's no-marketplaces noop path."""
+    rendered = helm.render_workflow(
+        "test-plugin-setup", values={"plugins.marketplaces": "null"}, include_local=False
+    )
     definition = json.loads(helm.to_wire_json(rendered))
     setup_cmds = definition["steps"][0]["input"]["setup"]
     assert len(setup_cmds) == 2

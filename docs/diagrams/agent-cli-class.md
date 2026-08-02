@@ -2,7 +2,8 @@
 
 Zooming into the load-bearing seam of `packages/js/agent-cli`: the `AgentStrategy` contract
 and the types that flow through a run. GENERATED deterministically from the TypeScript AST by
-`tools/diagrams/gen-code-diagram.mjs` (members are code truth; scope/topology/notes are curated in
+`gen-code-diagram --dir docs/diagrams` (the `@stiproot/code-comprehension` package / the
+`generated-diagrams` plugin skill; members are code truth; scope/topology/notes are curated in
 the manifest comment below) — only the symbols that tell the story (the [component diagram](./agent-cli-c4-component.md) is the level
 above; this level exists because every agent integration is written against exactly these
 shapes — the `integrate-agent` skill's "CLI strategy" piece).

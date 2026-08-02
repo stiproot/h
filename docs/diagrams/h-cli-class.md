@@ -4,7 +4,8 @@ The structure of `cli/h` (package `h-cli`), the `h` command: a Typer composition
 command groups over a small pure core (expression parser, overlay, panelize) and thin
 adapters (helm subprocess, httpx clients). The CLI *composes and registers*; it never
 executes — everything durable happens in workflow-svc. GENERATED deterministically from the
-Python AST by `tools/diagrams/gen-code-diagram.mjs` (members are code truth via
+Python AST by `gen-code-diagram --dir docs/diagrams` (the `@stiproot/code-comprehension`
+package / the `generated-diagrams` plugin skill; members are code truth via
 `py-extract`; scope/topology/notes are curated in the manifest comment below). The
 [chain-run sequence diagram](./h-cli-chain-run-sequence.md) shows these classes in motion.
 

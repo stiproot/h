@@ -23,6 +23,18 @@
         "source": "github",
         "repo": "stiproot/code-comprehension"
       }
+    },
+    "hex-arch-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/hex-arch"
+      }
+    },
+    "plan-management-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/plan-management"
+      }
     }
   },
   "enabledPlugins": {
@@ -30,6 +42,8 @@
     "plugin-builder@plugin-builder-marketplace": true,
     "steering-hardener@steering-hardener-marketplace": true,
     "c4-mermaid-plugin@c4-mermaid": true,
-    "code-comprehension@code-comprehension-marketplace": true
+    "code-comprehension@code-comprehension-marketplace": true,
+    "hex-arch@hex-arch-marketplace": true,
+    "plan-management@plan-management-marketplace": true
   }
 }

@@ -6,13 +6,18 @@ in the same change, and the diff of the diagram IS the explanation — reviewabl
 readable on any device (GitHub and IDEs render the fences natively), renderable to an image
 for chat.
 
-The protocol lives in the `diagrams` skill (`.claude/skills/diagrams/`). In short:
+The protocol lives in the `diagrams` skill (`.claude/skills/diagrams/` — h's where-and-when
+policy), composed with the `generated-diagrams` plugin skill (code-comprehension plugin —
+the toolkit mechanics). In short:
 
 - **Sources are the truth** — one `<name>.md` per diagram here, a mermaid fence plus a short
   prose frame and reading notes. No duplicate copies elsewhere; other docs link here.
-- **Render to images on demand** — `tools/diagrams/render.sh [<name>]` →
-  `docs/diagrams/rendered/<name>.png` (gitignored; the toolkit provisions mermaid-cli into
-  its gitignored `.deps/` via bun).
+- **Render to images on demand** — via the `generated-diagrams` plugin skill's `render.sh`
+  (`bash "${CLAUDE_PLUGIN_ROOT}/skills/generated-diagrams/scripts/render.sh" docs/diagrams
+  docs/diagrams/rendered`, or a single doc as the first arg; no plugin: `bunx -p
+  @mermaid-js/mermaid-cli mmdc --quiet -i <doc.md> -o rendered/<name>.png --scale 2
+  --backgroundColor white`) → `docs/diagrams/rendered/<name>.png` (gitignored; mermaid-cli
+  runs ephemerally via bunx/npx — nothing to install).
 - **Update-with-the-change** — same rule as the cookbook: a stale diagram is worse than none.
 
 ## Naming — the kind lives in the file name
@@ -22,7 +27,8 @@ glance: `-sequence`, `-class` (UML class / C4 code, mermaid `classDiagram`),
 `-c4-component`, `-uml-component`, `-c4-container`, `-c4-context`, `-state`. Sequence and
 class diagrams are the primary kinds — reach for those first; the others earn their place
 when structure (not interaction) is the question. A `-class` doc is GENERATED from the AST
-(TS and Python extractors, `tools/diagrams/`; drift is a lint failure) — never hand-drawn;
+(TS and Python extractors — the `@stiproot/code-comprehension` package's `gen-code-diagram
+--dir docs/diagrams`; drift is a lint failure via `--check`) — never hand-drawn;
 `-sequence` docs are hand-authored and verified against the code (no AST holds a runtime
 interaction).
 

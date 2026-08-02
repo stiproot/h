@@ -94,7 +94,7 @@
         setup:
           - cmd: "mkdir -p ~/.claude/skills && cp -r \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
           - cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
-          
+          - cmd: "bash ~/.claude/skills/install-plugins.sh \"{{params.plugins}}\" https://github.com/stiproot/hex-arch https://github.com/stiproot/plan-management https://github.com/stiproot/code-comprehension"
     - id: bootstrap
       activity: "{{params.runActivity}}"
       input:

@@ -50,6 +50,5 @@ docs/plans/domain/
 # Headless host-mode launcher logs + pidfiles (cli/scripts/up-local.sh)
 .local-logs/
 
-# diagram communication layer — sources are the truth; renders + tooling are local
+# diagram communication layer — sources are the truth; renders are local
 docs/diagrams/rendered/
-tools/diagrams/.deps/

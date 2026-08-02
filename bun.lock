@@ -4,6 +4,7 @@
   "workspaces": {
     "": {
       "devDependencies": {
+        "@stiproot/code-comprehension": "github:stiproot/code-comprehension",
         "@typescript/native-preview": "^7.0.0-dev.20260318.1",
         "dependency-cruiser": "^18.0.0",
         "oxfmt": "^0.42.0",
@@ -660,6 +661,8 @@
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
+
+    "@stiproot/code-comprehension": ["@stiproot/code-comprehension@github:stiproot/code-comprehension#1a7caa9", { "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"], "bin": { "gen-code-diagram": "plugins/code-comprehension/skills/generated-diagrams/scripts/gen-code-diagram.mjs" } }, "stiproot-code-comprehension-1a7caa9", "sha512-y9Pa6HhrEEzMWeipAAnrlUrAwBpYxxMHT/czcFikTBTC1w74Ahi8LTwREUdcjt9fOjyDSKJqTGJ0g8llgZh/Wg=="],
 
     "@turbo/darwin-64": ["@turbo/darwin-64@2.9.16", "", { "os": "darwin", "cpu": "x64" }, "sha512-jLjApWTSNd7JZ5JaLYfelW1ytnGQOvB7ivl+2RD1xQvJTbi8I9gBjzcga7tDZVPyaxpl10YTfJt3BrYXR18KDw=="],
 

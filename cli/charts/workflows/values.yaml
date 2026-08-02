@@ -116,9 +116,11 @@ revisePr:
 # Plugin provisioning. Marketplaces are curated config baked at publish time (trust split:
 # sources are config, not fire-time params). Which plugins to install is fire-time content:
 # the `plugins` param (space-separated name@marketplace tokens). Empty/absent → no-op.
-plugins: {}
-  # marketplaces:
-  #   - https://example.com/marketplace.json
+plugins:
+  marketplaces:
+    - https://github.com/stiproot/hex-arch
+    - https://github.com/stiproot/plan-management
+    - https://github.com/stiproot/code-comprehension
 
 # bootstrap-repo workflow (templates/bootstrap-repo.tmpl.yaml): setup → bootstrap. Publish-native
 # — creates a new GitHub repository from a spec, scaffolds, verifies, and pushes. No worktree,
