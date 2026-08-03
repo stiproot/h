@@ -165,6 +165,89 @@ classDiagram
   tally + per-agent day-ledger subtotals — closing the "chain members are invisible to the
   watch ledger" gap as a side effect.
 
+## Remaining work — the CLI half (the build spec)
+
+The server half is verified landed: `ChainMember` embeds `TriggerFields`, which carries `watch?`
+(`chain.model.ts:83`, documented at `:80-82`), and `fireWorkflow` fires every member through
+`invokeWithWatch`, attaching `watch: member.watch` with
+`watchMeta {owner: "chain", chainId, member}` (`chain-scan.ts:236-255`). Nothing on the engine
+side needs touching. What follows is the whole remaining change.
+
+### S1. `chain.py` — the refusal becomes a mapping
+
+`cli/h/src/h_cli/commands/chain.py:466-470` currently warns and drops the value:
+
+```python
+if cfg.budget:
+    _warn(f"per-workflow --budget on '{member.label}' is not yet enforced …; ignored")
+```
+
+It becomes an emit onto the member entry, as `watch.maxDurationMs`, using the existing
+`_budget_ms` helper (`chain.py:158`, which already assumes chain_expr validated the token):
+
+```python
+entry["watch"] = {"maxDurationMs": _budget_ms(<the member's own budget>)}
+```
+
+Placement: with the other `entry[...]` assignments (after `entry["fresh"]`), not at the current
+warn site, so the entry is built in one place.
+
+### S2. The inheritance trap — a member must NOT inherit the chain-wide budget
+
+`effective_config` (`chain_expr.py:124-143`) merges member config over chain-wide defaults
+**per field, and `budget` is one of the merged fields** (`:129`). So `cfg.budget` is already
+the *inherited* value: `h chain run --budget 1h -w a -w b` gives every member `cfg.budget ==
+"1h"`.
+
+Mapping `cfg.budget` naively would therefore make a chain-wide `--budget` silently arm a
+per-member watch row on every member — changing the meaning of an existing, documented flag
+(`chain.py:609-611`: "`--budget` is the whole-chain wall clock"). That is a regression, not a
+feature: the chain-wide budget already bounds the run via `body["budgetMs"]`
+(`chain.py:723-725`), and the design note above is explicit that the two budgets compose as
+whichever-trips-first *independently*.
+
+**The rule to implement:** only a budget written in the member's OWN position arms a member
+watch. Read the un-merged `member.config.budget` (the `MemberRef`'s own config) for the watch
+mapping; keep `expr.defaults.budget` feeding `budgetMs` alone. `_member_entry` currently
+receives only the merged `cfg`, so the member's own value must be threaded in — either pass
+the raw `MemberRef.config.budget` alongside, or drop `budget` from `effective_config`'s merge
+and let the chain-wide value be read from `expr.defaults` only at the `budgetMs` site.
+
+Prefer the second if it is clean: `budget` is the one merged field whose two positions mean
+*different things* (prefix = whole-chain wall clock; suffix = one member's watch policy),
+which is what made the merge wrong in the first place. Whichever route, say so in a comment at
+the site — the asymmetry is surprising and will be re-litigated otherwise.
+
+### S3. Refuse `--budget` on a `--cron` member
+
+Loudly, at registration, via the existing `_fail`, beside the sibling refusals
+(`chain.py:407-413`). A cron member's recurrence is the cron engine's business (D2/D4: the
+chain never re-fires it, only observes `wf:<member>.resolved`), so a per-member wall clock on
+it has no coherent subject. Message should name the member and say why, matching the tone of
+the `--max-fires`/`--inline` refusals next to it.
+
+### S4. Tests (`cli/h/tests/test_chain.py`)
+
+1. A member `--budget 10m` puts `watch: {maxDurationMs: 600000}` on that member's entry in the
+   registration body, and on no other member.
+2. A chain-wide (prefix) `--budget 1h` sets `budgetMs` and arms **no** member `watch` —
+   the S2 regression guard.
+3. Both together: prefix `--budget 1h` + a suffix `--budget 10m` on one member ⇒ chain
+   `budgetMs` from the prefix, one member watch from the suffix.
+4. `--budget` on a `--cron` member exits non-zero with the refusal message.
+5. Minutes/hours/bare-ms all map through `_budget_ms` correctly.
+
+`chain_expr` already parses and validates `--budget` in both positions
+(`test_chain_expr.py:70-90, 131-151`) — no parser change, and those tests must keep passing.
+If S2 is implemented by dropping `budget` from `effective_config`,
+`test_chain_expr.py:87-90` (which asserts budget merges) changes with it — that is a
+deliberate contract change, not a broken test to paper over.
+
+### Out of scope
+
+Engine/server changes (done), `chain_expr` grammar (done), the cookbook entry and this plan's
+archival (both follow the live acceptance run, not the code change).
+
 ## Acceptance
 
 1. `h chain run … -w review-pr --budget 10m …` registers (no refusal); `h chain list` shows
