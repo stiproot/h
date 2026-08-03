@@ -37,10 +37,11 @@ update that diagram IN THE SAME CHANGE.** Concretely:
   `bun run lint` (the bin ships in the `@stiproot/code-comprehension` devDependency), so a
   refactor that changes a diagrammed contract FAILS THE BUILD until the diagram regenerates.
 - Hand-authored docs (sequence/state/C4 framing): edit the doc, re-verify against the code.
-- Render to confirm: via the `generated-diagrams` plugin skill —
-  `bash "${CLAUDE_PLUGIN_ROOT}/skills/generated-diagrams/scripts/render.sh" docs/diagrams docs/diagrams/rendered`
-  (or a single doc as the first arg; fallback with no plugin:
-  `bunx -p @mermaid-js/mermaid-cli mmdc --quiet -i docs/diagrams/<name>.md -o docs/diagrams/rendered/<name>.png --scale 2 --backgroundColor white`).
+- Render to confirm: `render-diagram docs/diagrams docs/diagrams/rendered` — the second bin from
+  the same `@stiproot/code-comprehension` devDependency (or a single doc as the first arg).
+  Needs a Chrome for mermaid-cli's puppeteer; if its postinstall fails while a browser is already
+  cached, re-run with `PUPPETEER_SKIP_DOWNLOAD=true`. Last-resort fallback:
+  `bunx -p @mermaid-js/mermaid-cli mmdc --quiet -i docs/diagrams/<name>.md -o docs/diagrams/rendered/<name>.png --scale 2 --backgroundColor white`.
   `docs/diagrams/rendered/` is gitignored — render on demand and share the PNG.
 
 ## Enriching a plan with change diagrams (the standard proposal workflow)
