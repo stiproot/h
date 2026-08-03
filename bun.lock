@@ -3,6 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
+      "name": "h",
       "devDependencies": {
         "@stiproot/code-comprehension": "github:stiproot/code-comprehension",
         "@typescript/native-preview": "^7.0.0-dev.20260318.1",

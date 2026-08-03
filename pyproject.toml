@@ -22,3 +22,40 @@ members = [
 exclude = [
   "apps/claude-managed-agent",
 ]
+
+# A bare root `pytest` is NOT the full Python test surface — `make test-py` is, and it stays the
+# single source of truth (it runs each of the 7 suites under its own `uv run --package`, the only
+# way they can all pass). This block exists so a bare root run is SAFE and useful rather than a
+# wall of errors, because typing `pytest` at the root is the obvious thing to try.
+#
+# WHY THE SCOPE IS DELIBERATELY NARROW. A root run makes THIS file the inifile, which SILENTLY
+# REPLACES each package's own `[tool.pytest.ini_options]` — and those carry load-bearing settings
+# that do not compose into one config:
+#   - `cli/h` sets `addopts = "--disable-socket"`, a fail-closed network guard (a test missing its
+#     @respx.mock once registered a REAL chain and fired a live review panel). Collecting it from
+#     the root would run all 299 of its tests with that guard OFF while still reporting green —
+#     strictly worse than not running them. It is EXCLUDED here and covered by `make test-py`.
+#   - The agent apps set `pythonpath = ["src"]` because they are FLAT namespace packages
+#     (src/{domain,infrastructure,presentation}). Those top-level roots are identically named
+#     across apps, so several apps' `src` on one sys.path COLLIDE — one root pytest fundamentally
+#     cannot serve them all. Also excluded; `make test-py` runs each in its own env.
+# What is left — the two shared libs — needs only `asyncio_mode`, which is safe to restate here.
+#
+# `norecursedirs` additionally defuses a crash: `./dapr-etcd` is a root-owned bind mount (the Dapr
+# scheduler's data dir) and a default collect dies in it with PermissionError before running a
+# single test.
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["packages/py"]
+norecursedirs = [
+  "dapr-etcd",
+  "node_modules",
+  ".venv",
+  "*.egg-info",
+  "output",
+  ".local-logs",
+  "tools",
+  "web",
+  "apps",
+  "cli",
+]

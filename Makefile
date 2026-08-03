@@ -54,6 +54,9 @@ TARGET_REPO_DIR ?= repo
 K3D_CLUSTER       ?= h
 K3D_REGISTRY      ?= h-registry
 K3D_REGISTRY_PORT ?= 5111
+# How the registry is addressed from the HOST (in-cluster it is $(K3D_REGISTRY):$(K3D_REGISTRY_PORT)).
+# This is the prefix Tilt stamps on the images it builds, so it is what `tilt-gc` sweeps.
+K3D_REGISTRY_HOST ?= localhost:$(K3D_REGISTRY_PORT)
 
 # ── Default target ────────────────────────────────────────────────────────────
 
@@ -134,15 +137,38 @@ lint: lint-js lint-py ## Run all linters + architecture checks (JS + Python)
 lint-js: ## Lint JS/TS (turbo → tsc + oxfmt/oxlint + dependency-cruiser hex rules)
 	bun run lint
 
-lint-py: ## Lint all Python (repo-wide ruff hygiene + import-linter hex contracts)
+lint-py: ## Lint all Python (repo-wide ruff format + hygiene + import-linter hex contracts)
 	# ruff resolves each file's nearest [tool.ruff] config, so one pass covers the whole
 	# tree — including the workspace-excluded claude-managed-agent.
+	#
+	# `format --check` is the Python half of the parity JS already had: every JS package's lint
+	# runs `oxfmt --check`, so a misformatted .ts fails the build, while Python formatting went
+	# UNCHECKED and silently drifted (12 files across the CLI and the agent services by
+	# 2026-08-03). These three paths are the whole Python surface — `apps` covers every Python
+	# SERVICE (dapr-agent, dapr-claude-loop-agent, langgraph-agent, workflow-agent, and the
+	# standalone claude-managed-agent), `packages/py` the shared libs, `cli/h` the CLI. Fix a
+	# failure with `make format-py`, never by hand.
+	uv run ruff format --check apps packages/py cli/h
 	uv run ruff check apps packages/py cli/h
 	cd apps/workflow-agent && PYTHONPATH=src uv run lint-imports
 	cd apps/langgraph-agent && PYTHONPATH=src uv run lint-imports
 	# claude-managed-agent is the workspace-excluded standalone member (own uv.lock),
 	# so its contracts run in its own env — architecture is enforced everywhere it applies.
 	cd apps/claude-managed-agent && PYTHONPATH=src uv run lint-imports
+
+# The writers behind the `--check` gates in lint-js/lint-py. Same paths, same tools, minus the
+# check flag — so "make lint says I am misformatted" always has a one-command answer that cannot
+# disagree with the gate. JS is scoped to `src` (the per-package `format` script's scope): the
+# repo deliberately does NOT format cli/charts, whose .tmpl.yaml helm templates are not parseable
+# as plain YAML and would error.
+.PHONY: format format-js format-py
+format: format-js format-py ## Format all code (JS + Python) — the writers behind the lint --check gates
+
+format-js: ## Format JS/TS with oxfmt (apps/*/src + packages/js/*/src)
+	bunx oxfmt apps/*/src packages/js/*/src
+
+format-py: ## Format Python with ruff (apps + packages/py + cli/h)
+	uv run ruff format apps packages/py cli/h
 
 .PHONY: worktrees-purge
 worktrees-purge: ## Remove all git worktrees from the shared workspace (git worktree remove + prune)
@@ -213,6 +239,30 @@ tilt-down: ## Stop the Tilt dev stack and remove its Kubernetes resources
 
 tilt-trigger: ## Force-rebuild and redeploy one service (usage: make tilt-trigger SERVICE=workflow)
 	tilt trigger $(SERVICE)
+
+# Tilt stamps one immutable `tilt-<hash>` tag per rebuild and never collects the old ones, so the
+# registry grows without bound — a long-lived cluster accumulates tens of GB of dead agent images
+# (observed 2026-08-03: 45 stale tags, ~74GB nominal, 8 tags of claude-agent alone at 2.81GB each).
+#
+# `itest-gc` does NOT cover these. It sweeps `<registry>/h/*` — the gate's own images — whereas Tilt
+# retags `h/claude-agent` as `<registry>/h_claude-agent`, rewriting the `/` to `_`. Different prefix,
+# different sweeper. Run this periodically on any machine that uses k8s mode.
+TILT_GC_DAYS ?= 7
+
+.PHONY: tilt-gc
+tilt-gc: ## Prune Tilt-pushed images older than TILT_GC_DAYS (default 7) — Tilt never GCs its own tags
+	@echo "==> pruning $(K3D_REGISTRY_HOST)/h_* images older than $(TILT_GC_DAYS) days..."
+	@cutoff=$$(( $$(date +%s) - $(TILT_GC_DAYS) * 86400 )); \
+	docker images --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' 2>/dev/null \
+	  | grep "^$(K3D_REGISTRY_HOST)/h_" \
+	  | while IFS=' ' read -r img_tag created_date created_time _tz; do \
+	      img_ts=$$(date -d "$${created_date} $${created_time}" +%s 2>/dev/null || echo 0); \
+	      if [ "$${img_ts}" -gt 0 ] && [ "$${img_ts}" -lt "$${cutoff}" ]; then \
+	        echo "    removing $${img_tag}"; \
+	        docker rmi "$${img_tag}" >/dev/null 2>&1 || true; \
+	      fi; \
+	    done; \
+	echo "==> tilt-gc done."
 
 # ── k3d cluster (the Tilt path's Kubernetes, Linux-friendly) ────────────────────
 #
