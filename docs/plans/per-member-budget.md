@@ -218,6 +218,47 @@ Prefer the second if it is clean: `budget` is the one merged field whose two pos
 which is what made the merge wrong in the first place. Whichever route, say so in a comment at
 the site — the asymmetry is surprising and will be re-litigated otherwise.
 
+### The CLI half, in one picture
+
+Green = new; amber = existing code whose behavior changes (and the trap itself); red = the
+regression the S2 rule exists to prevent. The whole design is that ONE flag token means two
+different things depending on its POSITION, and today's per-field merge conflates them.
+
+```mermaid
+flowchart TB
+    P["--budget 1h — PREFIX<br/>(before the first member)<br/>the whole-chain wall clock"]
+    S["-w review-pr --budget 10m — SUFFIX<br/>(bound to the member it follows)<br/>that member's watch policy"]:::added
+
+    P --> D["ChainExpr.defaults.budget<br/>chain_expr.py"]
+    S --> M["MemberRef.config.budget<br/>chain_expr.py"]:::added
+
+    D --> EC
+    M --> EC
+    EC["effective_config — chain_expr.py:129<br/>budget = member value, else the chain-wide default<br/>THE TRAP: one merge over two different meanings"]:::trap
+
+    EC -. "naive mapping of the MERGED cfg.budget:<br/>a chain-wide --budget silently arms<br/>a watch row on EVERY member" .-> X["REGRESSION<br/>(S2 test 2 guards this)"]:::rejected
+
+    D ==> B["body.budgetMs — chain.py:723-725<br/>UNCHANGED, chain-wide wall clock"]
+    M ==> W["entry.watch = maxDurationMs<br/>S1: chain.py:466-470 refusal becomes a mapping<br/>S2: reads the member's OWN budget, never the inherited one"]:::added
+
+    B --> ROW[("chain:sub row")]
+    W --> ROW
+    ROW ==> FIRE["fireWorkflow to invokeWithWatch<br/>chain-scan.ts:236-255 — ALREADY BUILT"]
+
+    CR["a --cron member carrying --budget"] --> F["_fail, loud, at registration<br/>S3: recurrence is the cron engine's business"]:::added
+
+    classDef added fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef trap fill:#fef9c3,stroke:#ca8a04,color:#713f12
+    classDef rejected fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+```
+
+**Reading notes.** The two `==>` paths are the point: the prefix budget keeps flowing to
+`budgetMs` alone and the suffix budget becomes a member watch policy, and they must never
+cross. The dotted red edge is what happens if the implementer maps `cfg.budget` — the value
+`effective_config` already merged — instead of the member's own; it is the one way this small
+change can break an existing, documented flag. Everything below `chain:sub` is untouched: the
+engine seam (`invokeWithWatch`) landed with fire-descriptor.
+
 ### S3. Refuse `--budget` on a `--cron` member
 
 Loudly, at registration, via the existing `_fail`, beside the sibling refusals
