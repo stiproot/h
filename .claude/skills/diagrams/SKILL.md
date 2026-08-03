@@ -39,8 +39,8 @@ update that diagram IN THE SAME CHANGE.** Concretely:
 - Hand-authored docs (sequence/state/C4 framing): edit the doc, re-verify against the code.
 - Render to confirm: `render-diagram docs/diagrams docs/diagrams/rendered` — the second bin from
   the same `@stiproot/code-comprehension` devDependency (or a single doc as the first arg).
-  Needs a Chrome for mermaid-cli's puppeteer; if its postinstall fails while a browser is already
-  cached, re-run with `PUPPETEER_SKIP_DOWNLOAD=true`. Last-resort fallback:
+  It finds an existing Chrome for mermaid-cli's puppeteer and provisions one otherwise, so no
+  env var is needed. Last-resort fallback:
   `bunx -p @mermaid-js/mermaid-cli mmdc --quiet -i docs/diagrams/<name>.md -o docs/diagrams/rendered/<name>.png --scale 2 --backgroundColor white`.
   `docs/diagrams/rendered/` is gitignored — render on demand and share the PNG.
 
