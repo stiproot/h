@@ -440,6 +440,27 @@ k8s/
 
 Tilt manages this stack. `make tilt-up` applies all manifests; `make tilt-down` removes them. Dapr control plane (`dapr-system` namespace) is Helm-managed — use `make dapr-install` / `make dapr-uninstall`.
 
+**k8s mode is the HEAVY path — the three modes are not interchangeable in cost.** Local (host `dapr
+run`) and container (compose) mode run the same stack without a cluster; k8s mode adds the k3s
+server + loadbalancer + registry AND an image set that only grows: Tilt stamps an immutable
+`tilt-<hash>` tag per rebuild and has **no image GC**, so every rebuild leaves a full ~2-3GB agent
+image behind forever. Sweep with **`make tilt-gc`** (`TILT_GC_DAYS`, default 7) — note `make
+itest-gc` does NOT cover these: it sweeps `<registry>/h/*` (the gate's images) while Tilt retags
+`h/claude-agent` to `<registry>/h_claude-agent`, `/`→`_`, a different prefix. On a
+resource-constrained box, default to local or container mode and treat k8s mode as opt-in; k8s mode
+stays fully documented and `make k3d-up` recreates the cluster from nothing whenever it is wanted.
+(Bit us live 2026-08-03: 45 orphaned Tilt tags, ~74GB, inside a Docker footprint that had reached
+168GB.)
+
+**Exactly ONE capability is k8s-only: `make itest`**, the integration gate — it deploys an ephemeral
+`h-itest-<id>` namespace, so it needs k3d + `make dapr-install`. Everything else is mode-agnostic:
+`make lint` (both stacks), `make test` (all unit suites, JS + Python), and every run/chain/cron
+surface work identically in local and container mode. The consequence to remember when composing:
+the h-builds-h `implement-pr` template embeds `run-itest`, so THAT LOOP requires k8s mode. Never
+silently drop the step to fit a cluster-less host — the activity has a `skip`/`skipReason`
+break-glass that records `class="skipped"` in the evidence and surfaces the reason in the PR body,
+so a waiver stays auditable instead of becoming a missing gate.
+
 ## MCP configuration
 
 `claude-agent` connects to MCP servers (`workflow-mcp` for workflows, `dapr-mcp` for state-store

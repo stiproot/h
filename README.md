@@ -7,6 +7,23 @@ The agents span several frameworks — Claude Code CLI, OpenHands, Dapr Agents S
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the foundational building blocks — the primitives, the
 composition stack, and the design principles.
 
+## Run modes
+
+The same stack runs three ways. **Local and container are the defaults — neither needs Kubernetes,
+and everything except the integration gate works in both.** Pick k8s mode only when you specifically
+want to exercise the Kubernetes deployment path.
+
+| Mode | What it is | Bring-up | Needs a cluster? |
+| --- | --- | --- | --- |
+| **Local** | App services on the host via `dapr run`; infra in Docker | `make infra-up && make up-local-wait` ([details](#running-locally-host-side-dapr-cli)) | No |
+| **Container** | Everything in Docker Compose | `make up` ([details](#running-in-docker)) | No |
+| **k8s (Tilt)** | Manifests deployed to k3d/Rancher Desktop | `make k3d-up && make dapr-install && make tilt-up` ([details](#running-in-kubernetes-tilt--optional-the-heavy-path)) | Yes |
+
+The one capability exclusive to k8s mode is **`make itest`**, the integration gate — it deploys an
+ephemeral `h-itest-<id>` namespace, so it needs k3d + Dapr. Unit tests (`make test`) and both lint
+stacks (`make lint`) are fully available in local and container mode. See
+[Dev commands](#dev-commands) for the test/lint entry points.
+
 ## Agents
 
 | Service | Framework | Notes |
@@ -86,9 +103,18 @@ h/
 
 Agent workspaces live outside the repo at `../h-workspace/` to prevent Claude Code from treating h as the project root. In Docker the equivalent is the `/workspace` volume; in Kubernetes it is a `hostPath` volume pointing to the same absolute path.
 
-## Running in Kubernetes (Tilt) — recommended for phase-1 services
+## Running in Kubernetes (Tilt) — optional; the heavy path
 
 Runs `workflow` and `claude-agent` in a local Kubernetes cluster (Rancher Desktop) with Dapr installed via Helm. Tilt manages image builds, deployment, and port-forwards.
+
+> **k8s mode is the resource-hungry option — budget for it.** On top of the cluster itself
+> (k3s server + loadbalancer + registry), Tilt stamps a fresh immutable `tilt-<hash>` tag on every
+> rebuild and **never collects the old ones**. The agent images are large (claude-agent ~2.8GB,
+> openhands-agent ~2.0GB), so a machine that runs Tilt across a few sessions accumulates tens of GB
+> of dead tags plus a build cache of the same order. Sweep it with **`make tilt-gc`** (see
+> [Full teardown](#full-teardown)); `make itest-gc` does *not* cover Tilt's images. If the machine
+> is short on disk or RAM, prefer [local](#running-locally-host-side-dapr-cli) or
+> [container](#running-in-docker) mode — both run the same stack without a cluster.
 
 ### Prerequisites (one-time)
 
@@ -147,7 +173,12 @@ make tilt-down        # app stack only (Dapr control plane and cluster stay up)
 make k3d-down         # delete the k3d cluster + its registry
 make dapr-uninstall   # removes Dapr control plane + CRDs
 make worktrees-purge  # remove worktrees cut by chain runs
+make tilt-gc          # prune Tilt-pushed images older than 7d (TILT_GC_DAYS to override)
 ```
+
+`make tilt-gc` is disk hygiene, not teardown — it is safe to run at any time, including while the
+stack is up, since it only removes tags older than the cutoff. Tilt has no built-in image GC, so
+without it the registry grows by one full agent image per rebuild, forever.
 
 ## Running locally (host-side dapr CLI)
 
@@ -387,7 +418,7 @@ bun run test     # vitest run
 Run every unit test across both ecosystems with one command:
 
 ```sh
-make test        # test-js (turbo → vitest) + test-py (agent-core pytest)
+make test        # test-js (turbo → vitest) + test-py (pytest — all 7 suites). No cluster needed.
 ```
 
 Python — workspace members (the shared `agent-server` / `agent-core` libs, the agent

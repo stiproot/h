@@ -93,6 +93,13 @@ down MCP silently drops tools from a `implement-pr` run.
 #    create-pr pushes the branch and opens the PR (embedding the itest evidence in the body); then
 #    arm-revise-pr arms a revise-until-merged recur cron (§10, Job 2; a SKIPPED push arms nothing).
 #    run-itest is part of the implementor's definition of done — do not compose without it.
+#
+#    REQUIRES K8S MODE. The gate deploys an ephemeral h-itest-<id> namespace, so it is the one
+#    part of this loop that needs k3d + `make dapr-install` — a local/container-only host cannot
+#    run it. Do NOT quietly drop the step to make the loop fit such a host: either run the loop
+#    from a k8s-capable machine, or engage the activity's documented break-glass (the `skip` /
+#    `skipReason` step inputs), which records class="skipped" in the evidence and embeds the
+#    reason in the PR body — an auditable waiver rather than a silently missing gate.
 uv run h template compose implement verify run-itest create-pr arm-revise-pr --save implement-pr
 
 # 2. Also publish `revise-pr` (the per-PR loop's target) so the arm-revise-pr cron has a key to re-fire.
