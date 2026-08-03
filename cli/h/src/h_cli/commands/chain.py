@@ -406,6 +406,11 @@ def _resolve_workflow(
     inline = cfg.inline or bool(cfg.cron)
     if cfg.max_fires and not cfg.cron:
         _fail(f"--max-fires on '{member.label}' needs --cron (it's the cron's fire budget)")
+    if cfg.cron and member.config.budget is not None:
+        _fail(
+            f"--budget on cron member '{member.label}' is not supported — "
+            "the cron engine owns recurring-fire budgets"
+        )
     if inline and member.key is not None and not roster:
         _fail(
             f"--inline/--cron member '{member.label}' must be composed with -t — an inline "
@@ -463,12 +468,6 @@ def _resolve_workflow(
         key_field = key
         if params:
             _check_identity_slots(key, cfg, kind)
-    if cfg.budget:
-        _warn(
-            f"per-workflow --budget on '{member.label}' is not yet enforced "
-            "(per-workflow watch lands with the engine's next slice); ignored"
-        )
-
     prefix, fresh_default = KIND_FIRE[kind]
     entry: dict[str, Any] = {"kind": kind}
     if steps is not None:
@@ -481,6 +480,10 @@ def _resolve_workflow(
     if not inline and not in_parallel:
         entry["instanceId"] = f"{prefix}-{slug}"
     entry["fresh"] = cfg.fresh or fresh_default
+    # A prefix budget is the chain wall clock; only a budget written on this member becomes a watch.
+    member_budget = member.config.budget
+    if member_budget is not None:
+        entry["watch"] = {"maxDurationMs": _budget_ms(member_budget)}
     # stage: emitted on every member once the chain uses stages (a --parallel group or an explicit
     # --stage); a purely sequential chain omits it (the engine defaults a member's stage to index).
     if uses_stages:
@@ -794,15 +797,25 @@ def list_() -> None:
         err_console.print("Is workflow-svc running? (make dev-tab)")
         raise typer.Exit(1) from err
     chains = result.get("chains", [])
-    table = Table("chain", "status", "workflow", "outcome", title=f"chains ({len(chains)})")
+    table = Table(
+        "chain",
+        "status",
+        "workflow",
+        "member budget (ms)",
+        "outcome",
+        title=f"chains ({len(chains)})",
+    )
     for c in chains:
         workflows = c.get("members", [])
         cursor = c.get("cursor", 0)
         kind = workflows[cursor]["kind"] if 0 <= cursor < len(workflows) else "-"
+        watch = workflows[cursor].get("watch") if 0 <= cursor < len(workflows) else None
+        member_budget = watch.get("maxDurationMs", "-") if watch else "-"
         table.add_row(
             c.get("chainId", ""),
             c.get("status", ""),
             f"{cursor + 1}/{len(workflows)} ({kind})",
+            str(member_budget),
             c.get("outcome") or "-",
         )
     console.print(table)

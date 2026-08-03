@@ -103,8 +103,51 @@ def test_chain_run_fresh_binds_to_its_hop(tmp_path: Path) -> None:
 @respx.mock
 def test_chain_run_prefix_budget_is_the_chain_wall_clock(tmp_path: Path) -> None:
     route = _mock_run()
-    runner.invoke(app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "90m"])
-    assert json.loads(route.calls[0].request.content)["budgetMs"] == 90 * 60_000
+    result = runner.invoke(
+        app, ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "1h"]
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["budgetMs"] == 3_600_000
+    assert all("watch" not in member for member in body["members"])
+
+
+@respx.mock
+@pytest.mark.parametrize(("budget", "expected_ms"), [("2500", 2500), ("10m", 600_000), ("2h", 7_200_000)])
+def test_chain_run_member_budget_becomes_watch(
+    tmp_path: Path, budget: str, expected_ms: int
+) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path),
+            "-w", "implement-pr", "--budget", budget, "-w", "review-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    members = json.loads(route.calls[0].request.content)["members"]
+    assert members[0]["watch"] == {"maxDurationMs": expected_ms}
+    assert "watch" not in members[1]
+
+
+@respx.mock
+def test_chain_run_prefix_and_member_budgets_are_independent(tmp_path: Path) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "1h",
+            "-w", "implement-pr", "--budget", "10m", "-w", "review-pr",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["budgetMs"] == 3_600_000
+    assert [m.get("watch") for m in body["members"]] == [
+        {"maxDurationMs": 600_000},
+        None,
+    ]
 
 
 @respx.mock
@@ -367,6 +410,43 @@ def test_chain_run_cron_member_arms_an_embedded_recurrence(tmp_path: Path) -> No
     assert member["id"] == "gather"
 
 
+@respx.mock
+@needs_helm
+def test_chain_run_member_budget_on_cron_is_rejected_before_side_effects(tmp_path: Path) -> None:
+    save = respx.post(f"{WORKFLOW_URL}/workflow/save").mock(return_value=Response(200, json={}))
+    run = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
+            "-t", "implement", "create-pr", "--cron", "*/30 * * * *", "--budget", "10m",
+        ],
+    )  # fmt: skip
+    assert result.exit_code != 0
+    output = _all_output(result)
+    assert "implement+create-pr" in output
+    assert "cron engine" in output and "owns recurring-fire budgets" in output
+    assert not save.called
+    assert not run.called
+
+
+@respx.mock
+@needs_helm
+def test_chain_run_prefix_budget_allows_cron_member(tmp_path: Path) -> None:
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "-p", "repo=o/r",
+            "--budget", "1h", "-t", "implement", "create-pr", "--cron", "*/30 * * * *",
+        ],
+    )  # fmt: skip
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["budgetMs"] == 3_600_000
+    assert "watch" not in body["members"][0]
+
+
 @needs_helm
 def test_chain_run_cron_member_needs_a_repo(tmp_path: Path) -> None:
     result = runner.invoke(
@@ -566,7 +646,7 @@ def test_chain_list_renders_registry() -> None:
                         "cursor": 1,
                         "members": [
                             {"kind": "implement-pr"},
-                            {"kind": "review-pr"},
+                            {"kind": "review-pr", "watch": {"maxDurationMs": 600000}},
                             {"kind": "revise-pr"},
                         ],
                         "outcome": None,
@@ -579,6 +659,7 @@ def test_chain_list_renders_registry() -> None:
     assert result.exit_code == 0, _all_output(result)
     assert "dark-mode" in result.output
     assert "running" in result.output
+    assert "600000" in result.output
 
 
 @respx.mock
