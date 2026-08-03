@@ -662,7 +662,7 @@
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
-    "@stiproot/code-comprehension": ["@stiproot/code-comprehension@github:stiproot/code-comprehension#1a7caa9", { "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"], "bin": { "gen-code-diagram": "plugins/code-comprehension/skills/generated-diagrams/scripts/gen-code-diagram.mjs" } }, "stiproot-code-comprehension-1a7caa9", "sha512-y9Pa6HhrEEzMWeipAAnrlUrAwBpYxxMHT/czcFikTBTC1w74Ahi8LTwREUdcjt9fOjyDSKJqTGJ0g8llgZh/Wg=="],
+    "@stiproot/code-comprehension": ["@stiproot/code-comprehension@github:stiproot/code-comprehension#56ab7ac", { "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"], "bin": { "gen-code-diagram": "plugins/code-comprehension/skills/generated-diagrams/scripts/gen-code-diagram.mjs" } }, "stiproot-code-comprehension-56ab7ac", "sha512-h8WqntC0fMEcE8BIrNL3xWygObBEX6QcvQAHttRI0G+ZKg6iLo5ma4wT8yHUd+s7Qq6yAKd9lqllaW3wVzFAag=="],
 
     "@turbo/darwin-64": ["@turbo/darwin-64@2.9.16", "", { "os": "darwin", "cpu": "x64" }, "sha512-jLjApWTSNd7JZ5JaLYfelW1ytnGQOvB7ivl+2RD1xQvJTbi8I9gBjzcga7tDZVPyaxpl10YTfJt3BrYXR18KDw=="],
 
