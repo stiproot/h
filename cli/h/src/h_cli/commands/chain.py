@@ -122,7 +122,7 @@ KIND_CONTRACT_SUPPLIES: dict[str, frozenset[str]] = {
 # setup step — empty deliberately means "install none".
 ALWAYS_OPTIONAL_PARAMS = frozenset({"plugins"})
 # Untrusted-input executors are FROZEN: a SINGLE --agent warns and keeps the published executor
-#. A ROSTER
+# . A ROSTER
 # is the explicit relaxation:
 # the panelists run as named, the pin migrates to the synthesis judge
 # (panelize.JUDGE_ACTIVITY, claude).
@@ -756,9 +756,7 @@ def run(
         last_stage = max(final_stage for *_, final_stage in members)
         if start >= last_stage:
             _fail("loop-until-clean needs a workflow after 'review-pr' (e.g. 'revise') to loop.")
-        crowded = sorted(
-            {fs for *_, fs in members if fs >= start and stage_counts[fs] > 1}
-        )
+        crowded = sorted({fs for *_, fs in members if fs >= start and stage_counts[fs] > 1})
         if crowded:
             _fail(
                 "loop-until-clean requires single-member stages from the review onward "

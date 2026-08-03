@@ -107,9 +107,7 @@ def test_status_stale_heartbeat_flag() -> None:
     }
     respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(200, json=_chain_payload()))
     respx.get(f"{WORKFLOW_URL}/watch/list").mock(return_value=Response(200, json=_watch_payload()))
-    respx.get(f"{WORKFLOW_URL}/cron/list").mock(
-        return_value=Response(200, json=stale_cron_payload)
-    )
+    respx.get(f"{WORKFLOW_URL}/cron/list").mock(return_value=Response(200, json=stale_cron_payload))
     respx.get(f"{GITHUB_API_URL}?state=open&per_page=50").mock(return_value=Response(200, json=[]))
 
     result = runner.invoke(app, ["status"])
@@ -219,6 +217,7 @@ def test_status_open_prs_fetch_failure() -> None:
 def test_status_open_prs_unauthenticated() -> None:
     """Missing GH_TOKEN still allows unauthenticated GitHub API access (lower rate limit)."""
     import os
+
     # Save and clear GH_TOKEN
     original_token = os.environ.get("GH_TOKEN")
     if "GH_TOKEN" in os.environ:

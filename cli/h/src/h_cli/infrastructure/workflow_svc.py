@@ -323,6 +323,7 @@ def open_prs() -> list[dict[str, Any]]:
     number, title, and author fields. Read-only; network failures raise httpx.HTTPError.
     Supports unauthenticated access (lower rate limit) when GH_TOKEN is absent."""
     import os
+
     gh_token = os.environ.get("GH_TOKEN", "")
     headers = {}
     if gh_token:

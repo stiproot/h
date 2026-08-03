@@ -535,7 +535,7 @@ def run(
         # --inline --cron: recur these very steps over an EMBEDDED source (nothing published to
         # re-hydrate). The cron key mirrors the wf: coords, so it needs repo+slug params + the
         # wf-identity, exactly like a saved --cron
-        #.
+        # .
         arm_cron: dict[str, Any] | None = None
         wf: dict[str, Any] | None = None
         if cron_policy:

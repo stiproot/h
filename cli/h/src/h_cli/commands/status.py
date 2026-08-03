@@ -44,15 +44,13 @@ def _format_age(seconds: float) -> str:
     return f"{seconds / 3600:.1f}h"
 
 
-def _fetch_all() -> (
-    tuple[
-        dict[str, Any] | None,
-        dict[str, Any] | None,
-        dict[str, Any] | None,
-        list[dict[str, Any]],
-        list[str],
-    ]
-):
+def _fetch_all() -> tuple[
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    list[dict[str, Any]],
+    list[str],
+]:
     """Fetch chain/watch/cron/PRs independently; records errors rather than raising."""
     fetch_errors: list[str] = []
     chain_data: dict[str, Any] | None = None
@@ -166,10 +164,13 @@ def _analyze(
         _hb_entry("cron", cron_data),
     ]
 
-    active_watches = len([
-        w for w in ((watch_data or {}).get("watches") or [])
-        if w.get("status") in ("scheduling", "watching")
-    ])
+    active_watches = len(
+        [
+            w
+            for w in ((watch_data or {}).get("watches") or [])
+            if w.get("status") in ("scheduling", "watching")
+        ]
+    )
     pending_scheds = [
         s for s in ((cron_data or {}).get("sched") or []) if s.get("status") == "armed"
     ]
@@ -211,7 +212,11 @@ def status(
     active = sections["chains"]["active"]
     if active:
         t = Table(
-            "chainId", "status", "stage", "loop iter", "findings",
+            "chainId",
+            "status",
+            "stage",
+            "loop iter",
+            "findings",
             title=f"active ({len(active)})",
         )
         for row in active:
@@ -266,7 +271,9 @@ def status(
     open_prs = sections["prs"]["open"]
     if open_prs:
         t_prs = Table(
-            "#", "title", "author",
+            "#",
+            "title",
+            "author",
             title=f"open ({len(open_prs)})",
         )
         for pr in open_prs:

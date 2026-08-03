@@ -67,8 +67,15 @@ def test_workflow_run_agent_and_model_are_machinery_p_carries_content() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "implement-pr", "-p", "slug=x",
-            "--agent", "openhands", "--model", "m1",
+            "workflow",
+            "run",
+            "implement-pr",
+            "-p",
+            "slug=x",
+            "--agent",
+            "openhands",
+            "--model",
+            "m1",
         ],  # fmt: skip
     )
     assert result.exit_code == 0, result.output

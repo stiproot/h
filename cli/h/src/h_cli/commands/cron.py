@@ -83,7 +83,13 @@ def list_() -> None:
     _print_heartbeat(data.get("heartbeat"))
     crons = data.get("crons") or []
     table = Table(
-        "cron", "status", "cadence", "fires", "outcome", "lastRunAt", "note",
+        "cron",
+        "status",
+        "cadence",
+        "fires",
+        "outcome",
+        "lastRunAt",
+        "note",
         title=f"recur crons ({len(crons)})",
     )
     for row in crons:
@@ -102,7 +108,14 @@ def list_() -> None:
 
     discover = data.get("discover") or []
     dtable = Table(
-        "discover", "status", "cadence", "workflow", "fires", "lastFired", "lastRunAt", "note",
+        "discover",
+        "status",
+        "cadence",
+        "workflow",
+        "fires",
+        "lastFired",
+        "lastRunAt",
+        "note",
         title=f"discovery crons ({len(discover)})",
     )
     for row in discover:

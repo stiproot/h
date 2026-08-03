@@ -63,14 +63,18 @@ def execute_tool(name: str, args: dict, cwd: Path) -> str:
     if name == "search_skills":
         result = subprocess.run(
             ["tessl", "search", args["query"]],
-            capture_output=True, text=True, cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            cwd=str(cwd),
         )
         return result.stdout or result.stderr
 
     if name == "install_skill":
         result = subprocess.run(
             ["tessl", "install", args["package"], "--skill", args["skill_name"]],
-            capture_output=True, text=True, cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            cwd=str(cwd),
         )
         if result.returncode != 0:
             return f"Error: {result.stderr}"

@@ -5,7 +5,6 @@ argument is equally model-supplied — the same escapes are reachable. Errors co
 the value goes to the model, and raising would abort the run instead of letting it adjust.
 """
 
-
 from infrastructure.tools import execute_tool
 
 

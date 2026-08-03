@@ -101,8 +101,18 @@ def test_cron_discover_add_fires_a_provision_workflow() -> None:
     result = runner.invoke(
         app,
         # fmt: off
-        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *",
-         "--max-per-day", "3"],
+        [
+            "cron",
+            "discover",
+            "add",
+            "stiproot/h",
+            "-l",
+            "agent-approved",
+            "-c",
+            "0 * * * *",
+            "--max-per-day",
+            "3",
+        ],
         # fmt: on
         env={"COLUMNS": "200"},
     )
@@ -141,9 +151,18 @@ def test_cron_discover_add_attaches_a_watch_policy() -> None:
     result = runner.invoke(
         app,
         [
-            "cron", "discover", "add", "stiproot/h",
-            "-l", "agent-approved", "-c", "0 * * * *",
-            "--run-budget-mins", "40", "--run-retries", "2",
+            "cron",
+            "discover",
+            "add",
+            "stiproot/h",
+            "-l",
+            "agent-approved",
+            "-c",
+            "0 * * * *",
+            "--run-budget-mins",
+            "40",
+            "--run-retries",
+            "2",
         ],
         env={"COLUMNS": "200"},
     )
@@ -160,8 +179,18 @@ def test_cron_discover_add_run_retries_needs_a_budget() -> None:
     result = runner.invoke(
         app,
         # fmt: off
-        ["cron", "discover", "add", "stiproot/h", "-l", "agent-approved", "-c", "0 * * * *",
-         "--run-retries", "2"],
+        [
+            "cron",
+            "discover",
+            "add",
+            "stiproot/h",
+            "-l",
+            "agent-approved",
+            "-c",
+            "0 * * * *",
+            "--run-retries",
+            "2",
+        ],
         # fmt: on
         env={"COLUMNS": "200"},
     )

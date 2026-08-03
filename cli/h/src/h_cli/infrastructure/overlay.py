@@ -34,16 +34,10 @@ def _merge_step(base_step: dict[str, Any], layer_step: dict[str, Any]) -> None:
     `input.setup` lists, later-wins the rest."""
     base_input: dict[str, Any] = base_step.setdefault("input", {})
     for key, value in (layer_step.get("input") or {}).items():
-        if (
-            key == "task"
-            and isinstance(value, str)
-            and isinstance(base_input.get("task"), str)
-        ):
+        if key == "task" and isinstance(value, str) and isinstance(base_input.get("task"), str):
             base_input["task"] = base_input["task"].rstrip("\n") + TASK_SEPARATOR + value
         elif (
-            key == "setup"
-            and isinstance(value, list)
-            and isinstance(base_input.get("setup"), list)
+            key == "setup" and isinstance(value, list) and isinstance(base_input.get("setup"), list)
         ):
             base_input["setup"] = base_input["setup"] + value
         else:

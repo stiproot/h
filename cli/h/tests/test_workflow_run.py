@@ -22,6 +22,7 @@ def _all_output(result) -> str:
         pass
     return out
 
+
 needs_helm = pytest.mark.skipif(
     shutil.which("helm") is None, reason="helm not on PATH (renders cli/charts)"
 )
@@ -38,9 +39,18 @@ def test_inline_renders_a_template_and_fires_its_steps() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "revise-pr", "--inline",
-            "-p", "pr=30", "-p", "repo=stiproot/h", "-p", "slug=pi-agent",
-            "--instance-id", "revise-pi-agent",
+            "workflow",
+            "run",
+            "revise-pr",
+            "--inline",
+            "-p",
+            "pr=30",
+            "-p",
+            "repo=stiproot/h",
+            "-p",
+            "slug=pi-agent",
+            "--instance-id",
+            "revise-pi-agent",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -66,10 +76,22 @@ def test_inline_cron_arms_an_embedded_recurrence() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "revise-pr", "--inline",
-            "-p", "repo=stiproot/h", "-p", "slug=pi-agent", "-p", "pr=30",
-            "--cron", "*/30 * * * *", "--max-fires", "20",
-            "--instance-id", "revise-pi-agent",
+            "workflow",
+            "run",
+            "revise-pr",
+            "--inline",
+            "-p",
+            "repo=stiproot/h",
+            "-p",
+            "slug=pi-agent",
+            "-p",
+            "pr=30",
+            "--cron",
+            "*/30 * * * *",
+            "--max-fires",
+            "20",
+            "--instance-id",
+            "revise-pi-agent",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -105,8 +127,19 @@ def test_cron_flag_registers_a_recurrence_on_the_saved_run() -> None:
     )
     result = runner.invoke(
         app,
-        ["workflow", "run", "revise-pr", "-p", "repo=o/r", "-p", "slug=x",
-         "--cron", "*/30 * * * *", "--max-fires", "50"],
+        [
+            "workflow",
+            "run",
+            "revise-pr",
+            "-p",
+            "repo=o/r",
+            "-p",
+            "slug=x",
+            "--cron",
+            "*/30 * * * *",
+            "--max-fires",
+            "50",
+        ],
     )
     assert result.exit_code == 0, result.output
     body = json.loads(route.calls[0].request.content)
@@ -150,9 +183,21 @@ def test_agent_roster_panelizes_and_fires_inline() -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", "review-pr",
-            "--agent", "claude", "--agent", "codex", "--agent", "openhands",
-            "-p", "pr=64", "-p", "repo=stiproot/h", "-p", "slug=x",
+            "workflow",
+            "run",
+            "review-pr",
+            "--agent",
+            "claude",
+            "--agent",
+            "codex",
+            "--agent",
+            "openhands",
+            "-p",
+            "pr=64",
+            "-p",
+            "repo=stiproot/h",
+            "-p",
+            "slug=x",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -161,7 +206,9 @@ def test_agent_roster_panelizes_and_fires_inline() -> None:
     panel = next(step for step in steps if "parallel" in step)
     assert [b["id"] for b in panel["parallel"]] == ["claude", "codex", "openhands"]
     assert [b["activity"] for b in panel["parallel"]] == [
-        "run-claude", "run-codex", "run-openhands",
+        "run-claude",
+        "run-codex",
+        "run-openhands",
     ]
     # The synthesis keeps the workflow's own contract-carrying step id + contract, and the
     # template's panelSynthesis rule is spliced into the judge's task.
@@ -199,8 +246,13 @@ def test_agent_roster_panelizes_a_custom_saved_workflow(key: str) -> None:
     result = runner.invoke(
         app,
         [
-            "workflow", "run", key,
-            "--agent", "claude", "--agent", "codex",
+            "workflow",
+            "run",
+            key,
+            "--agent",
+            "claude",
+            "--agent",
+            "codex",
         ],
     )
     assert result.exit_code == 0, _all_output(result)
@@ -233,16 +285,34 @@ def test_agent_roster_accepts_model_but_rejects_routing() -> None:
     )
     result = runner.invoke(
         app,
-        ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
-         "--model", "opus"],
+        [
+            "workflow",
+            "run",
+            "review-pr",
+            "--agent",
+            "claude",
+            "--agent",
+            "codex",
+            "--model",
+            "opus",
+        ],
     )
     # Now succeeds: model is forwarded to every branch via panelize.
     assert result.exit_code == 0, _all_output(result)
     assert route.called
     result = runner.invoke(
         app,
-        ["workflow", "run", "review-pr", "--agent", "claude", "--agent", "codex",
-         "--via", "claude-agent"],
+        [
+            "workflow",
+            "run",
+            "review-pr",
+            "--agent",
+            "claude",
+            "--agent",
+            "codex",
+            "--via",
+            "claude-agent",
+        ],
     )
     assert result.exit_code == 1
     assert "roster" in _all_output(result)
