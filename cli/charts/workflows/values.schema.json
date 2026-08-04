@@ -152,6 +152,25 @@
       },
       "additionalProperties": false
     },
+    "reviewSpec": {
+      "type": "object",
+      "$comment": "review-spec template (templates/review-spec.tmpl.yaml). Uses the existing review-pr chain kind and verdict contract shape.",
+      "properties": {
+        "repo": {
+          "type": "string"
+        },
+        "models": {
+          "type": "object",
+          "properties": {
+            "review": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "bootstrapRepo": {
       "type": "object",
       "$comment": "bootstrap-repo template (templates/bootstrap-repo.tmpl.yaml). Publish-native: repoName/spec/verifyCmd/plugins/visibility are fire-time params; only visibility default and models bake here.",

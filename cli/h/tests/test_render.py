@@ -31,6 +31,7 @@ MINIMAL_VALUES = {
 }
 PINNED_OR_OVERLAY_IDENTITY = {
     "review-pr",
+    "review-spec",
     "test-plugin-setup",
     "improve-plugin",
     "verify",
@@ -401,6 +402,34 @@ def test_review_pr_golden(snapshot) -> None:
         include_local=False,
     )
     assert rendered == snapshot
+
+
+def test_review_spec_golden(snapshot) -> None:
+    """The review-spec template: setup → spec review with open fire-time params."""
+    rendered = helm.render_workflow(
+        "review-spec",
+        values={"reviewSpec.repo": "owner/h"},
+        include_local=False,
+    )
+    assert rendered == snapshot
+
+
+def test_review_spec_publish_mode_opens_param_slots() -> None:
+    definition = json.loads(
+        helm.to_wire_json(
+            helm.render_workflow(
+                "review-spec",
+                values={"reviewSpec.repo": "owner/h"},
+                include_local=False,
+            )
+        )
+    )
+    assert [step["id"] for step in definition["steps"]] == ["setup", "review"]
+    task = definition["steps"][1]["input"]["task"]
+    for token in ("{{params.repo}}", "{{params.pr}}", "{{params.focus}}"):
+        assert token in task
+    assert definition["outputs"]["properties"]["verdict"]["enum"] == ["CLEAN", "FINDINGS"]
+    assert definition["steps"][1]["input"]["outputContract"] == definition["outputs"]
 
 
 def test_review_pr_with_spec_golden(snapshot) -> None:

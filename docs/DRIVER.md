@@ -39,6 +39,20 @@ reversible-by-branch; the merge is where Claude (or the human) has final say on 
 A fallback driver's goal state is a MERGE QUEUE: branches driven review-clean + verified,
 listed in the session-state paragraph (below), waiting for the returning primary.
 
+## Choosing a workflow tier
+
+**Direct (light) — the default.** Use the current in-session spec → implement → review-loop
+flow for bounded work whose premises and design choices are already settled.
+
+**Spec-reviewed (heavy).** A spec chain first produces the specification as a plan document
+and opens a spec PR. A reviewer panel checks that PR, revisions land, and the spec merges;
+only then does a separate implementation chain run against the reviewed specification.
+
+Consider the heavy tier when the work touches a data model or migration, has several
+interlocking design questions, changes cross-cutting invariants, begins from an idea stub
+rather than a scoped design, or spans more than one chain. The heavy tier is never mandatory;
+the driver chooses it when the extra premise and design review is worth its cost.
+
 ## The check-in loop (cheap first, deep only on anomaly)
 
 1. **`h status`** (landed 2026-07-26, PR #89; `--json` for scripted check-ins) — one

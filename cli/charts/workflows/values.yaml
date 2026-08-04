@@ -145,6 +145,13 @@ reviewPr:
   models:
     review: ""
 
+# review-spec workflow (templates/review-spec.tmpl.yaml): setup → spec review. Publish-native —
+# repo/pr/focus are fire-time params; chains use the existing review-pr kind.
+reviewSpec:
+  repo: ""
+  models:
+    review: ""
+
 # answer workflow (templates/answer.tmpl.yaml): one bare "answer this task" step — the panelizable
 # degenerate case.
 # Identity is fire-time params; an --agent roster panelizes it at fire time.
