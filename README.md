@@ -24,6 +24,38 @@ ephemeral `h-itest-<id>` namespace, so it needs k3d + Dapr. Unit tests (`make te
 stacks (`make lint`) are fully available in local and container mode. See
 [Dev commands](#dev-commands) for the test/lint entry points.
 
+## Driving h — the `h` CLI
+
+**`h` is the operator surface.** Once a stack is up, everything you do to the runtime — publish a
+workflow, fire it, compose a chain, inspect the registries — goes through this one command. It
+supersedes the older per-scenario `cli/scripts/invoke-workflow-*.sh` shell scripts, which remain
+for reference (see [Shell scripts](#shell-scripts)).
+
+```sh
+uv sync --package h-cli     # once
+uv run h --help
+uv run h status             # one-screen check-in: chains, engine heartbeats, verdict OK/ATTENTION
+```
+
+| Command | What it does |
+| --- | --- |
+| `h workflow publish <template>` | render a chart template in publish mode (`{{params.*}}` slots) and save it |
+| `h workflow run <key> [-p k=v]…` | fire a saved workflow. **Content** rides `-p`; **flags are machinery**: `--agent` (executor), `--model`, `--fresh`, `--instance-id`, `--at`/`--in` (schedule), `--cron` (arm a recurrence) |
+| `h workflow status\|list\|get\|terminate` | read-side views over workflow-svc; short-circuit a running instance |
+| `h workflow pause\|resume` | stop-and-continue on the preserved worktree |
+| `h chain run --slug s -p spec=@f EXPR` | register a chain. `EXPR` is `-w KEY` / `-t ATOM…` members with per-member `--agent/--model/--kind/--stage` and `--capture/--input/--until` threading. Several `--agent` names panelize that member |
+| `h template compose t1 t2 … [--save k]` | overlay templates into ONE definition |
+| `h agents list\|deny\|allow\|budget` | the invokable agents and the executor policy |
+| `h chain\|watch\|cron\|schedule list` | the durable registries + their scan heartbeats |
+
+Two references, both worth having open:
+
+- **[cli/README.md](./cli/README.md)** — the complete command reference, flag semantics, and the
+  content-values-vs-machinery split that governs the whole surface.
+- **[docs/cookbook.md](./docs/cookbook.md)** — **h BY EXAMPLE**: real, validated commands, each
+  stamped with a date and the artifact it produced. Start here when you want a working invocation
+  rather than a flag list. When an e2e validates a new composition, lift its command there.
+
 ## Agents
 
 | Service | Framework | Notes |
@@ -155,8 +187,12 @@ See `make help` for all available targets.
 ### Run a test
 
 ```sh
-./cli/scripts/invoke-workflow-skill-search-claude.sh
+uv run h workflow publish answer
+uv run h workflow run answer -p task='what services are in this repo?' --agent claude
 ```
+
+See [Driving h — the `h` CLI](#driving-h--the-h-cli) and
+[docs/cookbook.md](./docs/cookbook.md).
 
 ### Full teardown
 
@@ -270,21 +306,29 @@ TCP-probing each service's app port. Service membership per mode lives in `cli/s
 
 ### 5. Run a test
 
-| Script | What it tests |
-| --- | --- |
-| `cli/scripts/invoke-workflow-skill-search-claude.sh` | claude-agent: dynamic skill discovery → hex API |
-| `cli/scripts/invoke-workflow-skill-search-dapr.sh` | dapr-agent: dynamic skill discovery → hex API |
-| `cli/scripts/invoke-workflow-skill-search-dapr-loop.sh` | dapr-claude-loop-agent: skill discovery → hex API |
-| `cli/scripts/invoke-workflow-skill-search-langgraph.sh` | langgraph-agent: skill discovery → hex API |
-| `cli/scripts/invoke-workflow-agent.sh <name> [VAR=value]` | workflow-agent: seed a plain-English task → agent builds/runs/monitors a workflow → writes result back. Task configs are `payloads/<name>-task[.template].json` (`trivial`, `linear-read`, `repo-qa`, plus any org-specific configs in the gitignored `payloads/domain/`) |
-| `cli/scripts/invoke-workflow-agent-composed.sh` | claude-agent uses workflows MCP to trigger a child workflow |
-| `cli/scripts/invoke-workflow-persistence.sh` | workflow-svc: save a workflow by key then invoke it by key |
-| `cli/scripts/invoke-workflow-claude-managed.sh` | claude-managed-agent: multi-tool task via Claude Managed Agents |
-| `cli/scripts/invoke-workflow-hex-api-test.sh` | openhands-agent builds → claude-agent reviews |
-| `cli/scripts/invoke-workflow-hex-api-summary.sh` | multi-agent handoff with output copy |
-| `cli/scripts/invoke-workflow-skill-creator.sh` | single-agent with pre-installed skill |
-| `cli/scripts/invoke-workflow-code-review.sh` | claude-agent code review |
-| `cli/scripts/invoke-workflow-grooming.sh <ISSUE_ID> [context] [--dry-run]` | claude-agent reads Linear issue → inspects production (if relevant) → analyses worktree → looks up Notion links → writes findings back as a Linear comment. `--dry-run` skips the writeback step. |
+Use the [`h` CLI](#driving-h--the-h-cli) — publish a template, then fire it:
+
+```sh
+uv run h workflow publish answer
+uv run h workflow run answer -p task='what services are in this repo?' --agent claude
+uv run h status                       # engines ticking? chains active?
+```
+
+[docs/cookbook.md](./docs/cookbook.md) carries validated end-to-end invocations, chains included.
+
+#### Shell scripts
+
+`cli/scripts/invoke-workflow-*.sh` are **worked examples**, kept for reference. Each seeds a payload
+and POSTs it, so it documents one scenario's exact wire shape — useful when debugging the edge or
+authoring a new template. They are not the recommended driving surface: the CLI covers the same
+ground with fire-time params, agent/model selection, chains, and the registries.
+
+The set covers per-agent skill-discovery runs (`-skill-search-{claude,dapr,dapr-loop,langgraph}`),
+multi-agent handoffs (`-hex-api-test`, `-hex-api-summary`), workflow persistence, a code review, and
+the Linear grooming flow (`-grooming <ISSUE_ID> [context] [--dry-run]`, which reads a Linear issue,
+analyses the worktree, resolves Notion links, and writes findings back as a comment). Run
+`ls cli/scripts/invoke-workflow-*` for the current set; [cli/README.md](./cli/README.md) documents
+the layering they sit in.
 
 ## Observability
 
