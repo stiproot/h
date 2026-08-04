@@ -428,8 +428,11 @@ def test_review_spec_publish_mode_opens_param_slots() -> None:
     task = definition["steps"][1]["input"]["task"]
     for token in ("{{params.repo}}", "{{params.pr}}", "{{params.focus}}"):
         assert token in task
-    assert definition["outputs"]["properties"]["verdict"]["enum"] == ["CLEAN", "FINDINGS"]
-    assert definition["steps"][1]["input"]["outputContract"] == definition["outputs"]
+    output_contract = definition["steps"][1]["input"]["outputContract"]
+    expected_verdicts = ["CLEAN", "FINDINGS"]
+    assert output_contract["properties"]["verdict"]["enum"] == expected_verdicts
+    assert definition["outputs"]["properties"]["verdict"]["enum"] == expected_verdicts
+    assert output_contract == definition["outputs"]
 
 
 def test_review_pr_with_spec_golden(snapshot) -> None:
