@@ -644,13 +644,23 @@ Three obligations, in order of how often they are missed:
    docs/diagrams docs/diagrams/rendered` (bin from the `@stiproot/code-comprehension`
    devDependency; `docs/diagrams/rendered/` is gitignored — render on demand, share the PNG).
 
+**Use the plugin's tooling; never re-implement it.** `@stiproot/code-comprehension` (a root
+devDependency) ships the two bins — `gen-code-diagram` (generate/drift-check managed `-class` docs
+from the AST) and `render-diagram` (mermaid → PNG, finds or provisions a Chrome) — and publishes
+its internals as `exports` subpaths precisely so consumers don't hand-roll them:
+`@stiproot/code-comprehension/managed-doc` (the `gen:c4-code` manifest parser),
+`/ts-extract`, `/py-extract`, `/mermaid-class`, `/sanitize`. h's own scripts compose those; the
+split is the same one the skills draw — **the plugin says HOW, h says WHERE AND WHEN**. If a
+diagram check needs to understand the managed-doc format or extract from an AST, import it.
+
 Enforcement is deliberately partial, so know exactly where the machine stops. `gen-code-diagram
---check` fails on drift for GENERATED `-class` docs; `scripts/check-diagrams.mjs` keeps the set
-navigable and well-formed (registered in the index both ways, kind-suffixed name, exactly one
-mermaid fence, a `## Reading notes` section, a `-class` doc carrying its generator manifest). **No
-guard can tell you a hand-authored sequence or C4 diagram has quietly gone wrong — obligation 2 is
-yours alone**, and it is the one that gets missed. Class diagrams are GENERATED from the AST, never
-hand-drawn: `gen-code-diagram --dir docs/diagrams`.
+--check` fails on drift for GENERATED `-class` docs — but only for docs it can SEE, i.e. ones
+carrying a manifest. `scripts/check-diagrams.mjs` covers the rest of the set's hygiene (registered
+in the index both ways, kind-suffixed name, exactly one mermaid fence, a `## Reading notes`
+section) plus that blind spot: a `-class` doc with no manifest, which the generator skips silently.
+**No guard can tell you a hand-authored sequence or C4 diagram has quietly gone wrong — obligation
+2 is yours alone**, and it is the one that gets missed. Class diagrams are GENERATED from the AST,
+never hand-drawn: `gen-code-diagram --dir docs/diagrams`.
 
 ## Dev commands
 

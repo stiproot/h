@@ -48,19 +48,29 @@ test("flags a doc with no reading notes", () => {
   assert.match(problems[0], /no '## Reading notes' section/);
 });
 
-// A hand-drawn class diagram is permanently out of step with the AST it claims to model.
+// A hand-drawn -class doc is INVISIBLE to `gen-code-diagram --check` (it only walks managed
+// docs), so this is the gap that guard cannot cover, not a repeat of it.
 test("flags a -class doc with no generator manifest", () => {
   const problems = checkSet(["a-class.md"], "[x](./a-class.md)", read({ "a-class.md": wellFormed }));
   assert.equal(problems.length, 1);
   assert.match(problems[0], /GENERATED from the AST/);
 });
 
+// Manifest detection uses the generator's OWN parser (@stiproot/code-comprehension/managed-doc),
+// so this asserts against the real marker format rather than a local approximation of it.
 test("accepts a -class doc carrying its manifest", () => {
-  const generated = `<!-- gen:c4-code {} -->\n${wellFormed}`;
+  const generated = `<!-- gen:c4-code {"classes": []} -->\n${wellFormed}`;
   assert.deepEqual(
     checkSet(["a-class.md"], "[x](./a-class.md)", read({ "a-class.md": generated })),
     [],
   );
+});
+
+test("a comment that is not the generator's marker does not count as a manifest", () => {
+  const decoy = `<!-- generated, honest -->\n${wellFormed}`;
+  const problems = checkSet(["a-class.md"], "[x](./a-class.md)", read({ "a-class.md": decoy }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /gen:c4-code/);
 });
 
 test("indexedNames reads every ./<name>.md link in the table", () => {

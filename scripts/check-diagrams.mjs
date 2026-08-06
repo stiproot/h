@@ -28,6 +28,13 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// The generator's OWN manifest parser, imported rather than re-implemented. The
+// `@stiproot/code-comprehension` package publishes it (and its extractors) as explicit `exports`
+// subpaths precisely so consumers do not hand-roll them — and this guard's whole subject is
+// duplication drifting from its source, so re-deriving the marker regex here would be the exact
+// mistake it exists to catch. If the managed-doc format changes upstream, this guard follows.
+import { parseManifest } from "@stiproot/code-comprehension/managed-doc";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = "docs/diagrams";
 const INDEX = "README.md";
@@ -89,10 +96,14 @@ export function checkSet(files, indexContents, read) {
           "picture cannot say by itself.",
       );
     }
-    if (kind === "class" && !contents.includes("<!-- gen:")) {
+    // Complements `gen-code-diagram --check` rather than repeating it: the generator only sees
+    // MANAGED docs, so a hand-drawn `-class` diagram with no manifest is invisible to it — it is
+    // skipped, not flagged. This closes exactly that gap.
+    if (kind === "class" && parseManifest(contents) === null) {
       problems.push(
-        `${DIR}/${name}: a -class diagram is GENERATED from the AST and must carry its 'gen:' ` +
-          "manifest. Produce it with `gen-code-diagram --dir docs/diagrams`, never by hand.",
+        `${DIR}/${name}: a -class diagram is GENERATED from the AST and must carry its ` +
+          "`gen:c4-code` manifest — without one the generator skips it silently, so it can never " +
+          "drift-check. Produce it with `gen-code-diagram --dir docs/diagrams`, never by hand.",
       );
     }
   }
