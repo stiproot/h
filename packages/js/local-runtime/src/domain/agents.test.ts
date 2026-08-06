@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveAgent, UnknownAgentError } from "./agents.ts";
 
 describe("resolveAgent", () => {
-  it("resolves every direct agent under both its bare and -agent name", () => {
+  it("resolves every local agent under both its bare and -agent name", () => {
     for (const [name, expected] of [
       ["claude", "claude"],
       ["claude-agent", "claude"],
@@ -31,6 +31,6 @@ describe("resolveAgent", () => {
 
   // Service-only agents are a distinct case worth its own hint: they exist in h, just not here.
   it("points a service-only agent at the other substrate", () => {
-    expect(() => resolveAgent("kimi")).toThrow(/drop --direct/);
+    expect(() => resolveAgent("kimi")).toThrow(/drop --local/);
   });
 });

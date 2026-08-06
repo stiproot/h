@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Composition root of the direct execution substrate: a one-shot binary that reads a job on
+ * Composition root of the local execution substrate: a one-shot binary that reads a job on
  * stdin, runs it, and writes the result envelope to stdout.
  *
  * The boundary is deliberately the SAME artifact the service substrate would have been sent —
@@ -16,7 +16,7 @@ import { ExecGitClient } from "git-core";
 import { runChain } from "./domain/chain.ts";
 import { runDelegate } from "./domain/delegate.ts";
 import { runWorkflow } from "./domain/execute.ts";
-import { DirectJob } from "./domain/models.ts";
+import { LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { StderrProgressLive } from "./infrastructure/stderr-progress.ts";
@@ -78,7 +78,7 @@ const main = async (): Promise<void> => {
   const runtime = ManagedRuntime.make(AppLive);
   const fiber = runtime.runFork(
     Effect.gen(function* () {
-      const job = yield* Schema.decodeUnknown(DirectJob)(parsed);
+      const job = yield* Schema.decodeUnknown(LocalJob)(parsed);
       switch (job.kind) {
         case "delegate":
           return yield* runDelegate(job);

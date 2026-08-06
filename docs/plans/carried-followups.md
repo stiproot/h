@@ -81,7 +81,7 @@ seeded writable volume, unbuilt. Also unbuilt: the Enterprise `CODEX_ACCESS_TOKE
 
 ---
 
-## From [agent-local-mode-bringup](./impl/agent-local-mode-bringup.md)
+## From [agent-host-mode-bringup](./impl/agent-host-mode-bringup.md)
 
 ### 5. `make check-env-local` — the headless `.env` contract
 
@@ -341,9 +341,9 @@ its OWN diagram rather than by extending this one — a trial extension rendered
 
 ## From [direct-execution-runtime](./impl/direct-execution-runtime.md)
 
-### 27. A stdio MCP server for the direct substrate
+### 27. A stdio MCP server for the local substrate
 
-A driver reaches the direct substrate by shelling out (`h delegate`, `h workflow run --direct`).
+A driver reaches the local substrate by shelling out (`h delegate`, `h workflow run --local`).
 A stdio MCP server would give it typed tools instead. Deliberately unbuilt: Bash already works, so
 building it now would be speculative machinery — the `delegate-locally` skill closes the ergonomic
 gap that actually hurt.
@@ -355,7 +355,7 @@ needs to stream partial results, or to fan out more than a shell one-liner can e
 
 `scripts/check-diagrams.mjs` keeps the canonical set navigable and well-formed, but no machine can
 tell that a hand-authored sequence/C4 diagram has gone WRONG — the one obligation that actually
-gets missed (it was missed across the whole direct-substrate build until the operator asked).
+gets missed (it was missed across the whole local-substrate build until the operator asked).
 A stronger guard: each diagram declares the source paths it models, and a diff-aware check fails
 when a change touches those paths without touching the diagram — the shape `check-plans` already
 uses for citation rot. Not built because it needs an accurate `models:` attribution for all 16
@@ -364,7 +364,7 @@ existing diagrams, which is real work and easy to get subtly wrong.
 *Revisit when:* a stale hand-authored diagram misleads someone — or when adding the next few
 diagrams makes the attribution cheap to write from memory.
 
-## From the first agent-built PR on the direct substrate (#110)
+## From the first agent-built PR on the local substrate (#110)
 
 ### 30. `h worktrees sweep` is still untested against reality
 
@@ -377,12 +377,12 @@ only ever run against monkeypatched git. Its per-entry classification and its
 *Revisit when:* two or more real worktrees accumulate — run `sweep --dry-run` against them
 first, and compare its classification to `list` before letting it remove anything.
 
-### 31. An unexplained spawn failure on the direct substrate
+### 31. An unexplained spawn failure on the local substrate
 
 A `revise-pr` member died in 8ms with `Command 'claude' not found` (agent-cli's parent-level
 ENOENT path), then the identical member, cwd and command succeeded minutes later. Three probes
 failed to reproduce it: the same `h delegate --cwd <that worktree>` in the foreground, a fresh
-standalone `h workflow run revise-pr --direct`, and a direct `spawnSync('claude')` in both cwds.
+standalone `h workflow run revise-pr --local`, and a direct `spawnSync('claude')` in both cwds.
 PATH was verified identical in foreground and background jobs, and `.env` sets no
 `SUB_AGENT_UID`, so the privilege-drop path was not involved.
 
@@ -401,7 +401,7 @@ The strategy's live exercise so far: it fired the review stage, captured `FINDIN
 the revise stage, and failed the chain as a unit when that member died — all correct, and all
 BEFORE the loop-back. The path that re-enters the review stage with `iterations + 1`, and the
 `stopped after N iteration(s)` budget exit, are covered only by unit tests
-(`packages/js/direct-runtime/src/domain/chain.test.ts`).
+(`packages/js/local-runtime/src/domain/chain.test.ts`).
 
 *Revisit when:* the next real review→revise cycle — check that the SECOND review actually reads
 the revised diff rather than a cached one, and that each iteration gets its own ledger group.

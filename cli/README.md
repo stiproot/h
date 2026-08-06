@@ -116,19 +116,19 @@ uv run h cron list                        # the cron registry — recur crons + 
 uv run h cron rm <repo> <slug> <workflow>  # disarm a recur cron: set inactive+disabled, keep row for audit (idempotent; calls POST /cron/disarm — single-writer)
 uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
 uv run h status [--json]                  # one-screen driver check-in: active chains, engine heartbeats (stale >5m flagged), verdict OK / ATTENTION
-uv run h worktrees list [--json]          # the direct substrate's leftovers: prune + list its worktrees with a dirty/unpushed status
+uv run h worktrees list [--json]          # the local substrate's leftovers: prune + list its worktrees with a dirty/unpushed status
 uv run h worktrees rm BRANCH [--force]    # remove one worktree + its branch; REFUSES while dirty or unpushed unless forced
 uv run h worktrees sweep [--dry-run] [--force]  # batch form: classify, skip the unsafe, report removed N / skipped M
 
-# ---- the DIRECT execution substrate: the same composition, executed in THIS process ----
+# ---- the LOCAL execution substrate: the same composition, executed in THIS process ----
 # No Dapr, no services, no containers. Prerequisite: `bun run build`, plus CLIs you have
 # already authenticated (credentials come from your shell, with the repo .env filling gaps).
 uv run h delegate "TASK" --agent codex    # the atom: one task, one agent CLI as a local child process
 uv run h delegate "TASK" --agent claude --agent codex   # a roster answers in parallel (no synthesis — see below)
 uv run h delegate "TASK" --agent codex --worktree       # cut an isolated worktree per agent for WRITE work
-uv run h workflow run <template> --direct [-p k=v]...   # render the template and execute its steps here
-uv run h workflow run answer --direct --agent claude --agent codex   # a judged panel, nothing running
-uv run h chain run --slug s --direct EXPR # sequence the stages in-process; BLOCKS, prints the threaded chain data
+uv run h workflow run <template> --local [-p k=v]...   # render the template and execute its steps here
+uv run h workflow run answer --local --agent claude --agent codex   # a judged panel, nothing running
+uv run h chain run --slug s --local EXPR # sequence the stages in-process; BLOCKS, prints the threaded chain data
                                           # --with-setup opts into the definition's setup steps (skipped by
                                           #   default: they provision YOUR ~/.claude, not a container's)
                                           # flags needing an engine (--cron/--watch/--at/--in/--fallback-*/

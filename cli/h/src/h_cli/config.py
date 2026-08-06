@@ -13,15 +13,13 @@ _REPO_DIR = _CLI_DIR.parent
 # Template source (strategy 2 — see cli/README.md) and the gitignored feature-spec home.
 CHARTS_DIR = Path(os.getenv("H_CHARTS_DIR", str(_CLI_DIR / "charts")))
 
-# --- Direct execution substrate -------------------------------------------------------------
+# --- Local execution substrate -------------------------------------------------------------
 # The runner binary the CLI spawns instead of firing a workflow through workflow-svc. It is a
-# built workspace package, so `bun run build` is the one prerequisite direct execution has.
-DIRECT_BIN = Path(
-    os.getenv("H_DIRECT_BIN", str(_REPO_DIR / "packages/js/direct-runtime/dist/bin.js"))
-)
+# built workspace package, so `bun run build` is the one prerequisite local execution has.
+LOCAL_BIN = Path(os.getenv("H_LOCAL_BIN", str(_REPO_DIR / "packages/js/local-runtime/dist/bin.js")))
 
 # Run-ledger root. Defaults to the SAME directory the agent services write (host mode's
-# AGENT_BASE_DIR sibling, which is the compose bind mount too), so a direct run shows up in
+# AGENT_BASE_DIR sibling, which is the compose bind mount too), so a local run shows up in
 # `h runs`, obs-mcp and the viz beside service runs instead of in a private ledger.
 # .resolve() is load-bearing, not cosmetic: these defaults are built with `..`, and a path
 # carrying `..` compares FALSE under Path.is_relative_to, which is purely lexical. `h worktrees`
@@ -33,12 +31,12 @@ AGENT_RUNS_DIR = Path(
 ).resolve()
 
 # Where per-agent worktrees are cut for a delegated write task.
-DIRECT_WORKTREES_DIR = Path(
-    os.getenv("H_DIRECT_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees"))
+LOCAL_WORKTREES_DIR = Path(
+    os.getenv("H_LOCAL_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees"))
 ).resolve()
 
 # The repo's .env — the same file compose and the run scripts feed the agent services from. A
-# direct run reads it too, so the substrate does not need its own credential setup.
+# local run reads it too, so the substrate does not need its own credential setup.
 DOTENV_PATH = Path(os.getenv("H_DOTENV", str(_REPO_DIR / ".env")))
 FEATURE_SPECS_DIR = Path(
     os.getenv("H_FEATURE_SPECS_DIR", str(_CLI_DIR / "scripts/payloads/domain/feature-requests"))

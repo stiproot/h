@@ -4,11 +4,11 @@ What happens between typing `h chain run --slug s -p spec=@spec.md <EXPR>` and t
 starting: the hand-parsed expression grammar, per-member resolution (compose-on-fire,
 panelize, validate-before-publish), and then the SUBSTRATE FORK — either the single
 `POST /chain/run` that hands a durable row to the engine and returns immediately, or
-`--direct`, which sequences the identical members in this process and blocks.
+`--local`, which sequences the identical members in this process and blocks.
 
 The engine-side story — stage progression on the cron tick, epoch fences, D6 teardown — is
-[chain-run-engine-sequence](./chain-run-engine-sequence.md). One direct run's steps are
-[direct-run-sequence](./direct-run-sequence.md). Structure of the same code: the
+[chain-run-engine-sequence](./chain-run-engine-sequence.md). One local run's steps are
+[local-run-sequence](./local-run-sequence.md). Structure of the same code: the
 [class diagram](./h-cli-class.md).
 
 ```mermaid
@@ -22,11 +22,11 @@ sequenceDiagram
   participant Panel as panelize (pure)
   participant SvcCli as workflow_svc client (httpx)
   participant Svc as workflow-svc
-  participant Direct as h-direct runner (--direct)
+  participant Local as h-local runner (--local)
 
-  Op->>+Cmd: h chain run with slug / -p seeds / strategy / gates + EXPR tokens [--direct]
+  Op->>+Cmd: h chain run with slug / -p seeds / strategy / gates + EXPR tokens [--local]
   Note over Cmd: Typer consumes only the chain-identity flags —<br/>EXPR flag names stay UNDECLARED so position survives in ctx.args
-  opt --direct
+  opt --local
     Note over Cmd: refuse the activation gates (--after / --at / --in): they wait on a<br/>durable row. Every member is forced INLINE — there is no store to read.
   end
   Cmd->>+Parser: parse_expr(ctx.args)
@@ -45,7 +45,7 @@ sequenceDiagram
         Panel-->>-Cmd: parallel branch per agent + pinned-judge synthesis under the ORIGINAL id and contract
       end
       Note over Cmd: input validation BEFORE any publish — every params token<br/>the definition references must be satisfiable (gaps refuse the chain)
-      alt inline, cron, or --direct member
+      alt inline, cron, or --local member
         Note over Cmd: steps EMBED in the chain row (D1) — nothing published
       else publish default
         Cmd->>SvcCli: save(slug-wN, steps, params, outputs)
@@ -53,7 +53,7 @@ sequenceDiagram
       end
     else saved -w key
       Note over Cmd: well-known name maps to its kind — else the member needs a kind flag<br/>identity slots + inputs validated off the chart render or stored definition
-      opt --direct
+      opt --local
         Note over Cmd: resolve through the member's CHART TEMPLATE instead —<br/>a published key with no template (implement-pr) is REFUSED,<br/>naming the -t atom composition that does work
       end
     end
@@ -67,11 +67,11 @@ sequenceDiagram
     Svc-->>-SvcCli: chainId (chain:sub row registered)
     SvcCli-->>-Cmd: result
     Cmd-->>Op: chain registered — NON-BLOCKING, the engine sequences it on the cron tick
-  else --direct — sequence it here
+  else --local — sequence it here
     Note over Cmd: same members, stages, captures/inputs/until and loop —<br/>engine-only fields (key, instanceId, fresh, cron) dropped
-    Cmd->>+Direct: chain job on stdin
-    Direct->>Direct: stage by stage: members concurrent, join, capture,<br/>loop back to the review stage until CLEAN or the budget
-    Direct-->>-Cmd: envelope {ok, status, data, runs}
+    Cmd->>+Local: chain job on stdin
+    Local->>Local: stage by stage: members concurrent, join, capture,<br/>loop back to the review stage until CLEAN or the budget
+    Local-->>-Cmd: envelope {ok, status, data, runs}
     Cmd-->>Op: BLOCKS to completion — prints the threaded chain data
   end
   deactivate Cmd

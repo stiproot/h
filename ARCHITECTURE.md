@@ -80,9 +80,9 @@ The same authored-slot/target pattern appears at two levels:
   transport only. **Agent run** is one activity's agent invocation (run ledger, `run:` mirrors,
   cost tally).
 - **Substrate** — what EXECUTES a composed definition: the **service** substrate (Dapr engine +
-  containerised fleet, durable and supervised) or the **direct** substrate (the `h` CLI's own
+  containerised fleet, durable and supervised) or the **local** substrate (the `h` CLI's own
   process driving agent CLIs as children, no infrastructure). Orthogonal to *deployment mode*
-  (host / container / k8s), which is how the SERVICE substrate is hosted — direct execution needs
+  (host / container / k8s), which is how the SERVICE substrate is hosted — local execution needs
   none of them. See Execution substrates below.
 - **Workspace** — an agent service's provisioned directory (`workspaceId ?? instanceId`).
   **Worktree** — a git worktree inside the shared repository checkout.
@@ -125,7 +125,7 @@ The stack above says how work is COMPOSED. It says nothing about what executes i
 executors for the one composition. Picture:
 [execution-substrates-c4-container](./docs/diagrams/execution-substrates-c4-container.md).
 
-| | **Service substrate** (default) | **Direct substrate** (`--direct`, `h delegate`) |
+| | **Service substrate** (default) | **Local substrate** (`--local`, `h delegate`) |
 | --- | --- | --- |
 | Executes | Dapr workflow engine in workflow-svc | the `h` CLI's own process |
 | Agents | containerised fleet, dropped uid | agent CLIs as child processes, as the OPERATOR |
@@ -134,7 +134,7 @@ executors for the one composition. Picture:
 | Engines | watcher, chain, cron, sched | none — the driver is the supervisor |
 
 **The definition is the seam.** A template renders to `{params, steps, outputs}`, and that same
-artifact is either POSTed to workflow-svc or handed to the direct runner on stdin. Symmetry is
+artifact is either POSTed to workflow-svc or handed to the local runner on stdin. Symmetry is
 STRUCTURAL: the definition shapes and the semantics that give them meaning — `$ref`/`{{token}}`
 resolution, the output contract, chain threading contracts, stage arithmetic — live once in
 `packages/js/workflow-core` and are imported by both, with `scripts/check-runtime-parity.mjs`
@@ -142,7 +142,7 @@ failing the build if either grows a private copy. (It found two live drifts the 
 
 **The engines are what does not transfer, and that is the load-bearing invariant restated.** They
 exist precisely so a workflow never supervises, sequences or recurs itself; run in-process, the
-driver IS the supervisor, so there is nothing for them to be. The direct substrate therefore
+driver IS the supervisor, so there is nothing for them to be. The local substrate therefore
 REFUSES what needs them — by name, never by silently skipping: the machinery flags
 (`--cron/--watch/--budget/--retry/--at/--in/--fallback-*/--fresh/--via`, plus a chain's `--after`
 and cron members) and the engine/registry/cluster activities (`register-cron`, `write-wf-row`,
@@ -151,9 +151,9 @@ would report a recurrence that was never armed.
 
 **Choose by lifetime, not by weight.** Unattended, recurring, long-horizon or supervised work
 belongs on the service substrate however heavy it feels; work you are sitting and waiting on
-belongs on the direct one. They compose rather than compete: a direct agent inherits the repo's
+belongs on the local one. They compose rather than compete: a local agent inherits the repo's
 MCP config and can fire durable workflows onto a running service stack — triggers are data, so
-nothing cares who fired them. Direct execution does not lack access to durability; it lacks
+nothing cares who fired them. Local execution does not lack access to durability; it lacks
 durability of its own. Two asymmetries follow from having no engines and no containers: there is
 no cost fence (the run ledger both substrates write is the only accounting), and there is no
 process isolation (`--worktree`/`--plan` contain the blast radius; neither is a sandbox).

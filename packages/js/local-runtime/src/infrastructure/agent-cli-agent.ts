@@ -10,18 +10,18 @@ import {
 import { RunLedger, startRunLedgerEffect } from "run-ledger";
 import { Cause, Effect, Layer } from "effect";
 
-import type { AgentRunReport, AgentRunRequest, DirectAgentType } from "../domain/models.ts";
+import type { AgentRunReport, AgentRunRequest, LocalAgentType } from "../domain/models.ts";
 import { AgentPort } from "../domain/ports.ts";
 
 /**
- * Agent name → the agent-cli invoker that drives its CLI. Exhaustive over `DirectAgentType`, so
+ * Agent name → the agent-cli invoker that drives its CLI. Exhaustive over `LocalAgentType`, so
  * widening the vocabulary is a compile error here rather than a runtime surprise.
  *
  * The service substrate reaches these same strategies through a `run-*` activity, a Dapr invoke
  * and an agent service's `/run` route; this substrate is the same call with the network removed.
  */
 const INVOKERS: Record<
-  DirectAgentType,
+  LocalAgentType,
   Layer.Layer<AgentInvoker, never, CommandExecutor.CommandExecutor | HttpClient.HttpClient>
 > = {
   claude: ClaudeInvokerLive,
@@ -40,11 +40,11 @@ const runOne = (
   Effect.gen(function* () {
     const startedAtMs = Date.now();
     const ledger = yield* startRunLedgerEffect({
-      // The canonical agent name, NOT the service's app id ("codex" vs "codex-agent"): a direct
+      // The canonical agent name, NOT the service's app id ("codex" vs "codex-agent"): a local
       // run and a service run of the same agent stay distinguishable in the ledger.
       agentId: request.agent,
       runsDir: request.runsDir,
-      // Direct execution has no Dapr instance to name, so the job's group keys the ledger through
+      // Local execution has no Dapr instance to name, so the job's group keys the ledger through
       // workspaceId and `workflowInstanceId` stays null — honestly absent rather than invented.
       workspaceId: request.group,
       workspacePath: request.cwd,
@@ -66,7 +66,7 @@ const runOne = (
         permissionMode: request.permissionMode,
         onEvent: ledger.onEvent,
         // No llmConfig ON PURPOSE. agent-cli merges the ambient process env into the child, so a
-        // direct run uses whatever the operator already authenticated — a logged-in claude CLI,
+        // local run uses whatever the operator already authenticated — a logged-in claude CLI,
         // ~/.codex/auth.json, ANTHROPIC_API_KEY/OPENAI_API_KEY/LLM_API_KEY from the shell. Passing
         // one here would also switch on the LiteLLM preflight, which needs a proxy that is not
         // running on this substrate.

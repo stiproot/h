@@ -10,7 +10,7 @@ none.
 Grammar refs: `h chain run --help` (the chain EXPRESSION), CLAUDE.md "h primitives",
 docs/plans/impl/chain-composition-surface.md.
 
-## Delegate to a local agent CLI — no stack at all (direct substrate)
+## Delegate to a local agent CLI — no stack at all (local substrate)
 
 ```sh
 h delegate --agent codex "In one short sentence: what is a git worktree?"
@@ -39,19 +39,19 @@ service runs. No synthesis here — for a judged panel use the `answer` template
 h delegate --agent codex --worktree "add a --dry-run flag to the importer"
 ```
 
-`--worktree` cuts one worktree per roster slot off this checkout (branch `direct/<group>-<agent>`,
+`--worktree` cuts one worktree per roster slot off this checkout (branch `local/<group>-<agent>`,
 started from the fetched `origin/main`), so a delegated edit never touches your live tree and two
 agents never share a checkout. *(Validated 2026-08-06 — worktree
 `../h-worktrees/direct-260806-125017`.)*
 
-## Run a whole TEMPLATE with no stack running (`--direct`)
+## Run a whole TEMPLATE with no stack running (`--local`)
 
 ```sh
-h workflow run answer --direct -p task="when is a worktree better than git stash?"
-h workflow run plan   --direct -p slug=my-feature -p spec=@spec.md
+h workflow run answer --local -p task="when is a worktree better than git stash?"
+h workflow run plan   --local -p slug=my-feature -p spec=@spec.md
 ```
 
-`--direct` renders the template and executes its steps in this process, driving the agent CLIs as
+`--local` renders the template and executes its steps in this process, driving the agent CLIs as
 local children. Same definition, same `{{token}}`/`$ref` resolution, same output contract — only
 the executor changes. There is no saved-workflow store to read on this substrate, so the argument
 names a chart TEMPLATE (compose-on-fire, like `--inline`), `create-worktree` cuts from the checkout
@@ -62,25 +62,25 @@ your own `~/.claude`, not a container's). *(Validated 2026-08-06 — `answer-260
 Flags that need an engine are refused BY NAME rather than ignored:
 
 ```sh
-h workflow run answer --direct --cron '@daily'
-  ✗ --cron need workflow-svc's engines — drop --direct to use them
+h workflow run answer --local --cron '@daily'
+  ✗ --cron need workflow-svc's engines — drop --local to use them
 ```
 
 ## A panel with no infrastructure at all
 
 ```sh
-h workflow run answer --direct --agent claude --agent codex -p task=@question.md
+h workflow run answer --local --agent claude --agent codex -p task=@question.md
 ```
 
 The roster panelizes CLI-side exactly as on the service substrate — a parallel step group, one
 branch per agent, then a pinned judge synthesizing under the workflow's own contract — and the
-direct executor just runs the group. *(Validated 2026-08-06 — `answer-260806-135910`: claude 8.9s ∥
+local executor just runs the group. *(Validated 2026-08-06 — `answer-260806-135910`: claude 8.9s ∥
 codex 14.2s, judge 14.5s, contract validated, nothing running.)*
 
-## A whole CHAIN with nothing running (`h chain run --direct`)
+## A whole CHAIN with nothing running (`h chain run --local`)
 
 ```sh
-h chain run --slug q --direct -p task="what is the biggest risk here?" \
+h chain run --slug q --local -p task="what is the biggest risk here?" \
     -w answer --id first  --capture answer=answer \
     -w answer --id second --input task=first.answer
 ```
@@ -97,7 +97,7 @@ member must be a chart template (`-w answer`) or `-t` atoms; a published key wit
 ## Review a PLAN before it becomes an implementation prompt
 
 ```sh
-h chain run --slug s --direct -p spec=@spec.md \
+h chain run --slug s --local -p spec=@spec.md \
     -t plan --kind answer --id planning --input spec=spec --input slug=slug --capture plan=plan \
     -w review-plan --kind answer --id review --agent claude --agent codex \
         --input plan=planning.plan --input spec=spec --capture verdict=verdict

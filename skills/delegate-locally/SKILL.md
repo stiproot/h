@@ -1,11 +1,11 @@
 ---
 name: delegate-locally
-description: Hand a bounded piece of work to another agent CLI (codex, pi, openhands, claude) running as a local child process via `h delegate` / `h workflow run --direct` / `h chain run --direct` — no Dapr, no services, no containers. Use when you want a second opinion, an independent panel on a hard question, parallel exploration, or write work isolated in its own git worktree, and you do NOT need the run to survive your process. Prefer the service substrate (plain `h workflow run`) when the work must outlive this session, recur, or be supervised.
+description: Hand a bounded piece of work to another agent CLI (codex, pi, openhands, claude) running as a local child process via `h delegate` / `h workflow run --local` / `h chain run --local` — no Dapr, no services, no containers. Use when you want a second opinion, an independent panel on a hard question, parallel exploration, or write work isolated in its own git worktree, and you do NOT need the run to survive your process. Prefer the service substrate (plain `h workflow run`) when the work must outlive this session, recur, or be supervised.
 ---
 
 # Delegating to local agents
 
-h has two execution substrates. This skill is about the **direct** one: `h` drives the agent CLIs
+h has two execution substrates. This skill is about the **local** one: `h` drives the agent CLIs
 as child processes of your own shell. Nothing has to be running — no Dapr, no agent services, no
 Redis, no containers. The prerequisites are `bun run build` once, and CLIs the operator has
 already authenticated.
@@ -44,23 +44,23 @@ h delegate --agent codex --worktree "add a --dry-run flag to the importer"
 h delegate --agent codex --plan --json "…"        # read-only; machine-readable envelope
 
 # a whole template, executed here
-h workflow run answer --direct -p task=@question.md
-h workflow run answer --direct --agent claude --agent codex -p task=…   # panel + pinned judge
-h workflow run plan   --direct -p slug=x -p spec=@spec.md               # cuts a worktree
+h workflow run answer --local -p task=@question.md
+h workflow run answer --local --agent claude --agent codex -p task=…   # panel + pinned judge
+h workflow run plan   --local -p slug=x -p spec=@spec.md               # cuts a worktree
 
 # a chain: several definitions, state threaded between them
-h chain run --slug x --direct -p task=… \
+h chain run --slug x --local -p task=… \
     -w answer --id first  --capture answer=answer \
     -w answer --id second --input task=first.answer
 ```
 
 `h delegate` deliberately does NOT synthesize a roster's answers — it prints each. For a judged
-synthesis use `h workflow run answer --direct --agent a --agent b`, which panelizes through the
+synthesis use `h workflow run answer --local --agent a --agent b`, which panelizes through the
 same transform the service substrate uses and adds a pinned judge.
 
 ## Reading the result
 
-- Each agent run writes the standard **run ledger**, so `h runs` and the obs surfaces pick direct
+- Each agent run writes the standard **run ledger**, so `h runs` and the obs surfaces pick local
   runs up beside service ones. The per-run cost table `h delegate` prints is not decoration:
   there is no watcher on this substrate, so **that table and `h runs` are the only cost
   accounting**. A cost of `—` means the agent reported none (e.g. codex on a ChatGPT plan), never
@@ -71,13 +71,13 @@ same transform the service substrate uses and adds a pinned judge.
 
 ## What is refused, and why
 
-Direct execution declines anything that needs an engine, and says which one: `--cron`, `--watch`,
+Local execution declines anything that needs an engine, and says which one: `--cron`, `--watch`,
 `--budget`, `--retry`, `--at`, `--in`, `--fallback-*`, `--fresh`, `--via`, and (on chains)
 `--after` plus cron members. Do not work around a refusal — it means the work wants the service
 substrate. Likewise the executor refuses `register-cron`, `write-wf-row`, `register-discover` and
 `run-itest` by name rather than skipping them: a silently-skipped gate is worse than a stopped run.
 
-Two direct-substrate rules worth knowing before you are surprised by them:
+Two local-substrate rules worth knowing before you are surprised by them:
 
 - **`setup` steps are skipped** unless you pass `--with-setup`. They provision `~/.claude` — which
   here is the *operator's own* configuration, not a container's.

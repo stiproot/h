@@ -3,7 +3,7 @@ import { contractFor, lastStage, loopIsClean, membersInStage } from "workflow-co
 import type { ChainData } from "workflow-core";
 
 import { runWorkflow } from "./execute.ts";
-import type { ChainEnvelope, ChainJob, ChainMemberRun, DirectChainMember } from "./models.ts";
+import type { ChainEnvelope, ChainJob, ChainMemberRun, LocalChainMember } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /**
@@ -112,7 +112,7 @@ export const runChain = (
     } satisfies ChainEnvelope;
   });
 
-const label = (member: DirectChainMember): string => member.id ?? member.kind;
+const label = (member: LocalChainMember): string => member.id ?? member.kind;
 
 /**
  * One member: build its params from the chain data through its contract, run its embedded
@@ -120,7 +120,7 @@ const label = (member: DirectChainMember): string => member.id ?? member.kind;
  *
  * That string is deliberate: `stepStructured` unwraps the workflow OUTPUT the durable engine
  * produces (`JSON.stringify(results)`, re-encoded by Dapr), so serialising the results map here
- * feeds the SAME parser rather than a direct-only shortcut around it.
+ * feeds the SAME parser rather than a local-only shortcut around it.
  */
 const runMember = (
   job: ChainJob,

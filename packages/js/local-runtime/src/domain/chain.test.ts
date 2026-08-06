@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { runChain } from "./chain.ts";
-import type { AgentRunReport, AgentRunRequest, ChainJob, DirectChainMember } from "./models.ts";
+import type { AgentRunReport, AgentRunRequest, ChainJob, LocalChainMember } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /**
@@ -12,7 +12,7 @@ import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
  * validated `structured` block, so a template with no declared contract produces nothing to
  * capture and the chain fails loud rather than firing the next member on prose.
  */
-const member = (over: Partial<DirectChainMember> & { kind: DirectChainMember["kind"] }) =>
+const member = (over: Partial<LocalChainMember> & { kind: LocalChainMember["kind"] }) =>
   ({
     steps: [
       {
@@ -22,9 +22,9 @@ const member = (over: Partial<DirectChainMember> & { kind: DirectChainMember["ki
       },
     ],
     ...over,
-  }) as DirectChainMember;
+  }) as LocalChainMember;
 
-const job = (members: DirectChainMember[], over: Partial<ChainJob> = {}): ChainJob => ({
+const job = (members: LocalChainMember[], over: Partial<ChainJob> = {}): ChainJob => ({
   kind: "chain",
   members,
   strategy: "sequential",

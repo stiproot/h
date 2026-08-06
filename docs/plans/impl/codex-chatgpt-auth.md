@@ -72,7 +72,7 @@ Give the container the same account creds, honoring the one-file-per-runner rule
 ## Cross-links
 
 - [[hardening-audit]] Phase 1 (A1/A18/A28) — the `AGENT_IDENTITY`/`AGENT_URLS` codex CLI wiring this plan depends on for `--agent codex` firing.
-- [[agent-local-mode-bringup]] — sibling effort (making host/local mode easy for an agent to stand up); shares the host-mode ergonomics theme.
+- [[agent-host-mode-bringup]] — sibling effort (making host/local mode easy for an agent to stand up); shares the host-mode ergonomics theme.
 - Prior integration recipe: `docs/plans/agent-integration-playbook.md` (the per-agent wiring checklist codex should have followed).
 
 ## Log

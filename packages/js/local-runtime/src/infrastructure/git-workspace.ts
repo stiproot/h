@@ -12,7 +12,7 @@ import { WorkspaceError, WorkspacePort, type SetupCommand } from "../domain/port
  * `addWorktree` and the same command loop the service substrate reaches through an agent
  * service's `/worktree` and `/setup` routes, called in-process.
  *
- * No token is passed to git: direct execution fetches with the operator's own credentials
+ * No token is passed to git: local execution fetches with the operator's own credentials
  * (ssh-agent, credential helper, whatever their shell already uses), which is the premise of the
  * substrate. A private repo the operator can clone by hand works here too.
  */

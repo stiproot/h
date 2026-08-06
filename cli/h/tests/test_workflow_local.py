@@ -1,6 +1,6 @@
-"""h workflow run --direct: the same composition, executed on the direct substrate.
+"""h workflow run --local: the same composition, executed on the local substrate.
 
-The service path is respx-mocked in test_workflow_run.py; here the boundary is the direct
+The service path is respx-mocked in test_workflow_run.py; here the boundary is the local
 runner's stdin, so the job dict handed to it is what these tests pin.
 """
 
@@ -42,15 +42,15 @@ def captured_job(monkeypatch) -> list[dict[str, Any]]:
             "results": {"answer": {"output": "the answer", "structured": {"answer": "42"}}},
         }
 
-    monkeypatch.setattr("h_cli.commands.workflow.direct_runtime.run_job", fake_run_job)
+    monkeypatch.setattr("h_cli.commands.workflow.local_runtime.run_job", fake_run_job)
     return jobs
 
 
 @needs_helm
-def test_direct_renders_the_template_and_sends_its_steps(captured_job) -> None:
+def test_local_renders_the_template_and_sends_its_steps(captured_job) -> None:
     """No saved-workflow store is read: the argument names a TEMPLATE and the rendered definition
     IS the artifact — the same one the service path would have POSTed."""
-    result = runner.invoke(app, ["workflow", "run", "answer", "--direct", "-p", "task=why?"])
+    result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=why?"])
 
     assert result.exit_code == 0, _all_output(result)
     job = captured_job[0]
@@ -64,9 +64,9 @@ def test_direct_renders_the_template_and_sends_its_steps(captured_job) -> None:
 
 
 @needs_helm
-def test_direct_uses_the_invoking_checkout_and_honours_instance_id(captured_job) -> None:
+def test_local_uses_the_invoking_checkout_and_honours_instance_id(captured_job) -> None:
     result = runner.invoke(
-        app, ["workflow", "run", "answer", "--direct", "-p", "task=q", "--instance-id", "my-run"]
+        app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--instance-id", "my-run"]
     )
     assert result.exit_code == 0, _all_output(result)
     job = captured_job[0]
@@ -84,16 +84,16 @@ def test_direct_uses_the_invoking_checkout_and_honours_instance_id(captured_job)
 
 
 @needs_helm
-def test_direct_with_setup_opts_in(captured_job) -> None:
+def test_local_with_setup_opts_in(captured_job) -> None:
     result = runner.invoke(
-        app, ["workflow", "run", "answer", "--direct", "-p", "task=q", "--with-setup"]
+        app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--with-setup"]
     )
     assert result.exit_code == 0, _all_output(result)
     assert captured_job[0]["withSetup"] is True
 
 
 @needs_helm
-def test_direct_expands_an_agent_roster_into_a_panel(captured_job) -> None:
+def test_local_expands_an_agent_roster_into_a_panel(captured_job) -> None:
     """A roster panelizes the definition CLI-side, exactly as on the service substrate — the
     executor gains nothing: it just sees a parallel group."""
     result = runner.invoke(
@@ -102,7 +102,7 @@ def test_direct_expands_an_agent_roster_into_a_panel(captured_job) -> None:
             "workflow",
             "run",
             "answer",
-            "--direct",
+            "--local",
             "-p",
             "task=q",
             "--agent",
@@ -134,8 +134,8 @@ def test_direct_expands_an_agent_roster_into_a_panel(captured_job) -> None:
         ["--via", "claude-agent"],
     ],
 )
-def test_direct_refuses_flags_that_need_an_engine(flag, captured_job) -> None:
-    result = runner.invoke(app, ["workflow", "run", "answer", "--direct", "-p", "task=q", *flag])
+def test_local_refuses_flags_that_need_an_engine(flag, captured_job) -> None:
+    result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q", *flag])
 
     assert result.exit_code == 1
     output = _all_output(result)
@@ -144,16 +144,16 @@ def test_direct_refuses_flags_that_need_an_engine(flag, captured_job) -> None:
     assert captured_job == [], "nothing may run when a flag was refused"
 
 
-def test_with_setup_without_direct_is_refused(captured_job) -> None:
+def test_with_setup_without_local_is_refused(captured_job) -> None:
     result = runner.invoke(app, ["workflow", "run", "answer", "--with-setup", "-p", "task=q"])
     assert result.exit_code == 1
-    assert "--direct" in _all_output(result)
+    assert "--local" in _all_output(result)
 
 
 @needs_helm
 def test_a_failed_step_exits_nonzero_and_names_the_step(monkeypatch) -> None:
     monkeypatch.setattr(
-        "h_cli.commands.workflow.direct_runtime.run_job",
+        "h_cli.commands.workflow.local_runtime.run_job",
         lambda job, bin_path=None: {
             "ok": False,
             "group": job["group"],
@@ -162,7 +162,7 @@ def test_a_failed_step_exits_nonzero_and_names_the_step(monkeypatch) -> None:
             "error": "output contract declared but the agent output has no fenced ```json block",
         },
     )
-    result = runner.invoke(app, ["workflow", "run", "answer", "--direct", "-p", "task=q"])
+    result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q"])
 
     assert result.exit_code == 1
     output = _all_output(result)

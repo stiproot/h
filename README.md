@@ -99,7 +99,7 @@ h/
 │   │   ├── core/             # Shared types (AgentRequest, AgentResponse)
 │   │   ├── core-dapr/        # Dapr-specific shared types and helpers
 │   │   ├── core-vercel/      # Vercel AI SDK client wrapper (ILlmClient → LiteLLM)
-│   │   ├── direct-runtime/   # Direct execution substrate — agent CLIs as local child processes (`h delegate`), no Dapr/services
+│   │   ├── local-runtime/   # Local execution substrate — agent CLIs as local child processes (`h delegate`), no Dapr/services
 │   │   ├── logger/           # Pino logger wrapper
 │   │   ├── run-ledger/       # The run ledger — per-run summary/events/output + statestore mirror; shared by every agent host
 │   │   ├── workflow-core/    # Substrate-independent workflow semantics — definition shapes, $ref/{{token}} resolution, the output contract
@@ -305,7 +305,7 @@ make down-host               # stop them (leaves infra up; `make infra-down` sto
 process groups, logs → `.host-logs/<service>.log`); `make wait-host` gates readiness by
 TCP-probing each service's app port. Service membership per mode lives in `cli/scripts/_services.sh`
 (the single source of truth the launcher and the zellij layouts share — kept in step by
-`scripts/check-services.mjs` at lint time). See docs/plans/impl/agent-local-mode-bringup.md.
+`scripts/check-services.mjs` at lint time). See docs/plans/impl/agent-host-mode-bringup.md.
 
 ### 5. Run a test
 

@@ -22,7 +22,7 @@ from h_cli.config import MODEL_PARAM_SLOTS
 # cli/h/tests/ → cli/h/ → cli/ → repo root
 _REPO_ROOT = Path(__file__).parents[3]
 # The kinds now live in workflow-core, shared by BOTH execution substrates: chain.model.ts builds
-# its Schema.Literal from this list, and the direct substrate's chain executor reads the same one.
+# its Schema.Literal from this list, and the local substrate's chain executor reads the same one.
 _CHAIN_KINDS = _REPO_ROOT / "packages/js/workflow-core/src/chain.ts"
 
 

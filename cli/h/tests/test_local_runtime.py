@@ -1,11 +1,11 @@
-"""The direct-substrate client: env layering and the runner boundary."""
+"""The local-substrate client: env layering and the runner boundary."""
 
 import json
 from pathlib import Path
 
 import pytest
 
-from h_cli.infrastructure.direct import DirectRunError, child_env, run_job
+from h_cli.infrastructure.local_runtime import LocalRunError, child_env, run_job
 
 
 def test_dotenv_fills_gaps_but_never_shadows_the_shell(tmp_path: Path, monkeypatch) -> None:
@@ -34,13 +34,13 @@ def test_dotenv_fills_gaps_but_never_shadows_the_shell(tmp_path: Path, monkeypat
 
 
 def test_missing_dotenv_is_not_an_error(tmp_path: Path) -> None:
-    """Direct execution must work in a checkout with no .env at all — the operator's own shell
+    """Local execution must work in a checkout with no .env at all — the operator's own shell
     env is the documented path."""
     assert child_env(tmp_path / "absent.env")
 
 
 def test_unbuilt_runner_says_how_to_build_it(tmp_path: Path) -> None:
-    with pytest.raises(DirectRunError, match="bun run build"):
+    with pytest.raises(LocalRunError, match="bun run build"):
         run_job({"kind": "delegate"}, bin_path=tmp_path / "nope.js")
 
 
@@ -71,14 +71,14 @@ def test_the_job_reaches_the_runner_on_stdin(tmp_path: Path) -> None:
 def test_a_runner_that_says_nothing_is_a_loud_failure(tmp_path: Path) -> None:
     fake = tmp_path / "silent-runner.js"
     fake.write_text("process.stdin.resume();process.stdin.on('end',()=>process.exit(3));\n")
-    with pytest.raises(DirectRunError, match="produced no result"):
+    with pytest.raises(LocalRunError, match="produced no result"):
         run_job({"kind": "delegate"}, bin_path=fake)
 
 
 def test_unreadable_output_is_a_loud_failure(tmp_path: Path) -> None:
     fake = tmp_path / "garbage-runner.js"
     fake.write_text("process.stdin.resume();process.stdin.on('end',()=>console.log('{nope'));\n")
-    with pytest.raises(DirectRunError, match="unreadable result"):
+    with pytest.raises(LocalRunError, match="unreadable result"):
         run_job({"kind": "delegate"}, bin_path=fake)
 
 

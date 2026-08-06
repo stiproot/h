@@ -1,5 +1,5 @@
 /**
- * The job/report shapes of the direct execution substrate.
+ * The job/report shapes of the local execution substrate.
  *
  * h composes work the same way on both substrates — a template renders to a workflow definition,
  * and only the executor underneath differs. These are that executor's own wire shapes for its
@@ -12,9 +12,9 @@ import { Schema } from "effect";
 import { CHAIN_MEMBER_KINDS, WorkflowParams, WorkflowStep } from "workflow-core";
 
 /** The agent CLIs this substrate can drive — the closed vocabulary behind `--agent`. */
-export const DIRECT_AGENT_TYPES = ["claude", "codex", "openhands", "pi"] as const;
+export const LOCAL_AGENT_TYPES = ["claude", "codex", "openhands", "pi"] as const;
 
-export type DirectAgentType = (typeof DIRECT_AGENT_TYPES)[number];
+export type LocalAgentType = (typeof LOCAL_AGENT_TYPES)[number];
 
 /** A worktree to cut before a run, so delegated write work never lands in the live checkout. */
 export type WorktreeSpec = {
@@ -32,7 +32,7 @@ export type WorktreeSpec = {
 /** One agent's slice of a delegate job, after the roster has been resolved and cwds assigned. */
 export type AgentRunRequest = {
   /** The canonical agent name (`claude`), which is also the ledger's agentId for this run. */
-  agent: DirectAgentType;
+  agent: LocalAgentType;
   task: string;
   /** Where the CLI runs — the job's cwd, or this agent's own worktree. */
   cwd: string;
@@ -41,7 +41,7 @@ export type AgentRunRequest = {
   systemPrompt?: string;
   /** "plan" runs the CLI read-only, where the agent supports it. */
   permissionMode?: "plan";
-  /** Run-ledger root and grouping key, so direct runs are readable by the same surfaces. */
+  /** Run-ledger root and grouping key, so local runs are readable by the same surfaces. */
   runsDir: string;
   group: string;
 };
@@ -52,7 +52,7 @@ export type AgentRunRequest = {
  * outcome either way.
  */
 export type AgentRunReport = {
-  agent: DirectAgentType;
+  agent: LocalAgentType;
   status: "completed" | "failed";
   cwd: string;
   output: string;
@@ -102,7 +102,7 @@ export const DelegateJob = Schema.Struct({
   cwd: Schema.String,
   timeoutMs: Schema.Number,
   runsDir: Schema.String,
-  /** Ledger grouping key for this job — the direct substrate's join key across its runs. */
+  /** Ledger grouping key for this job — the local substrate's join key across its runs. */
   group: Schema.String,
   model: Schema.optional(Schema.String),
   systemPrompt: Schema.optional(Schema.String),
@@ -140,7 +140,7 @@ export const WorkflowJob = Schema.Struct({
   /** Directory `create-worktree` places this run's worktree under. */
   worktreeRoot: Schema.String,
   /**
-   * The checkout `create-worktree` cuts from when a step declares no `clonePath`. Direct
+   * The checkout `create-worktree` cuts from when a step declares no `clonePath`. Local
    * execution's default is the checkout the operator is standing in — no pre-clone to provision.
    */
   repoPath: Schema.String,
@@ -161,7 +161,7 @@ export type WorkflowJob = Schema.Schema.Type<typeof WorkflowJob>;
  * `cron` members are absent for the same reason recurrence is: they self-arm a registration this
  * substrate has no engine to service, so the CLI refuses them before anything runs.
  */
-export const DirectChainMember = Schema.Struct({
+export const LocalChainMember = Schema.Struct({
   kind: Schema.Literal(...CHAIN_MEMBER_KINDS),
   steps: Schema.Array(WorkflowStep),
   params: Schema.optional(WorkflowParams),
@@ -173,12 +173,12 @@ export const DirectChainMember = Schema.Struct({
   inputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   until: Schema.optional(Schema.Struct({ path: Schema.String, equals: Schema.String })),
 });
-export type DirectChainMember = Schema.Schema.Type<typeof DirectChainMember>;
+export type LocalChainMember = Schema.Schema.Type<typeof LocalChainMember>;
 
 /** Sequence several workflow definitions in-process, threading state between them. */
 export const ChainJob = Schema.Struct({
   kind: Schema.Literal("chain"),
-  members: Schema.Array(DirectChainMember),
+  members: Schema.Array(LocalChainMember),
   /** Seed values (`-p k=v`) the first members read their inputs from. */
   data: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
   strategy: Schema.Literal("sequential", "loop-until-clean"),
@@ -216,8 +216,8 @@ export type ChainEnvelope = {
 };
 
 /** Every job the runner accepts, discriminated on `kind`. */
-export const DirectJob = Schema.Union(DelegateJob, WorkflowJob, ChainJob);
-export type DirectJob = Schema.Schema.Type<typeof DirectJob>;
+export const LocalJob = Schema.Union(DelegateJob, WorkflowJob, ChainJob);
+export type LocalJob = Schema.Schema.Type<typeof LocalJob>;
 
 /** What a workflow job writes to stdout: the step results map, exactly as the engine returns it. */
 export type WorkflowEnvelope = {

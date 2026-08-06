@@ -1,7 +1,7 @@
 {
-  "name": "direct-runtime",
+  "name": "local-runtime",
   "version": "0.1.0",
-  "description": "Direct execution substrate for h \u2014 runs agent CLIs as local child processes, with no Dapr, services or registries",
+  "description": "Local execution substrate for h \u2014 runs agent CLIs as local child processes, with no Dapr, services or registries",
   "type": "module",
   "exports": {
     ".": {
@@ -10,7 +10,7 @@
     }
   },
   "bin": {
-    "h-direct": "./dist/bin.js"
+    "h-local": "./dist/bin.js"
   },
   "files": [
     "dist"

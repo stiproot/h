@@ -13,7 +13,7 @@ const job = (over: Partial<DelegateJob> = {}): DelegateJob => ({
   cwd: "/work/repo",
   timeoutMs: 1000,
   runsDir: "/runs",
-  group: "direct-260806-101500",
+  group: "local-260806-101500",
   ...over,
 });
 
@@ -65,16 +65,16 @@ const run = (j: DelegateJob, layer: Layer.Layer<AgentPort | WorkspacePort | Prog
 
 describe("branchNames", () => {
   it("uses the bare prefix for a single agent", () => {
-    expect(branchNames("direct/x", ["codex"])).toEqual(["direct/x"]);
+    expect(branchNames("local/x", ["codex"])).toEqual(["local/x"]);
   });
 
   // A branch lives in at most one worktree, so a collision would hand two agents the SAME
   // directory and let them overwrite each other's work.
   it("gives every roster slot a distinct branch, including repeats of one agent", () => {
-    expect(branchNames("direct/x", ["codex", "pi", "codex"])).toEqual([
-      "direct/x-codex",
-      "direct/x-pi",
-      "direct/x-codex-2",
+    expect(branchNames("local/x", ["codex", "pi", "codex"])).toEqual([
+      "local/x-codex",
+      "local/x-pi",
+      "local/x-codex-2",
     ]);
   });
 });
@@ -125,7 +125,7 @@ describe("runDelegate", () => {
         worktree: {
           repoPath: "/work/repo",
           root: "/work/.h-worktrees",
-          branchPrefix: "direct/job",
+          branchPrefix: "local/job",
           remoteBase: "main",
         },
       }),
@@ -133,15 +133,15 @@ describe("runDelegate", () => {
     );
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(recorder.worktrees.map((w) => w.branch)).toEqual(["direct/job-codex", "direct/job-pi"]);
+    expect(recorder.worktrees.map((w) => w.branch)).toEqual(["local/job-codex", "local/job-pi"]);
     expect(recorder.worktrees.map((w) => w.worktreePath)).toEqual([
-      "/work/.h-worktrees/direct-job-codex",
-      "/work/.h-worktrees/direct-job-pi",
+      "/work/.h-worktrees/local-job-codex",
+      "/work/.h-worktrees/local-job-pi",
     ]);
     expect(recorder.worktrees.every((w) => w.remoteBase === "main")).toBe(true);
     expect(recorder.requests.map((r) => r.cwd)).toEqual([
-      "/work/.h-worktrees/direct-job-codex",
-      "/work/.h-worktrees/direct-job-pi",
+      "/work/.h-worktrees/local-job-codex",
+      "/work/.h-worktrees/local-job-pi",
     ]);
   });
 

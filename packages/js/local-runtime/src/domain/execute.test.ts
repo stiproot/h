@@ -125,7 +125,7 @@ describe("runWorkflow", () => {
     expect(recorder.worktrees[0]?.branch).toBe("feature/x");
     expect(recorder.worktrees[0]?.worktreePath).toBe("/wt/answer-260806-120000");
     // The worktree is cut from the checkout the operator invoked from, absent an explicit
-    // clonePath — direct execution has no pre-cloned shared workspace.
+    // clonePath — local execution has no pre-cloned shared workspace.
     expect(recorder.worktrees[0]?.repoPath).toBe("/repo");
     expect(recorder.agentRuns[0]?.cwd).toBe("/wt/answer-260806-120000");
   });

@@ -20,6 +20,13 @@ const proseDirs = ["skills", ".claude/skills/observe-h"];
 const proseExtensions = new Set([".md", ".txt", ".yaml", ".yml"]);
 export const rules = [
   { pattern: /\bhops?\b/gi, replacement: "path or step" },
+  // Retired 2026-08-06: "local mode" split into HOST mode (the fleet's services as host
+  // processes) and the LOCAL substrate (in-process execution, formerly "direct").
+  {
+    pattern: /\blocal[- ]mode\b/gi,
+    replacement: "host mode (the fleet on the host) or the local substrate (in-process execution)",
+  },
+  { pattern: /\bdirect[- ](?:mode|substrate|runtime|execution)\b/gi, replacement: "the local substrate" },
   { pattern: /\b(?:family|families)\b/gi, replacement: "cron siblings or a precise grouping" },
   { pattern: /\bblackboards?\b/gi, replacement: "chain data" },
   { pattern: /\bchain workflows?\b/gi, replacement: "chain member" },

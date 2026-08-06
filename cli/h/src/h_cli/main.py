@@ -35,5 +35,5 @@ app.add_typer(schedule.app, name="schedule")
 app.add_typer(workflow.app, name="workflow")
 app.add_typer(worktrees.app, name="worktrees")
 app.command("status")(status)
-# The direct execution substrate's atom: agent CLIs as local child processes, no services.
+# The local execution substrate's atom: agent CLIs as local child processes, no services.
 app.command("delegate")(delegate)

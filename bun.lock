@@ -278,11 +278,24 @@
         "@types/node": "^24",
       },
     },
-    "packages/js/direct-runtime": {
-      "name": "direct-runtime",
+    "packages/js/git-core": {
+      "name": "git-core",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/platform": "^0.96.2",
+        "effect": "^3.21.4",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "^0.107.0",
+        "@effect/vitest": "^0.29.0",
+        "@types/node": "^24",
+      },
+    },
+    "packages/js/local-runtime": {
+      "name": "local-runtime",
       "version": "0.1.0",
       "bin": {
-        "h-direct": "./dist/bin.js",
+        "h-local": "./dist/bin.js",
       },
       "dependencies": {
         "@effect/platform": "^0.96.2",
@@ -294,19 +307,6 @@
         "workflow-core": "workspace:*",
       },
       "devDependencies": {
-        "@effect/vitest": "^0.29.0",
-        "@types/node": "^24",
-      },
-    },
-    "packages/js/git-core": {
-      "name": "git-core",
-      "version": "0.1.0",
-      "dependencies": {
-        "@effect/platform": "^0.96.2",
-        "effect": "^3.21.4",
-      },
-      "devDependencies": {
-        "@effect/platform-node": "^0.107.0",
         "@effect/vitest": "^0.29.0",
         "@types/node": "^24",
       },
@@ -882,8 +882,6 @@
 
     "diff-match-patch": ["diff-match-patch@1.0.5", "", {}, "sha512-IayShXAgj/QMXgB0IWmKx+rOPuGMhqm5w6jvFxmVenXKIzRqTAAsbBPT3kWQeGANj3jGgvcvv4yK6SxqYmikgw=="],
 
-    "direct-runtime": ["direct-runtime@workspace:packages/js/direct-runtime"],
-
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
@@ -1077,6 +1075,8 @@
     "lightningcss-win32-arm64-msvc": ["lightningcss-win32-arm64-msvc@1.32.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw=="],
 
     "lightningcss-win32-x64-msvc": ["lightningcss-win32-x64-msvc@1.32.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q=="],
+
+    "local-runtime": ["local-runtime@workspace:packages/js/local-runtime"],
 
     "lodash.camelcase": ["lodash.camelcase@4.3.0", "", {}, "sha512-TwuEnCnxbc3rAvhf/LbG7tJUDzhqXyFnv3dtzLOPgCG/hODL7WFnsbwktkD7yUV0RrreP/l1PALq/YSg6VvjlA=="],
 

@@ -1,4 +1,4 @@
-import { DIRECT_AGENT_TYPES, type DirectAgentType } from "./models.ts";
+import { LOCAL_AGENT_TYPES, type LocalAgentType } from "./models.ts";
 
 /**
  * User-facing `--agent` name → the agent this substrate runs.
@@ -11,7 +11,7 @@ import { DIRECT_AGENT_TYPES, type DirectAgentType } from "./models.ts";
  * A CLOSED table on purpose. An unknown name fails loud, naming what is available, rather than
  * quietly falling back to a default agent and billing the wrong provider.
  */
-const AGENT_ALIASES: Readonly<Record<string, DirectAgentType>> = {
+const AGENT_ALIASES: Readonly<Record<string, LocalAgentType>> = {
   claude: "claude",
   "claude-agent": "claude",
   codex: "codex",
@@ -26,16 +26,16 @@ const AGENT_ALIASES: Readonly<Record<string, DirectAgentType>> = {
 export class UnknownAgentError extends Error {
   constructor(readonly agent: string) {
     super(
-      `unknown agent '${agent}' — direct execution runs: ${DIRECT_AGENT_TYPES.join(", ")}. ` +
+      `unknown agent '${agent}' — local execution runs: ${LOCAL_AGENT_TYPES.join(", ")}. ` +
         "Agents that exist only as a service (kimi, dapr-agent, langgraph, claude-managed) run " +
-        "on the service substrate; drop --direct to use them.",
+        "on the service substrate; drop --local to use them.",
     );
     this.name = "UnknownAgentError";
   }
 }
 
 /** Resolve one `--agent` name to its canonical agent, or throw {@link UnknownAgentError}. */
-export function resolveAgent(name: string): DirectAgentType {
+export function resolveAgent(name: string): LocalAgentType {
   const resolved = AGENT_ALIASES[name.trim().toLowerCase()];
   if (!resolved) throw new UnknownAgentError(name);
   return resolved;

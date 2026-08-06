@@ -8,7 +8,7 @@ import type {
   AgentRunRequest,
   DelegateEnvelope,
   DelegateJob,
-  DirectAgentType,
+  LocalAgentType,
 } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort, type WorkspaceError } from "./ports.ts";
 
@@ -29,10 +29,10 @@ export class EmptyRosterError extends Error {
  */
 export function branchNames(
   prefix: string,
-  roster: ReadonlyArray<DirectAgentType>,
+  roster: ReadonlyArray<LocalAgentType>,
 ): ReadonlyArray<string> {
   if (roster.length === 1) return [prefix];
-  const seen = new Map<DirectAgentType, number>();
+  const seen = new Map<LocalAgentType, number>();
   return roster.map((agent) => {
     const nth = (seen.get(agent) ?? 0) + 1;
     seen.set(agent, nth);
@@ -111,7 +111,7 @@ export const runDelegate = (
 /** One cwd per roster slot: the job's own directory, or a freshly cut per-agent worktree. */
 const prepareCwds = (
   job: DelegateJob,
-  roster: ReadonlyArray<DirectAgentType>,
+  roster: ReadonlyArray<LocalAgentType>,
 ): Effect.Effect<ReadonlyArray<string>, WorkspaceError, WorkspacePort | ProgressPort> =>
   Effect.gen(function* () {
     const spec = job.worktree;

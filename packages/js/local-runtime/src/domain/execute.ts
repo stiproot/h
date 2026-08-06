@@ -125,7 +125,7 @@ const runStep = (
         const worktreePath = yield* workspace
           .prepare({
             // A step's own clonePath wins (the multi-repo knob); otherwise the checkout the
-            // operator invoked from — direct execution has no pre-cloned shared workspace.
+            // operator invoked from — local execution has no pre-cloned shared workspace.
             repoPath: str(input.clonePath) ?? job.repoPath,
             worktreePath: join(job.worktreeRoot, key),
             branch: str(input.branch),
@@ -153,7 +153,7 @@ const runStep = (
           `⊘ ${id}: skipped ${commands.length} setup command(s) — they provision the operator's ` +
             "own HOME on this substrate. Pass --with-setup to run them.",
         );
-        return { skipped: "setup is opt-in on the direct substrate (--with-setup)" };
+        return { skipped: "setup is opt-in on the local substrate (--with-setup)" };
       }
       yield* workspace
         .provision(job.repoPath, commands)

@@ -20,24 +20,23 @@ from h_cli.config import (
     AGENT_RUNS_DIR,
     AGENT_URLS,
     CHARTS_DIR,
-    DIRECT_WORKTREES_DIR,
     FROZEN_EXECUTOR_KEYS,
+    LOCAL_WORKTREES_DIR,
     MODEL_PARAM_SLOTS,
     agent_identity_params,
     baked_models_suit,
     resolve_agent_url,
 )
-from h_cli.infrastructure import agent_service, helm, workflow_svc
-from h_cli.infrastructure import direct as direct_runtime
-from h_cli.infrastructure.direct import DirectRunError, group_id, repo_root
+from h_cli.infrastructure import agent_service, helm, local_runtime, workflow_svc
+from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
 from h_cli.infrastructure.panelize import PanelizeError, panelize, roster_pairs
 from h_cli.params import parse_params
 
 app = typer.Typer(no_args_is_help=True, help="Saved workflows and instance status (workflow-svc).")
 
-# Per-agent-step wall-clock budget on the direct substrate. There is no watcher here to terminate
+# Per-agent-step wall-clock budget on the local substrate. There is no watcher here to terminate
 # a runaway, so the timeout IS the budget — matching the agent services' AGENT_RUN_TIMEOUT_MS.
-DIRECT_STEP_TIMEOUT_MS = 1_800_000
+LOCAL_STEP_TIMEOUT_MS = 1_800_000
 console = Console()
 err_console = Console(stderr=True)
 
@@ -223,10 +222,10 @@ def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
 
 
 def _refuse_engine_flags(flags: dict[str, Any]) -> None:
-    """Refuse, by name, the flags that need machinery the direct substrate does not have.
+    """Refuse, by name, the flags that need machinery the local substrate does not have.
 
     Every one of these hands the run to an ENGINE — supervision, recurrence, scheduling — or to
-    another service. Direct execution declines them rather than ignoring them: silently dropping
+    another service. Local execution declines them rather than ignoring them: silently dropping
     `--cron` would report a recurrence that was never armed. This IS the boundary between the two
     substrates, so the message names the engine each flag needs.
     """
@@ -234,8 +233,8 @@ def _refuse_engine_flags(flags: dict[str, Any]) -> None:
     if not used:
         return
     err_console.print(
-        f"[red]{', '.join(used)} need workflow-svc's engines[/red] — drop --direct to use them "
-        "(the watcher, cron and schedule engines live on the service substrate; direct execution "
+        f"[red]{', '.join(used)} need workflow-svc's engines[/red] — drop --local to use them "
+        "(the watcher, cron and schedule engines live on the service substrate; local execution "
         "runs in this process, so the driver is the supervisor)."
     )
     raise typer.Exit(1)
@@ -406,11 +405,11 @@ def run(
         ),
     ] = None,
     via: ViaOpt = None,
-    direct: Annotated[
+    local: Annotated[
         bool,
         typer.Option(
-            "--direct",
-            help="Execute on the DIRECT substrate: render the template and run its steps in this "
+            "--local",
+            help="Execute on the LOCAL substrate: render the template and run its steps in this "
             "process, driving the agent CLIs as local children — no Dapr, no services, no "
             "registries. Same definition, same contracts; flags that need an engine are refused.",
         ),
@@ -419,7 +418,7 @@ def run(
         bool,
         typer.Option(
             "--with-setup",
-            help="--direct only: run the definition's setup steps. Off by default because they "
+            help="--local only: run the definition's setup steps. Off by default because they "
             "provision the OPERATOR's own HOME (~/.claude) on this substrate, not a container's.",
         ),
     ] = False,
@@ -440,7 +439,7 @@ def run(
     """
     params = parse_params(param or [])
     roster = tuple(agent) if agent and len(agent) > 1 else ()
-    if direct:
+    if local:
         _refuse_engine_flags(
             {
                 "--via": via,
@@ -459,7 +458,7 @@ def run(
             }
         )
     elif with_setup:
-        err_console.print("[red]--with-setup applies to --direct only[/red]")
+        err_console.print("[red]--with-setup applies to --local only[/red]")
         raise typer.Exit(1)
     if inline:
         refuse_overlay(key, "run")
@@ -548,8 +547,8 @@ def run(
                 "(a scheduled fire arms a cron:sched row on workflow-svc)."
             )
             raise typer.Exit(1)
-    if direct:
-        # The direct substrate composes on the fly: there is no saved-workflow store to read
+    if local:
+        # The local substrate composes on the fly: there is no saved-workflow store to read
         # (a registry is engine machinery), so the argument names a chart TEMPLATE and the
         # rendered definition IS the artifact — the same one the service path would have POSTed.
         template_name = key if inline else template_name_for_key(key)
@@ -565,7 +564,7 @@ def run(
                 raise typer.Exit(1) from err
             console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
         merged = {**(definition.get("params") or {}), **params}
-        _run_direct(template_name, definition, merged, instance_id, with_setup)
+        _run_local(template_name, definition, merged, instance_id, with_setup)
         return
     if roster:
         # Panel path: panelize the definition and fire the
@@ -683,33 +682,33 @@ def run(
             )
 
 
-def _run_direct(
+def _run_local(
     template: str,
     definition: dict[str, Any],
     params: dict[str, Any],
     instance_id: str | None,
     with_setup: bool,
 ) -> None:
-    """Execute a rendered definition on the direct substrate and report what its steps produced."""
+    """Execute a rendered definition on the local substrate and report what its steps produced."""
     group = instance_id or group_id(template)
     try:
-        envelope = direct_runtime.run_job(
+        envelope = local_runtime.run_job(
             {
                 "kind": "workflow",
                 "steps": definition["steps"],
                 "params": params,
                 "group": group,
                 "runsDir": str(AGENT_RUNS_DIR),
-                "timeoutMs": DIRECT_STEP_TIMEOUT_MS,
-                "worktreeRoot": str(DIRECT_WORKTREES_DIR),
+                "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
+                "worktreeRoot": str(LOCAL_WORKTREES_DIR),
                 # The checkout the operator invoked from is the default worktree source; a
                 # template's own clonePath param still wins per step (the multi-repo knob).
                 "repoPath": repo_root(Path.cwd()),
                 **({"withSetup": True} if with_setup else {}),
             }
         )
-    except DirectRunError as err:
-        err_console.print(f"[red]direct:[/red] {err}")
+    except LocalRunError as err:
+        err_console.print(f"[red]local:[/red] {err}")
         raise typer.Exit(1) from err
 
     results: dict[str, Any] = envelope.get("results") or {}
@@ -733,7 +732,7 @@ def _run_direct(
         err_console.print(
             f"[red]step '{failed}' failed:[/red] {envelope.get('error', 'no detail')}"
             if failed
-            else f"[red]direct:[/red] {envelope.get('error', 'no detail')}"
+            else f"[red]local:[/red] {envelope.get('error', 'no detail')}"
         )
         raise typer.Exit(1)
     contract = " · output contract validated" if final and final.get("structured") else ""

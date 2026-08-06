@@ -10,7 +10,7 @@ import type { AgentRunReport, AgentRunRequest, WorktreeSpec } from "./models.ts"
  * answers because the fourth agent is missing, and the adapter has already written the run
  * ledger entry by the time it returns.
  */
-export class AgentPort extends Context.Tag("direct-runtime/AgentPort")<
+export class AgentPort extends Context.Tag("local-runtime/AgentPort")<
   AgentPort,
   {
     readonly run: (request: AgentRunRequest) => Effect.Effect<AgentRunReport>;
@@ -32,7 +32,7 @@ export class WorkspaceError extends Data.TaggedError("WorkspaceError")<{
 export type SetupCommand = { readonly cmd: string; readonly validateCmd?: string };
 
 /** Preparing the workspace a run works in: its checkout, and any provisioning it declares. */
-export class WorkspacePort extends Context.Tag("direct-runtime/WorkspacePort")<
+export class WorkspacePort extends Context.Tag("local-runtime/WorkspacePort")<
   WorkspacePort,
   {
     /** Create (or reuse) the worktree and return its EFFECTIVE path. */
@@ -49,7 +49,7 @@ export class WorkspacePort extends Context.Tag("direct-runtime/WorkspacePort")<
  * Human-readable progress, out of band from the result. The runner's stdout carries ONLY the
  * result envelope, so a caller can parse it without stripping chatter; progress goes to stderr.
  */
-export class ProgressPort extends Context.Tag("direct-runtime/ProgressPort")<
+export class ProgressPort extends Context.Tag("local-runtime/ProgressPort")<
   ProgressPort,
   {
     readonly emit: (line: string) => Effect.Effect<void>;

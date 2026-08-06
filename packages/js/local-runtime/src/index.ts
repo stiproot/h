@@ -11,8 +11,8 @@ export { branchNames, EmptyRosterError, runDelegate } from "./domain/delegate.ts
 export { runWorkflow, StepError } from "./domain/execute.ts";
 export {
   DelegateJob,
-  DirectJob,
-  DIRECT_AGENT_TYPES,
+  LocalJob,
+  LOCAL_AGENT_TYPES,
   WorkflowJob,
   WorktreePlan,
 } from "./domain/models.ts";
@@ -22,7 +22,7 @@ export type {
   ChainMemberRun,
   AgentRunRequest,
   DelegateEnvelope,
-  DirectAgentType,
+  LocalAgentType,
   WorkflowEnvelope,
   WorktreeSpec,
 } from "./domain/models.ts";

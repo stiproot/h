@@ -29,7 +29,7 @@ COPY packages/js/agent-server/package.json ./packages/js/agent-server/
 COPY packages/js/git-core/package.json ./packages/js/git-core/
 COPY packages/js/workflow-core/package.json ./packages/js/workflow-core/
 COPY packages/js/run-ledger/package.json ./packages/js/run-ledger/
-COPY packages/js/direct-runtime/package.json ./packages/js/direct-runtime/
+COPY packages/js/local-runtime/package.json ./packages/js/local-runtime/
 COPY packages/js/logger/package.json ./packages/js/logger/
 COPY packages/js/telemetry/package.json ./packages/js/telemetry/
 COPY apps/claude-agent/package.json ./apps/claude-agent/

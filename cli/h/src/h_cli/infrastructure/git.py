@@ -1,6 +1,6 @@
 """Pure subprocess adapter for git worktree inspection and removal.
 
-Style mirrors direct.py's `repo_root()`: bare `subprocess.run(..., capture_output=True,
+Style mirrors local_runtime.py's `repo_root()`: bare `subprocess.run(..., capture_output=True,
 text=True, check=True)`; OSError/CalledProcessError become a GitError the command layer
 renders loudly.
 """
@@ -18,7 +18,7 @@ class GitError(RuntimeError):
 class WorktreeEntry:
     path: Path
     head: str  # full SHA
-    branch: str | None  # "refs/heads/direct/..." or None (detached HEAD)
+    branch: str | None  # "refs/heads/local/..." or None (detached HEAD)
 
     @property
     def branch_short(self) -> str | None:

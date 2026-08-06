@@ -1,7 +1,7 @@
-"""Client for the direct execution substrate — the sibling of workflow_svc.py.
+"""Client for the local execution substrate — the sibling of workflow_svc.py.
 
 Where workflow_svc.py POSTs a composed workflow to a running service, this spawns the
-direct-runtime binary and pipes the job in on stdin. The CLI composes identically either way;
+local-runtime binary and pipes the job in on stdin. The CLI composes identically either way;
 only which of these two modules receives the result changes.
 
 The child writes human progress to stderr — inherited, so it appears live rather than after the
@@ -16,10 +16,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from h_cli.config import DIRECT_BIN, DOTENV_PATH
+from h_cli.config import DOTENV_PATH, LOCAL_BIN
 
 
-class DirectRunError(RuntimeError):
+class LocalRunError(RuntimeError):
     """Raised when the runner cannot start or did not answer; str(err) is user-presentable."""
 
 
@@ -35,7 +35,7 @@ def group_id(base: str) -> str:
 def repo_root(cwd: Path) -> str:
     """The checkout a worktree is cut from — the one the operator is standing in.
 
-    Direct execution has no pre-cloned shared workspace to default to, which is the point: you
+    Local execution has no pre-cloned shared workspace to default to, which is the point: you
     already have a checkout. Not being in a git repo is a loud refusal, never a silent fallback
     to some other directory.
     """
@@ -47,7 +47,7 @@ def repo_root(cwd: Path) -> str:
             check=True,
         )
     except (OSError, subprocess.CalledProcessError) as err:
-        raise DirectRunError(f"not a git checkout: {cwd}") from err
+        raise LocalRunError(f"not a git checkout: {cwd}") from err
     return out.stdout.strip()
 
 
@@ -79,7 +79,7 @@ def _parse_dotenv(path: Path) -> dict[str, str]:
 def child_env(dotenv_path: Path | None = None) -> dict[str, str]:
     """The environment the agent CLIs inherit: this shell, with the repo's .env filling the gaps.
 
-    Direct execution's premise is that the operator's OWN credentials are the setup — but in this
+    Local execution's premise is that the operator's OWN credentials are the setup — but in this
     repo those live in .env, which only compose and the run scripts load. Reading it here is what
     makes `h delegate` work without a bring-up, using exactly the keys the agent services get.
 
@@ -97,19 +97,19 @@ def child_env(dotenv_path: Path | None = None) -> dict[str, str]:
 
 
 def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]:
-    """Run one job on the direct substrate and return its result envelope.
+    """Run one job on the local substrate and return its result envelope.
 
     Interruption is deliberate and load-bearing: Ctrl-C reaches the child as SIGINT, which
     interrupts its fiber, closes the run scopes and lets agent-cli's reaper group-kill every
     agent CLI. An orphaned CLI would keep working — and keep billing — with nothing recording it,
     so the KeyboardInterrupt path waits for the child to actually finish dying.
     """
-    runner = bin_path or DIRECT_BIN
+    runner = bin_path or LOCAL_BIN
     if not runner.is_file():
-        raise DirectRunError(
-            f"direct runner not built: {runner}\n"
+        raise LocalRunError(
+            f"local runner not built: {runner}\n"
             "Run `bun install && bun run build` at the repo root (its one prerequisite), "
-            "or point H_DIRECT_BIN at the built bin.js."
+            "or point H_LOCAL_BIN at the built bin.js."
         )
 
     try:
@@ -125,7 +125,7 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
             env=child_env(),
         )
     except OSError as err:  # node missing, not executable, …
-        raise DirectRunError(f"could not start the direct runner ({runner}): {err}") from err
+        raise LocalRunError(f"could not start the local runner ({runner}): {err}") from err
 
     try:
         stdout, _ = proc.communicate(json.dumps(job))
@@ -135,13 +135,13 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
             stdout, _ = proc.communicate(timeout=30)
         except subprocess.TimeoutExpired:
             proc.kill()
-            raise DirectRunError("interrupted; the runner did not shut down in 30s") from None
-        raise DirectRunError("interrupted") from None
+            raise LocalRunError("interrupted; the runner did not shut down in 30s") from None
+        raise LocalRunError("interrupted") from None
 
     line = next((ln for ln in reversed(stdout.splitlines()) if ln.strip()), "")
     if not line:
-        raise DirectRunError(f"the direct runner produced no result (exit {proc.returncode})")
+        raise LocalRunError(f"the local runner produced no result (exit {proc.returncode})")
     try:
         return json.loads(line)
     except json.JSONDecodeError as err:
-        raise DirectRunError(f"unreadable result from the direct runner: {line[:200]}") from err
+        raise LocalRunError(f"unreadable result from the local runner: {line[:200]}") from err

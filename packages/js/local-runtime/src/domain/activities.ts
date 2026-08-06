@@ -1,11 +1,11 @@
 import { resolveAgent, UnknownAgentError } from "./agents.ts";
-import type { DirectAgentType } from "./models.ts";
+import type { LocalAgentType } from "./models.ts";
 
 /**
- * What an activity NAME means on the direct substrate.
+ * What an activity NAME means on the local substrate.
  *
  * A workflow definition names activities; the service substrate looks them up in workflow-svc's
- * activity registry, and this is that registry's direct-substrate counterpart. It is a CLOSED
+ * activity registry, and this is that registry's local-substrate counterpart. It is a CLOSED
  * vocabulary in three parts:
  *
  *  - **agent** — `run-claude`/`-codex`/`-openhands`/`-pi`. The service path reaches these
@@ -18,7 +18,7 @@ import type { DirectAgentType } from "./models.ts";
  *    that never ran. Both are worse than a refusal.
  */
 export type ActivityKind =
-  | { readonly kind: "agent"; readonly agent: DirectAgentType }
+  | { readonly kind: "agent"; readonly agent: LocalAgentType }
   | { readonly kind: "builtin"; readonly name: BuiltinActivity }
   | { readonly kind: "refused"; readonly reason: string };
 
@@ -30,7 +30,7 @@ const isBuiltin = (name: string): name is BuiltinActivity =>
 
 /**
  * Activities this substrate deliberately will not run, and why. The reason is the whole point:
- * each names the thing direct execution does not have, so the operator knows whether to compose
+ * each names the thing local execution does not have, so the operator knows whether to compose
  * differently or use the service substrate.
  */
 const REFUSED: Readonly<Record<string, string>> = {
@@ -53,20 +53,20 @@ const REFUSED: Readonly<Record<string, string>> = {
 export class UnknownActivityError extends Error {
   constructor(readonly activity: string) {
     super(
-      `unknown activity '${activity}' — direct execution runs run-<agent> plus ` +
+      `unknown activity '${activity}' — local execution runs run-<agent> plus ` +
         `${BUILTIN_ACTIVITIES.join(", ")}.`,
     );
     this.name = "UnknownActivityError";
   }
 }
 
-/** An activity the direct substrate declines, with the reason it declines it. */
+/** An activity the local substrate declines, with the reason it declines it. */
 export class RefusedActivityError extends Error {
   constructor(
     readonly activity: string,
     reason: string,
   ) {
-    super(`'${activity}' cannot run on the direct substrate: ${reason}.`);
+    super(`'${activity}' cannot run on the local substrate: ${reason}.`);
     this.name = "RefusedActivityError";
   }
 }

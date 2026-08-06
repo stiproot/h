@@ -1,7 +1,7 @@
-# direct-run-sequence — a workflow on the direct substrate, end to end
+# local-run-sequence — a workflow on the local substrate, end to end
 
-What happens between `h workflow run <template> --direct -p …` and the answer on stdout: the CLI
-renders the template locally, hands the definition to the `h-direct` runner on stdin, and the
+What happens between `h workflow run <template> --local -p …` and the answer on stdout: the CLI
+renders the template locally, hands the definition to the `h-local` runner on stdin, and the
 runner walks the steps in-process — resolving tokens, cutting worktrees, spawning agent CLIs as
 child processes, and validating each output contract. No Dapr, no services, no registries.
 
@@ -17,13 +17,13 @@ sequenceDiagram
   actor Op as Operator
   participant Cmd as h workflow run (commands/workflow.py)
   participant Helm as helm (subprocess)
-  participant Runner as h-direct bin.ts
+  participant Runner as h-local bin.ts
   participant Exec as runWorkflow (domain/execute.ts)
   participant Core as workflow-core (shared semantics)
   participant Agent as AgentPort → agent-cli
   participant CLI as agent CLI child process
 
-  Op->>+Cmd: --direct -p task=… [--agent a --agent b] [--with-setup]
+  Op->>+Cmd: --local -p task=… [--agent a --agent b] [--with-setup]
   Note over Cmd: refuse --cron/--watch/--at/--in/--fallback-*/--fresh/--via<br/>BEFORE rendering — nothing runs when a flag needs an engine
 
   Cmd->>+Helm: render template (publish mode)
@@ -33,7 +33,7 @@ sequenceDiagram
   end
 
   Cmd->>+Runner: spawn `node bin.js`, job JSON on stdin<br/>(env = shell, .env filling gaps)
-  Runner->>Runner: Schema.decodeUnknown(DirectJob) — malformed job fails by field name
+  Runner->>Runner: Schema.decodeUnknown(LocalJob) — malformed job fails by field name
   Runner->>+Exec: runWorkflow(job)
 
   loop each step (or parallel group, fanned out together)

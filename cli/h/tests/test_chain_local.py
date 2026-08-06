@@ -1,6 +1,6 @@
-"""h chain run --direct: the same chain expression, sequenced in-process.
+"""h chain run --local: the same chain expression, sequenced in-process.
 
-The registration path is covered in test_chain.py; here the boundary is the direct runner's
+The registration path is covered in test_chain.py; here the boundary is the local runner's
 stdin, so the chain job handed to it is what these tests pin.
 """
 
@@ -42,15 +42,15 @@ def captured_job(monkeypatch) -> list[dict[str, Any]]:
             "runs": [{"member": "answer", "stage": 0, "group": "g", "iteration": 0}],
         }
 
-    monkeypatch.setattr("h_cli.commands.chain.direct_runtime.run_job", fake_run_job)
+    monkeypatch.setattr("h_cli.commands.chain.local_runtime.run_job", fake_run_job)
     return jobs
 
 
 @needs_helm
-def test_direct_embeds_every_member_and_seeds_the_chain_data(captured_job) -> None:
+def test_local_embeds_every_member_and_seeds_the_chain_data(captured_job) -> None:
     """No store is read: each member is composed on the fly, so every member carries `steps`."""
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "demo", "--direct", "-p", "task=why?", "-w", "answer"]
+        app, ["chain", "run", "--slug", "demo", "--local", "-p", "task=why?", "-w", "answer"]
     )
 
     assert result.exit_code == 0, _all_output(result)
@@ -67,16 +67,16 @@ def test_direct_embeds_every_member_and_seeds_the_chain_data(captured_job) -> No
 
 
 @needs_helm
-def test_direct_resolves_a_w_member_through_its_chart_template(captured_job) -> None:
+def test_local_resolves_a_w_member_through_its_chart_template(captured_job) -> None:
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "demo", "--direct", "-p", "task=q", "-w", "answer"]
+        app, ["chain", "run", "--slug", "demo", "--local", "-p", "task=q", "-w", "answer"]
     )
     assert result.exit_code == 0, _all_output(result)
     assert captured_job[0]["members"][0]["steps"], "-w resolved to embedded steps, not a key"
 
 
 @needs_helm
-def test_direct_carries_stages_and_threading_mappings(captured_job) -> None:
+def test_local_carries_stages_and_threading_mappings(captured_job) -> None:
     """A parallel stage and its namespaced captures reach the runner unchanged — the executor
     reads the SAME mappings the durable engine would have."""
     result = runner.invoke(
@@ -86,7 +86,7 @@ def test_direct_carries_stages_and_threading_mappings(captured_job) -> None:
             "run",
             "--slug",
             "demo",
-            "--direct",
+            "--local",
             "-p",
             "task=q",
             "-w",
@@ -113,7 +113,7 @@ def test_direct_carries_stages_and_threading_mappings(captured_job) -> None:
 
 
 @needs_helm
-def test_direct_passes_the_loop_through(captured_job) -> None:
+def test_local_passes_the_loop_through(captured_job) -> None:
     """The canonical implement→review→revise loop. `implement-pr` is a PUBLISHED key with no
     single template, so on this substrate it composes from its atoms — which is what `-t` is for
     and what the refusal below tells you to do."""
@@ -124,7 +124,7 @@ def test_direct_passes_the_loop_through(captured_job) -> None:
             "run",
             "--slug",
             "demo",
-            "--direct",
+            "--local",
             "--strategy",
             "loop-until-clean",
             "--max-iterations",
@@ -149,11 +149,11 @@ def test_direct_passes_the_loop_through(captured_job) -> None:
 
 
 @needs_helm
-def test_direct_refuses_a_saved_key_with_no_template(captured_job) -> None:
+def test_local_refuses_a_saved_key_with_no_template(captured_job) -> None:
     """`implement-pr` is published, not templated: there is no store to read it from here, so the
     refusal names the composition that does work rather than reaching for a service."""
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "demo", "--direct", "-p", "spec=x", "-w", "implement-pr"]
+        app, ["chain", "run", "--slug", "demo", "--local", "-p", "spec=x", "-w", "implement-pr"]
     )
     assert result.exit_code == 1
     output = _all_output(result)
@@ -165,10 +165,10 @@ def test_direct_refuses_a_saved_key_with_no_template(captured_job) -> None:
 @pytest.mark.parametrize(
     "flag", [["--after", "other"], ["--at", "2026-08-07T09:00:00Z"], ["--in", "30m"]]
 )
-def test_direct_refuses_activation_gates(flag, captured_job) -> None:
+def test_local_refuses_activation_gates(flag, captured_job) -> None:
     """Activation gates wait on a durable row — there is nothing here to wait."""
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "demo", "--direct", "-w", "answer", *flag]
+        app, ["chain", "run", "--slug", "demo", "--local", "-w", "answer", *flag]
     )
     assert result.exit_code == 1
     output = _all_output(result)
@@ -178,7 +178,7 @@ def test_direct_refuses_activation_gates(flag, captured_job) -> None:
 
 
 @needs_helm
-def test_direct_refuses_a_cron_member(captured_job) -> None:
+def test_local_refuses_a_cron_member(captured_job) -> None:
     """A cron member self-arms a recurrence; this substrate has no engine to service it."""
     result = runner.invoke(
         app,
@@ -187,7 +187,7 @@ def test_direct_refuses_a_cron_member(captured_job) -> None:
             "run",
             "--slug",
             "demo",
-            "--direct",
+            "--local",
             "-p",
             "task=q",
             "-w",
@@ -204,7 +204,7 @@ def test_direct_refuses_a_cron_member(captured_job) -> None:
 @needs_helm
 def test_an_exhausted_loop_exits_nonzero_and_says_why(monkeypatch) -> None:
     monkeypatch.setattr(
-        "h_cli.commands.chain.direct_runtime.run_job",
+        "h_cli.commands.chain.local_runtime.run_job",
         lambda job, bin_path=None: {
             "ok": False,
             "chain": job["group"],
@@ -215,7 +215,7 @@ def test_an_exhausted_loop_exits_nonzero_and_says_why(monkeypatch) -> None:
         },
     )
     result = runner.invoke(
-        app, ["chain", "run", "--slug", "demo", "--direct", "-p", "task=q", "-w", "answer"]
+        app, ["chain", "run", "--slug", "demo", "--local", "-p", "task=q", "-w", "answer"]
     )
 
     assert result.exit_code == 1
