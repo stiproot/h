@@ -363,3 +363,45 @@ existing diagrams, which is real work and easy to get subtly wrong.
 
 *Revisit when:* a stale hand-authored diagram misleads someone — or when adding the next few
 diagrams makes the attribution cheap to write from memory.
+
+## From the first agent-built PR on the direct substrate (#110)
+
+### 30. `h worktrees sweep` is still untested against reality
+
+`list` and `rm` have now been exercised on a real checkout (the worktree this very feature was
+built in): `list` found it, `rm` refused it as dirty, `rm --force` removed it and deleted the
+branch. `sweep` — the BATCH form, which classifies many entries and removes the safe ones — has
+only ever run against monkeypatched git. Its per-entry classification and its
+`removed N, skipped M` accounting are unverified against a filesystem.
+
+*Revisit when:* two or more real worktrees accumulate — run `sweep --dry-run` against them
+first, and compare its classification to `list` before letting it remove anything.
+
+### 31. An unexplained spawn failure on the direct substrate
+
+A `revise-pr` member died in 8ms with `Command 'claude' not found` (agent-cli's parent-level
+ENOENT path), then the identical member, cwd and command succeeded minutes later. Three probes
+failed to reproduce it: the same `h delegate --cwd <that worktree>` in the foreground, a fresh
+standalone `h workflow run revise-pr --direct`, and a direct `spawnSync('claude')` in both cwds.
+PATH was verified identical in foreground and background jobs, and `.env` sets no
+`SUB_AGENT_UID`, so the privilege-drop path was not involved.
+
+Note the diagnosis is genuinely ambiguous by construction: ENOENT on the EXECUTABLE and ENOENT
+on the CWD are indistinguishable at that layer — a gap agent-cli's own comments already call the
+"masquerades as a missing binary" problem. Worth making the error distinguish them (stat the cwd
+before blaming the binary), which would turn the next occurrence into a diagnosis instead of a
+mystery.
+
+*Revisit when:* it happens again — or sooner, since the cwd-vs-binary disambiguation is worth
+having regardless and is a few lines in the spawn error path.
+
+### 32. `loop-until-clean` has never completed a loop-back live
+
+The strategy's live exercise so far: it fired the review stage, captured `FINDINGS`, advanced to
+the revise stage, and failed the chain as a unit when that member died — all correct, and all
+BEFORE the loop-back. The path that re-enters the review stage with `iterations + 1`, and the
+`stopped after N iteration(s)` budget exit, are covered only by unit tests
+(`packages/js/direct-runtime/src/domain/chain.test.ts`).
+
+*Revisit when:* the next real review→revise cycle — check that the SECOND review actually reads
+the revised diff rather than a cached one, and that each iteration gets its own ledger group.
