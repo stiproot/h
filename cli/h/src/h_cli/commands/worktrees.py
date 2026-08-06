@@ -40,10 +40,16 @@ def _direct_entries(repo: str) -> list[git.WorktreeEntry]:
 
     The filter is `is_relative_to`, never a bare string prefix — a startswith on
     `/h-worktrees` would falsely match `/h-worktrees-extra/foo`.
+
+    BOTH sides are resolved first. `is_relative_to` is purely lexical, so a root carrying `..`
+    or a symlink never matches the absolute paths git reports — which made this command a silent
+    no-op in its default configuration. Config resolves the root; this resolves the entries, so
+    an operator-set H_DIRECT_WORKTREES_DIR or a symlinked checkout cannot reintroduce the bug.
     """
     git.worktree_prune(repo)
     entries = git.worktree_list(repo)
-    return [e for e in entries[1:] if e.path.is_relative_to(DIRECT_WORKTREES_DIR)]
+    root = DIRECT_WORKTREES_DIR.resolve()
+    return [e for e in entries[1:] if e.path.resolve().is_relative_to(root)]
 
 
 def _match_entry(entries: list[git.WorktreeEntry], branch: str) -> git.WorktreeEntry | None:

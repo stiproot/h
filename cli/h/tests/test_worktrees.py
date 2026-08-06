@@ -200,3 +200,39 @@ def test_sweep_empty_no_action(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "no direct-substrate worktrees found" in result.output
     assert removed == []
+
+
+# --------------------------------------------------------------------------------------------
+# Path-shape regressions. The cases above build every entry path FROM DIRECT_WORKTREES_DIR, so
+# they agree with it by construction and passed while `h worktrees list` found nothing at all on
+# a real checkout: the configured root carried a literal `..` (`<repo>/../h-worktrees`) and
+# Path.is_relative_to is purely lexical. These two break that symmetry deliberately.
+# --------------------------------------------------------------------------------------------
+
+
+def test_direct_worktrees_dir_is_resolved() -> None:
+    """The configured root must be absolute and free of `..`, or the lexical filter can never
+    match the absolute paths git reports."""
+    assert DIRECT_WORKTREES_DIR.is_absolute()
+    assert ".." not in DIRECT_WORKTREES_DIR.parts
+
+
+def test_list_finds_an_entry_whose_path_is_not_lexically_normalised(monkeypatch) -> None:
+    """git reports resolved absolute paths, but a symlinked or oddly-spelled checkout can still
+    hand us an unnormalised one — the command resolves entries so it matches either way."""
+    # Deliberately NOT lexically prefixed by the root — it only lands inside it once resolved,
+    # so a filter that skips .resolve() rejects it.
+    unnormalised = (
+        DIRECT_WORKTREES_DIR.parent
+        / "elsewhere"
+        / ".."
+        / DIRECT_WORKTREES_DIR.name
+        / "direct-260101-010101"
+    )
+    entry = WorktreeEntry(path=unnormalised, head="abc1234", branch="refs/heads/direct/x")
+    _patch_git(monkeypatch, [entry])
+
+    result = runner.invoke(app, ["worktrees", "list", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert len(json.loads(result.output)) == 1

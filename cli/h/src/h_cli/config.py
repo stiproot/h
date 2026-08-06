@@ -23,10 +23,19 @@ DIRECT_BIN = Path(
 # Run-ledger root. Defaults to the SAME directory the agent services write (host mode's
 # AGENT_BASE_DIR sibling, which is the compose bind mount too), so a direct run shows up in
 # `h runs`, obs-mcp and the viz beside service runs instead of in a private ledger.
-AGENT_RUNS_DIR = Path(os.getenv("AGENT_RUNS_DIR", str(_REPO_DIR / "../h-workspace/.runs")))
+# .resolve() is load-bearing, not cosmetic: these defaults are built with `..`, and a path
+# carrying `..` compares FALSE under Path.is_relative_to, which is purely lexical. `h worktrees`
+# filtered its entries that way and so found nothing at all in the default configuration (caught
+# on its first real run, 2026-08-06). Resolving here fixes every consumer at once — and stops the
+# unresolved form leaking into user-facing output.
+AGENT_RUNS_DIR = Path(
+    os.getenv("AGENT_RUNS_DIR", str(_REPO_DIR / "../h-workspace/.runs"))
+).resolve()
 
 # Where per-agent worktrees are cut for a delegated write task.
-DIRECT_WORKTREES_DIR = Path(os.getenv("H_DIRECT_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees")))
+DIRECT_WORKTREES_DIR = Path(
+    os.getenv("H_DIRECT_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees"))
+).resolve()
 
 # The repo's .env — the same file compose and the run scripts feed the agent services from. A
 # direct run reads it too, so the substrate does not need its own credential setup.
