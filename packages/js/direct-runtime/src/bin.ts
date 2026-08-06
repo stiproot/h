@@ -44,6 +44,21 @@ const readStdin = (): Promise<string> =>
     process.stdin.on("error", reject);
   });
 
+/**
+ * A vanished reader is a normal way for this process to end, not a crash.
+ *
+ * When the CLI that spawned us dies — Ctrl-C, a killed job, a closed pipe — writing the envelope
+ * raises EPIPE on the stdio socket, and an unhandled 'error' event takes the process down with a
+ * Node stack trace stamped over the run's own output. Observed live 2026-08-06 when a long chain
+ * was stopped mid-review: the actual outcome was fine and the terminal showed a crash. There is by
+ * definition nobody left to report to, so swallow EPIPE and let the exit code carry the news.
+ */
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code !== "EPIPE") throw err;
+  });
+}
+
 /** Every exit path answers in JSON, so the caller never has to guess from an exit code alone. */
 const emit = (envelope: Record<string, unknown>, code: number): void => {
   process.stdout.write(`${JSON.stringify(envelope)}\n`);
