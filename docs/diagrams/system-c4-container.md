@@ -1,8 +1,13 @@
 # system-c4-container — h container topology
 
-The service topology inside the `h` system boundary: workflow-svc (the engine), the agent fleet,
-the three MCP servers, Redis/Dapr, and the observability spine. For the outer view see
-[system-c4-context](./system-c4-context.md).
+The topology of the SERVICE substrate inside the `h` system boundary: workflow-svc (the engine),
+the agent fleet, the three MCP servers, Redis/Dapr, and the observability spine. For the outer
+view see [system-c4-context](./system-c4-context.md).
+
+**This is one of h's two execution substrates.** The same composed definition can instead run on
+the DIRECT substrate — agent CLIs as child processes of the `h` CLI, with none of the containers
+below. The fork, and what each substrate can and cannot offer, is
+[execution-substrates-c4-container](./execution-substrates-c4-container.md).
 
 ```mermaid
 C4Container

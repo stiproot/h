@@ -335,4 +335,40 @@ of the set: long crossing arrows and several relationship labels overlapping ele
 problem). Carried from docs/plans/impl/core-component-diagrams.md.
 
 *Revisit when:* the next time the container diagram is updated for a topology change — fix
-the offsets in the same change.
+the offsets in the same change. (2026-08-06: still open. The two-substrate story was added as
+its OWN diagram rather than by extending this one — a trial extension rendered as an unreadable
+5000px column, which is evidence the diagram is already at capacity, not just scruffy.)
+
+## From [direct-execution-runtime](./impl/direct-execution-runtime.md)
+
+### 27. A stdio MCP server for the direct substrate
+
+A driver reaches the direct substrate by shelling out (`h delegate`, `h workflow run --direct`).
+A stdio MCP server would give it typed tools instead. Deliberately unbuilt: Bash already works, so
+building it now would be speculative machinery — the `delegate-locally` skill closes the ergonomic
+gap that actually hurt.
+
+*Revisit when:* a driver's Bash-shaped use of `h delegate` proves clumsy in practice — e.g. it
+needs to stream partial results, or to fan out more than a shell one-liner can express.
+
+### 28. Direct-substrate worktrees are never swept
+
+`h delegate --worktree` and `--direct` runs of worktree-cutting templates leave a `direct/*` branch
+and its checkout behind. Nothing prunes them, so they accumulate exactly like the Tilt image litter.
+Wanted: `h delegate --clean`, or a sweep surfaced by `h status`.
+
+*Revisit when:* the first time the worktree root is noticeably large — or immediately, if a run
+fails because a stale branch is already checked out somewhere.
+
+### 29. Diff-aware diagram-staleness check
+
+`scripts/check-diagrams.mjs` keeps the canonical set navigable and well-formed, but no machine can
+tell that a hand-authored sequence/C4 diagram has gone WRONG — the one obligation that actually
+gets missed (it was missed across the whole direct-substrate build until the operator asked).
+A stronger guard: each diagram declares the source paths it models, and a diff-aware check fails
+when a change touches those paths without touching the diagram — the shape `check-plans` already
+uses for citation rot. Not built because it needs an accurate `models:` attribution for all 16
+existing diagrams, which is real work and easy to get subtly wrong.
+
+*Revisit when:* a stale hand-authored diagram misleads someone — or when adding the next few
+diagrams makes the attribution cheap to write from memory.

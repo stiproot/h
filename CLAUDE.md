@@ -617,10 +617,40 @@ default agent workspace key, a Zipkin span attribute, and the group key of the r
   (traces/logs/run-ledger, `localhost:8013`). `obs-mcp` is read-only with no Dapr sidecar. Slash
   commands (`.claude/commands/`: `/observe`, `/runs`, `/run`, `/trace`, `/logs`, `/workflow`) and the
   `observe-h` skill (`.claude/skills/`) drive them.
-- **Diagrams (`docs/diagrams/`).** The canonical mermaid set is the visual communication layer (the
-  `diagrams` skill, composed with the `generated-diagrams` plugin skill): when a change touches a part
-  of the system a canonical diagram models, regenerate/update that diagram in the same change —
-  `gen-code-diagram --check --dir docs/diagrams` in `bun run lint` fails on drift for generated ones.
+## Diagrams are the medium for design and architecture
+
+**When you are explaining design or architecture — a new component, a changed interaction, a
+proposal, an answer to "how does X work" — LEAD WITH A DIAGRAM, not prose.** Follow the `diagrams`
+skill (h's where-and-when policy, composed with the `generated-diagrams` plugin skill for the
+mechanics). This is a ways-of-working rule, not an observability one: prose summaries of changes
+pile up faster than they can be read, and a picture is the artifact that survives.
+
+Two genres. **Transient** diagrams express an IDEA — a proposed change in a plan doc, a design
+alternative in conversation, a before/after in a PR body; they live in their host document and die
+with it. **Canonical** diagrams model the architecture AS IT IS: one file under `docs/diagrams/`,
+registered in [its index](./docs/diagrams/README.md), named `<scope>-<kind>.md`. A transient
+diagram graduates when it keeps being how something gets explained.
+
+Three obligations, in order of how often they are missed:
+
+1. **Explain with one.** The trigger is *communication*, not maintenance. If you are about to
+   write three paragraphs describing a flow or a structure, draw it instead and let the prose
+   annotate the picture.
+2. **Update-with-the-change.** A change that alters an interaction a canonical diagram models —
+   new step, new participant, moved responsibility, a new BRANCH through an existing flow —
+   updates that diagram in the same change set. A stale diagram is worse than none.
+3. **Render before committing.** The render IS the syntax check, and for C4 you must LOOK at the
+   image: mermaid will happily emit a valid-but-unreadable 5000px column. `render-diagram
+   docs/diagrams docs/diagrams/rendered` (bin from the `@stiproot/code-comprehension`
+   devDependency; `docs/diagrams/rendered/` is gitignored — render on demand, share the PNG).
+
+Enforcement is deliberately partial, so know exactly where the machine stops. `gen-code-diagram
+--check` fails on drift for GENERATED `-class` docs; `scripts/check-diagrams.mjs` keeps the set
+navigable and well-formed (registered in the index both ways, kind-suffixed name, exactly one
+mermaid fence, a `## Reading notes` section, a `-class` doc carrying its generator manifest). **No
+guard can tell you a hand-authored sequence or C4 diagram has quietly gone wrong — obligation 2 is
+yours alone**, and it is the one that gets missed. Class diagrams are GENERATED from the AST, never
+hand-drawn: `gen-code-diagram --dir docs/diagrams`.
 
 ## Dev commands
 

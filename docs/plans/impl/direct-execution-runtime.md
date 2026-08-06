@@ -1,9 +1,21 @@
 # Direct execution runtime
 
-Status: Active — a second execution substrate for the SAME composition stack: `h` drives agent CLIs
-as local child processes via `agent-cli`, with no Dapr, no services, and no registries. **All five
-phases (P1–P5) are built and live-validated.** Stays open pending the durable-context lift below
-(ARCHITECTURE.md's composition/principles sections still describe one substrate).
+Status: Complete — the direct execution substrate is built, live-validated and documented: `h`
+drives agent CLIs as local child processes for a task (`h delegate`), a definition
+(`h workflow run --direct`) or a chain (`h chain run --direct`), with no Dapr, no services and no
+registries, while the composition stack and the semantics under it stay shared with the service
+substrate.
+Lifted to:
+- Substrates, the definition-as-seam, what does not transfer, and the choose-by-lifetime rule →
+  [ARCHITECTURE.md](../../../ARCHITECTURE.md) ("Execution substrates" + the `Substrate` glossary entry)
+- The runtime-facing rules (refusal lists, setup/worktree behaviour, cost accounting, the
+  composition edge) → [CLAUDE.md](../../../CLAUDE.md) ("Execution substrates") + the package layouts
+- The pictures → [execution-substrates-c4-container](../../diagrams/execution-substrates-c4-container.md),
+  [direct-run-sequence](../../diagrams/direct-run-sequence.md), and the `--direct` branch in
+  [h-cli-chain-run-sequence](../../diagrams/h-cli-chain-run-sequence.md)
+- When and how to delegate, plus the safety rules → the `delegate-locally` skill
+- Validated commands → [docs/cookbook.md](../../cookbook.md), each stamped with date + artifact
+- The parity invariant → `scripts/check-runtime-parity.mjs` (encoded, not a review habit)
 Established: 2026-08-06
 
 ## Why
@@ -320,9 +332,11 @@ and why, how to write a task for an agent with none of your context, and the saf
 follow from a delegate running as the operator. A stdio MCP server remains deliberately unbuilt —
 Bash already works, and a typed tool would be speculative machinery.
 
-## Deferred
+## Carried forward
 
-- A stdio MCP server exposing the direct substrate as typed tools (see P5 above).
+Parked in [carried-followups.md](../carried-followups.md): a stdio MCP server exposing the direct
+substrate as typed tools, sweeping the worktrees `--worktree` leaves behind, and the diff-aware
+diagram-staleness check.
 
 ## Risks and hazards
 
