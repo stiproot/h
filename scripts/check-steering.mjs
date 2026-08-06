@@ -15,6 +15,16 @@
 //    and in skills/workflow-orchestrator/SKILL.md (literal substring). Missing activities make the
 //    SKILL.md guidance incorrect, steering agents toward an incomplete activity set.
 //
+// 3. CLI COMMAND CHECK — every module under cli/h/src/h_cli/commands/ must be named in CLAUDE.md
+//    (its layout line or its prose — the bar is "an agent reading CLAUDE.md learns this command
+//    exists", not a specific location) AND invoked as `h <name>` in cli/README.md's command list.
+//    An undocumented command is invisible:
+//    CLAUDE.md is loaded into every agent session, so a command missing from it may as well not
+//    exist. This check exists because the omission happened TWICE in one session and neither the
+//    directory nor the activity check could see it — `h worktrees` shipped absent from CLAUDE.md
+//    (caught only by a human code review) and `h delegate` shipped absent from both lists
+//    (caught only when someone thought to ask whether the docs were current).
+//
 // Wired into `bun run lint` (package.json) beside check-templates.mjs. No skip flag by design.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -62,6 +72,7 @@ const skillMd = readText("skills/workflow-orchestrator/SKILL.md");
 const activityRegistry = readText(
   "apps/workflow-svc/src/infrastructure/activity-registry.ts",
 );
+const cliReadmeMd = readText("cli/README.md");
 
 // ---------------------------------------------------------------------------
 // 1. Directory check
@@ -228,4 +239,38 @@ if (failed) {
   process.exit(1);
 }
 
-console.log("✓ check-steering: all components and activities documented in steering sources");
+// ---------------------------------------------------------------------------
+// 3. CLI command check
+// ---------------------------------------------------------------------------
+
+// Command modules that are not a user-facing `h <name>` surface belong here, with a reason.
+const OMIT_COMMANDS = new Set(["__init__"]);
+
+const commandViolations = [];
+for (const file of readdirSync(resolve(root, "cli/h/src/h_cli/commands"))) {
+  if (!file.endsWith(".py")) continue;
+  const name = file.slice(0, -3);
+  if (OMIT_COMMANDS.has(name)) continue;
+  // CLAUDE.md lists the modules brace-expanded (`commands/{a,b,c}.py`); cli/README.md lists the
+  // user-facing invocation. Require BOTH, since they serve different readers.
+  const inClaude = claudeMd.includes(`${name},`) || claudeMd.includes(`${name}}`) ||
+    claudeMd.includes(`h ${name}`);
+  const inCliReadme = cliReadmeMd.includes(`h ${name}`);
+  const missing = [!inClaude && "CLAUDE.md", !inCliReadme && "cli/README.md"].filter(Boolean);
+  if (missing.length > 0) {
+    commandViolations.push(
+      `  cli/h/src/h_cli/commands/${file}  ->  missing from: ${missing.join(", ")}`,
+    );
+  }
+}
+
+if (commandViolations.length > 0) {
+  console.error("✗ check-steering: undocumented h CLI commands.\n");
+  console.error("  Every command module must appear in CLAUDE.md's layout and cli/README.md's");
+  console.error("  command list — CLAUDE.md is loaded into every agent session, so a command");
+  console.error("  missing from it is invisible to the agents working in this repo.\n");
+  for (const violation of commandViolations) console.error(violation);
+  process.exit(1);
+}
+
+console.log("✓ check-steering: all components, activities and CLI commands documented in steering sources");

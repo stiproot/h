@@ -94,6 +94,28 @@ member must be a chart template (`-w answer`) or `-t` atoms; a published key wit
 *(Validated 2026-08-06 — `chain-direct-chain-260806-142307`: `first` captured under its namespace,
 `second` read it back as its task.)*
 
+## Review a PLAN before it becomes an implementation prompt
+
+```sh
+h chain run --slug s --direct -p spec=@spec.md \
+    -t plan --kind answer --id planning --input spec=spec --input slug=slug --capture plan=plan \
+    -w review-plan --kind answer --id review --agent claude --agent codex \
+        --input plan=planning.plan --input spec=spec --capture verdict=verdict
+```
+
+`review-plan` is the third review beside `review-pr` (a diff) and `review-spec` (a spec already in
+a GitHub PR): it judges a plan in FLIGHT, against the request that prompted it, while changing
+course is still cheap. Same `{verdict, summary}` contract as its siblings, so `--until
+verdict=CLEAN` and `loop-until-clean` work against it unchanged; panelizable, so an `--agent`
+roster fans it out and a pinned judge merges — FINDINGS beats CLEAN when any panelist's finding
+survives. *(Validated 2026-08-06 — `chain-direct-worktree-sweep-260806-152156`: claude ∥ codex
+panel, 11 findings merged, codex contributing several claude missed.)*
+
+**Read it as what it is.** A plan review says whether to PROCEED to implement; it says very
+little about code that already exists. On the run above, the plan drew 11 findings and the
+`review-pr` of the resulting diff found 2 — the implementer had resolved most of them along the
+way. Use both stages, and judge the code with `review-pr`.
+
 ## Run a saved workflow, pick the executor
 
 ```sh
