@@ -116,6 +116,35 @@ little about code that already exists. On the run above, the plan drew 11 findin
 `review-pr` of the resulting diff found 2 — the implementer had resolved most of them along the
 way. Use both stages, and judge the code with `review-pr`.
 
+## An EVENT-DRIVEN agent loop — agents handing work to agents (`h events`)
+
+```sh
+h events up                                   # one nats-server -js child; streams h-tasks / h-results
+h events serve                                # the relay (leave running; agents run with YOUR env)
+h events publish --agent claude --max-steps 5 -p task=@rules.md
+h events tail 'h.result.>'                    # watch the loop's terminal event land
+```
+
+The local substrate's event fabric (POC — docs/plans/nats-event-substrate.md). `publish` seeds a
+FIRE DESCRIPTOR onto `h.task.default`; the relay composes the template per step (compose-on-fire,
+same artifact as `--local`) and executes it through the local runner. The loop edge is the
+`publish: {task, agent?}` field an agent may return beside its contract fields — the RELAY
+publishes the hand-off, burning one step of the seed's mandatory `--max-steps` budget; omitting
+`publish` resolves the loop; a spent budget lands an `exhausted` terminal instead. Every step is a
+normal ledger run under the loop's group. *(Validated 2026-08-06 — `loop-260806-231849`: a 3-line
+poem written one line per step, claude → codex → claude, terminal `resolved` on
+`h.result.loop-260806-231849` carrying the finished poem; 3 ledger runs under the one group.)*
+
+**Durability is the point.** SIGKILL the relay mid-step and restart it: the in-flight task
+redelivers (ack is the relay's LAST effect) and the loop completes; `Nats-Msg-Id = <group>:<step>`
+dedups a redelivered step's re-publish so the loop never forks. *(Validated 2026-08-06 —
+`durab-260806`: relay killed during step 2/6; after restart the step redelivered and the 4-step
+loop finished `resolved`.)*
+
+**The budget always fences.** A task that always hands off exhausts instead of looping forever.
+*(Validated 2026-08-06 — `budget-260806`: `--max-steps 2` → terminal `exhausted` with the pending
+hand-off recorded.)*
+
 ## Run a saved workflow, pick the executor
 
 ```sh

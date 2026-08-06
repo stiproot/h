@@ -130,6 +130,13 @@ uv run h workflow run <template> --local [-p k=v]...   # render the template and
 uv run h workflow run answer --local --agent claude --agent codex   # a judged panel, nothing running
 uv run h chain run --slug s --local EXPR # sequence the stages in-process; BLOCKS, prints the threaded chain data
                                           # --with-setup opts into the definition's setup steps (skipped by
+
+# ---- the local substrate's EVENT FABRIC (POC): NATS JetStream + the relay ----
+# One nats-server -js child (operator-installed binary; JetStream store beside the run ledger).
+uv run h events up|down|status            # manage the fabric; status shows stream depths + relay consumers
+uv run h events publish --max-steps N -p task=@t.md [--template answer] [--agent claude]  # seed a loop (budget MANDATORY)
+uv run h events serve                     # the relay: compose-on-fire -> local executor -> forward the agent's publish hand-off
+uv run h events tail 'h.result.>'         # watch loop terminals live (plain subscription, consumes nothing)
                                           #   default: they provision YOUR ~/.claude, not a container's)
                                           # flags needing an engine (--cron/--watch/--at/--in/--fallback-*/
                                           #   --fresh/--via, and a chain's --after) are REFUSED BY NAME

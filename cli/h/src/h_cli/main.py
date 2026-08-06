@@ -11,6 +11,7 @@ from h_cli.commands import (
     agents,
     chain,
     cron,
+    events,
     feature,
     schedule,
     template,
@@ -37,3 +38,5 @@ app.add_typer(worktrees.app, name="worktrees")
 app.command("status")(status)
 # The local execution substrate's atom: agent CLIs as local child processes, no services.
 app.command("delegate")(delegate)
+# The local substrate's event fabric: NATS JetStream + the relay (h events serve).
+app.add_typer(events.app, name="events")

@@ -58,6 +58,14 @@ h chain run --slug x --local -p task=… \
 synthesis use `h workflow run answer --local --agent a --agent b`, which panelizes through the
 same transform the service substrate uses and adds a pinned judge.
 
+A fourth surface is the EVENT FABRIC (`h events`, POC): `h events up` runs a local
+`nats-server -js` (operator-installed binary), `h events serve` arms the relay, and
+`h events publish --max-steps N -p task=…` seeds an event-driven loop in which an agent's
+structured output may hand the next task to the next agent via a `publish: {task, agent?}` field —
+the relay does the publishing and a mandatory step budget fences the loop. Every step is a normal
+local run (ledger, env, cost — all the rules below apply); the relay's shell must carry the same
+credentials `h delegate` would need (e.g. `CODEX_AUTH_MODE=chatgpt` for codex).
+
 ## Reading the result
 
 - Each agent run writes the standard **run ledger**, so `h runs` and the obs surfaces pick local

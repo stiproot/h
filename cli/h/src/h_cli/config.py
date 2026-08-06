@@ -35,6 +35,14 @@ LOCAL_WORKTREES_DIR = Path(
     os.getenv("H_LOCAL_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees"))
 ).resolve()
 
+# --- Local event fabric ----------------------------------------------------------------------
+# The local substrate's event fabric: one nats-server -js child (`h events up`), no containers.
+# The JetStream store sits beside the run ledger so "reset the local runtime state" is one
+# directory tree, and NATS_URL is the standard client env var so external tooling (the `nats`
+# CLI) reads the same fabric without configuration.
+EVENTS_URL = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
+EVENTS_STORE_DIR = Path(os.getenv("H_EVENTS_STORE", str(AGENT_RUNS_DIR.parent / ".nats"))).resolve()
+
 # The repo's .env — the same file compose and the run scripts feed the agent services from. A
 # local run reads it too, so the substrate does not need its own credential setup.
 DOTENV_PATH = Path(os.getenv("H_DOTENV", str(_REPO_DIR / ".env")))

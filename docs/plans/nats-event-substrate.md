@@ -1,6 +1,6 @@
 # NATS as the local substrate's event fabric
 
-Status: Planning — research done, design sketched; POC surface awaiting operator preview
+Status: Active — POC built and live-validated (loop, durability, budget); follow-on increments open
 Established: 2026-08-06
 
 ## The idea
@@ -164,3 +164,37 @@ services, the `micro` stats surface. Each is a candidate follow-on with its own 
   **host mode** and the direct substrate is the **local substrate** (`--local`, `local-runtime`,
   `h-local`), with both retirements enforced by `check-vocabulary.mjs`. This doc was updated to
   the settled vocabulary; the proposed package is `packages/js/local-events/`.
+- 2026-08-06/07 — POC built, with one deliberate deviation from the sketch: **no new JS package.**
+  Composing on fire IS the relay's job, and composition (helm render, identity/model merge) lives
+  in the Python CLI — so the relay is `h events serve` in the CLI process, driving the existing
+  `local-runtime` executor per step. A `local-events` JS package returns only if the relay ever
+  needs to outlive the CLI. Implementation: `infrastructure/events_protocol.py` (pure descriptor/
+  hand-off/budget/terminal shapes; fully unit-tested), `infrastructure/events_fabric.py`
+  (nats-server lifecycle + JetStream streams/consumer/relay loop), `commands/events.py`
+  (up/down/status/publish/serve/tail + the relay_step decision table, unit-tested via the
+  monkeypatched runner seam). Loop protocol simplification: the hand-off is
+  `publish: {task, agent?}` in the structured block (the subset validator allows undeclared keys
+  beside a contract's declared ones, so the existing `answer` template carries the loop with no
+  new template); "no publish field" IS the goal handshake; the relay stamps `Nats-Msg-Id` =
+  `<group>:<step>` so a redelivered step's re-publish of its successor dedups instead of forking
+  the loop; ack is the LAST effect.
+- Findings while building: (1) `uv run --package h-cli pytest` from the repo ROOT collects the
+  root pyproject's `testpaths = ["packages/py"]` — the CLI suite must run from `cli/h` (its 373
+  tests vs the root's 52 — a green that checks the wrong suite reads identical to a real one).
+  (2) `h events serve` runs agents with the operator's shell env + `.env` gaps exactly like
+  `h delegate` — codex needed `CODEX_AUTH_MODE=chatgpt` exported in the serve shell (first live
+  loop failed its codex step on this; the failure correctly landed as a `failed` terminal on
+  `h.result.<group>`, which is the protocol doing its job).
+- 2026-08-06 — **POC live-validated, all three exit criteria.** (1) Loop: `loop-260806-231849` —
+  a 3-line poem written one line per step, claude → codex → claude, terminal `resolved` carrying
+  the finished poem, 3 ledger runs under one group. (2) Durability: `durab-260806` — relay
+  SIGKILLed 4s into step 2 (codex mid-run), restarted; the unacked step showed as
+  `Outstanding Acks: 1`, redelivered ~2min later (`step 2/6 … (redelivery)` on the new relay),
+  and the 4-step loop finished `resolved`. The ledger shows the expected kill artifact: TWO codex
+  step-2 runs (the orphaned first attempt kept running but its parent was dead — its work was
+  unread; the redelivered attempt's counted). (3) Budget: `budget-260806` — an always-hand-off
+  task under `--max-steps 2` landed `exhausted` with the pending task recorded in the terminal.
+  Ack-wait/heartbeat behavior matched design (120s claim, 30s in-progress extensions during agent
+  runs). Cookbook section added with the stamps; CLAUDE.md + cli/README + delegate-locally skill
+  updated. Next increments (each needs its own preview): cost ceiling per group, `h events tail`
+  history mode, KV-backed chain data, leaf-node bridge to the fleet, Dapr `pubsub.jetstream`.
