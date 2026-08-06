@@ -351,15 +351,6 @@ gap that actually hurt.
 *Revisit when:* a driver's Bash-shaped use of `h delegate` proves clumsy in practice — e.g. it
 needs to stream partial results, or to fan out more than a shell one-liner can express.
 
-### 28. Direct-substrate worktrees are never swept
-
-`h delegate --worktree` and `--direct` runs of worktree-cutting templates leave a `direct/*` branch
-and its checkout behind. Nothing prunes them, so they accumulate exactly like the Tilt image litter.
-Wanted: `h delegate --clean`, or a sweep surfaced by `h status`.
-
-*Revisit when:* the first time the worktree root is noticeably large — or immediately, if a run
-fails because a stale branch is already checked out somewhere.
-
 ### 29. Diff-aware diagram-staleness check
 
 `scripts/check-diagrams.mjs` keeps the canonical set navigable and well-formed, but no machine can
