@@ -172,16 +172,26 @@ export const openhandsStrategy: AgentStrategy = {
   },
 
   prepareEnvironment(request) {
-    const { llmConfig } = request;
-    if (!llmConfig) return {};
-
-    const env: Record<string, string> = { LLM_API_KEY: llmConfig.apiKey };
-    if (llmConfig.baseUrl) env["LLM_BASE_URL"] = llmConfig.baseUrl;
+    const env: Record<string, string> = {};
+    // The MODEL is derived from the request, NOT from llmConfig — openhands is the one agent that
+    // takes its model through the environment (`--override-with-envs`) rather than a `--model`
+    // flag, so a request that carries a model but no llmConfig must still deliver it. That is
+    // exactly the direct substrate, which deliberately passes no llmConfig so a run uses the
+    // operator's own credentials: gating this on llmConfig made `--agent openhands` fail every
+    // time with "Missing required environment variable(s): LLM_MODEL" (found live 2026-08-06).
     // A model already carrying a LiteLLM provider prefix (e.g. `anthropic/…`, `deepseek/…`)
     // routes as-is; a bare id (e.g. `deepseek-v4-flash`) is treated as an OpenAI-compatible
     // endpoint reached via LLM_BASE_URL.
     if (request.model)
       env["LLM_MODEL"] = request.model.includes("/") ? request.model : `openai/${request.model}`;
+
+    // Key and base URL come from llmConfig when the caller supplies one (the service substrate
+    // routes through LiteLLM); without one they are left to the ambient environment, which is how
+    // the direct substrate hands over the operator's own LLM_API_KEY/LLM_BASE_URL.
+    const { llmConfig } = request;
+    if (!llmConfig) return env;
+    env["LLM_API_KEY"] = llmConfig.apiKey;
+    if (llmConfig.baseUrl) env["LLM_BASE_URL"] = llmConfig.baseUrl;
     return env;
   },
 

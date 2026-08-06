@@ -51,6 +51,20 @@ describe("openhandsStrategy.prepareEnvironment LLM_MODEL routing", () => {
     expect(env["LLM_MODEL"]).toBeUndefined();
   });
 
+  // The direct substrate passes NO llmConfig on purpose (a run uses the operator's own
+  // credentials), and openhands is the one agent whose model arrives through the ENVIRONMENT
+  // rather than a --model flag. Gating the model on llmConfig made every direct `--agent
+  // openhands` run die with "Missing required environment variable(s): LLM_MODEL".
+  it("still delivers LLM_MODEL when there is no llmConfig (the direct substrate)", () => {
+    const { llmConfig: _dropped, ...withoutConfig } = baseRequest({ model: "deepseek-v4-flash" });
+    const env = openhandsStrategy.prepareEnvironment!(withoutConfig as never);
+
+    expect(env["LLM_MODEL"]).toBe("openai/deepseek-v4-flash");
+    // Key and base url are left to the ambient environment in that case, not invented.
+    expect(env["LLM_API_KEY"]).toBeUndefined();
+    expect(env["LLM_BASE_URL"]).toBeUndefined();
+  });
+
   it("forwards the LLM api key and base url", () => {
     const env = openhandsStrategy.prepareEnvironment!(baseRequest({ model: "deepseek-v4-flash" }));
 

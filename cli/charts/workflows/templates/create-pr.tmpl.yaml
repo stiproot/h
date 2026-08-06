@@ -49,6 +49,18 @@ role: overlay
 {{- $slug := include "h.token" "params.slug" }}
 {{- $issueNumber := include "h.token" "params.issueNumber" }}
 {{- $contract := include "h.contract.create-pr" . | fromYaml }}
+{{- /*
+The params block is a CONTRACT, not just defaults: `h chain run` validates every
+`{{params.X}}` a member's definition references against it, so an OPTIONAL param that is
+missing here reads as REQUIRED and refuses the chain at registration. `issueNumber` is
+optional by design (it only adds `Closes #N` to the PR body) but carried no default, so any
+chain member composing create-pr with declared `--input`s was rejected with "references
+{{params.issueNumber}}, which nothing supplies" — found live 2026-08-06 on the first
+plan → review → implement chain. An empty default is the author-sanctioned "optional" mark;
+`slug` stays absent because it genuinely is required.
+*/}}
+params:
+  issueNumber: ""
 steps:
   - id: create-pr
     activity: {{ include "h.token" "params.runActivity" | quote }}

@@ -226,6 +226,8 @@
 # name: test_create_pr_golden
   '''
   role: overlay
+  params:
+    issueNumber: ""
   steps:
     - id: create-pr
       activity: "{{params.runActivity}}"

@@ -5,6 +5,7 @@ runner's stdin, so the job dict handed to it is what these tests pin.
 """
 
 import shutil
+import subprocess
 from typing import Any
 
 import pytest
@@ -70,7 +71,15 @@ def test_direct_uses_the_invoking_checkout_and_honours_instance_id(captured_job)
     assert result.exit_code == 0, _all_output(result)
     job = captured_job[0]
     assert job["group"] == "my-run"
-    assert job["repoPath"].endswith("/h")
+    # The git TOPLEVEL of the invoking directory — asserted structurally, not by directory NAME:
+    # the suite legitimately runs from a worktree (a chain member's checkout is named after the
+    # run, not after the repo), and a name-based assertion failed there while the code was correct.
+    assert (
+        job["repoPath"]
+        == subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+    )
     assert "withSetup" not in job
 
 
