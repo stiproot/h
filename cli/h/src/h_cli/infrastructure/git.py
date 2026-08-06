@@ -1,0 +1,138 @@
+"""Pure subprocess adapter for git worktree inspection and removal.
+
+Style mirrors direct.py's `repo_root()`: bare `subprocess.run(..., capture_output=True,
+text=True, check=True)`; OSError/CalledProcessError become a GitError the command layer
+renders loudly.
+"""
+
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+
+class GitError(RuntimeError):
+    """Raised when a git invocation fails; str(err) is user-presentable."""
+
+
+@dataclass
+class WorktreeEntry:
+    path: Path
+    head: str  # full SHA
+    branch: str | None  # "refs/heads/direct/..." or None (detached HEAD)
+
+    @property
+    def branch_short(self) -> str | None:
+        """The branch without its `refs/heads/` prefix; None for a detached HEAD."""
+        if self.branch is None:
+            return None
+        return self.branch.removeprefix("refs/heads/")
+
+
+def _run(repo_path: Path, *args: str) -> str:
+    """git -C <repo> <args…> with captured output; a failure raises GitError."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_path), *args],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except OSError as err:
+        raise GitError(str(err)) from err
+    except subprocess.CalledProcessError as err:
+        raise GitError(err.stderr.strip() or str(err)) from err
+    return out.stdout
+
+
+def worktree_list(repo_path: Path) -> list[WorktreeEntry]:
+    """All worktrees known to <repo>, main worktree first.
+
+    Parses `git worktree list --porcelain`, a blank-line-separated stream of blocks. Each
+    block starts with `worktree <abs-path>`, has `HEAD <sha>`, then either
+    `branch refs/heads/<name>` or the literal word `detached`. Bare repositories emit a
+    `worktree <abs-path>` + `bare` block with no HEAD — skipped.
+    """
+    stdout = _run(repo_path, "worktree", "list", "--porcelain")
+    entries: list[WorktreeEntry] = []
+    for block in stdout.split("\n\n"):
+        lines = [ln for ln in block.splitlines() if ln.strip()]
+        if not lines or not lines[0].startswith("worktree "):
+            continue
+        # A bare block has no HEAD entry; there is no worktree at that path.
+        if "bare" in lines[1:]:
+            continue
+        head = ""
+        branch: str | None = None
+        for ln in lines[1:]:
+            if ln.startswith("HEAD "):
+                head = ln[len("HEAD ") :]
+            elif ln.startswith("branch "):
+                branch = ln[len("branch ") :]
+            elif ln == "detached":
+                branch = None
+        if not head:
+            continue
+        entries.append(
+            WorktreeEntry(
+                path=Path(lines[0][len("worktree ") :]),
+                head=head,
+                branch=branch,
+            )
+        )
+    return entries
+
+
+def worktree_is_dirty(path: Path) -> bool:
+    """True when `git status --porcelain` is non-empty.
+
+    Any error (path missing, git failing) is also True — the safe default that never lets
+    unknown state be auto-removed.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return True
+    return bool(out.stdout.strip())
+
+
+def worktree_has_unpushed(path: Path) -> bool:
+    """True when HEAD has commits not reachable from any remote.
+
+    A checkout with no remote configured shows every commit, so it reports True — correct,
+    because local-only work is exactly the unsafe case. Any error → True (safe default).
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "log", "HEAD", "--not", "--remotes", "--oneline"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return True
+    return bool(out.stdout.strip())
+
+
+def worktree_remove(repo_path: Path, worktree_path: Path, *, force: bool = False) -> None:
+    """git worktree remove [--force] <worktree_path>; a failure raises GitError."""
+    cmd = ["worktree", "remove"]
+    if force:
+        cmd.append("--force")
+    cmd.append(str(worktree_path))
+    _run(repo_path, *cmd)
+
+
+def branch_delete(repo_path: Path, branch: str, *, force: bool = False) -> None:
+    """git branch [-d|-D] <branch> — -d for safe (refuses unmerged), -D for force."""
+    cmd = ["branch", "-D" if force else "-d", branch]
+    _run(repo_path, *cmd)
+
+
+def worktree_prune(repo_path: Path) -> None:
+    """Clear stale worktree admin entries before listing (git worktree prune)."""
+    _run(repo_path, "worktree", "prune")
