@@ -146,7 +146,7 @@ def rm(
     try:
         git.worktree_remove(repo, entry.path, force=force)
         if entry.branch_short is not None:
-            git.branch_delete(repo, entry.branch_short, force=force)
+            git.branch_delete(repo, entry.branch_short)
     except git.GitError as err:
         err_console.print(f"[red]error:[/red] {err}")
         raise typer.Exit(1) from err
@@ -199,7 +199,7 @@ def sweep(
         try:
             git.worktree_remove(repo, e.path, force=force)
             if e.branch_short is not None:
-                git.branch_delete(repo, e.branch_short, force=force)
+                git.branch_delete(repo, e.branch_short)
             removed += 1
         except git.GitError as err:
             err_console.print(f"[red]error:[/red] {e.branch_short or e.path.name}: {err}")

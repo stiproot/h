@@ -96,7 +96,7 @@ def test_rm_clean_calls_remove_and_branch_delete(monkeypatch) -> None:
     result = runner.invoke(app, ["worktrees", "rm", "direct/260101-010101"])
     assert result.exit_code == 0
     assert removed == [(entry.path, {"force": False})]
-    assert deleted == [("direct/260101-010101", {"force": False})]
+    assert deleted == [("direct/260101-010101", {})]
 
 
 def test_rm_force_dirty_warns_and_removes(monkeypatch) -> None:
@@ -161,7 +161,7 @@ def test_sweep_removes_clean_skips_dirty(monkeypatch) -> None:
     result = runner.invoke(app, ["worktrees", "sweep"])
     assert result.exit_code == 0
     assert [p for p, _ in removed] == [clean.path]
-    assert deleted == [("direct/260101-010101", {"force": False})]
+    assert deleted == [("direct/260101-010101", {})]
     assert "skipped" in result.output
     assert "uncommitted changes" in result.output
 

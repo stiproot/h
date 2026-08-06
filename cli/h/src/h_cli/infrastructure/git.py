@@ -127,10 +127,14 @@ def worktree_remove(repo_path: Path, worktree_path: Path, *, force: bool = False
     _run(repo_path, *cmd)
 
 
-def branch_delete(repo_path: Path, branch: str, *, force: bool = False) -> None:
-    """git branch [-d|-D] <branch> — -d for safe (refuses unmerged), -D for force."""
-    cmd = ["branch", "-D" if force else "-d", branch]
-    _run(repo_path, *cmd)
+def branch_delete(repo_path: Path, branch: str) -> None:
+    """git branch -D <branch> — always force-deletes.
+
+    The caller is responsible for the data-safety check (worktree_has_unpushed); the
+    git -d merge-check is redundant with that upstream gate and actively rejects branches
+    that are pushed to a remote but whose PR is still open.
+    """
+    _run(repo_path, "branch", "-D", branch)
 
 
 def worktree_prune(repo_path: Path) -> None:
