@@ -53,7 +53,7 @@ norecursedirs = [
   ".venv",
   "*.egg-info",
   "output",
-  ".local-logs",
+  ".host-logs",
   "tools",
   "web",
   "apps",

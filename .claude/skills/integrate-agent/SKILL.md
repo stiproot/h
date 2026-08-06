@@ -47,7 +47,7 @@ Every agent in h is the same three things plus wiring:
 Then wiring: **identity** (`cli/h/src/h_cli/config.py`: `AGENT_IDENTITY` maps `--agent <name>` →
 `(run-<name>, <name>-agent)`; `AGENT_URLS` maps the app-id → localhost URL), **deploy**
 (`docker-compose.yml` app + sidecar, `cli/scripts/run-<name>-agent.sh`, `dapr/resiliency.yaml` +
-`dapr/local/`, a unique port block), and **docs** (`README.md` agent list + **port table**,
+`dapr/host/`, a unique port block), and **docs** (`README.md` agent list + **port table**,
 `CLAUDE.md` app-tree + activity list + agent-cli list).
 
 ## The touchpoint checklist (copy-from-template)
@@ -63,7 +63,7 @@ Pick the closest existing agent as the template (a **CLI** agent → `openhands-
 - [ ] `run-<name>.activity.ts` + `activity-registry.ts` (import, array, switch case).
 - [ ] `cli/h/src/h_cli/config.py`: `AGENT_IDENTITY` (+`<name>` and `<name>-agent` keys), `AGENT_URLS`.
 - [ ] `docker-compose.yml` (app + `-dapr` sidecar, profiles, ports, healthcheck), `run-<name>-agent.sh`,
-      `dapr/resiliency.yaml` + `dapr/local/resiliency.yaml`, `.env.example`.
+      `dapr/resiliency.yaml` + `dapr/host/resiliency.yaml`, `.env.example`.
 - [ ] Port block: next free after the current max (as of #24, pi-agent holds `8015/3515/36015/61016`
       → next is `8016/3516/36016/61017`; `8014/3514/36014/61015` freed by claude-coder's retirement).
       Pin app / dapr-http / dapr-grpc / dapr-internal-grpc.

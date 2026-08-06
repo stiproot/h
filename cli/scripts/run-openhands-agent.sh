@@ -17,7 +17,7 @@ export AGENT_MODEL="${OPENHANDS_MODEL:-claude-sonnet-4-6}"
 # MCP config source (OpenHands-format): provisioned per run into $HOME/.openhands/mcp.json so the
 # CLI can reach workflow-mcp / github / dapr / obs. GH_TOKEN is substituted into the github header.
 export GH_TOKEN="${GH_TOKEN:-}"
-export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/openhands-agent/.mcp.local.json}"
+export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/openhands-agent/.mcp.host.json}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/openhands-agent}"
 # Consumed by a workflow's `setup` step (h.setupSteps): install the h skills into the agent's
 # workspace and copy runtime steering. Parity with run-claude-agent.sh — without these the setup
@@ -54,7 +54,7 @@ exec dapr run \
   --dapr-internal-grpc-port 61004 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
-  --resources-path "${PROJECT_DIR}/dapr/local" \
-  --config "${PROJECT_DIR}/dapr/local/appconfig.yaml" \
+  --resources-path "${PROJECT_DIR}/dapr/host" \
+  --config "${PROJECT_DIR}/dapr/host/appconfig.yaml" \
   --log-level info \
   -- env APP_PORT=8004 bun run src/index.ts

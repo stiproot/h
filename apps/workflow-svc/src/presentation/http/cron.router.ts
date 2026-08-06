@@ -35,7 +35,7 @@ const DisarmBody = Schema.Struct({
   workflow: Schema.String,
 });
 
-// The cron binding (dapr/local/workflow-cron.yaml) is named workflow-cron-tick; a cron binding is
+// The cron binding (dapr/host/workflow-cron.yaml) is named workflow-cron-tick; a cron binding is
 // delivered as POST /<binding-name>, so the route name must match.
 const ROUTE = "/workflow-cron-tick";
 

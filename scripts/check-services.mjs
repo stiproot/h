@@ -3,7 +3,7 @@
 // cli/scripts/_services.sh diverges from the zellij layout it mirrors.
 //
 // Two surfaces enumerate the same per-mode service set: the headless launcher's source of truth
-// (cli/scripts/_services.sh, read by up-local/wait-local/down-local) and the interactive zellij
+// (cli/scripts/_services.sh, read by up-host/wait-host/down-host) and the interactive zellij
 // layouts (.zellij/dev.kdl, .zellij/h-builds-h.kdl). They MUST agree — a service present in one
 // path but not the other means the driver an agent uses and the panes a human watches are running
 // different stacks. This guard asserts set-equality per mode so the lists can't silently drift as

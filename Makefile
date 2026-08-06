@@ -41,7 +41,7 @@ DEV_LAYOUT          ?= .zellij/dev.kdl
 H_BUILDS_H_LAYOUT   ?= .zellij/h-builds-h.kdl
 H_BUILDS_H_SESSION  ?= h-builds-h
 
-# Headless host-mode launcher (up-local/wait-local/down-local) — MODE selects the service set.
+# Headless host-mode launcher (up-host/wait-host/down-host) — MODE selects the service set.
 MODE                ?= dev
 
 WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
@@ -69,24 +69,24 @@ help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} \
 		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-# ── Local infra (Docker Compose) ────────────────────────────────────────────────
+# ── Host-mode infra (Docker Compose) ────────────────────────────────────────────────
 #
 # Starts the shared infrastructure (placement, scheduler, redis, zipkin, logging)
-# used by the local dev flow that runs agents via the `dapr` CLI run scripts.
-# The local override fixes the scheduler's broadcast address so host-side daprd
-# processes can reach it on macOS (see docker-compose.local.yml).
+# used by the host-mode flow that runs agents via the `dapr` CLI run scripts.
+# The host override fixes the scheduler's broadcast address so host-side daprd
+# processes can reach it on macOS (see docker-compose.host.yml).
 
 .PHONY: infra-up
-infra-up: ## Start local infra via Docker Compose (placement, scheduler, redis, logging)
+infra-up: ## Start host-mode infra via Docker Compose (placement, scheduler, redis, logging)
 	# The scheduler's ./dapr-etcd bind mount: docker creates a missing bind dir ROOT-owned and the
 	# nonroot scheduler then fatals (mkdir /data/...: permission denied — bit us 2026-07-25 after a
 	# from-scratch reset). Pre-create it world-writable so a reset can never brick the scheduler.
 	mkdir -p dapr-etcd && chmod 0777 dapr-etcd 2>/dev/null || true
-	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.local.yml up --build -d
+	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.host.yml up --build -d
 
 .PHONY: infra-down
-infra-down: ## Stop local infra and remove volumes
-	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.local.yml down -v
+infra-down: ## Stop host-mode infra and remove volumes
+	cli/scripts/compose.sh --profile infra -f docker-compose.yml -f docker-compose.host.yml down -v
 
 .PHONY: agent-bases
 agent-bases: ## Build the shared agent base images (the process-identity model) — run before `docker compose build`
@@ -293,7 +293,7 @@ k3d-down: ## Delete the k3d cluster and its registry
 #
 # `make itest` builds workflow-svc + stub-agent from the current worktree, deploys an
 # ephemeral h-itest-<id> namespace, fires the smoke workflow against it, asserts the
-# runtime spine end-to-end, then tears down. Evidence lands under .local-logs/itest/<id>/.
+# runtime spine end-to-end, then tears down. Evidence lands under .host-logs/itest/<id>/.
 # Exit-code taxonomy: 0=passed, 10=assertion, 11=infra.
 #
 # Prerequisites: k3d cluster + registry running (`make k3d-up`), Dapr installed
@@ -313,15 +313,15 @@ itest-gc: ## Delete h-itest-* namespaces older than 2h; prune gate images older 
 
 # ── Tear everything down ───────────────────────────────────────────────────────
 #
-# One entry point for "stop whatever I started", across all three modes — host-local services,
+# One entry point for "stop whatever I started", across all three modes — host-mode services,
 # Docker Compose infra, and the Tilt/k8s path. Every step tolerates the thing not being there,
 # so it is safe to run from any state (that is the point: you should not have to remember which
 # mode you were in). Use the granular targets when you want to keep part of the stack.
 
 .PHONY: down
-down: ## Tear down EVERYTHING (host-local services, compose infra, Tilt, k3d cluster)
-	-$(MAKE) down-local MODE=dev
-	-$(MAKE) down-local MODE=h-builds-h
+down: ## Tear down EVERYTHING (host-mode services, compose infra, Tilt, k3d cluster)
+	-$(MAKE) down-host MODE=dev
+	-$(MAKE) down-host MODE=h-builds-h
 	-tilt down 2>/dev/null || true
 	-$(MAKE) k3d-down
 	-$(MAKE) infra-down
@@ -330,7 +330,7 @@ down: ## Tear down EVERYTHING (host-local services, compose infra, Tilt, k3d clu
 	@echo "    Remaining by design: the shared workspace ($(WORKSPACE_DIR)) and the bun/turbo caches."
 	@echo "    Worktrees cut by chains: make worktrees-purge"
 
-# ── Local dev session (zellij) ──────────────────────────────────────────────────
+# ── Host-mode dev session (zellij) ──────────────────────────────────────────────────
 #
 # Launch every app service — one pane each, via the dapr CLI run scripts — in a
 # single zellij session. Assumes `make infra-up` is already running (redis,
@@ -378,18 +378,18 @@ h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the curre
 # the orchestration layer differs (detached process groups + log files, not zellij
 # panes). MODE=dev (default) or MODE=h-builds-h.
 
-.PHONY: up-local wait-local up-local-wait down-local
-up-local: infra-up ## Start all host-mode services detached (MODE=dev|h-builds-h); returns immediately
-	cli/scripts/up-local.sh $(MODE)
+.PHONY: up-host wait-host up-host-wait down-host
+up-host: infra-up ## Start all host-mode services detached (MODE=dev|h-builds-h); returns immediately
+	cli/scripts/up-host.sh $(MODE)
 
-wait-local: ## Block until every host-mode service is listening, or timeout (MODE=dev|h-builds-h)
-	cli/scripts/wait-local.sh $(MODE)
+wait-host: ## Block until every host-mode service is listening, or timeout (MODE=dev|h-builds-h)
+	cli/scripts/wait-host.sh $(MODE)
 
-up-local-wait: up-local ## Start the stack detached, then block until it is ready (MODE=dev|h-builds-h)
-	cli/scripts/wait-local.sh $(MODE)
+up-host-wait: up-host ## Start the stack detached, then block until it is ready (MODE=dev|h-builds-h)
+	cli/scripts/wait-host.sh $(MODE)
 
-down-local: ## Stop all host-mode services for MODE (leaves infra up; use infra-down for that)
-	cli/scripts/down-local.sh $(MODE)
+down-host: ## Stop all host-mode services for MODE (leaves infra up; use infra-down for that)
+	cli/scripts/down-host.sh $(MODE)
 
 # ── Git hooks ──────────────────────────────────────────────────────────────────
 

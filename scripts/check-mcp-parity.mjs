@@ -114,7 +114,7 @@ export function checkMcpParity() {
   try {
     for (const app of apps) {
       const dockerFile = `apps/${app}/.mcp.json`;
-      const localFile = `apps/${app}/.mcp.local.json`;
+      const localFile = `apps/${app}/.mcp.host.json`;
       const dockerServers = serverSet(join(root, dockerFile));
       const localServers = serverSet(join(root, localFile));
       const localDiff = compare(localServers, dockerServers);

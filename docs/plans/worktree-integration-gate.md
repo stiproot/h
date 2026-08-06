@@ -141,7 +141,7 @@ macOS path is ever needed.
   `{{itest.durationMs}}`, and `{{itest.outputTail}}` (the scalar fields of `ItestResult` — there
   is no `output` field) so the PR body carries the machine result (pass/skip, class, tree hash,
   duration); gate outcomes also land in the run ledger keyed by `workflowInstanceId` (the obs join
-  key) and persist under `.local-logs/itest/<runId>/` — outside both the namespace and worktree GC
+  key) and persist under `.host-logs/itest/<runId>/` — outside both the namespace and worktree GC
   scopes.
 
 Runtime model, explicit (panel M8): the gate shells out to docker + kubectl, so gate-enabled
@@ -230,7 +230,7 @@ layer — the CLI composes workflows for any repo). Instead, omission of the ove
     (exit-code taxonomy 0/10/11, content-tag build, evidence capture, trap teardown, wf-row +
     watch-row assertions); `make itest` target.
   - *1c — failure honesty*: exit 10 on wf-row assertion failure; `make itest-gc` sweeper;
-    evidence to `.local-logs/itest/<id>/` before namespace deletion.
+    evidence to `.host-logs/itest/<id>/` before namespace deletion.
 - **Phase 2 — the gate.** IMPLEMENTED 2026-07-29 (PR feature/itest-gate).
   `run-stub` activity (mirrors run-kimi, calls stub-agent Dapr service);
   `run-itest` activity (materialises harness + smoke def from origin/main, 20 min hard timeout

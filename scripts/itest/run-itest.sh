@@ -11,7 +11,7 @@
 #   11 — infra failure (cluster/build/push/deploy/pod-ready timeout)
 #
 # Evidence (pod logs, describe, timings, overlay) persists under:
-#   .local-logs/itest/<id>/   BEFORE namespace deletion.
+#   .host-logs/itest/<id>/   BEFORE namespace deletion.
 #
 set -euo pipefail
 
@@ -24,7 +24,7 @@ K3D_REGISTRY="${K3D_REGISTRY:-localhost:5111}"
 # mirrors BOTH h-registry:5111 and h-registry:5000 to it. Use the :5111 form so the in-cluster
 # name matches the host push address's port and stays greppable as one registry.
 K3D_REGISTRY_CLUSTER="${K3D_REGISTRY_CLUSTER:-h-registry:5111}"
-EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
+EVIDENCE_BASE="${REPO_ROOT}/.host-logs/itest"
 # Allocate a free ephemeral port per run so concurrent gate runs don't collide on the port-forward.
 WF_SVC_PORT_LOCAL=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); p=s.getsockname()[1]; s.close(); print(p)")
 WF_SVC_NAMESPACE_PORT=8000
@@ -71,7 +71,7 @@ bash "${BASH_SOURCE[0]}" --gc 2>/dev/null || true
 # real worktree path as $1 (the run-itest activity's D7 isolation pattern).
 WORKTREE="$(cd "${1:-${REPO_ROOT}}" && pwd)"
 REPO_ROOT="${WORKTREE}"
-EVIDENCE_BASE="${REPO_ROOT}/.local-logs/itest"
+EVIDENCE_BASE="${REPO_ROOT}/.host-logs/itest"
 
 # Smoke definition: prefer a co-materialized trusted copy alongside this script (the
 # run-itest activity materialises it from origin/main next to the harness for D7 isolation);

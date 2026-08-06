@@ -240,7 +240,7 @@ recovery section). The recovery is to re-fire that review with an openhands-only
   4. *No first-class `plan` member kind* — carried-followups §2, now with a concrete failure.
 - **Environment left changed:** `.env` `AGENT_MODEL=claude-sonnet-4-6` (was haiku);
   claude-agent restarted to pick it up. Host-mode stack UP via `make infra-up` +
-  `MODE=dev up-local` (8 services).
+  `MODE=dev up-host` (8 services).
 - **Litter to clean:** six finalized dead chain rows (`kimi-agent`, `kimi-agent-review`,
   `kimi-integration`, `kimi-integration-review`, `kimi-int2`, `kimi-int2-review`) and a stale
   `feature/kimi-integration` worktree. `h chain rm` is PR #97, still open — the reason this

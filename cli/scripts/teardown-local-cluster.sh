@@ -14,11 +14,11 @@ set -euo pipefail
 # PERMANENTLY LOST).
 #
 # Usage:
-#   cli/scripts/teardown-local-cluster.sh            # prompts for confirmation
-#   cli/scripts/teardown-local-cluster.sh --yes      # skip the prompt
-#   cli/scripts/teardown-local-cluster.sh --dry-run  # print what would run, change nothing
+#   cli/scripts/teardown-host-cluster.sh            # prompts for confirmation
+#   cli/scripts/teardown-host-cluster.sh --yes      # skip the prompt
+#   cli/scripts/teardown-host-cluster.sh --dry-run  # print what would run, change nothing
 #
-#   APP_NAMESPACES="stack-a stack-b" cli/scripts/teardown-local-cluster.sh
+#   APP_NAMESPACES="stack-a stack-b" cli/scripts/teardown-host-cluster.sh
 #     space-separated extra namespaces to delete in full (default: none; also read from .env)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

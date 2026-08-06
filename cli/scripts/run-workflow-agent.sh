@@ -13,7 +13,7 @@ export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL}"
 export AGENT_MODEL="${AGENT_MODEL:-claude-sonnet-4-6}"
 export AGENT_MAX_ITERATIONS="${AGENT_MAX_ITERATIONS:-25}"
-# workflow-mcp is reachable on the host at 8005 in local dev.
+# workflow-mcp is reachable on the host at 8005 in host mode.
 export WORKFLOW_MCP_URL="${WORKFLOW_MCP_URL:-http://localhost:8005/sse}"
 # Orchestration knowledge is the workflow-orchestrator h-skill; the agent loads it as its
 # system prompt from the repo skills root (same source claude-agent gets via ~/.claude/skills).
@@ -32,7 +32,7 @@ exec dapr run \
   --dapr-internal-grpc-port 61012 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
-  --resources-path "${PROJECT_DIR}/dapr/local" \
-  --config "${PROJECT_DIR}/dapr/local/appconfig.yaml" \
+  --resources-path "${PROJECT_DIR}/dapr/host" \
+  --config "${PROJECT_DIR}/dapr/host/appconfig.yaml" \
   --log-level info \
   -- env APP_PORT=8010 LOG_LEVEL=info uv run uvicorn main:app --host 0.0.0.0 --port 8010

@@ -9,19 +9,19 @@ composition stack, and the design principles.
 
 ## Run modes
 
-The same stack runs three ways. **Local and container are the defaults — neither needs Kubernetes,
+The same stack runs three ways. **Host and container are the defaults — neither needs Kubernetes,
 and everything except the integration gate works in both.** Pick k8s mode only when you specifically
 want to exercise the Kubernetes deployment path.
 
 | Mode | What it is | Bring-up | Needs a cluster? |
 | --- | --- | --- | --- |
-| **Local** | App services on the host via `dapr run`; infra in Docker | `make infra-up && make up-local-wait` ([details](#running-locally-host-side-dapr-cli)) | No |
+| **Host** | App services on the host via `dapr run`; infra in Docker | `make infra-up && make up-host-wait` ([details](#running-in-host-mode-host-side-dapr-cli)) | No |
 | **Container** | Everything in Docker Compose | `make up` ([details](#running-in-docker)) | No |
 | **k8s (Tilt)** | Manifests deployed to k3d/Rancher Desktop | `make k3d-up && make dapr-install && make tilt-up` ([details](#running-in-kubernetes-tilt--optional-the-heavy-path)) | Yes |
 
 The one capability exclusive to k8s mode is **`make itest`**, the integration gate — it deploys an
 ephemeral `h-itest-<id>` namespace, so it needs k3d + Dapr. Unit tests (`make test`) and both lint
-stacks (`make lint`) are fully available in local and container mode. See
+stacks (`make lint`) are fully available in host and container mode. See
 [Dev commands](#dev-commands) for the test/lint entry points.
 
 ## Driving h — the `h` CLI
@@ -108,7 +108,7 @@ h/
 │       ├── agent-server/     # Shared FastAPI agent routes (run/setup/dapr-subscribe) + run ledger
 │       └── agent-core/       # Shared agent machinery (ReAct loop, LLM adapters, workflow-mcp toolset)
 ├── dapr/                 # Dapr component YAMLs — Docker / docker-compose mode
-│   └── local/            # Dapr component YAMLs — local dev via dapr CLI
+│   └── host/             # Dapr component YAMLs — host mode via dapr CLI
 ├── k8s/                  # Kubernetes manifests — Tilt mode
 │   ├── apps/             # App Deployments + Services
 │   ├── dapr/             # Dapr Component / Resiliency / Configuration CRDs
@@ -148,7 +148,7 @@ Runs `workflow` and `claude-agent` in a local Kubernetes cluster (Rancher Deskto
 > openhands-agent ~2.0GB), so a machine that runs Tilt across a few sessions accumulates tens of GB
 > of dead tags plus a build cache of the same order. Sweep it with **`make tilt-gc`** (see
 > [Full teardown](#full-teardown)); `make itest-gc` does *not* cover Tilt's images. If the machine
-> is short on disk or RAM, prefer [local](#running-locally-host-side-dapr-cli) or
+> is short on disk or RAM, prefer [host mode](#running-in-host-mode-host-side-dapr-cli) or
 > [container](#running-in-docker) mode — both run the same stack without a cluster.
 
 ### Prerequisites (one-time)
@@ -219,7 +219,7 @@ make tilt-gc          # prune Tilt-pushed images older than 7d (TILT_GC_DAYS to 
 stack is up, since it only removes tags older than the cutoff. Tilt has no built-in image GC, so
 without it the registry grows by one full agent image per rebuild, forever.
 
-## Running locally (host-side dapr CLI)
+## Running in host mode (host-side dapr CLI)
 
 Infrastructure runs in Docker; app services run on the host via `dapr run`.
 
@@ -232,17 +232,17 @@ bun install --frozen-lockfile
 ### 2. Start infrastructure
 
 ```sh
-cli/scripts/compose.sh -f docker-compose.yml -f docker-compose.local.yml --profile infra up -d
+cli/scripts/compose.sh -f docker-compose.yml -f docker-compose.host.yml --profile infra up -d
 ```
 
 Starts `placement` (50006), `scheduler` (50007), `redis` (6379), `redis-commander` (16379), `zipkin` (9411), and the logging stack (Loki, Alloy, Grafana).
 
-`docker-compose.local.yml` overrides the scheduler's broadcast address to `localhost:50007` so host-side `daprd` processes can reconnect after the initial handshake.
+`docker-compose.host.yml` overrides the scheduler's broadcast address to `localhost:50007` so host-side `daprd` processes can reconnect after the initial handshake.
 
 Tear down (always pass `-v` to clear the scheduler's etcd volume):
 
 ```sh
-cli/scripts/compose.sh -f docker-compose.yml -f docker-compose.local.yml --profile infra down -v
+cli/scripts/compose.sh -f docker-compose.yml -f docker-compose.host.yml --profile infra down -v
 ```
 
 ### 3. Environment variables
@@ -296,13 +296,13 @@ use the detached launcher — the non-interactive sibling of `make dev`, reusing
 scripts, `stop_stale` idempotency, and `_supervise.sh` restart logic:
 
 ```sh
-make up-local-wait            # infra-up → launch all services detached → block until every one is UP
-make down-local               # stop them (leaves infra up; `make infra-down` stops infra)
+make up-host-wait            # infra-up → launch all services detached → block until every one is UP
+make down-host               # stop them (leaves infra up; `make infra-down` stops infra)
 # MODE=h-builds-h selects the supervised loop set instead of the full dev set
 ```
 
-`make up-local` returns immediately (services run under `cli/scripts/_supervise.sh` in detached
-process groups, logs → `.local-logs/<service>.log`); `make wait-local` gates readiness by
+`make up-host` returns immediately (services run under `cli/scripts/_supervise.sh` in detached
+process groups, logs → `.host-logs/<service>.log`); `make wait-host` gates readiness by
 TCP-probing each service's app port. Service membership per mode lives in `cli/scripts/_services.sh`
 (the single source of truth the launcher and the zellij layouts share — kept in step by
 `scripts/check-services.mjs` at lint time). See docs/plans/impl/agent-local-mode-bringup.md.
@@ -395,7 +395,7 @@ cli/scripts/compose.sh --profile all down -v
 | `langgraph-agent` | local build | `8009` (app), `3509` (sidecar) | LangChain/LangGraph ReAct agent |
 | `workflow-agent` | local build | `8010` (app), `3510` (sidecar) | Dapr Agents SDK workflow orchestrator |
 
-## Port allocation (local dev)
+## Port allocation (host mode)
 
 | Service | App port | Dapr HTTP | Dapr gRPC | Dapr internal gRPC |
 | --- | --- | --- | --- | --- |
@@ -416,7 +416,7 @@ cli/scripts/compose.sh --profile all down -v
 | `placement` | — | — | — | 50006 |
 | `scheduler` | — | — | — | 50007 |
 
-Every local service binds a unique set of ports, so any combination can run at once. All sidecars
+Every host-run service binds a unique set of ports, so any combination can run at once. All sidecars
 pin a distinct `360xx` gRPC port and a `610xx` internal-gRPC port. On Linux (default ephemeral range
 32768–60999), the `610xx` internal-gRPC ports sit above the ceiling and the kernel will not assign
 them as ephemeral source ports — removing that exposure for internal-gRPC specifically. The `360xx`
@@ -435,10 +435,10 @@ Three component directories — same logical components, different host addresse
 | Directory | Used when |
 | --- | --- |
 | `dapr/` | Docker mode — service-name addresses (`redis:6379`), file-based secret store |
-| `dapr/local/` | Local dev — `localhost` addresses, env-var secret store |
+| `dapr/host/` | Host mode — `localhost` addresses, env-var secret store |
 | `k8s/dapr/` | Kubernetes mode — service-name addresses, `secretstores.kubernetes` |
 
-`dapr/local/appconfig.yaml` is the Dapr Configuration file passed to every local `dapr run` via `--config`. In addition to Zipkin tracing it configures the **SQLite name resolver**, which replaces Dapr's default mDNS-based service discovery. mDNS is unreliable on macOS with Rancher Desktop; the SQLite resolver uses a shared file at `/tmp/dapr-h-nr.db` instead.
+`dapr/host/appconfig.yaml` is the Dapr Configuration file passed to every host-mode `dapr run` via `--config`. In addition to Zipkin tracing it configures the **SQLite name resolver**, which replaces Dapr's default mDNS-based service discovery. mDNS is unreliable on macOS with Rancher Desktop; the SQLite resolver uses a shared file at `/tmp/dapr-h-nr.db` instead.
 
 ## Dev commands
 

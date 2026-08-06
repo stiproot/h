@@ -19,7 +19,7 @@
             "cmd": "cp $AGENT_APP_DIR/CLAUDE.md CLAUDE.md"
           },
           {
-            "cmd": "cp $AGENT_APP_DIR/.mcp.local.json .mcp.json"
+            "cmd": "cp $AGENT_APP_DIR/.mcp.host.json .mcp.json"
           }
         ]
       }

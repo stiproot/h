@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Tear down a host/local-mode stack started by up-local.sh. Kills each service's supervisor process
+# Tear down a host-mode stack started by up-host.sh. Kills each service's supervisor process
 # GROUP first (so it stops restarting the child), then runs the service's own stop_stale spec to free
 # the dapr app-id + pinned ports — belt and suspenders against orphaned sidecars.
 #
-# Usage:  down-local.sh [mode]     mode = dev (default) | h-builds-h
+# Usage:  down-host.sh [mode]     mode = dev (default) | h-builds-h
 # Leaves infra (redis/placement/scheduler) up — that's `make infra-down`.
 set -uo pipefail
 
@@ -16,11 +16,11 @@ source "${SCRIPT_DIR}/_services.sh"
 source "${SCRIPT_DIR}/_lib.sh"
 
 MODE="${1:-dev}"
-LOG_DIR="${H_LOCAL_LOG_DIR:-${PROJECT_DIR}/.local-logs}"
+LOG_DIR="${H_HOST_LOG_DIR:-${PROJECT_DIR}/.host-logs}"
 PID_DIR="${LOG_DIR}/pids"
 
 mapfile -t SERVICES < <(services_for_mode "${MODE}")
-echo "down-local: stopping ${#SERVICES[@]} service(s) for mode '${MODE}'"
+echo "down-host: stopping ${#SERVICES[@]} service(s) for mode '${MODE}'"
 
 for svc in "${SERVICES[@]}"; do
   name="${svc#run-}"; name="${name%.sh}"
@@ -47,4 +47,4 @@ for svc in "${SERVICES[@]}"; do
   echo "  stopped ${name}"
 done
 
-echo "down-local: done (infra left running — 'make infra-down' to stop it)."
+echo "down-host: done (infra left running — 'make infra-down' to stop it)."

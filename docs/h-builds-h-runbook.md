@@ -28,7 +28,7 @@ GitHub (on the target repo):
    returns as a per-run trust profile if untrusted third-party repos come into play
    (docs/plans/reviewer-identity-security.md); claude-coder as a separate service was retired.
 
-Local:
+Host mode:
 
 4. Pre-clone the target repo into the shared workspace root (`cli/scripts/clone.sh`). It lands at
    `<WORKSPACE_ROOT>/repo` by default — the SAME location the agent's /worktree route resolves as
@@ -95,7 +95,7 @@ down MCP silently drops tools from a `implement-pr` run.
 #    run-itest is part of the implementor's definition of done — do not compose without it.
 #
 #    REQUIRES K8S MODE. The gate deploys an ephemeral h-itest-<id> namespace, so it is the one
-#    part of this loop that needs k3d + `make dapr-install` — a local/container-only host cannot
+#    part of this loop that needs k3d + `make dapr-install` — a host/container-only box cannot
 #    run it. Do NOT quietly drop the step to make the loop fit such a host: either run the loop
 #    from a k8s-capable machine, or engage the activity's documented break-glass (the `skip` /
 #    `skipReason` step inputs), which records class="skipped" in the evidence and embeds the
@@ -166,7 +166,7 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
 
 - Engine budget-terminate ends the workflow, not the in-flight `claude` subprocess.
 - No hard token cap inside h — set a LiteLLM-proxy budget too.
-- Local/compose only: the k8s cron path can double-fire (no leader guard).
+- Host/compose only: the k8s cron path can double-fire (no leader guard).
 - Worktrees accumulate until a GC system ships.
 - An UNsupervised (`--run-budget-mins` omitted) hung `implement-pr` stalls the discovery cron's serialize
   until the run's own budget trips — arm the watch policy to avoid this.

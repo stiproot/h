@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Canonical service list for host/local mode, keyed by MODE — the single source of truth the
-# headless launcher (up-local.sh), readiness probe (wait-local.sh), and teardown (down-local.sh)
+# Canonical service list for host mode, keyed by MODE — the single source of truth the
+# headless launcher (up-host.sh), readiness probe (wait-host.sh), and teardown (down-host.sh)
 # all read. The zellij layouts (.zellij/dev.kdl, .zellij/h-builds-h.kdl) enumerate the SAME sets for
 # the interactive path; keep them in step.
 #

@@ -117,11 +117,11 @@ export function checkPorts() {
 
   const readmeLines = readFileSync(readmePath, "utf8").split("\n");
   const headingIndex = readmeLines.findIndex(
-    (line) => line.trim() === "## Port allocation (local dev)",
+    (line) => line.trim() === "## Port allocation (host mode)",
   );
   if (headingIndex === -1) {
     errors.push(
-      "README.md:1: missing `## Port allocation (local dev)` table. Fix: restore the heading and port allocation table.",
+      "README.md:1: missing `## Port allocation (host mode)` table. Fix: restore the heading and port allocation table.",
     );
   } else {
     const rows = new Map();

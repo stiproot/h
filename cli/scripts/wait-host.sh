@@ -4,7 +4,7 @@
 # don't apply to host `dapr run`). TCP-accept on the app port is a uniform signal that survives the
 # per-service quirks (obs-mcp has no sidecar; dapr-mcp has dual listeners).
 #
-# Usage:  wait-local.sh [mode] [timeout_seconds]     mode = dev (default) | h-builds-h, timeout = 180
+# Usage:  wait-host.sh [mode] [timeout_seconds]     mode = dev (default) | h-builds-h, timeout = 180
 # Exit 0 when every service is listening; nonzero on timeout (prints which are still down).
 set -euo pipefail
 
@@ -25,13 +25,13 @@ for svc in "${SERVICES[@]}"; do
   name="${svc#run-}"; name="${name%.sh}"
   port="$(service_health_port "${SCRIPT_DIR}/${svc}")"
   if [ -z "${port}" ]; then
-    echo "wait-local: WARN cannot resolve app port for ${name} — not gated" >&2
+    echo "wait-host: WARN cannot resolve app port for ${name} — not gated" >&2
     continue
   fi
   names+=("${name}"); ports+=("${port}")
 done
 
-echo "wait-local: waiting up to ${TIMEOUT}s for ${#names[@]} service(s) in mode '${MODE}'"
+echo "wait-host: waiting up to ${TIMEOUT}s for ${#names[@]} service(s) in mode '${MODE}'"
 deadline=$(( SECONDS + TIMEOUT ))
 while true; do
   down=()
@@ -39,12 +39,12 @@ while true; do
     _port_open "${ports[$i]}" || down+=("${names[$i]}:${ports[$i]}")
   done
   if [ "${#down[@]}" -eq 0 ]; then
-    echo "wait-local: UP — all ${#names[@]} service(s) listening"
+    echo "wait-host: UP — all ${#names[@]} service(s) listening"
     exit 0
   fi
   if [ "${SECONDS}" -ge "${deadline}" ]; then
-    echo "wait-local: TIMEOUT after ${TIMEOUT}s — still down: ${down[*]}" >&2
-    echo "wait-local: inspect logs under \${H_LOCAL_LOG_DIR:-.local-logs}/ (e.g. tail -n 50 .local-logs/${down[0]%%:*}.log)" >&2
+    echo "wait-host: TIMEOUT after ${TIMEOUT}s — still down: ${down[*]}" >&2
+    echo "wait-host: inspect logs under \${H_HOST_LOG_DIR:-.host-logs}/ (e.g. tail -n 50 .host-logs/${down[0]%%:*}.log)" >&2
     exit 1
   fi
   sleep 2

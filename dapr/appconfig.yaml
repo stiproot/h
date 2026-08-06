@@ -12,7 +12,7 @@ spec:
   # port); on `--force-recreate` the new sidecar comes up on a fresh ephemeral port while the cached
   # entry still points at the old one → `connection refused` until the TTL expires. The SQLite
   # resolver re-registers the current address on start, so lookups get the fresh port immediately.
-  # Mirrors dapr/local/appconfig.yaml (host-run mode). busyTimeout retries on SQLITE_BUSY instead of
+  # Mirrors dapr/host/appconfig.yaml (host-run mode). busyTimeout retries on SQLITE_BUSY instead of
   # fataling under concurrent lease renewal (see the 2026-07-05 NR incident in CLAUDE.md).
   nameResolution:
     component: "sqlite"

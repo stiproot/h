@@ -82,7 +82,7 @@ The same authored-slot/target pattern appears at two levels:
 - **Substrate** — what EXECUTES a composed definition: the **service** substrate (Dapr engine +
   containerised fleet, durable and supervised) or the **direct** substrate (the `h` CLI's own
   process driving agent CLIs as children, no infrastructure). Orthogonal to *deployment mode*
-  (local / container / k8s), which is how the SERVICE substrate is hosted — direct execution needs
+  (host / container / k8s), which is how the SERVICE substrate is hosted — direct execution needs
   none of them. See Execution substrates below.
 - **Workspace** — an agent service's provisioned directory (`workspaceId ?? instanceId`).
   **Worktree** — a git worktree inside the shared repository checkout.

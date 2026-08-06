@@ -28,7 +28,7 @@ exec dapr run \
   --dapr-internal-grpc-port 61010 \
   --placement-host-address localhost:50006 \
   --scheduler-host-address localhost:50007 \
-  --resources-path "${PROJECT_DIR}/dapr/local" \
-  --config "${PROJECT_DIR}/dapr/local/appconfig.yaml" \
+  --resources-path "${PROJECT_DIR}/dapr/host" \
+  --config "${PROJECT_DIR}/dapr/host/appconfig.yaml" \
   --log-level info \
   -- env APP_PORT=8005 bun run src/index.ts
