@@ -8,9 +8,29 @@ import os
 from pathlib import Path
 
 _CLI_DIR = Path(__file__).resolve().parents[3]
+_REPO_DIR = _CLI_DIR.parent
 
 # Template source (strategy 2 — see cli/README.md) and the gitignored feature-spec home.
 CHARTS_DIR = Path(os.getenv("H_CHARTS_DIR", str(_CLI_DIR / "charts")))
+
+# --- Direct execution substrate -------------------------------------------------------------
+# The runner binary the CLI spawns instead of firing a workflow through workflow-svc. It is a
+# built workspace package, so `bun run build` is the one prerequisite direct execution has.
+DIRECT_BIN = Path(
+    os.getenv("H_DIRECT_BIN", str(_REPO_DIR / "packages/js/direct-runtime/dist/bin.js"))
+)
+
+# Run-ledger root. Defaults to the SAME directory the agent services write (host mode's
+# AGENT_BASE_DIR sibling, which is the compose bind mount too), so a direct run shows up in
+# `h runs`, obs-mcp and the viz beside service runs instead of in a private ledger.
+AGENT_RUNS_DIR = Path(os.getenv("AGENT_RUNS_DIR", str(_REPO_DIR / "../h-workspace/.runs")))
+
+# Where per-agent worktrees are cut for a delegated write task.
+DIRECT_WORKTREES_DIR = Path(os.getenv("H_DIRECT_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees")))
+
+# The repo's .env — the same file compose and the run scripts feed the agent services from. A
+# direct run reads it too, so the substrate does not need its own credential setup.
+DOTENV_PATH = Path(os.getenv("H_DOTENV", str(_REPO_DIR / ".env")))
 FEATURE_SPECS_DIR = Path(
     os.getenv("H_FEATURE_SPECS_DIR", str(_CLI_DIR / "scripts/payloads/domain/feature-requests"))
 )

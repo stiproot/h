@@ -9,7 +9,7 @@ import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { registerAgentRoutesEffect } from "./agent-routes.ts";
-import { RunLedger } from "./run-ledger.ts";
+import { RunLedger } from "run-ledger";
 import { AgentRunner } from "./runner.ts";
 
 const noOpLedger = Layer.succeed(RunLedger, {

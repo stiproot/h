@@ -22,13 +22,17 @@ export type {
   WorkflowSubmit,
 } from "./workflow-babysitter.ts";
 export { registerWorkflowRoute } from "./workflow-route.ts";
+// Re-exported for the agent services, whose runtimes provide `RunLedgerLive` and whose runners
+// yield the `RunLedger` tag: the ledger now lives in its own package (an agent host that is not
+// an HTTP service — the direct runtime — needs it without fastify), and agent-server stays their
+// single import surface.
 export {
   recordActivityEffect,
   RunLedger,
   RunLedgerError,
   RunLedgerLive,
   startRunLedgerEffect,
-} from "./run-ledger.ts";
+} from "run-ledger";
 export type {
   ActivityLedgerConfig,
   ActivityRecord,
@@ -37,4 +41,4 @@ export type {
   RunLedgerHandle,
   RunOutcome,
   RunSummary,
-} from "./run-ledger.ts";
+} from "run-ledger";

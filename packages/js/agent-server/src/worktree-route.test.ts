@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import { GitClient, type WorktreeOptions } from "git-core";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { RunLedger } from "./run-ledger.ts";
+import { RunLedger } from "run-ledger";
 import { registerWorktreeRouteEffect } from "./worktree-route.ts";
 
 const noOpLedger = Layer.succeed(RunLedger, {

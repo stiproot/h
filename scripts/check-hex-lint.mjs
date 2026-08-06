@@ -7,7 +7,13 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const REQUIRED_SUFFIX = "depcruise --config ../../.dependency-cruiser.cjs src";
+
+// The config lives at the repo root and is reached by a RELATIVE path, so the correct suffix
+// depends on how deep the package sits: `../../` from apps/<name>, `../../../` from
+// packages/js/<name>. A fixed hint sent the first hex package under packages/js to a path that
+// does not exist ("Can't open config file"), so the hint is computed per package.
+const requiredSuffix = (packageDir) =>
+  `depcruise --config ${relative(packageDir, join(root, ".dependency-cruiser.cjs"))} src`;
 
 function packageJsonPaths(parent) {
   const parentPath = resolve(root, parent);
@@ -44,6 +50,7 @@ export function checkHexLint() {
       violations.push({
         file: relative(root, packageJson),
         line: lintLine(content),
+        suffix: requiredSuffix(packageDir),
       });
     }
   }
@@ -52,7 +59,7 @@ export function checkHexLint() {
     console.error("✗ check-hex-lint: TypeScript hex package missing dependency-cruiser lint coverage.\n");
     for (const violation of violations) {
       console.error(`  ${violation.file}:${violation.line}`);
-      console.error(`  Fix: append \` && ${REQUIRED_SUFFIX}\` to scripts.lint.\n`);
+      console.error(`  Fix: append \` && ${violation.suffix}\` to scripts.lint.\n`);
     }
     return 1;
   }

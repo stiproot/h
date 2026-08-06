@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { WorkflowParams, WorkflowStep } from "workflow-core";
 
 import { WatchPolicy } from "./watch.model.ts";
 import { WfIdentity } from "./wf.model.ts";
@@ -8,37 +9,16 @@ import { WfIdentity } from "./wf.model.ts";
  * Decode untrusted bodies with `Schema.decodeUnknown`; where the wire has always passed
  * extra fields through (a run request's payload, a stored workflow read back from the
  * state store), decode with `onExcessProperty: "preserve"` so nothing is stripped.
+ *
+ * The DEFINITION shapes (params, steps, parallel groups, the agent result) live in
+ * `workflow-core`, shared with the direct execution substrate so a definition composed by `h`
+ * means the same thing to both executors. What stays here is substrate machinery: the fire
+ * descriptor, the run request, the saved/stored workflow and its schedule — all of which only
+ * mean something where there is a durable engine to fire into. Re-exported below so this module
+ * remains workflow-svc's single model surface.
  */
-
-// Named workflow parameters. Steps reference them like step results — `{{params.x}}` inside a
-// string or `{ "$ref": "params.x" }` — resolved by the generic workflow, which seeds them into
-// the results map under the reserved id `params` (a step must not use that id).
-export const WorkflowParams = Schema.Record({ key: Schema.String, value: Schema.Unknown });
-export type WorkflowParams = Schema.Schema.Type<typeof WorkflowParams>;
-
-export const StepDefinition = Schema.Struct({
-  id: Schema.optional(Schema.String),
-  activity: Schema.String,
-  // Optional on the wire: a step with no input has always worked (the workflow spreads it).
-  input: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-});
-export type StepDefinition = Schema.Schema.Type<typeof StepDefinition>;
-
-// A parallel step group: branches are plain steps run
-// concurrently by the engine through ONE whenAll — groups do not nest, and branches cannot
-// reference each other (inputs resolve against the results map as it stood before the group).
-// Results land under each branch's id exactly like sequential steps; a group id additionally
-// records a {branchId: result} map. Decode is unambiguous against StepDefinition: a group has
-// `parallel` and no `activity`.
-export const ParallelGroup = Schema.Struct({
-  id: Schema.optional(Schema.String),
-  parallel: Schema.Array(StepDefinition),
-});
-export type ParallelGroup = Schema.Schema.Type<typeof ParallelGroup>;
-
-// What a workflow definition's `steps` array holds: a plain step or a parallel group.
-export const WorkflowStep = Schema.Union(StepDefinition, ParallelGroup);
-export type WorkflowStep = Schema.Schema.Type<typeof WorkflowStep>;
+export { ParallelGroup, StepDefinition, WorkflowParams, WorkflowStep } from "workflow-core";
+export type { AgentResult } from "workflow-core";
 
 /**
  * The fire descriptor — a trigger's PAYLOAD ("triggers are data", the glossary's Trigger grown to
@@ -191,20 +171,8 @@ export function deriveInstanceId(base: string, nowMs: number): string {
   return `${safe}-${stamp}`;
 }
 
-export type AgentResult = {
-  sessionId: string | null;
-  output: string;
-  workspacePath?: string;
-  // The validated structured-output block: present iff
-  // the step carried an outputContract — code-guaranteed by the rung-2 seam, never raw prose.
-  structured?: unknown;
-};
-
 export type WorkflowStatus = {
   instanceId: string;
   runtimeStatus: string;
   output?: string;
 };
-
-/** @deprecated use AgentResult */
-export type ClaudeResult = AgentResult;

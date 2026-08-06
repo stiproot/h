@@ -254,7 +254,8 @@ async function mirrorRunRecord(
 }
 
 // ---------------------------------------------------------------------------
-// Effect port + adapter (the RunLedger hexagon unit — see plans/effect-refactor-map.md §3)
+// Effect port + adapter: the ledger is a PORT so an agent host can supply its own writer, and
+// so the best-effort policy lives at the call sites rather than being baked into the adapter.
 // ---------------------------------------------------------------------------
 
 /** A single run-ledger write failed. `op` names which of the best-effort sub-effects it was. */

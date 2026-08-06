@@ -44,6 +44,40 @@ comments and steering docs cite plans by path, so archiving one silently rots it
 citations unless they move with it. Items an otherwise-finished plan parks go to
 `docs/plans/carried-followups.md`, not into a new near-empty follow-up doc.
 
+## Execution substrates
+
+h composes work ONE way and executes it two. A template (⊕ overlays) renders to a **workflow
+definition** — `{params, steps, outputs}` — and only what runs it differs:
+
+- **The service substrate** (default): the definition is fired at workflow-svc, executed by the
+  Dapr workflow engine, and supervised/sequenced/recurred by the watcher, chain and cron engines.
+  Durable across machines and process death. Everything in *h primitives* below lives here.
+- **The direct substrate** (`--direct`, `h delegate`): the definition is executed IN THE CLI
+  PROCESS, driving the agent CLIs as local children. No Dapr, no services, no registries, no
+  containers. Prerequisite: `bun run build`, plus CLIs the operator has already authenticated —
+  credentials come from the shell with the repo's `.env` filling gaps (shell wins, the opposite
+  of `compose.sh`'s precedence, because a one-shot command must honour a key you just exported).
+
+What makes them symmetric is structural, not conventional: the definition shapes and the semantics
+that give them meaning (`resolveRefs`/`resolveTokenString`, the output contract) live once in
+`packages/js/workflow-core` and are imported by both, with `scripts/check-runtime-parity.mjs`
+failing the build if either grows a private copy.
+
+What does NOT transfer is the ENGINES — supervision, recurrence, sequencing — because they exist
+precisely so a workflow never supervises/recurs/sequences itself, and in-process the driver IS the
+supervisor. So `--direct` REFUSES `--cron/--watch/--budget/--retry/--at/--in/--fallback-*/--fresh/
+--via` by name, naming the engine each needs; the executor likewise refuses `write-wf-row`,
+`register-cron`, `register-discover`, `run-itest` and the service-only agents rather than skipping
+them (a silently-skipped `register-cron` would report a recurrence that was never armed). Two more
+direct-substrate rules: `create-worktree` cuts from the checkout you invoked in (there is no
+pre-cloned shared workspace), and `setup` steps are SKIPPED unless `--with-setup` — they provision
+the operator's own `~/.claude`, not a container's. Direct runs write the standard run ledger, so
+`h runs`/obs-mcp/the viz read them beside service runs; there is no watcher, so that ledger is also
+the only cost accounting. The substrates COMPOSE: a direct-mode agent inherits the repo's
+`.mcp.json` (D5 leaves it alone) and can therefore save and fire durable workflows onto a running
+service stack — triggers are data, so nothing cares who fired them. Surface: `h delegate` (the
+atom), `h workflow run <template> --direct`. Examples: [docs/cookbook.md](./docs/cookbook.md).
+
 ## h primitives (vocabulary)
 
 The standard vocabulary for composing components.
@@ -376,6 +410,29 @@ packages/js/core-vercel/src/
 ├── llm-client.ts          # ILlmClient interface
 └── vercel-ai.ts           # VercelAiClient – Vercel AI SDK generateText via LiteLLM proxy
 
+packages/js/workflow-core/src/             # substrate-INDEPENDENT workflow execution semantics: what a definition MEANS, owned once and imported by both executors (guarded by scripts/check-runtime-parity.mjs)
+├── index.ts               # re-exports
+├── models.ts              # the DEFINITION shapes — WorkflowParams, StepDefinition, ParallelGroup, WorkflowStep, AgentResult. Re-exported by workflow-svc's workflow.model.ts and by workflow-mcp's wire shapes; the fire descriptor / run request / stored workflow / registry models stay substrate-side
+├── resolve-refs.ts        # resolveRefs ({{stepId.field}} + {"$ref": …}, recursing into nested values) and resolveTokenString (the activity-name case — an unresolved token throws, never a silent "")
+└── structured-output.ts   # the output-contract seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract attaches the validated block as `structured` or fails the step
+
+packages/js/run-ledger/src/                # the run ledger, extracted from agent-server so a non-HTTP agent host (the direct runtime) gets it without fastify
+├── index.ts               # re-exports (agent-server re-exports these too, so agent services import unchanged)
+└── run-ledger.ts          # RunLedger port + RunLedgerLive adapter, startRunLedgerEffect / recordActivityEffect; per-run summary.json/events.jsonl/output.txt + the optional `run:<id>` statestore mirror. Best-effort per sub-effect — observability never breaks a run
+
+packages/js/direct-runtime/src/            # the DIRECT execution substrate — agent CLIs as local child processes, no Dapr/services/registries
+├── bin.ts                 # composition root of the `h-direct` binary: job JSON on stdin → result envelope on stdout, progress on stderr; SIGINT interrupts the fiber so agent-cli's reaper group-kills every CLI
+├── index.ts               # library re-exports
+├── domain/models.ts       # the two job kinds (Schema + derived type — the wire contract with the CLI): DelegateJob (one task, a roster) and WorkflowJob (a rendered DEFINITION), plus AgentRunRequest/Report and the envelopes
+├── domain/agents.ts       # `--agent` name → agent, the closed vocabulary mirroring the CLI's AGENT_IDENTITY (guarded by cli/h/tests/test_direct_agents_sync.py); unknown names fail loud
+├── domain/activities.ts   # what an activity NAME means here — the counterpart of workflow-svc's activity registry: agent | builtin (setup, create-worktree) | REFUSED (write-wf-row, register-cron/-discover, run-itest, service-only agents), each refusal naming the engine/registry/cluster it needs
+├── domain/ports.ts        # AgentPort (run one CLI — no error channel: a failure is a REPORT, so one dead agent never costs a roster its other answers), WorkspacePort (worktree + setup provisioning), ProgressPort
+├── domain/delegate.ts     # the atom's orchestration: resolve the roster, cut a worktree PER AGENT sequentially, run the agents concurrently, assemble the envelope
+├── domain/execute.ts      # the definition executor — a deliberate mirror of generic.workflow.ts reading its semantics from workflow-core (params under the reserved `params` id, {{token}}/$ref, resolvable activity NAME, parallel groups against pre-group results); applies the outputContract where the engine's run-* activity would
+├── infrastructure/agent-cli-agent.ts   # AgentPort over agent-cli's invoker layers + the run ledger; passes NO llmConfig, so a run uses the operator's own authenticated CLIs
+├── infrastructure/git-workspace.ts     # WorkspacePort over git-core's addWorktree (idempotent, mirroring /worktree) + the setup command loop
+└── infrastructure/stderr-progress.ts   # ProgressPort → stderr, keeping stdout a parseable envelope
+
 packages/js/git-core/src/
 ├── index.ts               # re-exports
 ├── git-client.ts          # clone() – shallow, branch-aware git clone (injects GH token into github URLs in-process); addWorktree() – git worktree add off an existing clone
@@ -509,7 +566,9 @@ repos carry their own conventions — with `create-issue.sh`, which refuses to s
 `agent-approved` trust label), and `author-workflow-template` (the authoring recipe for chart
 templates: the template gate, render modes, the output contract in its three places, the
 one-declarer composition rule, goldens, publish — for any agent creating or modifying a template,
-incl. h-builds-h feature runs). A **Python** agent consumes a skill's body directly as its system prompt via
+incl. h-builds-h feature runs), and `delegate-locally` (when and how to hand work to another agent
+CLI on the DIRECT substrate — `h delegate` / `--direct` — including what it refuses, the cost
+accounting, and the safety rules that follow from a delegate running as the operator). A **Python** agent consumes a skill's body directly as its system prompt via
 `agent_core.load_skill_instructions` — workflow-agent loads `workflow-orchestrator` this way (the
 same source a CLI agent gets), so the orchestration procedure has a single home. This is a skill
 source alongside the tessl registry (org-published plugins) and a repo's own `.claude/` skills.

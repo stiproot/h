@@ -72,7 +72,7 @@ classDiagram
     +KIND_MODEL_PARAMS dict~str~
     +KIND_CONTRACT_SUPPLIES dict~str~
     +WRITE_KINDS
-    +run(ctx, slug, param, strategy, max_iterations, after, at, in_) None
+    +run(ctx, slug, param, direct, with_setup, strategy, max_iterations, …
     +list_() None
     +rm(chain_id) None
   }

@@ -1,4 +1,4 @@
-import type { ChainMemberKind } from "./models/chain.model.ts";
+import type { ChainMemberKind } from "./chain.ts";
 
 /**
  * The engine-coded workflow port contracts — how each workflow KIND threads state through the chain's

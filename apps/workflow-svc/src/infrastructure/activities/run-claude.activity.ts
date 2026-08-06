@@ -2,8 +2,8 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 import { DaprInvokerTag } from "core-dapr";
 import { Effect } from "effect";
 
-import type { ClaudeResult } from "../../domain/models/workflow.model.ts";
-import { applyOutputContract } from "../../domain/structured-output.ts";
+import type { AgentResult } from "../../domain/models/workflow.model.ts";
+import { applyOutputContract } from "workflow-core";
 import { runActivity } from "../activity-runtime.ts";
 
 type Input = {
@@ -26,7 +26,7 @@ type Input = {
 export async function runClaudeActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
-): Promise<ClaudeResult> {
+): Promise<AgentResult> {
   const {
     task,
     workflowInstanceId,

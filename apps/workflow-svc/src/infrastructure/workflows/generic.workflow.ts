@@ -2,7 +2,7 @@ import type { Task, WorkflowContext } from "@dapr/dapr";
 
 import type { WorkflowRequest } from "../../domain/models/workflow.model.ts";
 import { getActivity } from "../activity-registry.ts";
-import { resolveRefs, resolveTokenString } from "./resolve-refs.ts";
+import { resolveRefs, resolveTokenString } from "workflow-core";
 
 export async function* genericWorkflow(
   ctx: WorkflowContext,

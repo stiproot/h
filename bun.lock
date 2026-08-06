@@ -176,6 +176,7 @@
         "effect": "^3.21.4",
         "fastify": "^5.0.0",
         "telemetry": "workspace:*",
+        "workflow-core": "workspace:*",
       },
       "devDependencies": {
         "@effect/vitest": "^0.29.0",
@@ -197,6 +198,7 @@
         "fastify": "^5.0.0",
         "git-core": "workspace:*",
         "telemetry": "workspace:*",
+        "workflow-core": "workspace:*",
       },
       "devDependencies": {
         "@effect/vitest": "^0.29.0",
@@ -226,6 +228,7 @@
         "effect": "^3.21.4",
         "fastify": "^5.0.0",
         "git-core": "workspace:*",
+        "run-ledger": "workspace:*",
         "telemetry": "workspace:*",
       },
       "devDependencies": {
@@ -275,6 +278,26 @@
         "@types/node": "^24",
       },
     },
+    "packages/js/direct-runtime": {
+      "name": "direct-runtime",
+      "version": "0.1.0",
+      "bin": {
+        "h-direct": "./dist/bin.js",
+      },
+      "dependencies": {
+        "@effect/platform": "^0.96.2",
+        "@effect/platform-node": "^0.107.0",
+        "agent-cli": "workspace:*",
+        "effect": "^3.21.4",
+        "git-core": "workspace:*",
+        "run-ledger": "workspace:*",
+        "workflow-core": "workspace:*",
+      },
+      "devDependencies": {
+        "@effect/vitest": "^0.29.0",
+        "@types/node": "^24",
+      },
+    },
     "packages/js/git-core": {
       "name": "git-core",
       "version": "0.1.0",
@@ -303,6 +326,19 @@
         "vitest": "^4",
       },
     },
+    "packages/js/run-ledger": {
+      "name": "run-ledger",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/platform": "^0.96.2",
+        "effect": "^3.21.4",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "^0.107.0",
+        "@effect/vitest": "^0.29.0",
+        "@types/node": "^24",
+      },
+    },
     "packages/js/telemetry": {
       "name": "telemetry",
       "version": "0.1.0",
@@ -316,6 +352,17 @@
         "@opentelemetry/sdk-trace-base": "^2.0.0",
         "@opentelemetry/sdk-trace-node": "^2.0.0",
         "@opentelemetry/semantic-conventions": "^1.28.0",
+        "effect": "^3.21.4",
+      },
+      "devDependencies": {
+        "@effect/vitest": "^0.29.0",
+        "@types/node": "^24",
+      },
+    },
+    "packages/js/workflow-core": {
+      "name": "workflow-core",
+      "version": "0.1.0",
+      "dependencies": {
         "effect": "^3.21.4",
       },
       "devDependencies": {
@@ -835,6 +882,8 @@
 
     "diff-match-patch": ["diff-match-patch@1.0.5", "", {}, "sha512-IayShXAgj/QMXgB0IWmKx+rOPuGMhqm5w6jvFxmVenXKIzRqTAAsbBPT3kWQeGANj3jGgvcvv4yK6SxqYmikgw=="],
 
+    "direct-runtime": ["direct-runtime@workspace:packages/js/direct-runtime"],
+
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
@@ -1175,6 +1224,8 @@
 
     "router": ["router@2.2.0", "", { "dependencies": { "debug": "^4.4.0", "depd": "^2.0.0", "is-promise": "^4.0.0", "parseurl": "^1.3.3", "path-to-regexp": "^8.0.0" } }, "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ=="],
 
+    "run-ledger": ["run-ledger@workspace:packages/js/run-ledger"],
+
     "safe-buffer": ["safe-buffer@5.2.1", "", {}, "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ=="],
 
     "safe-regex": ["safe-regex@2.1.1", "", { "dependencies": { "regexp-tree": "~0.1.1" } }, "sha512-rx+x8AMzKb5Q5lQ95Zoi6ZbJqwCLkqi3XuJXp5P3rT8OEc6sZCJG5AE5dU3lsgRr/F4Bs31jSlVN+j5KrsGu9A=="],
@@ -1310,6 +1361,8 @@
     "which": ["which@2.0.2", "", { "dependencies": { "isexe": "^2.0.0" }, "bin": { "node-which": "./bin/node-which" } }, "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA=="],
 
     "why-is-node-running": ["why-is-node-running@2.3.0", "", { "dependencies": { "siginfo": "^2.0.0", "stackback": "0.0.2" }, "bin": { "why-is-node-running": "cli.js" } }, "sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w=="],
+
+    "workflow-core": ["workflow-core@workspace:packages/js/workflow-core"],
 
     "workflow-mcp": ["workflow-mcp@workspace:apps/workflow-mcp"],
 

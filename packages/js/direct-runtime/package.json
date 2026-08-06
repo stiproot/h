@@ -1,0 +1,37 @@
+{
+  "name": "direct-runtime",
+  "version": "0.1.0",
+  "description": "Direct execution substrate for h \u2014 runs agent CLIs as local child processes, with no Dapr, services or registries",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "h-direct": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "oxlint src && oxfmt --check src && depcruise --config ../../../.dependency-cruiser.cjs src",
+    "format": "oxfmt src",
+    "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.96.2",
+    "@effect/platform-node": "^0.107.0",
+    "agent-cli": "workspace:*",
+    "effect": "^3.21.4",
+    "git-core": "workspace:*",
+    "run-ledger": "workspace:*",
+    "workflow-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^24"
+  }
+}

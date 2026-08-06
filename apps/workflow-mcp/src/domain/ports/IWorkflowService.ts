@@ -1,6 +1,7 @@
+import type { WorkflowError } from "core";
 import { Context, Schema } from "effect";
 import type { Effect, Option } from "effect";
-import type { WorkflowError } from "core";
+import { WorkflowParams, WorkflowStep } from "workflow-core";
 
 /**
  * Wire shapes as Schema.Struct values whose derived types share the same name (the `core`
@@ -13,17 +14,13 @@ import type { WorkflowError } from "core";
  * shapes (e.g. `workspaceId`/`schedule`/`disabled` on save, `workspaceId` on run) and this
  * service has always passed them through verbatim — a strict decode would silently strip them.
  */
-export const StepDefinition = Schema.Struct({
-  id: Schema.optional(Schema.String),
-  activity: Schema.String,
-  input: Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-});
-export type StepDefinition = Schema.Schema.Type<typeof StepDefinition>;
-
-// Named workflow parameters, resolved into step inputs by workflow-svc's generic workflow as
-// {{params.x}} placeholders / { "$ref": "params.x" } objects.
-export const WorkflowParams = Schema.Record({ key: Schema.String, value: Schema.Unknown });
-export type WorkflowParams = Schema.Schema.Type<typeof WorkflowParams>;
+// The definition shapes come from `workflow-core`, the one home every executor reads them from —
+// the same reasoning `WatchPolicyInput` below states for the watch policy, applied to the shapes
+// this wire is actually made of. They had drifted while duplicated here: `input` was REQUIRED
+// (so a step without one was rejected by these tools but accepted by workflow-svc), and `steps`
+// admitted only plain steps, which silently made every PARALLEL GROUP — i.e. every panel —
+// unsaveable and unrunnable through this MCP.
+export { StepDefinition, WorkflowParams, WorkflowStep } from "workflow-core";
 
 const paramsAnnotation = {
   description:
@@ -41,8 +38,10 @@ export const WatchPolicyInput = Schema.Record({ key: Schema.String, value: Schem
 export type WatchPolicyInput = Schema.Schema.Type<typeof WatchPolicyInput>;
 
 export const WorkflowRequest = Schema.Struct({
-  steps: Schema.Array(StepDefinition).annotations({
-    description: "Ordered list of step definitions",
+  steps: Schema.Array(WorkflowStep).annotations({
+    description:
+      "Ordered list of steps. A step is {id?, activity, input?}; a PARALLEL GROUP is " +
+      "{id?, parallel: [step, …]}, whose branches run concurrently and cannot reference each other.",
   }),
   // Optional caller-chosen workflow instance id. When set, it becomes the Dapr instance id (and so
   // the per-run workspace/worktree key), giving the run a stable, readable name instead of a GUID.
@@ -65,8 +64,10 @@ export type WorkflowRequest = Schema.Schema.Type<typeof WorkflowRequest>;
 
 export const SaveWorkflowRequest = Schema.Struct({
   key: Schema.String.annotations({ description: "Unique identifier for the workflow" }),
-  steps: Schema.Array(StepDefinition).annotations({
-    description: "Ordered list of step definitions",
+  steps: Schema.Array(WorkflowStep).annotations({
+    description:
+      "Ordered list of steps. A step is {id?, activity, input?}; a PARALLEL GROUP is " +
+      "{id?, parallel: [step, …]}, whose branches run concurrently and cannot reference each other.",
   }),
   params: Schema.optional(
     WorkflowParams.annotations({

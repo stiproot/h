@@ -40,6 +40,7 @@ write kinds (implement-pr, revise) reject a roster — N writers can't share one
 """
 
 from collections import Counter
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -48,12 +49,16 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
+from h_cli.commands.workflow import DIRECT_STEP_TIMEOUT_MS
 from h_cli.config import (
     AGENT_IDENTITY,
+    AGENT_RUNS_DIR,
     CHARTS_DIR,
+    DIRECT_WORKTREES_DIR,
     agent_identity_params,
     baked_models_suit,
 )
+from h_cli.infrastructure import direct as direct_runtime
 from h_cli.infrastructure import workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
@@ -62,8 +67,16 @@ from h_cli.infrastructure.chain_expr import (
     effective_config,
     parse_expr,
 )
+from h_cli.infrastructure.direct import DirectRunError, group_id, repo_root
 from h_cli.infrastructure.panelize import PanelizeError, panelize, roster_pairs
 from h_cli.params import parse_params
+
+# The ChainMember fields the direct substrate understands. Everything else on a registered member
+# is engine machinery — `key` (a store to resolve), `instanceId`/`fresh` (Dapr instance mechanics),
+# `cron` (a recurrence with no engine here) — and is dropped rather than silently ignored.
+_DIRECT_MEMBER_FIELDS = frozenset(
+    {"kind", "steps", "params", "stage", "id", "captures", "inputs", "until"}
+)
 
 app = typer.Typer(
     no_args_is_help=True, help="Chain workflows into a pipeline (temporal composition)."
@@ -198,14 +211,22 @@ def _identity_params(kind: str, cfg: WorkflowConfig, label: str) -> dict[str, st
     return params
 
 
-def _panel_definition(key: str) -> dict[str, Any]:
+def _panel_definition(key: str, direct: bool = False) -> dict[str, Any]:
     """A -w roster member's definition. Restructuring forces compose-on-fire, so prefer the chart
     template of the same name — `outputs` AND `panelSynthesis` flow from the render — falling
-    back to the stored definition for keys that are not templates (generic synthesis prose)."""
+    back to the stored definition for keys that are not templates (generic synthesis prose).
+
+    On the direct substrate there is no store to fall back to, so a key with no template fails
+    loud rather than reaching for a service that is the whole point of not needing."""
     template_name = template_name_for_key(key)
     template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
     if template_path.exists():
         return compose_templates([template_name])
+    if direct:
+        _fail(
+            f"-w '{key}' has no chart template, and --direct cannot read the saved-workflow "
+            "store — compose it with -t atoms instead, or drop --direct"
+        )
     stored = _guarded(lambda: workflow_svc.get(key))
     if not isinstance(stored, dict) or not stored.get("steps"):
         _fail(f"saved workflow '{key}' has no steps to panelize")
@@ -355,6 +376,7 @@ def _resolve_workflow(
     uses_stages: bool,
     in_parallel: bool,
     repo_seeded: bool,
+    direct: bool = False,
 ) -> dict[str, Any]:
     """A parsed member → the engine's ChainMember. Emits `key` (published) XOR `steps` (inline,
     D1), plus optional `stage`/`id`/`cron` for the Phase-6 composition surface. Validates the
@@ -403,10 +425,17 @@ def _resolve_workflow(
     # any composed member into embedded storage. Both need `-t` templates — a saved -w key can't
     # be inlined (EXCEPT a roster member: panelizing restructures it, so it is composed either
     # way and may embed).
-    inline = cfg.inline or bool(cfg.cron)
+    # Direct execution has no saved-workflow store to resolve a key against, so EVERY member
+    # embeds its steps — the same compose-on-fire rule `h workflow run --direct` follows.
+    inline = cfg.inline or bool(cfg.cron) or direct
+    if direct and cfg.cron:
+        _fail(
+            f"--cron on '{member.label}' needs the cron engine — drop --direct (a member cannot "
+            "self-arm a recurrence on a substrate with no engine to service it)"
+        )
     if cfg.max_fires and not cfg.cron:
         _fail(f"--max-fires on '{member.label}' needs --cron (it's the cron's fire budget)")
-    if inline and member.key is not None and not roster:
+    if inline and member.key is not None and not roster and not direct:
         _fail(
             f"--inline/--cron member '{member.label}' must be composed with -t — an inline "
             "member embeds its own steps (a saved -w key can't be embedded)"
@@ -420,8 +449,8 @@ def _resolve_workflow(
     merged: dict[str, Any] | None = None
     if member.key is None:
         merged = compose_templates(list(member.templates))
-    elif roster:
-        merged = _panel_definition(key)
+    elif roster or direct:
+        merged = _panel_definition(key, direct=direct)
     if merged is not None:
         if roster:
             merged = _apply_roster(merged, roster, member.label, model_override=cfg.model)
@@ -446,7 +475,7 @@ def _resolve_workflow(
             steps = merged["steps"]
             params = {**merged_params, **params}
             tag = " (cron)" if cfg.cron else ""
-            console.print(f"==> composed [{source}] embedded inline{tag}")
+            console.print(f"==> composed [{source}] embedded inline{tag}", markup=False)
         else:
             # Publish-default: overlay + publish under the chain-scoped key (idempotent re-fire).
             key_field = f"{slug}-w{index}"
@@ -458,7 +487,7 @@ def _resolve_workflow(
                     outputs=declared_outputs,
                 )
             )
-            console.print(f"==> composed [{source}] published as '{key_field}'")
+            console.print(f"==> composed [{source}] published as '{key_field}'", markup=False)
     else:
         key_field = key
         if params:
@@ -558,6 +587,24 @@ def run(
             "issueNumber=24. Content values ride -p; flags are machinery.",
         ),
     ] = None,
+    direct: Annotated[
+        bool,
+        typer.Option(
+            "--direct",
+            help="Sequence the chain on the DIRECT substrate: every member is composed on the fly "
+            "and executed in this process, stage by stage, driving the agent CLIs as local "
+            "children. Same threading and the same loop; blocking instead of engine-sequenced, so "
+            "flags that need an engine are refused.",
+        ),
+    ] = False,
+    with_setup: Annotated[
+        bool,
+        typer.Option(
+            "--with-setup",
+            help="--direct only: run each member's setup steps (they provision the operator's "
+            "own HOME on this substrate, so they are skipped by default).",
+        ),
+    ] = False,
     strategy: Annotated[
         str,
         typer.Option(
@@ -651,6 +698,18 @@ def run(
     if not slug:
         _fail("--slug is required")
         raise AssertionError("unreachable")
+    if direct:
+        # The activation gates are engine machinery: `--after` waits on another chain's finalized
+        # row, `--at`/`--in` arm a scheduled fire. Both need something watching on a clock.
+        engine_flags = {"--after": after, "--at": at, "--in": in_}
+        used = [name for name, value in engine_flags.items() if value]
+        if used:
+            _fail(
+                f"{', '.join(used)} need workflow-svc's engines — drop --direct (activation gates "
+                "wait on a durable row; direct execution runs the chain here and now)"
+            )
+    elif with_setup:
+        _fail("--with-setup applies to --direct only")
 
     tokens = list(ctx.args)
     if not any(token in ("-w", "-t") for token in tokens):
@@ -704,6 +763,7 @@ def run(
                 uses_stages,
                 in_parallel,
                 repo_seeded=bool(data.get("repo")),
+                direct=direct,
             )
         )
     # A cron member's recurrence + the chain's completion predicate both read wf:<repo>:<slug>:<wf>,
@@ -765,6 +825,10 @@ def run(
             )
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
+    if direct:
+        _run_direct_chain(body, slug, with_setup)
+        return
+
     result = _guarded(lambda: workflow_svc.chain_run(body))
 
     labels = [member.label for workflow in expr.members]
@@ -780,6 +844,62 @@ def run(
     console.print("    the chain engine sequences the workflows on the cron tick; non-blocking.")
     console.print(f"    watch it: h chain list  (or h workflow status feature-{slug})")
     console.print_json(data=result)
+
+
+def _run_direct_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
+    """Execute a composed chain on the direct substrate and report what it threaded.
+
+    The chain BODY is the same one the service substrate would have registered — same members,
+    same stages, same captures/inputs/until, same loop. Only `data` is flattened here (the engine
+    merges `defaultData` under `data` at activation; there is no activation on this substrate) and
+    the members are already embedded, since `--direct` forces compose-on-fire.
+    """
+    members = [
+        {k: v for k, v in member.items() if k in _DIRECT_MEMBER_FIELDS}
+        for member in body["members"]
+    ]
+    job: dict[str, Any] = {
+        "kind": "chain",
+        "members": members,
+        "data": {**body.get("defaultData", {}), **body.get("data", {})},
+        "strategy": body["strategy"],
+        "group": group_id(f"chain-{slug}"),
+        "runsDir": str(AGENT_RUNS_DIR),
+        "timeoutMs": DIRECT_STEP_TIMEOUT_MS,
+        "worktreeRoot": str(DIRECT_WORKTREES_DIR),
+        "repoPath": repo_root(Path.cwd()),
+    }
+    if body.get("loop"):
+        job["loop"] = body["loop"]
+    if with_setup:
+        job["withSetup"] = True
+
+    try:
+        envelope = direct_runtime.run_job(job)
+    except DirectRunError as err:
+        err_console.print(f"[red]direct:[/red] {err}")
+        raise typer.Exit(1) from err
+
+    runs = envelope.get("runs") or []
+    table = Table("stage", "member", "iteration", "run group", title=f"chain · {job['group']}")
+    for entry in runs:
+        table.add_row(
+            str(entry.get("stage", "?")),
+            str(entry.get("member", "?")),
+            str(entry.get("iteration", 0)),
+            str(entry.get("group", "-")),
+        )
+    err_console.print(table)
+    if envelope.get("data"):
+        console.print_json(data=envelope["data"])
+
+    status = envelope.get("status", "failed")
+    if status == "completed":
+        err_console.print(f"[green]chain completed[/green] — {envelope.get('note', '')}".rstrip())
+        return
+    colour = "yellow" if status == "exhausted" else "red"
+    err_console.print(f"[{colour}]chain {status}[/{colour}]: {envelope.get('note', 'no detail')}")
+    raise typer.Exit(1)
 
 
 @app.command("list")

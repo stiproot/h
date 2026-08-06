@@ -10,6 +10,90 @@ none.
 Grammar refs: `h chain run --help` (the chain EXPRESSION), CLAUDE.md "h primitives",
 docs/plans/impl/chain-composition-surface.md.
 
+## Delegate to a local agent CLI — no stack at all (direct substrate)
+
+```sh
+h delegate --agent codex "In one short sentence: what is a git worktree?"
+```
+
+`h delegate` runs the agent CLI as a local child process — no Dapr, no services, no registries.
+Credentials come from your shell, with the repo's `.env` filling the gaps (shell wins). The only
+prerequisite is `bun run build`. *(Validated 2026-08-06 — run
+`direct-260806-124834:codex:1786013315291`.)*
+
+## A local panel: several agents, one task, in parallel
+
+```sh
+h delegate --agent claude --agent codex --plan "In one short sentence: what is a git worktree?"
+```
+
+Every roster slot answers independently and concurrently; one agent failing (missing CLI, bad
+auth) still leaves you its siblings' answers, and the job reports `ok: false`. `--plan` is
+read-only. Each run lands in the standard run ledger, so `h runs` and obs-mcp read them beside
+service runs. No synthesis here — for a judged panel use the `answer` template.
+*(Validated 2026-08-06 — group `direct-260806-124834`, claude $0.0590 + codex.)*
+
+## Delegate WRITE work into an isolated worktree
+
+```sh
+h delegate --agent codex --worktree "add a --dry-run flag to the importer"
+```
+
+`--worktree` cuts one worktree per roster slot off this checkout (branch `direct/<group>-<agent>`,
+started from the fetched `origin/main`), so a delegated edit never touches your live tree and two
+agents never share a checkout. *(Validated 2026-08-06 — worktree
+`../h-worktrees/direct-260806-125017`.)*
+
+## Run a whole TEMPLATE with no stack running (`--direct`)
+
+```sh
+h workflow run answer --direct -p task="when is a worktree better than git stash?"
+h workflow run plan   --direct -p slug=my-feature -p spec=@spec.md
+```
+
+`--direct` renders the template and executes its steps in this process, driving the agent CLIs as
+local children. Same definition, same `{{token}}`/`$ref` resolution, same output contract — only
+the executor changes. There is no saved-workflow store to read on this substrate, so the argument
+names a chart TEMPLATE (compose-on-fire, like `--inline`), `create-worktree` cuts from the checkout
+you are standing in, and `setup` steps are skipped unless you pass `--with-setup` (they provision
+your own `~/.claude`, not a container's). *(Validated 2026-08-06 — `answer-260806-135828`,
+`plan-260806-135959` incl. a real worktree.)*
+
+Flags that need an engine are refused BY NAME rather than ignored:
+
+```sh
+h workflow run answer --direct --cron '@daily'
+  ✗ --cron need workflow-svc's engines — drop --direct to use them
+```
+
+## A panel with no infrastructure at all
+
+```sh
+h workflow run answer --direct --agent claude --agent codex -p task=@question.md
+```
+
+The roster panelizes CLI-side exactly as on the service substrate — a parallel step group, one
+branch per agent, then a pinned judge synthesizing under the workflow's own contract — and the
+direct executor just runs the group. *(Validated 2026-08-06 — `answer-260806-135910`: claude 8.9s ∥
+codex 14.2s, judge 14.5s, contract validated, nothing running.)*
+
+## A whole CHAIN with nothing running (`h chain run --direct`)
+
+```sh
+h chain run --slug q --direct -p task="what is the biggest risk here?" \
+    -w answer --id first  --capture answer=answer \
+    -w answer --id second --input task=first.answer
+```
+
+Same expression, same threading (namespaced captures, dotted `id.field` inputs, stages,
+`loop-until-clean`) — sequenced in this process instead of by the engine on the cron tick, so it
+BLOCKS and prints the threaded chain data at the end. Every member composes on the fly, so a
+member must be a chart template (`-w answer`) or `-t` atoms; a published key with no template
+(`implement-pr`) is refused with the composition that does work. Activation gates (`--after`,
+`--at`, `--in`) and cron members are refused — they wait on a durable row.
+*(Validated 2026-08-06 — `chain-direct-chain-260806-142307`: `first` captured under its namespace,
+`second` read it back as its task.)*
+
 ## Run a saved workflow, pick the executor
 
 ```sh

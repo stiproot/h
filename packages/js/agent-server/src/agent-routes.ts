@@ -9,8 +9,8 @@ import type { FastifyInstance } from "fastify";
 import { withServerSpan } from "telemetry";
 
 import { runHandler } from "./run-handler.ts";
-import { RunLedger, recordActivityEffect } from "./run-ledger.ts";
-import type { ActivityLedgerConfig, ActivityRecord } from "./run-ledger.ts";
+import { RunLedger, recordActivityEffect } from "run-ledger";
+import type { ActivityLedgerConfig, ActivityRecord } from "run-ledger";
 import { AgentRunner } from "./runner.ts";
 
 /** One provisioning step of a /setup request — schema plus derived type, same name. */

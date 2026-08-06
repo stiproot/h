@@ -21,22 +21,24 @@ from h_cli.config import MODEL_PARAM_SLOTS
 
 # cli/h/tests/ → cli/h/ → cli/ → repo root
 _REPO_ROOT = Path(__file__).parents[3]
-_CHAIN_MODEL = _REPO_ROOT / "apps/workflow-svc/src/domain/models/chain.model.ts"
+# The kinds now live in workflow-core, shared by BOTH execution substrates: chain.model.ts builds
+# its Schema.Literal from this list, and the direct substrate's chain executor reads the same one.
+_CHAIN_KINDS = _REPO_ROOT / "packages/js/workflow-core/src/chain.ts"
 
 
 def test_known_kinds_matches_engine_literal() -> None:
-    """KNOWN_KINDS must equal the ChainMemberKind Schema.Literal in the TS engine."""
-    if not _CHAIN_MODEL.exists():
-        pytest.skip(f"TS source not found at {_CHAIN_MODEL} — skipping in Python-only checkout")
+    """KNOWN_KINDS must equal CHAIN_MEMBER_KINDS, the one list both substrates read."""
+    if not _CHAIN_KINDS.exists():
+        pytest.skip(f"TS source not found at {_CHAIN_KINDS} — skipping in Python-only checkout")
 
-    text = _CHAIN_MODEL.read_text()
-    m = re.search(r"ChainMemberKind\s*=\s*Schema\.Literal\(([^)]+)\)", text)
-    assert m, f"Could not find ChainMemberKind = Schema.Literal(...) in {_CHAIN_MODEL}"
+    text = _CHAIN_KINDS.read_text()
+    m = re.search(r"CHAIN_MEMBER_KINDS\s*=\s*\[([^\]]+)\]", text)
+    assert m, f"Could not find CHAIN_MEMBER_KINDS = [...] in {_CHAIN_KINDS}"
 
     engine_kinds = set(re.findall(r'"([^"]+)"', m.group(1)))
     assert engine_kinds == set(KNOWN_KINDS), (
         f"KNOWN_KINDS in chain.py ({sorted(KNOWN_KINDS)}) does not match "
-        f"ChainMemberKind in chain.model.ts ({sorted(engine_kinds)}). "
+        f"CHAIN_MEMBER_KINDS in workflow-core ({sorted(engine_kinds)}). "
         "Add the missing kind to BOTH sides."
     )
 

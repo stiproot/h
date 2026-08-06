@@ -8,6 +8,7 @@ demonstrably replaced them.
 import typer
 
 from h_cli.commands import agents, chain, cron, feature, schedule, template, watch, workflow
+from h_cli.commands.delegate import delegate
 from h_cli.commands.status import status
 
 app = typer.Typer(
@@ -23,3 +24,5 @@ app.add_typer(cron.app, name="cron")
 app.add_typer(schedule.app, name="schedule")
 app.add_typer(workflow.app, name="workflow")
 app.command("status")(status)
+# The direct execution substrate's atom: agent CLIs as local child processes, no services.
+app.command("delegate")(delegate)

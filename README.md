@@ -99,7 +99,10 @@ h/
 │   │   ├── core/             # Shared types (AgentRequest, AgentResponse)
 │   │   ├── core-dapr/        # Dapr-specific shared types and helpers
 │   │   ├── core-vercel/      # Vercel AI SDK client wrapper (ILlmClient → LiteLLM)
+│   │   ├── direct-runtime/   # Direct execution substrate — agent CLIs as local child processes (`h delegate`), no Dapr/services
 │   │   ├── logger/           # Pino logger wrapper
+│   │   ├── run-ledger/       # The run ledger — per-run summary/events/output + statestore mirror; shared by every agent host
+│   │   ├── workflow-core/    # Substrate-independent workflow semantics — definition shapes, $ref/{{token}} resolution, the output contract
 │   │   └── telemetry/        # OTel/Zipkin tracing — makeTracingLive layer + W3C propagation helpers
 │   └── py/              # Python (uv workspace — root pyproject.toml)
 │       ├── agent-server/     # Shared FastAPI agent routes (run/setup/dapr-subscribe) + run ledger

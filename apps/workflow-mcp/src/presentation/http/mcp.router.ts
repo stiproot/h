@@ -104,15 +104,29 @@ export const TOOL_DEFINITIONS = [
         key: { type: "string", description: "Unique identifier for the workflow" },
         steps: {
           type: "array",
-          description: "Ordered list of step definitions",
+          description:
+            "Ordered list of steps. A step is {id?, activity, input?}; a PARALLEL GROUP is " +
+            "{id?, parallel: [step, …]}, whose branches run concurrently and cannot reference each other.",
           items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              activity: { type: "string" },
-              input: { type: "object" },
-            },
-            required: ["activity", "input"],
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  activity: { type: "string" },
+                  input: { type: "object" },
+                },
+                required: ["activity"],
+              },
+              {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  parallel: { type: "array", items: { type: "object" } },
+                },
+                required: ["parallel"],
+              },
+            ],
           },
         },
         params: {
@@ -142,15 +156,29 @@ export const TOOL_DEFINITIONS = [
         },
         steps: {
           type: "array",
-          description: "Ordered list of step definitions",
+          description:
+            "Ordered list of steps. A step is {id?, activity, input?}; a PARALLEL GROUP is " +
+            "{id?, parallel: [step, …]}, whose branches run concurrently and cannot reference each other.",
           items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              activity: { type: "string" },
-              input: { type: "object" },
-            },
-            required: ["activity", "input"],
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  activity: { type: "string" },
+                  input: { type: "object" },
+                },
+                required: ["activity"],
+              },
+              {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  parallel: { type: "array", items: { type: "object" } },
+                },
+                required: ["parallel"],
+              },
+            ],
           },
         },
         params: {

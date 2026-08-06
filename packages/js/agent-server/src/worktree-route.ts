@@ -9,8 +9,8 @@ import { withServerSpan } from "telemetry";
 
 import { resolveGitAuth } from "./git-auth.ts";
 import { runHandler } from "./run-handler.ts";
-import { RunLedger, recordActivityEffect } from "./run-ledger.ts";
-import type { ActivityLedgerConfig, ActivityRecord } from "./run-ledger.ts";
+import { RunLedger, recordActivityEffect } from "run-ledger";
+import type { ActivityLedgerConfig, ActivityRecord } from "run-ledger";
 
 /** Wire contract for POST /worktree. */
 const WorktreeBody = Schema.Struct({

@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { CHAIN_MEMBER_KINDS, validateStages } from "workflow-core";
 
 import { TriggerFields } from "./workflow.model.ts";
 
@@ -50,7 +51,9 @@ export type ChainOutcome = Schema.Schema.Type<typeof ChainOutcome>;
 // fire-params from the chain data and captures its output back into it. Threading is engine code,
 // not a config DSL (mirrors the watcher's ruling W3) — a novel chain adds a kind here + in
 // chain-members.ts. Closed literal so an unknown kind fails validation at registration.
-export const ChainMemberKind = Schema.Literal("implement-pr", "review-pr", "revise-pr", "answer");
+// The literal is BUILT from workflow-core's kind list, so the wire schema and the threading
+// contracts behind it can never name different kinds.
+export const ChainMemberKind = Schema.Literal(...CHAIN_MEMBER_KINDS);
 export type ChainMemberKind = Schema.Schema.Type<typeof ChainMemberKind>;
 
 /**
@@ -229,29 +232,9 @@ export const DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT = 6;
 // the "absent stage ⇒ member index" back-compat rule has ONE home.
 // ---------------------------------------------------------------------------
 
-/** A member's stage: explicit, else its index (back-compat — one member per stage = sequential). */
-export function stageOf(members: readonly ChainMember[], index: number): number {
-  return members[index]?.stage ?? index;
-}
-
-/** The distinct stage indices present, ascending. */
-export function stagesOf(members: readonly ChainMember[]): number[] {
-  const set = new Set<number>();
-  for (let i = 0; i < members.length; i++) set.add(stageOf(members, i));
-  return [...set].sort((a, b) => a - b);
-}
-
-/** The member indices in a stage, in workflow order. */
-export function membersInStage(members: readonly ChainMember[], stage: number): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < members.length; i++) if (stageOf(members, i) === stage) out.push(i);
-  return out;
-}
-
-/** The highest stage index (the last stage the chain finalizes on). */
-export function lastStage(members: readonly ChainMember[]): number {
-  return stagesOf(members).at(-1) ?? 0;
-}
+// stageOf / stagesOf / membersInStage / lastStage live in workflow-core (both substrates group
+// members into stages the same way); re-exported here so this module stays the chain surface.
+export { lastStage, membersInStage, stageOf, stagesOf } from "workflow-core";
 
 /**
  * Registration-time validation of a whole chain (stages + member shape). Returns an error message,
@@ -264,13 +247,10 @@ export function lastStage(members: readonly ChainMember[]): number {
  * self-armed recurrence has no key to reference and recurs an embedded source (D1/D2).
  */
 export function validateChain(members: readonly ChainMember[]): string | null {
-  if (members.length === 0) return "chain has no members";
-  const declared = members.filter((w) => w.stage !== undefined).length;
-  if (declared !== 0 && declared !== members.length)
-    return "either all members declare a stage or none do";
-  const stages = stagesOf(members);
-  for (let s = 0; s < stages.length; s++)
-    if (stages[s] !== s) return `stages must be contiguous from 0 (got ${stages.join(",")})`;
+  // Stage shape is shared with the direct substrate; the key/steps XOR and the cron rule below
+  // are about how a member is FIRED, so they stay with this carrier.
+  const stageProblem = validateStages(members);
+  if (stageProblem) return stageProblem;
   for (let i = 0; i < members.length; i++) {
     const w = members[i];
     const hasKey = w.key !== undefined && w.key !== "";
