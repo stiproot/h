@@ -109,3 +109,23 @@ the files or symbols worth starting from, and say what "done" looks like. `@path
 so a spec or a question can live in one. For a panel, ask a question that has a real answer —
 "which of these is soundest and why" beats "thoughts?", which returns three essays that cannot be
 compared.
+
+## Long write work: checkpoint-first, driver-as-fallback
+
+On this substrate there is no watcher, no retry engine, no scheduled continuation — **the driver
+is the fallback engine**. A long delegate can die mid-run on a subscription/usage limit (the
+report says `[usage-limited]` with the CLI's reset time — h#111/#112 made that legible), and a
+restarted run that begins from zero wastes everything the dead one did. Two conventions contain
+this:
+
+- **Write the task RE-ENTRANT.** Instruct the agent to (1) check the branch for prior checkpoint
+  commits and continue from the next unfinished item, and (2) commit every completed deliverable
+  immediately as its own `<stage>(n):` commit, never batching finished work behind unfinished
+  work. A killed run then costs only its in-flight item, and ANY agent can resume — the branch is
+  the checkpoint, not the dead agent's context.
+- **Fall back across CLIs deliberately.** Re-firing the same id reuses the worktree idempotently;
+  on a usage-limited stop either wait out the reset or re-fire the same task under a different
+  authenticated CLI (`--agent codex`, `--agent openhands`) — the checkpoint convention is what
+  makes the handoff safe. This is the manual sibling of the service substrate's
+  `--fallback-agent`; if you find yourself doing it repeatedly for the same recurring work, that
+  work wants the service substrate.
