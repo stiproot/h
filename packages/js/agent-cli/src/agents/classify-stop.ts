@@ -27,6 +27,9 @@ const USAGE_LIMIT: readonly RegExp[] = [
   /rate_limit_error/i,
   /\bRateLimitError\b/,
   /usage limit/i,
+  // Claude CLI subscription phrasing: "You've hit your session limit · resets 4:50pm" —
+  // observed live 2026-08-08 classifying `failed` and bypassing the usage-limit fallback (h#111).
+  /session limit/i,
 ];
 
 // A context-window overflow reads like a limit but is NOT one — a different agent would overflow too,

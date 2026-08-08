@@ -24,9 +24,22 @@ describe("classifyStop", () => {
       "OpenAI insufficient_quota",
       "RateLimitError: retry later",
       "You have hit your usage limit",
+      "You've hit your session limit · resets 4:50pm (Africa/Johannesburg)",
     ]) {
       expect(classifyStop({ exitCode: 1, signal: null, stderr })).toBe("usage-limited");
     }
+  });
+
+  it("usage-limited: the Claude CLI session-limit phrasing on exit 0 via the result event", () => {
+    // Observed live 2026-08-08: subscription limit mid-run, exit 0, limit text only in the stream.
+    expect(
+      classifyStop({
+        exitCode: 0,
+        signal: null,
+        stderr: "",
+        resultEventText: "You've hit your session limit · resets 4:50pm (Africa/Johannesburg)",
+      }),
+    ).toBe("usage-limited");
   });
 
   it("usage-limited even on exit 0 when the terminal result event carries the limit (Claude CLI)", () => {
