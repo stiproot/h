@@ -10,6 +10,7 @@ import {
 import { RunLedger, startRunLedgerEffect } from "run-ledger";
 import { Cause, Effect, Layer } from "effect";
 
+import { failureDetail } from "../domain/delegate.ts";
 import type { AgentRunReport, AgentRunRequest, LocalAgentType } from "../domain/models.ts";
 import { AgentPort } from "../domain/ports.ts";
 
@@ -77,10 +78,11 @@ const runOne = (
     // installed → 127, or the agent's own error exit.
     const failed = invoked.exitCode !== undefined && invoked.exitCode !== 0;
     const output = invoked.stdout ?? "";
+    const detail = failed ? failureDetail(invoked) : null;
     const summary = yield* ledger.finish({
       status: failed ? "failed" : "completed",
       output,
-      error: failed ? (invoked.stderr ?? `agent exited with code ${invoked.exitCode}`) : null,
+      error: detail,
       sessionId: invoked.sessionId ?? null,
       model: invoked.model ?? request.model ?? null,
       turns: invoked.numTurns ?? null,
@@ -96,7 +98,7 @@ const runOne = (
       cwd: request.cwd,
       output,
       durationMs: Date.now() - startedAtMs,
-      error: failed ? (invoked.stderr ?? `agent exited with code ${invoked.exitCode}`) : undefined,
+      error: detail ?? undefined,
       exitCode: invoked.exitCode,
       stopReason: invoked.stopReason,
       model: invoked.model ?? request.model,

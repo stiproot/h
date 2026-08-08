@@ -131,6 +131,7 @@ classDiagram
     +stderr? string
     +exitCode? number
     +stopReason? StopReason
+    +resultEventText? string
     +tokenUsage? object
     +model? string
     +modelUsage? Record~string~

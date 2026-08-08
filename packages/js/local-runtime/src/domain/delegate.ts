@@ -40,6 +40,27 @@ export function branchNames(
   });
 }
 
+/**
+ * What a failed run's report cites as its reason. The preference order is the h#112 fix: the
+ * terminal result event is the CLI's own account of the stop (claude emits the limit text there
+ * even on exit 0), while stderr's HEAD is usually an incidental startup warning — so when stderr
+ * is all we have, cite its TAIL, never its first line.
+ */
+export const failureDetail = (invoked: {
+  resultEventText?: string;
+  stderr?: string;
+  exitCode?: number;
+}): string => {
+  const fromResult = invoked.resultEventText?.trim();
+  if (fromResult) return fromResult;
+  const lines = (invoked.stderr ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length > 0) return lines.slice(-3).join("\n");
+  return `agent exited with code ${invoked.exitCode}`;
+};
+
 const summarise = (report: AgentRunReport): string => {
   const seconds = (report.durationMs / 1000).toFixed(1);
   const cost = report.costUsd === undefined ? "cost unknown" : `$${report.costUsd.toFixed(4)}`;

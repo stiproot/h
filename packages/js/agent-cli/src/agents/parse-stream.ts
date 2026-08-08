@@ -95,6 +95,7 @@ export function buildInvocationResult({
     // this, such a run is recorded `completed` with empty output and the real cause is lost.
     success: metrics?.success ?? exitCode === 0,
     stopReason,
+    ...(resultEvent?.result ? { resultEventText: resultEvent.result } : {}),
     stdout: metrics?.stdout ?? (textOutput || exitDescription),
     stderr: stderr || (timedOutAfterMs !== undefined ? "Task timed out" : undefined),
     exitCode: exitCode ?? undefined,

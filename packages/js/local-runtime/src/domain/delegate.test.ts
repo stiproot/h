@@ -2,7 +2,7 @@ import { Effect, Exit, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { UnknownAgentError } from "./agents.ts";
-import { branchNames, EmptyRosterError, runDelegate } from "./delegate.ts";
+import { branchNames, EmptyRosterError, failureDetail, runDelegate } from "./delegate.ts";
 import type { AgentRunReport, AgentRunRequest, DelegateJob, WorktreeSpec } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
@@ -76,6 +76,36 @@ describe("branchNames", () => {
       "local/x-pi",
       "local/x-codex-2",
     ]);
+  });
+});
+
+describe("failureDetail", () => {
+  it("prefers the terminal result-event text over stderr (the CLI's own account of the stop)", () => {
+    // The live h#112 case: a benign trust warning opened stderr while the real cause — the
+    // session limit — arrived only in the result event.
+    expect(
+      failureDetail({
+        resultEventText: "You've hit your session limit · resets 4:50pm (Africa/Johannesburg)",
+        stderr: "Ignoring 19 permissions.allow entries from .claude/settings.json: not trusted",
+        exitCode: 1,
+      }),
+    ).toBe("You've hit your session limit · resets 4:50pm (Africa/Johannesburg)");
+  });
+
+  it("falls back to stderr's TAIL, never its first line", () => {
+    expect(
+      failureDetail({
+        stderr: "Ignoring permissions warning\n\nTypeError: boom\n  at main.ts:1\n",
+        exitCode: 1,
+      }),
+    ).toBe("Ignoring permissions warning\nTypeError: boom\nat main.ts:1");
+    const long = ["warning: a", "b", "c", "d", "real error: e"].join("\n");
+    expect(failureDetail({ stderr: long, exitCode: 1 })).toBe("c\nd\nreal error: e");
+  });
+
+  it("falls back to the exit code when there is nothing else", () => {
+    expect(failureDetail({ stderr: "  \n ", exitCode: 127 })).toBe("agent exited with code 127");
+    expect(failureDetail({ exitCode: 1 })).toBe("agent exited with code 1");
   });
 });
 

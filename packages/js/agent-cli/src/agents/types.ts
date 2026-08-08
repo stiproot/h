@@ -108,6 +108,12 @@ export interface InvocationResult {
    * fallback reads to hand off to a different agent after a delay.
    */
   stopReason?: StopReason;
+  /**
+   * The terminal `result` event's text, verbatim. On a failed run this is the CLI's own account of
+   * the stop (claude carries the limit text here even on exit 0), which failure reports must prefer
+   * over stderr — stderr's head is usually an incidental startup warning (h#112).
+   */
+  resultEventText?: string;
   tokenUsage?: {
     input: number;
     output: number;
