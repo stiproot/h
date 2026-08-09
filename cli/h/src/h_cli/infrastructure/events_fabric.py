@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 import nats
 import nats.errors
 import nats.js.errors
-from nats.js.api import ConsumerConfig, RetentionPolicy, StreamConfig
+from nats.js.api import ConsumerConfig, DeliverPolicy, RetentionPolicy, StreamConfig
 
 from h_cli.config import EVENTS_STORE_DIR, EVENTS_URL
 from h_cli.infrastructure import events_protocol as protocol
@@ -259,6 +259,79 @@ async def relay(queue: str, handler: RelayHandler, emit: Callable[[str], None]) 
                     f"  ■ terminal: {result['status']} → {protocol.result_subject(result['group'])}"
                 )
             await msg.ack_sync()
+    finally:
+        await nc.close()
+
+
+async def await_result(group: str, timeout: float) -> dict[str, Any] | None:
+    """Block until `group`'s terminal envelope is readable, or `timeout` elapses.
+
+    Deliberately an EPHEMERAL consumer replaying the stream from the start: a result that landed
+    before this call — the seeder was busy, the driver's watch had lapsed, the loop finished in
+    seconds — is still delivered, which is the whole difference from `tail`. Nothing durable is
+    left behind, so awaiting a group is stateless and repeatable.
+    """
+    nc = await connect()
+    try:
+        js = nc.jetstream()
+        await ensure_streams(js)
+        psub = await js.pull_subscribe(
+            protocol.result_subject(group),
+            stream=protocol.RESULT_STREAM,
+            config=ConsumerConfig(deliver_policy=DeliverPolicy.ALL),
+        )
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                msgs = await psub.fetch(1, timeout=min(5, max(1, deadline - time.monotonic())))
+            except (TimeoutError, nats.errors.TimeoutError):
+                continue
+            for msg in msgs:
+                await msg.ack()
+                try:
+                    return json.loads(msg.data)
+                except json.JSONDecodeError:
+                    continue
+        return None
+    finally:
+        await nc.close()
+
+
+async def consume_results(
+    durable: str,
+    group: str | None,
+    emit: Callable[[dict[str, Any]], None],
+) -> None:
+    """Stream terminal envelopes off a DURABLE consumer, acking each — the driver's back-edge.
+
+    Durable because a driver watches in bursts: between turns, or across a monitor that timed out,
+    results keep landing and must still be there. The consumer resumes exactly where its last ack
+    left it, so nothing is delivered twice and nothing is missed — the property a live `tail`
+    cannot offer.
+    """
+    nc = await connect()
+    try:
+        js = nc.jetstream()
+        await ensure_streams(js)
+        psub = await js.pull_subscribe(
+            protocol.result_subject(group) if group else protocol.RESULT_SUBJECTS,
+            durable=durable,
+            stream=protocol.RESULT_STREAM,
+            config=ConsumerConfig(ack_wait=ACK_WAIT_SECONDS),
+        )
+        while True:
+            try:
+                msgs = await psub.fetch(1, timeout=10)
+            except (TimeoutError, nats.errors.TimeoutError):
+                continue
+            for msg in msgs:
+                try:
+                    event = json.loads(msg.data)
+                except json.JSONDecodeError:
+                    await msg.term()  # unparseable history must not wedge the consumer
+                    continue
+                emit(event)
+                await msg.ack_sync()
     finally:
         await nc.close()
 

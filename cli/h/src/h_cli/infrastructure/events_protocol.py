@@ -171,6 +171,32 @@ def loop_structured(envelope: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def run_summary(envelope: dict[str, Any]) -> dict[str, Any]:
+    """The accounting a terminal event carries: what this step's runs cost, and a runId to read
+    the output by.
+
+    Only THIS step's runs — a loop's total is the ledger's job, since every step publishes nothing
+    until the terminal and the group keys them all (`h runs` over the group is the whole loop).
+    Absent cost is absent, never 0: an agent that reports no cost (codex on a ChatGPT plan) must
+    not read as free.
+    """
+    runs = envelope.get("runs")
+    if not isinstance(runs, list) or not runs:
+        return {}
+    summary: dict[str, Any] = {}
+    run_ids = [r.get("runId") for r in runs if isinstance(r, dict) and r.get("runId")]
+    if run_ids:
+        summary["runId"] = run_ids[-1]
+    costs = [
+        r["costUsd"]
+        for r in runs
+        if isinstance(r, dict) and isinstance(r.get("costUsd"), int | float)
+    ]
+    if costs:
+        summary["costUsd"] = round(sum(costs), 4)
+    return summary
+
+
 def terminal(descriptor: dict[str, Any], status: str, **fields: Any) -> dict[str, Any]:
     """The loop's terminal envelope, published to `h.result.<group>`. `exhausted` is a budget
     stop with work outstanding — deliberately not a failure, same as a loop-until-clean chain."""

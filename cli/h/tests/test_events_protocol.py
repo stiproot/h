@@ -110,3 +110,23 @@ def test_terminal_carries_group_status_and_step_count() -> None:
     assert event["status"] == "resolved"
     assert event["steps"] == 2
     assert event["answer"] == "42"
+
+
+def test_run_summary_reports_last_run_id_and_summed_cost() -> None:
+    envelope = {
+        "runs": [
+            {"step": "plan", "agent": "claude", "runId": "r1", "costUsd": 0.25},
+            {"step": "answer", "agent": "codex", "runId": "r2", "costUsd": 0.5},
+        ]
+    }
+    # The LAST runId, because that is the run whose output the terminal is reporting on.
+    assert protocol.run_summary(envelope) == {"runId": "r2", "costUsd": 0.75}
+
+
+def test_run_summary_omits_cost_it_was_never_told() -> None:
+    # codex on a ChatGPT plan reports no cost: absent must stay absent, never a $0 that reads free.
+    assert protocol.run_summary({"runs": [{"step": "a", "agent": "codex", "runId": "r1"}]}) == {
+        "runId": "r1"
+    }
+    assert protocol.run_summary({"runs": []}) == {}
+    assert protocol.run_summary({}) == {}

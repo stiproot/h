@@ -5,7 +5,7 @@ import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-c
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
-import type { WorkflowEnvelope, WorkflowJob } from "./models.ts";
+import type { WorkflowEnvelope, WorkflowJob, WorkflowRunRef } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /** A step did not produce a result. Carries the step id so the envelope can name the failure. */
@@ -48,6 +48,9 @@ export const runWorkflow = (
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
     const results: Record<string, unknown> = { params: job.params ?? {} };
+    // Accumulated as steps run, so the envelope reports the runs of a FAILED job too — the
+    // accounting must survive the failure that makes it most interesting.
+    const runs: WorkflowRunRef[] = [];
 
     const run = Effect.gen(function* () {
       for (const step of job.steps) {
@@ -56,7 +59,7 @@ export const runWorkflow = (
           // makes them parallelizable — then all run at once. Any branch failing fails the group.
           const before = { ...results };
           const outs = yield* Effect.all(
-            step.parallel.map((branch) => runStep(branch, before, job, progress)),
+            step.parallel.map((branch) => runStep(branch, before, job, progress, runs)),
             { concurrency: "unbounded" },
           );
           step.parallel.forEach((branch, index) => {
@@ -69,12 +72,12 @@ export const runWorkflow = (
           }
           continue;
         }
-        results[stepId(step)] = yield* runStep(step, results, job, progress);
+        results[stepId(step)] = yield* runStep(step, results, job, progress, runs);
       }
     });
 
     return yield* run.pipe(
-      Effect.map(() => ({ ok: true, group: job.group, results }) satisfies WorkflowEnvelope),
+      Effect.map(() => ({ ok: true, group: job.group, results, runs }) satisfies WorkflowEnvelope),
       // Every exit path answers with an envelope, so a caller never has to reconstruct what
       // happened from an exit code — and the results map up to the failure is preserved.
       Effect.catchAllCause((cause) => {
@@ -83,6 +86,7 @@ export const runWorkflow = (
           ok: false,
           group: job.group,
           results,
+          runs,
           ...(error instanceof StepError ? { failedStep: error.step } : {}),
           error: error instanceof Error ? error.message : String(error),
         } satisfies WorkflowEnvelope);
@@ -95,6 +99,7 @@ const runStep = (
   results: Record<string, unknown>,
   job: WorkflowJob,
   progress: { readonly emit: (line: string) => Effect.Effect<void> },
+  runs: WorkflowRunRef[],
 ): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort> =>
   Effect.gen(function* () {
     const id = stepId(step);
@@ -174,6 +179,14 @@ const runStep = (
       permissionMode: input.permissionMode === "plan" ? "plan" : undefined,
       runsDir: job.runsDir,
       group: job.group,
+    });
+    // Recorded BEFORE the failure check: a failed run is exactly the one whose cost and runId a
+    // caller most needs, and the ledger entry exists either way.
+    runs.push({
+      step: id,
+      agent: classified.agent,
+      ...(report.runId === undefined ? {} : { runId: report.runId }),
+      ...(report.costUsd === undefined ? {} : { costUsd: report.costUsd }),
     });
     if (report.status === "failed") {
       yield* progress.emit(`✗ ${id}: ${report.error ?? "failed"}`);

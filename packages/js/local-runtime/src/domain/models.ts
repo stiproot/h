@@ -225,7 +225,23 @@ export type WorkflowEnvelope = {
   group: string;
   /** Step id → that step's result, the same map `{{stepId.field}}` resolves against. */
   results: Record<string, unknown>;
+  /**
+   * What each agent step actually cost and where to read it — the accounting the `results` map
+   * deliberately omits (it carries only what downstream steps resolve against). There is no
+   * watcher on this substrate, so this plus the ledger is the whole story; a caller that never
+   * sees the terminal (the event fabric's relay reports to a stream, not to the seeder) can
+   * still say what a run spent and hand back a runId to read the output by.
+   */
+  runs?: ReadonlyArray<WorkflowRunRef>;
   /** Present when a step failed: which one, and why. */
   failedStep?: string;
   error?: string;
+};
+
+/** One agent run inside a workflow job: which step, which agent, what it cost, where it landed. */
+export type WorkflowRunRef = {
+  step: string;
+  agent: string;
+  runId?: string;
+  costUsd?: number;
 };

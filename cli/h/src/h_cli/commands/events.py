@@ -79,12 +79,16 @@ def relay_step(
         )
     except LocalRunError as err:
         return None, protocol.terminal(descriptor, "failed", error=str(err))
+    # Every terminal carries this step's accounting: what it spent and a runId to read it by.
+    # A consumer reacting to the event should never need a second lookup to know either.
+    spend = protocol.run_summary(envelope)
     if not envelope.get("ok"):
         return None, protocol.terminal(
             descriptor,
             "failed",
             error=str(envelope.get("error") or "run failed"),
             **({"failedStep": envelope["failedStep"]} if envelope.get("failedStep") else {}),
+            **spend,
         )
 
     structured = protocol.loop_structured(envelope) or {}
@@ -92,17 +96,21 @@ def relay_step(
     publish = structured.get("publish")
     if publish is None:
         # No hand-off declared: the agent judged the loop done. This is the goal handshake.
-        return None, protocol.terminal(descriptor, "resolved", answer=answer)
+        return None, protocol.terminal(descriptor, "resolved", answer=answer, **spend)
     problems = protocol.validate_publish(publish)
     if problems:
         return None, protocol.terminal(
-            descriptor, "failed", error=f"invalid hand-off: {'; '.join(problems)}", answer=answer
+            descriptor,
+            "failed",
+            error=f"invalid hand-off: {'; '.join(problems)}",
+            answer=answer,
+            **spend,
         )
     next_descriptor = protocol.hand_off(descriptor, publish)
     if next_descriptor is None:
         # Budget spent with work still declared — a stop, not a failure (loop-until-clean posture).
         return None, protocol.terminal(
-            descriptor, "exhausted", answer=answer, pendingTask=publish["task"]
+            descriptor, "exhausted", answer=answer, pendingTask=publish["task"], **spend
         )
     return next_descriptor, None
 
@@ -257,6 +265,90 @@ def serve(
         raise typer.Exit(1) from err
     except KeyboardInterrupt:
         console.print("\nrelay stopped — unacked work redelivers to the next relay")
+
+
+def _terminal_line(event: dict[str, Any]) -> str:
+    """One line per terminal — the unit a driver's monitor turns into a single notification."""
+    bits = [f"■ {event.get('group')} {event.get('status')}"]
+    if event.get("steps") is not None:
+        bits.append(f"steps={event['steps']}")
+    if event.get("agent"):
+        bits.append(f"agent={event['agent']}")
+    cost = event.get("costUsd")
+    bits.append(f"cost=${cost:.4f}" if isinstance(cost, int | float) else "cost=—")
+    if event.get("runId"):
+        bits.append(f"run={event['runId']}")
+    if event.get("error"):
+        bits.append(f"error={str(event['error'])[:160]}")
+    return " ".join(bits)
+
+
+# `await` is a Python keyword, so the function cannot carry the command's name — Typer takes it
+# from the decorator instead. The command name is what matters at the surface.
+@app.command("await")
+def await_(
+    group: Annotated[str, typer.Argument(help="The loop group to wait for (the seed's --group).")],
+    timeout: Annotated[
+        float, typer.Option(help="Seconds to wait before giving up (exit 124).")
+    ] = 3600.0,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the raw terminal envelope instead of one line.")
+    ] = False,
+) -> None:
+    """Block until one group's loop reports its terminal, then print it and exit.
+
+    Replays the result stream, so a loop that finished BEFORE this call still answers immediately.
+    Exit code carries the outcome for scripting: 0 resolved/exhausted, 1 failed, 124 timed out.
+    """
+    try:
+        event = asyncio.run(fabric.await_result(group, timeout))
+    except fabric.FabricError as err:
+        err_console.print(f"[red]events:[/red] {err}")
+        raise typer.Exit(1) from err
+    except KeyboardInterrupt:
+        raise typer.Exit(130) from None
+    if event is None:
+        err_console.print(f"[yellow]events:[/yellow] no terminal for '{group}' within {timeout}s")
+        raise typer.Exit(124)
+    console.print(json.dumps(event) if as_json else _terminal_line(event))
+    if event.get("status") == "failed":
+        raise typer.Exit(1)
+
+
+@app.command()
+def results(
+    durable: Annotated[
+        str, typer.Option(help="Durable consumer name — resume point across watches.")
+    ] = "driver",
+    group: Annotated[
+        str | None, typer.Option(help="Only this group's terminals (default: every group).")
+    ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print raw terminal envelopes instead of one line each.")
+    ] = False,
+) -> None:
+    """Stream terminals off a DURABLE consumer — one line each, acked as they are printed.
+
+    The driver's back-edge: unlike `tail`, this misses nothing that landed while it was not
+    running, because the consumer resumes from its last ack. Run it under a monitor and every
+    completed loop becomes one notification.
+
+    Delivery is AT-LEAST-once, as it must be: a watcher killed between printing a terminal and
+    acking it will see that terminal again on the next run. Terminals are idempotent to read, so
+    the duplicate is noise rather than a hazard — but a consumer that ACTS on one should key off
+    the group.
+    """
+
+    def emit(event: dict[str, Any]) -> None:
+        console.print(json.dumps(event) if as_json else _terminal_line(event))
+
+    try:
+        asyncio.run(fabric.consume_results(durable, group, emit))
+    except fabric.FabricError as err:
+        err_console.print(f"[red]events:[/red] {err}")
+        raise typer.Exit(1) from err
+    except KeyboardInterrupt:
+        pass
 
 
 @app.command()

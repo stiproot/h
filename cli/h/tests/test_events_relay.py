@@ -106,3 +106,34 @@ def test_a_template_that_cannot_render_fails_without_running_anything(runner, mo
     assert nxt is None
     assert terminal["status"] == "failed"
     assert runner.job is None  # nothing executed
+
+
+def test_terminal_carries_the_step_accounting(runner, monkeypatch) -> None:
+    """A consumer reacting to a terminal must not need a second lookup for cost or output."""
+    monkeypatch.setattr(events, "_render", lambda template: DEFINITION)
+    runner.envelope = {
+        "ok": True,
+        "group": "loop-t",
+        "results": {"answer": {"structured": {"answer": "done"}}},
+        "runs": [{"step": "answer", "agent": "claude", "runId": "loop-t:claude:9", "costUsd": 1.5}],
+    }
+    _, terminal = events.relay_step(_descriptor())
+    assert terminal["status"] == "resolved"
+    assert terminal["runId"] == "loop-t:claude:9"
+    assert terminal["costUsd"] == 1.5
+
+
+def test_failed_terminal_still_carries_accounting(runner, monkeypatch) -> None:
+    """The failed run is the one whose cost and output a driver most needs to see."""
+    monkeypatch.setattr(events, "_render", lambda template: DEFINITION)
+    runner.envelope = {
+        "ok": False,
+        "group": "loop-t",
+        "error": "agent exploded",
+        "results": {},
+        "runs": [{"step": "answer", "agent": "claude", "runId": "loop-t:claude:9", "costUsd": 0.2}],
+    }
+    _, terminal = events.relay_step(_descriptor())
+    assert terminal["status"] == "failed"
+    assert terminal["costUsd"] == 0.2
+    assert terminal["runId"] == "loop-t:claude:9"
