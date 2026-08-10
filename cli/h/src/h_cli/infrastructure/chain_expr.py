@@ -126,7 +126,11 @@ def effective_config(defaults: WorkflowConfig, member: WorkflowConfig) -> Workfl
     return WorkflowConfig(
         agents=member.agents if member.agents else defaults.agents,
         model=member.model if member.model is not None else defaults.model,
-        budget=member.budget if member.budget is not None else defaults.budget,
+        # budget is NOT an inherited field: prefix = whole-chain wall clock (body["budgetMs"],
+        # sourced from expr.defaults.budget directly); suffix = per-member watch policy
+        # (entry["watch"]). Merging them would silently arm a chain-wide --budget as per-member
+        # watch rows on every member — a regression. Each position stays in its own lane.
+        budget=member.budget,
         fresh=member.fresh or defaults.fresh,
         kind=member.kind,  # kind is per-workflow only; defaults never carry one (parser enforces)
         # stage/cron/max_fires/id are per-workflow only (parser enforces) — no defaults to merge;

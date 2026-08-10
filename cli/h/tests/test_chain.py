@@ -978,6 +978,128 @@ def test_member_input_validation_accepts_declared_input(tmp_path: Path) -> None:
     assert route.called
 
 
+# ── Per-member --budget → watch policy ───────────────────────────────────────────────────────
+
+
+@respx.mock
+def test_member_budget_arms_watch_on_that_member_only(tmp_path: Path) -> None:
+    """A suffix --budget on one member puts watch:{maxDurationMs} on it and no other member."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "x",
+            "-p",
+            _pspec(tmp_path),
+            "-w",
+            "implement-pr",
+            "-w",
+            "review-pr",
+            "--budget",
+            "10m",
+            "-w",
+            "revise-pr",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    members = body["members"]
+    assert "watch" not in members[0]  # implement-pr: no budget
+    assert members[1]["watch"] == {"maxDurationMs": 600_000}  # review-pr: 10m
+    assert "watch" not in members[2]  # revise-pr: no budget
+
+
+@respx.mock
+def test_chain_wide_prefix_budget_does_not_arm_member_watch(tmp_path: Path) -> None:
+    """A prefix --budget is the chain wall clock: it sets budgetMs, not per-member watch rows."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "x", "-p", _pspec(tmp_path), "--budget", "1h"],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["budgetMs"] == 3_600_000
+    for member in body["members"]:
+        assert "watch" not in member
+
+
+@respx.mock
+def test_prefix_and_member_budget_compose_independently(tmp_path: Path) -> None:
+    """Prefix --budget 1h + suffix --budget 10m on one member: both arms fire independently."""
+    route = _mock_run()
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "x",
+            "-p",
+            _pspec(tmp_path),
+            "--budget",
+            "1h",
+            "-w",
+            "implement-pr",
+            "-w",
+            "review-pr",
+            "--budget",
+            "10m",
+            "-w",
+            "revise-pr",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    assert body["budgetMs"] == 3_600_000  # from prefix
+    members = body["members"]
+    assert "watch" not in members[0]
+    assert members[1]["watch"] == {"maxDurationMs": 600_000}  # from suffix on review-pr
+    assert "watch" not in members[2]
+
+
+@needs_helm
+def test_budget_on_cron_member_is_refused(tmp_path: Path) -> None:
+    """--budget on a --cron member must fail loud: the cron engine owns recurrence."""
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "x",
+            "-p",
+            _pspec(tmp_path),
+            "-p",
+            "repo=o/r",
+            "-t",
+            "implement",
+            "create-pr",
+            "--cron",
+            "*/30 * * * *",
+            "--budget",
+            "10m",
+            "-w",
+            "review-pr",
+        ],
+    )
+    assert result.exit_code == 1
+    out = _all_output(result)
+    assert "--budget" in out and "--cron" in out
+
+
+def test_member_budget_units_minutes_hours_bare_ms(tmp_path: Path) -> None:
+    """_budget_ms converts correctly: Nm → N*60_000, Nh → N*3_600_000, bare → ms directly."""
+    from h_cli.commands.chain import _budget_ms
+
+    assert _budget_ms("10m") == 600_000
+    assert _budget_ms("2h") == 7_200_000
+    assert _budget_ms("60000") == 60_000
+
+
 @needs_helm
 @respx.mock
 def test_member_input_validation_defaults_do_not_trip(tmp_path: Path) -> None:

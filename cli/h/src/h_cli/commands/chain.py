@@ -434,6 +434,13 @@ def _resolve_workflow(
         )
     if cfg.max_fires and not cfg.cron:
         _fail(f"--max-fires on '{member.label}' needs --cron (it's the cron's fire budget)")
+    if cfg.budget and cfg.cron:
+        _fail(
+            f"--budget on '{member.label}' cannot combine with --cron — a cron member's "
+            "recurrence is owned by the cron engine (the chain only observes "
+            "wf:<member>.resolved and never re-fires it), so there is no per-member "
+            "wall clock to enforce"
+        )
     if inline and member.key is not None and not roster and not local:
         _fail(
             f"--inline/--cron member '{member.label}' must be composed with -t — an inline "
@@ -491,12 +498,6 @@ def _resolve_workflow(
         key_field = key
         if params:
             _check_identity_slots(key, cfg, kind)
-    if cfg.budget:
-        _warn(
-            f"per-workflow --budget on '{member.label}' is not yet enforced "
-            "(per-workflow watch lands with the engine's next slice); ignored"
-        )
-
     prefix, fresh_default = KIND_FIRE[kind]
     entry: dict[str, Any] = {"kind": kind}
     if steps is not None:
@@ -509,6 +510,8 @@ def _resolve_workflow(
     if not inline and not in_parallel:
         entry["instanceId"] = f"{prefix}-{slug}"
     entry["fresh"] = cfg.fresh or fresh_default
+    if cfg.budget:
+        entry["watch"] = {"maxDurationMs": _budget_ms(cfg.budget)}
     # stage: emitted on every member once the chain uses stages (a --parallel group or an explicit
     # --stage); a purely sequential chain omits it (the engine defaults a member's stage to index).
     if uses_stages:
