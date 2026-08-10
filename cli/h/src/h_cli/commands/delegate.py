@@ -22,7 +22,7 @@ from rich.rule import Rule
 from rich.table import Table
 
 from h_cli.config import AGENT_RUNS_DIR, LOCAL_WORKTREES_DIR
-from h_cli.infrastructure import local_runtime
+from h_cli.infrastructure import local_runtime, workspace
 from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
 
 console = Console()
@@ -71,6 +71,14 @@ def delegate(
             "--id", help="Run-ledger group for this job (default: local-<yymmdd>-<hhmmss>)."
         ),
     ] = None,
+    allow_external: Annotated[
+        bool,
+        typer.Option(
+            "--allow-external",
+            help="Permit a --cwd outside the workspace h manages. A local agent runs as you, "
+            "with no sandbox — say so deliberately.",
+        ),
+    ] = False,
     as_json: Annotated[
         bool, typer.Option("--json", help="Print the raw result envelope instead of the answers.")
     ] = False,
@@ -87,6 +95,11 @@ def delegate(
     if not working_dir.is_dir():
         err_console.print(f"[red]--cwd[/red]: no such directory: {working_dir}")
         raise typer.Exit(1)
+    try:
+        working_dir = workspace.assert_managed(working_dir, allow_external=allow_external)
+    except workspace.ExternalWorkspaceError as err:
+        err_console.print(f"[red]delegate:[/red] {err}")
+        raise typer.Exit(1) from err
 
     roster = agent or ["claude"]
     job_group = group or group_id("local")

@@ -69,9 +69,18 @@ supervisor. So `--local` REFUSES `--cron/--watch/--budget/--retry/--at/--in/--fa
 --via` by name, naming the engine each needs; the executor likewise refuses `write-wf-row`,
 `register-cron`, `register-discover`, `run-itest` and the service-only agents rather than skipping
 them (a silently-skipped `register-cron` would report a recurrence that was never armed). Two more
-local-substrate rules: `create-worktree` cuts from the checkout you invoked in (there is no
-pre-cloned shared workspace), and `setup` steps are SKIPPED unless `--with-setup` — they provision
-the operator's own `~/.claude`, not a container's. Local runs write the standard run ledger, so
+local-substrate rules: `create-worktree` cuts from the checkout you point it at, and `setup` steps
+are SKIPPED unless `--with-setup` — they provision the operator's own `~/.claude`, not a
+container's. **WHICH checkout is a boundary, not a preference (symmetry with the other modes):
+h works on ITS OWN clones under `H_WORKSPACE_DIR` (`h-workspace/<repo>` — the same shared
+workspace root the service substrate's agents have always used), the worktrees it cuts from them
+(`h-worktrees/`), and h's own repo. A work target anywhere else — most sharply, the operator's own
+checkout of the same repo — is REFUSED by name** (`infrastructure/workspace.py`, wired into
+`h delegate --cwd` and `h events serve --repo`; `--allow-external` is the deliberate override).
+The reason is that a local agent runs as the operator with their credentials and no sandbox, so
+the path someone typed is the only thing bounding the blast radius: clone the target under
+`h-workspace/` and work there. (Bit us live 2026-08-10 — an agent reached a second clone of the
+target repo and committed into the operator's in-flight work.) Local runs write the standard run ledger, so
 `h runs`/obs-mcp/the viz read them beside service runs; there is no watcher, so that ledger is also
 the only cost accounting. The substrates COMPOSE: a local-substrate agent inherits the repo's
 `.mcp.json` (D5 leaves it alone) and can therefore save and fire durable workflows onto a running

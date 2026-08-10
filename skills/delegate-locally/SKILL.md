@@ -89,8 +89,14 @@ Two local-substrate rules worth knowing before you are surprised by them:
 
 - **`setup` steps are skipped** unless you pass `--with-setup`. They provision `~/.claude` — which
   here is the *operator's own* configuration, not a container's.
-- **`create-worktree` cuts from the checkout you invoked in.** There is no pre-cloned shared
-  workspace; a step's own `clonePath` still wins.
+- **`create-worktree` cuts from the checkout you point it at**; a step's own `clonePath` still wins.
+- **Work targets are bounded to the workspace h manages.** `--cwd` (delegate) and `--repo`
+  (`h events serve`) must resolve inside `h-workspace/<repo>` — h's own clone of the target — the
+  worktrees cut from it (`h-worktrees/`), or h's own repo. Anything else is refused by name, with
+  `--allow-external` as the deliberate override. So the first step of working on a new repo is
+  **clone it under `h-workspace/`**, never point h at a checkout you have work in progress in.
+  This is the local mirror of what the service substrate always did (agents work in the shared
+  workspace root), and it is a safety boundary rather than tidiness: see Safety below.
 
 ## Safety
 
@@ -101,6 +107,12 @@ exists only for the containerized fleet. So:
 - Use `--worktree` for anything that writes. It is one flag and it contains the blast radius.
 - Use `--plan` when you only want an answer; it runs the agent read-only where the CLI supports it.
 - Do not delegate a task whose text you have not read, into a checkout you care about.
+- **Make the agent's workspace TRUE.** A task that asserts where the agent is ("you are in repo X
+  on branch Y") while the cwd says otherwise does not confuse the agent into stopping — it sends
+  it SEARCHING, and it searches as you, across your whole filesystem. Live on 2026-08-10 an agent
+  did exactly that, found a second clone of the target repo, and branched and committed into the
+  operator's in-flight work. Pass the workspace, do not describe it; the managed-workspace guard
+  above and the relay's per-group worktree exist to keep the description honest.
 
 ## Writing the task
 

@@ -26,7 +26,7 @@ from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
 from h_cli.config import AGENT_IDENTITY, AGENT_RUNS_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure import events_fabric as fabric
 from h_cli.infrastructure import events_protocol as protocol
-from h_cli.infrastructure import git, helm, local_runtime
+from h_cli.infrastructure import git, helm, local_runtime, workspace
 from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
 from h_cli.params import parse_params
 
@@ -285,6 +285,14 @@ def serve(
             "Each group gets its own worktree cut from it.",
         ),
     ] = None,
+    allow_external: Annotated[
+        bool,
+        typer.Option(
+            "--allow-external",
+            help="Permit a --repo outside the workspace h manages (agents run as you, "
+            "unsandboxed).",
+        ),
+    ] = False,
     in_place: Annotated[
         bool,
         typer.Option(
@@ -300,6 +308,11 @@ def serve(
     lands in a workspace that matches its task instead of hunting the filesystem for one.
     """
     root = (repo or Path(repo_root(Path.cwd()))).resolve()
+    try:
+        root = workspace.assert_managed(root, allow_external=allow_external, flag="--repo")
+    except workspace.ExternalWorkspaceError as err:
+        err_console.print(f"[red]events:[/red] {err}")
+        raise typer.Exit(1) from err
     if not git.is_repo(root):
         err_console.print(
             f"[red]events:[/red] --repo {root} is not a git repository. The relay refuses to run "

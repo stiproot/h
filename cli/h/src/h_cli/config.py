@@ -35,6 +35,13 @@ LOCAL_WORKTREES_DIR = Path(
     os.getenv("H_LOCAL_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees"))
 ).resolve()
 
+# The workspace root h OWNS: the clones it works on live here (`h-workspace/<repo>`), beside the
+# run ledger and the fabric's store. The SERVICE substrate has always used it (the agents' shared
+# workspace root, `<sharedRoot>/repo` for the /worktree route); making the LOCAL substrate honour
+# the same root is what keeps the two symmetric — one place to look for "what h is working on",
+# and one boundary an operator's own checkouts sit outside of.
+H_WORKSPACE_DIR = Path(os.getenv("H_WORKSPACE_DIR", str(_REPO_DIR / "../h-workspace"))).resolve()
+
 # --- Local event fabric ----------------------------------------------------------------------
 # The local substrate's event fabric: one nats-server -js child (`h events up`), no containers.
 # The JetStream store sits beside the run ledger so "reset the local runtime state" is one
