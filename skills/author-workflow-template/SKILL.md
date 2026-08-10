@@ -140,7 +140,8 @@ uses the flags.
 1. Render it: `helm template x cli/charts/workflows -s templates/<name>.tmpl.yaml --set template=<name>
    --set publish=true [...]` — check the contract appears in all three places and
    `steps[].input.outputContract == outputs`.
-2. Run the CLI tests: `uv run --package h-cli pytest` — then re-bless goldens ONLY deliberately
+2. Run the CLI tests: `uv run --package h-cli pytest cli/h/tests` (the path is required — a bare
+   invocation runs the wrong suite and still reports green) — then re-bless goldens ONLY deliberately
    (`--snapshot-update`) and review the `.ambr` diff; the goldens are the chart's contract tests.
 3. Publish/republish: `uv run h workflow publish <name>` (or `h template compose ... --save <key>`
    for compositions). A saved workflow does NOT update itself when the template changes.

@@ -117,7 +117,7 @@ the driver chooses it when the extra premise and design review is worth its cost
    comment: the revise leg reads PR comments, so that is the working channel for a driver
    finding.
 2. Branch updated against main; verify sweep AT HEAD in a worktree:
-   - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest`
+   - h repo: `bun run lint && bun run build && bun run test && uv run --package h-cli pytest cli/h/tests`
      (all green — the suite is hermetic since #85).
    - trxy-v2: **this sweep is the ONLY pre-merge gate** — trxy CI no longer runs on pull
      requests (main + dispatch only since 2026-07-27, Actions rate limit); nothing catches

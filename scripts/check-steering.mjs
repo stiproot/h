@@ -189,7 +189,66 @@ for (const file of skillMarkdownFiles("skills")) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// 4. HOLLOW-GREEN TEST COMMAND CHECK — a steering doc must never cite the CLI test suite
+//    without its path scope.
+//
+//    The root pyproject sets `testpaths = ["packages/py"]` and deliberately EXCLUDES cli/h (its
+//    `--disable-socket` fail-closed guard does not compose into one root config). So a bare
+//    `uv run --package h-cli pytest` from the root runs packages/py's ~52 tests, NOT the CLI's
+//    ~390 — and reports a green indistinguishable from a real one. Same hollow-green class as the
+//    tsc no-op guard. Found 2026-08-06 (nats work) and recorded only in that plan; the steering
+//    docs kept the broken form and it bit a local-substrate run on 2026-08-10. This check is the
+//    lift: the knowledge now lives where a machine enforces it.
+//
+//    Plan docs under docs/plans/ are EXCLUDED — they are historical logs, and rewriting what a
+//    past run actually typed would falsify the record.
+// ---------------------------------------------------------------------------
+
+const CLI_PYTEST_RE = /uv run --package h-cli pytest(?<rest>[^\n`]*)/g;
+const testCmdViolations = [];
+
+const steeringDocs = [
+  "CLAUDE.md",
+  "README.md",
+  "CONTRIBUTING.md",
+  "cli/README.md",
+  "docs/DRIVER.md",
+  "docs/cookbook.md",
+  "docs/h-builds-h-runbook.md",
+  ...skillMarkdownFiles("skills"),
+];
+
+for (const file of steeringDocs) {
+  const text = readText(file);
+  if (text === null) continue;
+  for (const m of text.matchAll(CLI_PYTEST_RE)) {
+    // The guard's own explanatory prose necessarily quotes the bad form; a line that also names
+    // the correct path-scoped form is documentation ABOUT the trap, not an instruction to run it.
+    const line = text.slice(0, m.index).split("\n").length;
+    const lineText = text.split("\n")[line - 1] ?? "";
+    if (/cli\/h(\/tests)?\b/.test(m.groups.rest) || /cli\/h(\/tests)?\b/.test(lineText)) continue;
+    testCmdViolations.push({ file, line, snippet: `uv run --package h-cli pytest${m.groups.rest}` });
+  }
+}
+
 let failed = false;
+
+if (testCmdViolations.length > 0) {
+  failed = true;
+  console.error("✗ check-steering: CLI test command cited without its path scope.\n");
+  console.error(
+    "  `uv run --package h-cli pytest` WITHOUT `cli/h/tests` is a HOLLOW GREEN: the root",
+  );
+  console.error(
+    "  pyproject's testpaths excludes cli/h, so it runs packages/py's ~52 tests instead of the",
+  );
+  console.error("  CLI's ~390 and reports a pass that checked the wrong suite.\n");
+  for (const v of testCmdViolations) {
+    console.error(`  ${v.file}:${v.line}  →  ${v.snippet.trim()}`);
+  }
+  console.error("\n  Fix: cite `uv run --package h-cli pytest cli/h/tests` (what make test-py runs).\n");
+}
 
 if (skillViolations.length > 0) {
   failed = true;

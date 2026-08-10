@@ -761,8 +761,18 @@ The `h` CLI (installed editable as a workspace member):
 
 ```sh
 uv run h --help                          # run the CLI from the repo root
-uv run --package h-cli pytest            # its test suite (incl. golden snapshots of cli/charts)
+uv run --package h-cli pytest cli/h/tests   # its test suite (incl. golden snapshots of cli/charts)
 ```
+
+**The `cli/h/tests` path is load-bearing — a bare `uv run --package h-cli pytest` is a HOLLOW
+GREEN.** The root `pyproject.toml` sets `testpaths = ["packages/py"]` and deliberately EXCLUDES
+`cli/h` (its `addopts = "--disable-socket"` fail-closed network guard does not compose into one
+root config), so the bare form runs `packages/py`'s ~52 tests under an h-cli-scoped env and
+reports green while the CLI's ~390 never ran — indistinguishable from a real pass. Same class as
+the `tsc` no-op above. `make test-py` uses the correct path-scoped form; `scripts/check-steering.mjs`
+fails the build if a steering doc cites the bare one. (Found 2026-08-06 during the nats work,
+recorded only in that plan; it then bit a local-substrate run on 2026-08-10 because the steering
+docs still carried the broken form — a plan finding that was never lifted.)
 
 ## CI (self-hosted runner)
 

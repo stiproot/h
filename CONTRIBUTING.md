@@ -25,8 +25,10 @@ Run these before opening a pull request:
 bun run lint
 bun run test
 
-# h CLI tests including golden snapshots
-uv run --package h-cli pytest
+# h CLI tests including golden snapshots. The cli/h/tests path is REQUIRED: the root
+# pyproject's testpaths excludes cli/h, so a bare invocation runs packages/py instead
+# and reports a green that checked the wrong suite.
+uv run --package h-cli pytest cli/h/tests
 ```
 
 ## Branches and PRs

@@ -151,8 +151,8 @@ verbatim (`infrastructure/helm.py: render_workflow` vs `to_wire_json`).
 ### Tests (`cli/h/tests/`)
 
 ```sh
-uv run --package h-cli pytest              # from the repo root (or `uv run pytest` in cli/h)
-uv run --package h-cli pytest --snapshot-update   # re-bless goldens after INTENTIONAL chart changes
+uv run --package h-cli pytest cli/h/tests   # from the repo root (or `uv run pytest` in cli/h)
+uv run --package h-cli pytest cli/h/tests --snapshot-update   # re-bless goldens after INTENTIONAL chart changes
 ```
 
 Layered: pure units (slug/spec resolution, wire edge) → respx-mocked statestore contract →
