@@ -169,6 +169,105 @@ def test_inline_refuses_overlay_with_base_hint() -> None:
     assert "h template compose implement create-pr" in " ".join(_all_output(result).split())
 
 
+# --- composing several templates inline (no publish, no --save) -------------
+
+
+@needs_helm
+@respx.mock
+def test_inline_overlays_several_templates_into_one_workflow() -> None:
+    """Several operands compose left-to-right into ONE definition — the unpersisted twin of
+    `h template compose a b --save k` + `h workflow run k`."""
+    route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "compose-x", "watching": False})
+    )
+    result = runner.invoke(
+        app,
+        [
+            "workflow",
+            "run",
+            "implement",
+            "verify",
+            "--inline",
+            "-p",
+            "slug=x",
+            "-p",
+            "spec=a spec",
+            "--instance-id",
+            "compose-x",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    body = json.loads(route.calls[0].request.content)
+    step_ids = [s["id"] for s in body["steps"]]
+    assert "implement" in step_ids
+    # verify is an OVERLAY: it EXTENDS implement's task (same step id) rather than adding a step,
+    # so the acceptance gate must be inside the implement step's prose — and its verifyCmd must
+    # have come through as a param slot the composed render opened.
+    implement_step = next(s for s in body["steps"] if s["id"] == "implement")
+    assert "===ACCEPTANCE CHECK===" in implement_step["input"]["task"]
+    assert "{{params.verifyCmd}}" in implement_step["input"]["task"]
+    assert body["params"]["verifyCmd"]
+    # Nothing was published — no saved key was created or read.
+    assert "key" not in body
+
+
+@needs_helm
+@respx.mock
+def test_inline_composition_renders_atoms_in_composable_mode() -> None:
+    """Composing switches the atoms to composable mode: implement COMMITS rather than leaving a
+    dirty tree, so a composed-in create-pr has something to push. A single operand does not."""
+    respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
+        return_value=Response(202, json={"instanceId": "i", "watching": False})
+    )
+    solo = runner.invoke(
+        app, ["workflow", "run", "implement", "--inline", "-p", "slug=x", "-p", "spec=s"]
+    )
+    composed = runner.invoke(
+        app,
+        ["workflow", "run", "implement", "create-pr", "--inline", "-p", "slug=x", "-p", "spec=s"],
+    )
+    assert solo.exit_code == 0 and composed.exit_code == 0, _all_output(composed)
+    solo_task = json.loads(respx.calls[0].request.content)["steps"][-1]["input"]["task"]
+    composed_body = json.loads(respx.calls[1].request.content)
+    assert "do not commit or push" in solo_task
+    assert "create-pr" in [s["id"] for s in composed_body["steps"]]
+
+
+def test_several_operands_without_inline_are_refused() -> None:
+    """Only --inline reinterprets operands as templates; two saved keys is a typo, not a fire."""
+    result = runner.invoke(app, ["workflow", "run", "implement-pr", "review-pr"])
+    assert result.exit_code == 1
+    out = " ".join(_all_output(result).split())
+    assert "only one saved workflow key" in out
+    assert "--inline" in out
+
+
+@needs_helm
+def test_cron_refuses_an_adhoc_composition() -> None:
+    """A recurrence is identified by a workflow KEY in the cron:/wf: rows; an ad-hoc overlay has
+    none, so --cron points at --save instead of inventing one."""
+    result = runner.invoke(
+        app,
+        [
+            "workflow",
+            "run",
+            "implement",
+            "verify",
+            "--inline",
+            "--cron",
+            "*/30 * * * *",
+            "-p",
+            "repo=o/r",
+            "-p",
+            "slug=x",
+        ],
+    )
+    assert result.exit_code == 1
+    out = " ".join(_all_output(result).split())
+    assert "--cron needs ONE named workflow" in out
+    assert "h template compose implement verify --save" in out
+
+
 # --- the --agent roster ---------------------------------
 
 

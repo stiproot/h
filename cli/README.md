@@ -98,6 +98,8 @@ uv run h agents list                      # the workflow-invokable agents + thei
 uv run h workflow list|get|status         # read-side views over workflow-svc
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
 uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name] [--cron CADENCE] [--max-fires N]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing); --cron arms a recur cron on the RUN (§10 arm-* activity, not the handler)
+uv run h workflow run <template> --inline [-p k=v]...   # operands are chart TEMPLATES, not a saved key: render and fire, no publish
+uv run h workflow run implement verify create-pr --inline -p slug=x -p spec=@s.md  # SEVERAL overlay into ONE workflow (composable mode) — no --save needed
 uv run h workflow terminate <instanceId>  # short-circuit a running instance
 uv run h workflow run <key> --at <iso> | --in <dur>  # SCHEDULE the fire instead of firing now (arms a cron:sched one-shot)
 uv run h workflow pause <instanceId> <key> --in <dur>  # terminate the run + arm a continuation reusing its workspaceId

@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
-from h_cli.commands.template import refuse_overlay, template_name_for_key
+from h_cli.commands.template import compose_templates, refuse_overlay, template_name_for_key
 from h_cli.config import (
     AGENT_IDENTITY,
     AGENT_RUNS_DIR,
@@ -205,14 +205,33 @@ def _render_template(name: str) -> dict[str, Any]:
     return definition
 
 
-def _roster_definition(key: str, inline: bool) -> dict[str, Any]:
+def _inline_definition(names: list[str]) -> dict[str, Any]:
+    """Render the operands of an `--inline` fire into ONE definition.
+
+    A SINGLE operand renders standalone — the behaviour --inline always had. SEVERAL operands
+    overlay left-to-right through `compose_templates`, the same core `h template compose` and
+    chain's `-t` groups use, which renders every atom in COMPOSABLE mode: `implement` then commits
+    locally instead of leaving a dirty tree, so a composed-in `create-pr` has something to push.
+
+    That mode switch is what composition MEANS here, which is why it keys off the operand count
+    rather than a separate flag — `h workflow run implement verify --inline` is the unpersisted
+    twin of `h template compose implement verify --save k` + `h workflow run k`, and --save stays
+    what it always was: optional, for when the definition must outlive the fire.
+    """
+    return _render_template(names[0]) if len(names) == 1 else compose_templates(names)
+
+
+def _roster_definition(keys: list[str], inline: bool) -> dict[str, Any]:
     """A roster fires a PANELIZED definition, so it must
     compose-on-fire: render the chart template of that name when one exists (`outputs` AND
     `panelSynthesis` flow from the render; --inline forces the template reading), else fall back
     to the stored definition (generic synthesis prose)."""
-    template_name = key if inline else template_name_for_key(key)
+    if inline:
+        return _inline_definition(keys)
+    key = keys[0]
+    template_name = template_name_for_key(key)
     template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
-    if inline or template_path.exists():
+    if template_path.exists():
         return _render_template(template_name)
     stored = _guarded(lambda: workflow_svc.get(key))
     if not isinstance(stored, dict) or not stored.get("steps"):
@@ -264,7 +283,14 @@ def _identity_params(key: str, agent: str) -> dict[str, str]:
 
 @app.command()
 def run(
-    key: Annotated[str, typer.Argument(help="Saved workflow key (a published template).")],
+    keys: Annotated[
+        list[str],
+        typer.Argument(
+            help="Saved workflow key (a published template). With --inline, one or more chart "
+            "TEMPLATE names instead, overlaid left-to-right.",
+            metavar="KEY | TEMPLATE...",
+        ),
+    ],
     param: Annotated[
         list[str] | None,
         typer.Option(
@@ -275,10 +301,12 @@ def run(
         bool,
         typer.Option(
             "--inline",
-            help="Treat the argument as a TEMPLATE name, not a saved key: render it "
-            "(compose-on-fire, "
-            "sibling to chain -t) and fire its steps directly — no publish, leaving only the wf: "
-            "status row. -p/--agent/--model override the template's value-defaults.",
+            help="Treat the arguments as chart TEMPLATE names, not a saved key: render them "
+            "(compose-on-fire, sibling to chain -t) and fire the steps directly — no publish, "
+            "leaving only the wf: status row. SEVERAL names overlay into one workflow (one "
+            "instanceId, one worktree), rendered in composable mode exactly as `h template "
+            "compose` would — so --save is for when a definition must OUTLIVE the fire, never a "
+            "precondition for composing one. -p/--agent/--model override the value-defaults.",
         ),
     ] = False,
     agent: Annotated[
@@ -432,13 +460,44 @@ def run(
     --fresh re-runs, --instance-id names the run, --via ROUTES the submit through an agent's
     babysitter, and --watch/--budget/--retry hand the run to workflow-svc's durable watcher engine.
 
-    --inline reinterprets the argument as a chart TEMPLATE name: it renders the template
-    (compose-on-fire, the sibling of chain -t) and fires its steps directly — no publish, no saved
-    definition, leaving only the wf: status row. Use it for a one-off; publish when a definition
-    must be reusable or fired by a trigger/cron.
+    --inline reinterprets the arguments as chart TEMPLATE names: it renders them (compose-on-fire,
+    the sibling of chain -t) and fires the steps directly — no publish, no saved definition,
+    leaving only the wf: status row. SEVERAL names overlay into ONE workflow, so a composition
+    never has to be persisted just to run once:
+
+        h workflow run implement verify --inline --local -p slug=x -p spec=@s.md
+
+    Use it for a one-off; publish (`h template compose … --save`) when a definition must be
+    reusable or fired by a trigger/cron.
     """
     params = parse_params(param or [])
     roster = tuple(agent) if agent and len(agent) > 1 else ()
+    if not keys:
+        err_console.print(
+            "[red]a saved workflow key is required[/red] (or, with --inline, one or more "
+            "template names)."
+        )
+        raise typer.Exit(1)
+    if len(keys) > 1 and not inline:
+        err_console.print(
+            f"[red]only one saved workflow key may be named[/red] — got {len(keys)}: "
+            f"{', '.join(keys)}. To overlay several chart TEMPLATES into one workflow, add "
+            "--inline; to fire a stored composition, compose it first "
+            "(`h template compose … --save <key>`)."
+        )
+        raise typer.Exit(1)
+    if len(keys) > 1 and cron:
+        # A recurrence needs a NAMEABLE definition: the cron row and the wf: row it mirrors are
+        # keyed by workflow name, and an ad-hoc overlay has none that would still mean the same
+        # thing on a later tick. Publishing the composition first gives it that identity.
+        err_console.print(
+            "[red]--cron needs ONE named workflow[/red] — a recurring fire is identified by "
+            "its key in the cron: and wf: rows, which an ad-hoc overlay does not have. Persist "
+            f"the composition first: `h template compose {' '.join(keys)} --save <key>` then "
+            "`h workflow run <key> --cron …`."
+        )
+        raise typer.Exit(1)
+    key = keys[0]
     if local:
         _refuse_engine_flags(
             {
@@ -551,9 +610,12 @@ def run(
         # The local substrate composes on the fly: there is no saved-workflow store to read
         # (a registry is engine machinery), so the argument names a chart TEMPLATE and the
         # rendered definition IS the artifact — the same one the service path would have POSTed.
-        template_name = key if inline else template_name_for_key(key)
-        refuse_overlay(template_name, "run")
-        definition = _render_template(template_name)
+        template_names = keys if inline else [template_name_for_key(key)]
+        # Only the FIRST operand must be a complete workflow — later ones are overlays by design
+        # (that is what composing them means), so the base is the one that has to stand alone.
+        refuse_overlay(template_names[0], "run")
+        definition = _inline_definition(template_names)
+        template_name = " ⊕ ".join(template_names)
         if roster:
             try:
                 definition = panelize(
@@ -573,7 +635,7 @@ def run(
         # relaxes for a roster: the panelists run as named, the judge stays pinned (claude).
         # When --model is given, it is applied to every branch; without it the baked model is
         # stripped and a warning is emitted.
-        definition = _roster_definition(key, inline)
+        definition = _roster_definition(keys, inline)
         baked_model = ""
         for step in definition.get("steps") or []:
             inp = step.get("input") or {}
@@ -610,7 +672,7 @@ def run(
                 "an inline definition through an agent babysitter is a separate path)."
             )
             raise typer.Exit(1)
-        definition = _render_template(key)
+        definition = _inline_definition(keys)
         steps = definition.get("steps")
         # Merge -p/--agent/--model OVER the template's rendered value-defaults (there is no stored
         # definition to merge against server-side, so the CLI does it — same result as a saved
