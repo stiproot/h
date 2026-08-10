@@ -13,6 +13,7 @@ substrate.
 
 import asyncio
 import json
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -25,7 +26,7 @@ from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
 from h_cli.config import AGENT_IDENTITY, AGENT_RUNS_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure import events_fabric as fabric
 from h_cli.infrastructure import events_protocol as protocol
-from h_cli.infrastructure import helm, local_runtime
+from h_cli.infrastructure import git, helm, local_runtime
 from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
 from h_cli.params import parse_params
 
@@ -50,8 +51,26 @@ def _render(template: str) -> dict[str, Any]:
     return definition
 
 
+def group_workspace(repo: Path, group: str, in_place: bool) -> str:
+    """Where this group's steps run: a worktree of the RELAY'S PINNED CLONE, one per group.
+
+    Isolation is not optional here for the same reason `h delegate --worktree` exists — an event
+    loop writes, runs as the operator, and nobody is watching. It is stronger than opt-in: an
+    agent handed a workspace that does not match what its task claims will go LOOKING for the
+    right one, and on this substrate it has the whole filesystem and the operator's permissions
+    to look with. Pinning the cwd is what removes the reason to wander.
+    """
+    if in_place:
+        return str(repo)
+    return str(
+        git.worktree_ensure(repo, LOCAL_WORKTREES_DIR / group, f"local/{group}", base_ref="main")
+    )
+
+
 def relay_step(
     descriptor: dict[str, Any],
+    repo: Path | None = None,
+    in_place: bool = False,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """One relay transition: compose → execute → decide (hand off | resolve | exhaust | fail).
 
@@ -65,6 +84,12 @@ def relay_step(
         return None, protocol.terminal(descriptor, "failed", error=str(err))
     params = protocol.merged_params(definition.get("params") or {}, descriptor)
     try:
+        workspace = group_workspace(repo or repo_root(Path.cwd()), descriptor["group"], in_place)
+    except git.GitError as err:
+        return None, protocol.terminal(
+            descriptor, "failed", error=f"could not provision a workspace: {err}"
+        )
+    try:
         envelope = local_runtime.run_job(
             {
                 "kind": "workflow",
@@ -74,7 +99,7 @@ def relay_step(
                 "runsDir": str(AGENT_RUNS_DIR),
                 "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
                 "worktreeRoot": str(LOCAL_WORKTREES_DIR),
-                "repoPath": repo_root(Path.cwd()),
+                "repoPath": workspace,
             }
         )
     except LocalRunError as err:
@@ -252,14 +277,50 @@ def publish(
 @app.command()
 def serve(
     queue: Annotated[str, typer.Option("--queue", help="Task queue to consume.")] = "default",
+    repo: Annotated[
+        Path | None,
+        typer.Option(
+            "--repo",
+            help="The clone every fired job runs against (default: the git root of the cwd). "
+            "Each group gets its own worktree cut from it.",
+        ),
+    ] = None,
+    in_place: Annotated[
+        bool,
+        typer.Option(
+            "--in-place",
+            help="Run jobs directly in --repo instead of a per-group worktree. Read-only loops "
+            "only — an in-place write loop edits the clone itself.",
+        ),
+    ] = False,
 ) -> None:
-    """Run the relay: consume h.task.<queue>, compose-on-fire, execute locally, forward."""
+    """Run the relay: consume h.task.<queue>, compose-on-fire, execute locally, forward.
+
+    The relay PINS its clone. Every group runs in a worktree cut from it, so an event-fired agent
+    lands in a workspace that matches its task instead of hunting the filesystem for one.
+    """
+    root = (repo or Path(repo_root(Path.cwd()))).resolve()
+    if not git.is_repo(root):
+        err_console.print(
+            f"[red]events:[/red] --repo {root} is not a git repository. The relay refuses to run "
+            "jobs outside a clone it can cut worktrees from."
+        )
+        raise typer.Exit(1)
     console.print(f"relay consuming {protocol.task_subject(queue)} (Ctrl-C stops; an in-flight")
     console.print(
         f"task redelivers after ~{fabric.ACK_WAIT_SECONDS}s — durability is the fabric's job)"
     )
+    console.print(
+        f"    repo: {root}"
+        + (
+            "  [yellow](in place — jobs write to the clone itself)[/yellow]"
+            if in_place
+            else f"  worktrees: {LOCAL_WORKTREES_DIR}/<group>"
+        )
+    )
+    handler = partial(relay_step, repo=root, in_place=in_place)
     try:
-        asyncio.run(fabric.relay(queue, relay_step, lambda line: console.print(line)))
+        asyncio.run(fabric.relay(queue, handler, lambda line: console.print(line)))
     except fabric.FabricError as err:
         err_console.print(f"[red]events:[/red] {err}")
         raise typer.Exit(1) from err

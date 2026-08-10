@@ -93,7 +93,14 @@ exhausts it. Crash-safety: in-progress heartbeats extend the claim during long a
 the LAST effect, and `Nats-Msg-Id` = `<group>:<step>` dedups a redelivered step's re-publish so
 the loop never forks. The relay is a trigger host, NOT an engine — it supervises/recurs/sequences
 nothing. `serve` runs agents with the operator's env exactly like `h delegate` (e.g. codex needs
-`CODEX_AUTH_MODE=chatgpt` exported in the serve shell).
+`CODEX_AUTH_MODE=chatgpt` exported in the serve shell). The relay PINS its workspace: `--repo`
+names the clone (default the cwd's git root, refused loud if it is not a repo) and every group
+runs in its own worktree cut from it (`h-worktrees/<group>`, branch `local/<group>`, reused
+across the loop's steps); `--in-place` opts out for read-only loops. This is not tidiness — an
+agent handed a workspace that contradicts its task GOES LOOKING for the right one, with the
+operator's permissions and the whole filesystem to look through (bit us live 2026-08-10: a relay
+started with the wrong cwd led an agent to find, branch and commit into a DIFFERENT clone of the
+target repo). A true cwd is what removes the reason to wander.
 
 The **BACK-EDGE** closes the fabric for a DRIVER (a session that fires work and must learn it
 finished): every terminal lands on `h.result.<group>` carrying `status` (resolved | exhausted |

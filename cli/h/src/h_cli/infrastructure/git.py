@@ -44,6 +44,48 @@ def _run(repo_path: Path, *args: str) -> str:
     return out.stdout
 
 
+def is_repo(path: Path) -> bool:
+    """True when `path` is inside a git working tree — the guard before anything is run there."""
+    try:
+        return _run(path, "rev-parse", "--is-inside-work-tree").strip() == "true"
+    except GitError:
+        return False
+
+
+def worktree_ensure(
+    repo_path: Path,
+    worktree_path: Path,
+    branch: str,
+    base_ref: str = "main",
+) -> Path:
+    """Idempotently give `branch` a worktree at `worktree_path`, cut from `repo_path`.
+
+    The Python sibling of the local runtime's `create-worktree`, for callers that provision a
+    workspace BEFORE composing a job (the relay: an event-fired loop must land in a worktree of
+    h's own clone, never in whatever directory the process happened to start in).
+
+    Existing worktree → reused as-is, which is what makes a multi-step loop share one workspace.
+    Fetches `origin/<base_ref>` first so a new branch starts at the remote tip, falling back to
+    the local ref when there is no remote to reach.
+    """
+    if worktree_path.exists():
+        return worktree_path
+    start: str = base_ref
+    try:
+        _run(repo_path, "fetch", "origin", base_ref)
+        start = f"origin/{base_ref}"
+    except GitError:
+        pass  # offline or no remote: branch from the local ref instead of failing the loop
+    existing = _run(repo_path, "branch", "--list", branch).strip()
+    args = (
+        ["worktree", "add", str(worktree_path), branch]
+        if existing
+        else ["worktree", "add", "-b", branch, str(worktree_path), start]
+    )
+    _run(repo_path, *args)
+    return worktree_path
+
+
 def worktree_list(repo_path: Path) -> list[WorktreeEntry]:
     """All worktrees known to <repo>, main worktree first.
 

@@ -37,6 +37,13 @@ def runner(monkeypatch):
     rec = Recorder()
     monkeypatch.setattr(events, "_render", lambda name: DEFINITION)
     monkeypatch.setattr(events, "repo_root", lambda cwd: "/repo")
+    # Workspace provisioning is real git; these tests are about the DECISION table, so the cut is
+    # stubbed here and exercised explicitly by the workspace tests below.
+    monkeypatch.setattr(
+        events.git,
+        "worktree_ensure",
+        lambda repo, path, branch, base_ref="main": path,
+    )
 
     def fake_run_job(job):
         rec.job = job
@@ -137,3 +144,53 @@ def test_failed_terminal_still_carries_accounting(runner, monkeypatch) -> None:
     assert terminal["status"] == "failed"
     assert terminal["costUsd"] == 0.2
     assert terminal["runId"] == "loop-t:claude:9"
+
+
+def test_relay_runs_in_a_worktree_of_the_pinned_repo(runner, monkeypatch, tmp_path) -> None:
+    """The workspace comes from the relay's PINNED clone, never from the process's cwd.
+
+    The failure this pins happened live 2026-08-10: a relay started with the wrong cwd handed an
+    agent a workspace that did not match its task, and the agent went hunting the filesystem and
+    wrote into a DIFFERENT clone of the target repo.
+    """
+    cut: dict = {}
+
+    def fake_ensure(repo, worktree_path, branch, base_ref="main"):
+        cut.update(repo=repo, path=worktree_path, branch=branch)
+        return worktree_path
+
+    monkeypatch.setattr(events.git, "worktree_ensure", fake_ensure)
+    monkeypatch.setattr(events, "repo_root", lambda cwd: "/wherever/the/process/happened/to/start")
+    runner.envelope = {"ok": True, "results": {"answer": {"structured": {"answer": "done"}}}}
+
+    events.relay_step(_descriptor(), repo=tmp_path / "h-clone")
+
+    assert cut["repo"] == tmp_path / "h-clone"
+    assert cut["branch"] == "local/loop-t"
+    assert runner.job["repoPath"] == str(cut["path"])
+    assert "/wherever" not in runner.job["repoPath"]
+
+
+def test_in_place_relay_runs_in_the_clone_itself(runner, monkeypatch, tmp_path) -> None:
+    """`--in-place` is the read-only escape hatch: no worktree is cut at all."""
+    monkeypatch.setattr(
+        events.git,
+        "worktree_ensure",
+        lambda *a, **k: pytest.fail("in-place must not cut a worktree"),
+    )
+    runner.envelope = {"ok": True, "results": {"answer": {"structured": {"answer": "done"}}}}
+    events.relay_step(_descriptor(), repo=tmp_path / "clone", in_place=True)
+    assert runner.job["repoPath"] == str(tmp_path / "clone")
+
+
+def test_unprovisionable_workspace_is_a_terminal_not_a_crash(runner, monkeypatch, tmp_path) -> None:
+    """A workspace that cannot be cut must report on the stream — the seeder may be long gone."""
+
+    def boom(*a, **k):
+        raise events.git.GitError("fatal: not a git repository")
+
+    monkeypatch.setattr(events.git, "worktree_ensure", boom)
+    next_descriptor, terminal = events.relay_step(_descriptor(), repo=tmp_path / "nope")
+    assert next_descriptor is None
+    assert terminal["status"] == "failed"
+    assert "could not provision a workspace" in terminal["error"]
