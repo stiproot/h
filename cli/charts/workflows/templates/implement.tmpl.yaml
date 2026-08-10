@@ -134,13 +134,16 @@ steps:
         First persist the plan you were handed under ===IMPLEMENTATION PLAN=== (the
         shared-context handoff, so a re-run or another session can pick it up — the planning
         agent runs read-only and cannot write it itself):
-        1. Write it to plan-feature-{{ $slug }}.md in the worktree root.
-        2. Call the dapr MCP tool actor_state_set with actorId 'feature-{{ $slug }}' and key
-           'plan', value the plan text — durable in the state store, inspectable from any
-           session via actor_state_get.
-        If either persistence step fails (e.g. the dapr MCP is unreachable), do NOT fail the
-        run — but you MUST say so explicitly in your final output, so the degradation is
-        visible instead of silent.
+        1. Write it to plan-feature-{{ $slug }}.md in the worktree root. This is the handoff
+           and it is required.
+        2. ONLY if the dapr MCP is wired in this environment, ALSO call actor_state_set with
+           actorId 'feature-{{ $slug }}' and key 'plan', value the plan text — durable in the
+           state store, inspectable from another session via actor_state_get. On the LOCAL
+           substrate there are no services and so no dapr MCP: the file from (1) sits on the
+           operator's own disk and is the whole handoff there, so skipping this is EXPECTED,
+           not a degradation — do not attempt the call and do not report its absence.
+        If (1) fails, or (2) fails while the tool IS present, do NOT fail the run — but you
+        MUST say so explicitly in your final output, so a real degradation stays visible.
 
         Then implement the feature described under ===FEATURE SPEC=== below, following the
         plan. If the feature already appears implemented, make no changes and say so.
