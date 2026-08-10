@@ -301,6 +301,7 @@ async def consume_results(
     durable: str,
     group: str | None,
     emit: Callable[[dict[str, Any]], None],
+    from_new: bool = False,
 ) -> None:
     """Stream terminal envelopes off a DURABLE consumer, acking each — the driver's back-edge.
 
@@ -308,6 +309,11 @@ async def consume_results(
     results keep landing and must still be there. The consumer resumes exactly where its last ack
     left it, so nothing is delivered twice and nothing is missed — the property a live `tail`
     cannot offer.
+
+    `from_new` sets the START of a consumer that does not exist yet: a driver watching for work
+    it is about to fire does not want the week of retained history a fresh durable otherwise
+    replays. It is a CREATION-time property — once the durable exists, its start is settled and
+    this flag does nothing, which is the honest behaviour for a resume point.
     """
     nc = await connect()
     try:
@@ -317,7 +323,10 @@ async def consume_results(
             protocol.result_subject(group) if group else protocol.RESULT_SUBJECTS,
             durable=durable,
             stream=protocol.RESULT_STREAM,
-            config=ConsumerConfig(ack_wait=ACK_WAIT_SECONDS),
+            config=ConsumerConfig(
+                ack_wait=ACK_WAIT_SECONDS,
+                deliver_policy=DeliverPolicy.NEW if from_new else DeliverPolicy.ALL,
+            ),
         )
         while True:
             try:

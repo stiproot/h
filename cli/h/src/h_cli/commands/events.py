@@ -323,6 +323,14 @@ def results(
     group: Annotated[
         str | None, typer.Option(help="Only this group's terminals (default: every group).")
     ] = None,
+    from_new: Annotated[
+        bool,
+        typer.Option(
+            "--new",
+            help="Start a NEW durable at the stream's head (skip retained history). No effect "
+            "on a durable that already exists — its resume point is already settled.",
+        ),
+    ] = False,
     as_json: Annotated[
         bool, typer.Option("--json", help="Print raw terminal envelopes instead of one line each.")
     ] = False,
@@ -343,7 +351,7 @@ def results(
         console.print(json.dumps(event) if as_json else _terminal_line(event))
 
     try:
-        asyncio.run(fabric.consume_results(durable, group, emit))
+        asyncio.run(fabric.consume_results(durable, group, emit, from_new))
     except fabric.FabricError as err:
         err_console.print(f"[red]events:[/red] {err}")
         raise typer.Exit(1) from err
