@@ -168,3 +168,46 @@ def test_a_failed_step_exits_nonzero_and_names_the_step(monkeypatch) -> None:
     output = _all_output(result)
     assert "answer" in output
     assert "fenced" in output
+
+
+@needs_helm
+def test_local_composes_several_templates_without_a_registry(captured_job) -> None:
+    """The point of composing inline: the local substrate has NO saved-workflow store, so before
+    --inline took several operands an `implement ⊕ verify` composition was unreachable here — it
+    could only be run by first publishing it to a registry the substrate does not have."""
+    result = runner.invoke(
+        app,
+        [
+            "workflow",
+            "run",
+            "implement",
+            "verify",
+            "--inline",
+            "--local",
+            "-p",
+            "slug=x",
+            "-p",
+            "spec=a spec",
+        ],
+    )
+
+    assert result.exit_code == 0, _all_output(result)
+    job = captured_job[0]
+    step_ids = [s["id"] for s in job["steps"]]
+    assert "implement" in step_ids
+    # verify overlays implement's step rather than adding one — the gate is in the prose.
+    implement_step = next(s for s in job["steps"] if s["id"] == "implement")
+    assert "===ACCEPTANCE CHECK===" in implement_step["input"]["task"]
+    assert job["params"]["verifyCmd"]
+
+
+@needs_helm
+def test_local_composition_still_refuses_a_bare_overlay(captured_job) -> None:
+    """Only the FIRST operand must stand alone; leading with an overlay has no base to extend."""
+    result = runner.invoke(
+        app, ["workflow", "run", "verify", "implement", "--inline", "--local", "-p", "slug=x"]
+    )
+
+    assert result.exit_code == 1
+    assert "overlay" in _all_output(result)
+    assert not captured_job
