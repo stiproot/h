@@ -582,6 +582,41 @@ def test_chain_list_renders_registry() -> None:
 
 
 @respx.mock
+def test_chain_list_surfaces_the_current_member_budget() -> None:
+    """A budgeted member shows its maxDurationMs; an unbudgeted one shows '-'."""
+    respx.get(f"{WORKFLOW_URL}/chain/list").mock(
+        return_value=Response(
+            200,
+            json={
+                "heartbeat": {"at": "2026-07-08T09:00:00Z", "enabled": True},
+                "chains": [
+                    {
+                        "chainId": "budgeted",
+                        "status": "running",
+                        "cursor": 1,
+                        "members": [
+                            {"kind": "implement-pr"},
+                            {"kind": "review-pr", "watch": {"maxDurationMs": 600000}},
+                        ],
+                        "outcome": None,
+                    },
+                    {
+                        "chainId": "unbudgeted",
+                        "status": "running",
+                        "cursor": 0,
+                        "members": [{"kind": "implement-pr"}],
+                        "outcome": None,
+                    },
+                ],
+            },
+        )
+    )
+    result = runner.invoke(app, ["chain", "list"])
+    assert result.exit_code == 0, _all_output(result)
+    assert "600000" in result.output
+
+
+@respx.mock
 def test_chain_list_http_error_exits_1() -> None:
     respx.get(f"{WORKFLOW_URL}/chain/list").mock(return_value=Response(500))
     result = runner.invoke(app, ["chain", "list"])

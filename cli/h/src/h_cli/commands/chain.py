@@ -913,15 +913,29 @@ def list_() -> None:
         err_console.print("Is workflow-svc running? (make dev-tab)")
         raise typer.Exit(1) from err
     chains = result.get("chains", [])
-    table = Table("chain", "status", "workflow", "outcome", title=f"chains ({len(chains)})")
+    table = Table(
+        "chain",
+        "status",
+        "workflow",
+        "member budget (ms)",
+        "outcome",
+        title=f"chains ({len(chains)})",
+    )
     for c in chains:
         workflows = c.get("members", [])
         cursor = c.get("cursor", 0)
-        kind = workflows[cursor]["kind"] if 0 <= cursor < len(workflows) else "-"
+        current = workflows[cursor] if 0 <= cursor < len(workflows) else None
+        kind = current["kind"] if current else "-"
+        # The CURRENT member's own wall clock (`-w X --budget 10m`), read off the watch policy
+        # its registration emitted. Distinct from the chain-wide budget: this one is enforced
+        # per-member by the WATCHER engine, not by the chain engine. "-" means unbudgeted.
+        watch = current.get("watch") if current else None
+        member_budget = str(watch.get("maxDurationMs", "-")) if watch else "-"
         table.add_row(
             c.get("chainId", ""),
             c.get("status", ""),
             f"{cursor + 1}/{len(workflows)} ({kind})",
+            member_budget,
             c.get("outcome") or "-",
         )
     console.print(table)
