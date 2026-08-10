@@ -85,10 +85,18 @@ Local execution declines anything that needs an engine, and says which one: `--c
 substrate. Likewise the executor refuses `register-cron`, `write-wf-row`, `register-discover` and
 `run-itest` by name rather than skipping them: a silently-skipped gate is worse than a stopped run.
 
-Two local-substrate rules worth knowing before you are surprised by them:
+Rules worth knowing before you are surprised by them:
 
 - **`setup` steps are skipped** unless you pass `--with-setup`. They provision `~/.claude` — which
   here is the *operator's own* configuration, not a container's.
+- **A freshly cut worktree has no installed dependencies.** `create-worktree` is a `git worktree
+  add`, nothing more: no `node_modules`, no `.venv`. So a task whose acceptance command is a build,
+  lint or typecheck will fail there until you run `bun install --frozen-lockfile` (fast — it
+  hardlinks from the shared bun cache) and/or `uv sync --frozen` in the worktree. The repo's
+  pre-push hook runs the full guard surface, so **a push from an uninstalled worktree fails too**.
+  Watch out for the diagnosis: the toolchain guard reports `no tsc at .../node_modules/.bin/tsc`
+  and prints the poisoned-bun-cache repair recipe, which is the WRONG fix here — a fresh worktree
+  simply never had an install, and one `bun install` is the whole answer.
 - **`create-worktree` cuts from the checkout you point it at**; a step's own `clonePath` still wins.
 - **Work targets are bounded to the workspace h manages.** `--cwd` (delegate) and `--repo`
   (`h events serve`) must resolve inside `h-workspace/<repo>` — h's own clone of the target — the
@@ -121,6 +129,18 @@ the files or symbols worth starting from, and say what "done" looks like. `@path
 so a spec or a question can live in one. For a panel, ask a question that has a real answer —
 "which of these is soundest and why" beats "thoughts?", which returns three essays that cannot be
 compared.
+
+**Name the WHOLE acceptance command, formatters included.** A delegate does exactly what "done"
+says: give it only the test command and you get passing tests in unformatted code, which then
+fails the pre-push guards. State the full gate the change must survive (e.g. `uv run ruff format
+cli/h && uv run ruff check cli/h && uv run --package h-cli pytest cli/h/tests`), and check the
+command actually works before you hand it over — a wrong acceptance command sends the agent
+debugging your instructions instead of doing the task.
+
+**Check for prior work before delegating.** Search branches, open PRs and existing worktrees for
+the thing you are about to commission. A delegate starts cold and will happily rebuild something
+that is already sitting in review — the cost lands before anyone notices the duplication. (Bit us
+live 2026-08-10: a feature was re-implemented from scratch while its PR had been open a week.)
 
 ## Long write work: checkpoint-first, driver-as-fallback
 
