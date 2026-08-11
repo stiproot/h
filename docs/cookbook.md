@@ -66,6 +66,48 @@ h workflow run answer --local --cron '@daily'
   ✗ --cron need workflow-svc's engines — drop --local to use them
 ```
 
+## Build a real feature locally — implement, verified against a spec
+
+```sh
+h workflow run implement --inline --local \
+  --instance-id my-feature \
+  -p slug=my-feature -p spec=@spec.md
+```
+
+The `implement` template on the local substrate: it cuts a worktree, plans read-only, then
+implements against the spec, leaving the result as uncommitted working-tree changes (standalone
+mode — compose `create-pr` in if you want the PR). Write the spec as the WHOLE brief, naming the
+files to start from and the exact acceptance command including formatters — the delegate has none
+of your context, and an acceptance command that omits `ruff format` returns passing tests in code
+that fails the pre-push guards. *(Validated 2026-08-10 — instance `per-member-budget-cli`, plan
+$1.17 + implement $1.22, shipped as PR #108.)*
+
+Two things to expect on this substrate. **The worktree has no installed dependencies** —
+`create-worktree` is a `git worktree add` and nothing more, so run `bun install
+--frozen-lockfile` (and `uv sync --frozen` if needed) before any build/lint acceptance command or
+any push, because the pre-push hook runs the full guard surface. **`clonePath` decides which
+checkout it cuts from**, and an empty one falls back to the CLI's own git root — pass
+`-p clonePath=<path>` explicitly whenever the branch you want lives somewhere specific.
+
+## Review a PR, then revise it — both locally
+
+```sh
+h workflow run review-pr --inline --local -p pr=108 -p repo=stiproot/h
+h workflow run revise-pr --inline --local -p pr=108 -p slug=my-feature \
+  -p clonePath=/path/to/the/clone/holding/the/branch
+```
+
+The review reads the PR diff through the github MCP and posts a submitted review with
+line-anchored comments; `revise-pr` then reads the PR's UNRESOLVED threads itself, rebases the
+branch onto `origin/main`, fixes what the threads name, replies inline, resolves them, and
+force-pushes with lease. Note `review-pr` cuts NO worktree — with no `cwd` a step falls back to
+the repo root, so the reviewer reads your live checkout for the repo's conventions while taking
+the diff from GitHub. *(Validated 2026-08-11 on PR #108 — review $1.09 found one real defect,
+revise $1.19 fixed it and resolved the thread.)*
+
+The revise leg fixes what the review NAMED. If you already know of a related defect the review
+missed, put it in the task — a faithful revise is not a second review.
+
 ## A panel with no infrastructure at all
 
 ```sh

@@ -170,7 +170,20 @@ used here. This section is the terse runtime-facing index.
   workflow-cron-tick beside the watch scan), rows `chain:sub:<chainId>`; `h chain run` registers
   (fire-and-forget) via the chain EXPRESSION — ordered `-w KEY` / `-t ATOM…` members with
   position-scoped `--agent/--model/--fresh/--kind/--inline` flags, stage flags `--parallel` (infix) or
-  `--stage N`, cron flags `--cron CADENCE`/`--max-fires N`, the namespace `--id NAME`, plus declarative
+  `--stage N`, cron flags `--cron CADENCE`/`--max-fires N`, the namespace `--id NAME`, and
+  **`--budget DUR`, whose meaning depends on its POSITION — the one flag in the expression that does**:
+  a PREFIX budget is the whole-chain wall clock (`chain:sub`'s `budgetMs`, enforced by the CHAIN
+  engine against the chain's `startedAt`), a SUFFIX budget bound to one member is that member's watch
+  policy (`watch: {maxDurationMs}` on its entry → registered as an ordinary `watch:sub` row by the
+  `fireWorkflow` → `invokeWithWatch` seam at its deferred fire, enforced by the WATCHER against the
+  member's own `startedAt`). Two rows, two clocks, two engines, one 60s tick: they compose as
+  whichever-trips-first, INDEPENDENTLY, and a budget-terminated member fails the chain as a unit via
+  the D6 teardown. Because the positions mean different things, `budget` is deliberately EXCLUDED from
+  `effective_config`'s chain-wide→member merge (`chain_expr.py`) — merging it would make a documented
+  whole-chain budget silently arm a watch row on every member. `--budget` on a `--cron` member is
+  refused (recurrence is the cron engine's business), as is a per-member budget on `--local` (no
+  watcher exists there); a chain-wide one on `--local` is still silently dropped
+  (docs/plans/carried-followups.md §1b), plus declarative
   threading mappings `--capture BB=FIELD / --input PARAM=SRC (SRC = flat key or dotted id.field) /
   --until PATH=VALUE` (validated at registration on BOTH sides: captures/until against the declared
   outputs schema, and every `{{params.X}}` a member's definition references against what its kind

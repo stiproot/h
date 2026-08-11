@@ -13,7 +13,7 @@ the Trigger index bullet; code comments at `Trigger`/`deriveInstanceId`
 
 ## Origin
 
-Reviewing [per-member-budget](../per-member-budget.md) surfaced the carrier table: the same
+Reviewing [per-member-budget](./per-member-budget.md) surfaced the carrier table: the same
 "fire this workflow, supervised like this" intent is spelled four ways — the run REQUEST
 (standalone fires), the chain MEMBER (deferred to stage advance), the DISCOVER row (deferred
 to issue arrival), the SCHED resubmit (deferred to a clock). The operator's probe: a single
@@ -190,7 +190,7 @@ Revisit when: standalone runs need captures/threading (the one capability only c
    derivation base. Docs done in ARCHITECTURE/CLAUDE (cookbook untouched — no command
    changes; the visible delta is readable default instance ids on standalone fires).
 
-Interaction with [per-member-budget](../per-member-budget.md): its `ChainMember.watch?` field
+Interaction with [per-member-budget](./per-member-budget.md): its `ChainMember.watch?` field
 landed INSIDE the descriptor here (the build order was reversed by the operator), which
 also delivered that plan's SERVER half — the member carries the policy, and the chain's
 fire path registers it mark-before-fire at stage advance. Only its CLI mapping remains.

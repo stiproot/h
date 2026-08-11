@@ -24,19 +24,47 @@ the record of *why* they closed survives.
 
 ## From [chain-composition-surface](./impl/chain-composition-surface.md)
 
-### 1. Slice E — per-member `--budget` is parsed but not enforced
+### 1. Slice E — per-member `--budget` is parsed but not enforced — RESOLVED 2026-08-11
 
-`h chain run` accepts a per-member `--budget DUR` in the chain expression and validates its
-format, but `chain.py` then refuses it: *"per-workflow --budget on '<member>' is not yet
-enforced"*. The chain-wide wall clock (the prefix-position `--budget`) works; the
-per-member watch budget does not. Needs `ChainMember` to carry a watch policy and
-`chain-scan`'s fire path to register it per member fire.
+`h chain run` accepted a per-member `--budget DUR` and validated its format, then refused it
+with a warning. It now maps to `watch: {maxDurationMs}` on the member entry, which the
+`fireWorkflow` → `invokeWithWatch` seam registers as an ordinary watch row — so the WATCHER
+budget-terminates an overrunning member and the chain fails as a unit via D6 teardown.
 
-*Revisit when:* a chain has one member that legitimately needs a much tighter or looser
-budget than its siblings — today the chain-wide budget covers every observed case.
-*2026-07-31:* design written up with change diagrams in
-[per-member-budget](../per-member-budget.md) (Status: Planning) — the item leaves here when
-that plan builds.
+Built and merged via PR #108 ([per-member-budget](./impl/per-member-budget.md)). The engine
+half had already landed inside [fire-descriptor](./impl/fire-descriptor.md); this was the CLI
+half. Two things outlived it and are carried below as §1a and §1b.
+
+### 1a. Per-member budget: no LIVE acceptance run yet
+
+Acceptance items 1–2 of the plan — registering a chain with a member budget and watching the
+watcher actually budget-terminate that member, with the chain finalizing failed — have never
+been run. They need a service stack (chain engine + watcher on the cron tick); everything
+merged is unit-level plus a CLI-level refusal check.
+
+*Revisit when:* a service stack is up for other reasons and a chain is being fired anyway —
+this rides along rather than justifying its own bring-up.
+
+### 1b. Chain-wide `--budget` is silently dropped on `--local`
+
+`chain.py` now refuses a PER-MEMBER `--budget` on `--local` by name (it needs the watcher
+engine). A CHAIN-WIDE prefix `--budget` in the same command is still accepted and then
+dropped: it lands in `body["budgetMs"]`, and `_run_local_chain` filters the job through
+`_LOCAL_MEMBER_FIELDS` and never carries a chain-level budget, so nothing enforces it and
+nothing says so. One command therefore refuses one budget position by name while silently
+ignoring the other.
+
+This contradicts the substrate's own rule — local execution declines what needs an engine
+rather than ignoring it, because a silently-dropped budget reports a supervision that was
+never armed. `h workflow run --local` gets this right via `_refuse_engine_flags`; `chain.py`
+has no equivalent for budgets, so the two local surfaces disagree.
+
+Found 2026-08-11 while verifying the PR #108 review's fix — the review named only the
+per-member half, and the revise leg faithfully fixed only what it was told about.
+
+*Revisit when:* touching `chain.py`'s local path for any reason — the fix is a few lines
+beside the existing `if local and cfg.cron` / `if local and cfg.budget` guards, reading
+`expr.defaults.budget` rather than the member's own.
 
 ---
 

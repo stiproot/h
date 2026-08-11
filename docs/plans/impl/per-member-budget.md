@@ -1,14 +1,28 @@
 # Per-member `--budget` — a chain member the watcher can budget-terminate
 
-Status: Active — design reviewed via the change diagrams + two operator Q&As (pinned below),
-APPROVED TO BUILD 2026-07-31. Build order REVERSED: fire-descriptor built first (operator
-instruction, 2026-07-31), and its descriptor embed delivered this plan's SERVER half —
-`ChainMember` carries `watch?` (inside the embedded Trigger core) and chain-scan's
-`fireWorkflow` fires through `invokeWithWatch`, registering the member's policy
-mark-before-fire (unit-tested). REMAINING: the CLI half — `chain.py`'s `--budget` refusal
-becomes the mapping to `watch.maxDurationMs`, the cron-member refusal, tests — and the
-live acceptance run.
+Status: Complete — the CLI half landed via PR #108 (merged 2026-08-11), completing the feature:
+a suffix `--budget` now arms that member's watch policy, the cron-member and `--local` cases are
+refused by name, and `h chain list` surfaces it. The server half had already arrived inside
+fire-descriptor. The LIVE acceptance run (watching the watcher actually budget-terminate a
+member) still has not happened — it needs a service stack and is carried as
+[carried-followups](../carried-followups.md) §1a, along with §1b, a chain-wide-budget-on-`--local`
+silent drop found while verifying the review.
 Established: 2026-07-31
+
+Lifted to:
+- **CLAUDE.md, the Chain primitive bullet** — the load-bearing design: `--budget` means different
+  things by POSITION (prefix = whole-chain wall clock on the chain engine's clock; suffix = one
+  member's watch policy on the watcher's), the two compose whichever-trips-first independently,
+  and that is *why* `budget` is excluded from `effective_config`'s merge.
+- **A comment at `chain_expr.py`'s `effective_config`** — why this one field does not inherit,
+  stated where anyone tempted to "fix" the asymmetry will read it.
+- **`cli/h/tests/test_chain.py`** — the regression guard that a prefix budget arms no member
+  watch is a test, not prose; it is what actually holds the rule.
+- **[carried-followups](../carried-followups.md) §1a, §1b** — the live acceptance run, and the
+  chain-wide `--local` gap.
+
+The rest of this document is the transient trail: the design as reviewed, the diagrams, and the
+build log.
 
 The carried item (carried-followups §1, from chain-composition-surface Slice E): `h chain run`
 accepts a per-member `--budget DUR` in the chain expression and VALIDATES it, but `chain.py`
@@ -301,7 +315,7 @@ archival (both follow the live acceptance run, not the code change).
 
 ## Log
 
-- 2026-07-31 — Review spawned [fire-descriptor](./impl/fire-descriptor.md): this plan's
+- 2026-07-31 — Review spawned [fire-descriptor](./fire-descriptor.md): this plan's
   `ChainMember.watch?` field will land inside the descriptor; build THIS plan first, that
   one absorbs the placement.
 - 2026-07-31 — Order reversed by operator instruction: fire-descriptor built (and archived)
