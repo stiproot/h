@@ -181,7 +181,7 @@ def test_local_composes_several_templates_without_a_registry(captured_job) -> No
             "workflow",
             "run",
             "implement",
-            "verify",
+            "create-pr",
             "--inline",
             "--local",
             "-p",
@@ -195,10 +195,9 @@ def test_local_composes_several_templates_without_a_registry(captured_job) -> No
     job = captured_job[0]
     step_ids = [s["id"] for s in job["steps"]]
     assert "implement" in step_ids
-    # verify overlays implement's step rather than adding one — the gate is in the prose.
-    implement_step = next(s for s in job["steps"] if s["id"] == "implement")
-    assert "===ACCEPTANCE CHECK===" in implement_step["input"]["task"]
-    assert job["params"]["verifyCmd"]
+    # Both atoms reached the runner as ONE definition, base first.
+    assert "create-pr" in step_ids
+    assert step_ids.index("implement") < step_ids.index("create-pr")
 
 
 @needs_helm

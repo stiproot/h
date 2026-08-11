@@ -176,7 +176,13 @@ def test_inline_refuses_overlay_with_base_hint() -> None:
 @respx.mock
 def test_inline_overlays_several_templates_into_one_workflow() -> None:
     """Several operands compose left-to-right into ONE definition — the unpersisted twin of
-    `h template compose a b --save k` + `h workflow run k`."""
+    `h template compose a b --save k` + `h workflow run k`.
+
+    Composed from atoms that need no chart VALUES, deliberately: `-p` populates params, not
+    values, so a composition whose atom `required`s one (verify.cmd) can only render where a
+    gitignored values.local.yaml supplies it. The overlay MERGE rules themselves are pure and
+    covered in test_overlay.py; what belongs here is only that the CLI reaches them.
+    """
     route = respx.post(f"{WORKFLOW_URL}/workflow/run").mock(
         return_value=Response(202, json={"instanceId": "compose-x", "watching": False})
     )
@@ -186,7 +192,7 @@ def test_inline_overlays_several_templates_into_one_workflow() -> None:
             "workflow",
             "run",
             "implement",
-            "verify",
+            "create-pr",
             "--inline",
             "-p",
             "slug=x",
@@ -199,14 +205,10 @@ def test_inline_overlays_several_templates_into_one_workflow() -> None:
     assert result.exit_code == 0, _all_output(result)
     body = json.loads(route.calls[0].request.content)
     step_ids = [s["id"] for s in body["steps"]]
-    assert "implement" in step_ids
-    # verify is an OVERLAY: it EXTENDS implement's task (same step id) rather than adding a step,
-    # so the acceptance gate must be inside the implement step's prose — and its verifyCmd must
-    # have come through as a param slot the composed render opened.
-    implement_step = next(s for s in body["steps"] if s["id"] == "implement")
-    assert "===ACCEPTANCE CHECK===" in implement_step["input"]["task"]
-    assert "{{params.verifyCmd}}" in implement_step["input"]["task"]
-    assert body["params"]["verifyCmd"]
+    # Both atoms are present in ONE definition, base first — create-pr appends its own step
+    # rather than extending implement's, so ordering is the observable.
+    assert "implement" in step_ids and "create-pr" in step_ids
+    assert step_ids.index("implement") < step_ids.index("create-pr")
     # Nothing was published — no saved key was created or read.
     assert "key" not in body
 
