@@ -7,8 +7,7 @@ home the plan-management lift rule wants; plans are transient, this gallery is n
 surface changes, update or delete the entry in the same change — a stale example is worse than
 none.
 
-Grammar refs: `h chain run --help` (the chain EXPRESSION), CLAUDE.md "h primitives",
-docs/plans/impl/chain-composition-surface.md.
+Grammar refs: `h chain run --help` (the chain EXPRESSION), CLAUDE.md "h primitives".
 
 ## Delegate to a local agent CLI — no stack at all (local substrate)
 
@@ -167,7 +166,7 @@ h events publish --agent claude --max-steps 5 -p task=@rules.md
 h events tail 'h.result.>'                    # watch the loop's terminal event land
 ```
 
-The local substrate's event fabric (POC — docs/plans/nats-event-substrate.md). `publish` seeds a
+The local substrate's event fabric (POC). `publish` seeds a
 FIRE DESCRIPTOR onto `h.task.default`; the relay composes the template per step (compose-on-fire,
 same artifact as `--local`) and executes it through the local runner. The loop edge is the
 `publish: {task, agent?}` field an agent may return beside its contract fields — the RELAY
@@ -216,7 +215,7 @@ h workflow run answer -p task=@question.md --agent claude --agent codex --agent 
 A roster panelizes any read/judge workflow at fire time: one branch per agent in a parallel
 step group, a pinned judge (claude) synthesizes under the workflow's own output contract. On
 `h workflow run` the flag repeats (Typer); in a chain expression it's space-greedy (below).
-*(Validated 2026-07-24 — docs/plans/impl/panels-as-a-modifier.md.)*
+*(Validated 2026-07-24.)*
 
 ## The full parallelism tour — two panels ∥, then implement (container e2e, PR #64)
 
@@ -272,7 +271,7 @@ h workflow resume <schedId>                                      # ...or continu
 ```
 
 One-shot `cron:sched` rows; pause reuses the run's workspace so the worktree survives.
-*(Validated 2026-07-18 — docs/plans/impl/schedule-and-fallback.md.)*
+*(Validated 2026-07-18.)*
 
 ## Usage-limit fallback — continue under another agent
 
@@ -308,8 +307,7 @@ them. The child holds until the parent finalizes `completed`, then activates SEE
 parent's finalized data — including its last stage's captures (issue #77), so `--input
 task=handoff` reads what the parent captured. A failed parent terminates the child instead.
 `--at <iso>` / `--in <dur>` gate on time the same way — chains are schedulable. *(Validated
-2026-07-25 — the child's task was literally the parent's answer;
-docs/plans/impl/chain-engine-followups.md.)*
+2026-07-25 — the child's task was literally the parent's answer.)*
 
 ## The zero-glue pipeline shape — implement, then an --after review loop
 
@@ -373,7 +371,7 @@ h agents allow codex    # re-enable
 
 Validated 2026-07-29: with codex denied, a fired `run-codex` workflow FAILED at the activity
 gate with `executor 'codex' is denied by the exec:config policy` — before any agent invoke, no
-quota spent (docs/plans/impl/live-state-containment.md §2.3).
+quota spent.
 
 ## Daily cost budget on an executor — spend caps the engine enforces
 
@@ -387,7 +385,7 @@ h agents allow claude           # lift a tripped cost-budget fence early
 When the watcher's finalization tally (`watch:ledger:<date>` per-agent subtotals) crosses an
 executor's budget, it writes a `cost-budget` deny expiring at the next UTC midnight — the
 activity-registry gate then refuses that executor on every fire path; an operator deny is
-never downgraded. Validated 2026-07-30 (docs/plans/impl/cost-containment.md A1 e2e): with claude
+never downgraded. Validated 2026-07-30 (e2e): with claude
 budgeted at $0.01, a watched `answer` run booked $0.0555 → the scan fenced claude
 (`cost-budget, until next UTC midnight`), the next fire FAILED at the gate with
 `executor 'claude' is denied … (auto: daily cost budget crossed …)`, and `h agents list`

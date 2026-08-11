@@ -94,8 +94,7 @@ Pick the closest existing agent as the template (a **CLI** agent → `openhands-
 Identity is fire-time params: a new agent is reachable per-fire via `-p runActivity=run-<name>
 -p agentId=<name>-agent` or `--agent <name>` with **no chart change**. Only touch
 `cli/charts/workflows/` if you want the agent selectable as a named chart default. The `review-pr`
-executor is deliberately NOT parameterized — `--agent` warns and keeps the pin there
-(docs/plans/reviewer-identity-security.md).
+executor is deliberately NOT parameterized — `--agent` warns and keeps the pin there.
 
 ## Worked example: codex-agent (2026-07-23/24)
 
@@ -127,6 +126,7 @@ session**. Read it as a list of what happens when you don't finish the list.
   dedicated in-image `/codex-home`, with the host credential mounted read-only and seeded in.
 
 Two general lessons worth carrying to the next agent: **any agent-owned state dir is subject to
-the same cross-uid hazard as the workspace** (see docs/plans/impl/agent-process-identity.md), and
+the same cross-uid hazard as the workspace** (the fleet's non-root uid cannot write files a host
+uid created, and vice versa — see the agent-process-identity gotchas in CLAUDE.md), and
 **a local e2e passing does not imply a container e2e passes** — codex was fully green locally
 while four container wiring bugs and one deep blocker were still live.

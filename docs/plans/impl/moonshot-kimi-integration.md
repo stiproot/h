@@ -60,8 +60,8 @@ plan uses it.
 
 Precedent in this repo: the DeepSeek driver does exactly this shape
 (`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` + `ANTHROPIC_AUTH_TOKEN`,
-[docs/DRIVER.md](../DRIVER.md)) and was live-validated through tool use, MCP, and a
-cold-start check-in ([model-fallback-continuity](./model-fallback-continuity.md) Phase 1).
+[docs/DRIVER.md](../../DRIVER.md)) and was live-validated through tool use, MCP, and a
+cold-start check-in ([model-fallback-continuity](../model-fallback-continuity.md) Phase 1).
 
 **But that precedent runs the HOST claude CLI directly, never through `claude-agent`'s
 runner — and the runner path has two blockers the driver path never touches.** Both were
@@ -133,7 +133,7 @@ Why:
 - **It buys a working executor for the least new surface.** No new CLI strategy, no new
   stream parser, no new cost path. The claude CLI is h's most-exercised executor — MCP,
   skills, the whole PR flow (create PR, read/reply/resolve review threads) work on day one,
-  which is exactly what pi still cannot do ([pi-chain-participation](./pi-chain-participation.md)).
+  which is exactly what pi still cannot do ([pi-chain-participation](../pi-chain-participation.md)).
 - **It matches the precedent that already succeeded**, and the shape the fallback plan
   already leaned toward for DeepSeek: "(b) a `<provider>-agent` service — a thin clone with
   the env baked (cleaner isolation, one more service)".
@@ -241,7 +241,7 @@ provider means standing up another service or displacing an existing one.** Code
 (one `auth.json` per runner), DeepSeek hit it (openhands' single BYOK pair), and Kimi hits
 it now (Route C displaces DeepSeek; Route A needs a whole service to carry an env block).
 
-That is precisely what [model-provider-integration](./model-provider-integration.md)
+That is precisely what [model-provider-integration](../model-provider-integration.md)
 predicted, and it is currently `Deferred`. Three data points is a trigger, and its two
 still-accurate gaps are directly implicated here: the Python wire contract carries no
 `model` at all, and five of six non-claude run activities silently drop a step's

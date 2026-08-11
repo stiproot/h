@@ -1,10 +1,9 @@
 # h-builds-h runbook
 
 Operating the self-build loop: labeled GitHub issues → `feature` runs on the h repo → PRs a
-human reviews → auto-revised until merged. Design and rulings:
-[docs/plans/impl/h-builds-h.md](./plans/impl/h-builds-h.md); the cron mechanism:
-[docs/plans/impl/workflow-watcher-registry.md](./plans/impl/workflow-watcher-registry.md) §9 (discovery/
-Job 1) and §10 (arm-at-birth revise/Job 2). Runs locally only — no inbound webhooks; all GitHub
+human reviews → auto-revised until merged. The cron mechanism is two jobs — the discovery cron
+(one workflow per newly-seen labeled issue) and the arm-at-birth revise cron — both described
+under *h primitives* in CLAUDE.md. Runs locally only — no inbound webhooks; all GitHub
 state is poll-discovered on the `workflow-cron-tick`.
 
 > **The loop is two crons, no sweep agent.** A **discovery cron** (§9) queries the issue board each
@@ -25,8 +24,7 @@ GitHub (on the target repo):
    (PR creation, issue reads/comments) as you. Add a bypass rule so you can approve your own PRs.
    One identity; simplest — we own the repos the loop builds, so the executor (claude-agent) runs
    with full tools and the full token. A scoped coder token bound to a minimal-surface executor
-   returns as a per-run trust profile if untrusted third-party repos come into play
-   (docs/plans/reviewer-identity-security.md); claude-coder as a separate service was retired.
+   returns as a per-run trust profile if untrusted third-party repos come into play; claude-coder as a separate service was retired.
 
 Host mode:
 
@@ -88,8 +86,7 @@ down MCP silently drops tools from a `implement-pr` run.
 # 1. The implement-pr template (implement ⊕ verify ⊕ run-itest ⊕ create-pr ⊕ arm-revise-pr; params:
 #    slug, spec, issueNumber). Each run: implement commits locally (gates on the prose acceptance
 #    check; no push, no PR); the MACHINE-executed itest step runs the worktree integration gate
-#    (docs/plans/worktree-integration-gate.md: ephemeral k8s namespace, base-ref harness,
-#    infra/assertion taxonomy) — a red gate FAILS THE WORKFLOW HERE, BEFORE the PR is opened; then
+#    (ephemeral k8s namespace, base-ref harness, infra/assertion taxonomy) — a red gate FAILS THE WORKFLOW HERE, BEFORE the PR is opened; then
 #    create-pr pushes the branch and opens the PR (embedding the itest evidence in the body); then
 #    arm-revise-pr arms a revise-until-merged recur cron (§10, Job 2; a SKIPPED push arms nothing).
 #    run-itest is part of the implementor's definition of done — do not compose without it.
@@ -146,7 +143,7 @@ This calls `POST /cron/disarm` (workflow-svc, the single writer); the row stays 
 ## Termination & budgets (engine-owned)
 
 - **Per-PR revise loop** stops on either the goal (`revise-pr` reports `goal: RESOLVED` in its
-  validated structured output when the PR merges — docs/plans/impl/structured-workflow-outputs.md — →
+  validated structured output when the PR merges — →
   `goalResolved` records `wf:*.resolved` and the cron engine deactivates) OR its `maxFires` budget
   (a PR that never merges still stops, bounded).
 - **Discovery cron** never "resolves" — it drains the label class, bounded per-day by `maxFiresPerDay`;

@@ -51,8 +51,8 @@ template's `required` values break every other template's render.
   **The `params:` defaults block is a CONTRACT, not just defaults**: every OPTIONAL param the
   steps reference must appear in it (an empty default like `clonePath: ""` or `focus: ""` marks
   it author-sanctioned optional), and every REQUIRED content param (e.g. a worktree template's
-  `slug`) must be ABSENT from it. `h chain run`'s registration-time input validation
-  (docs/plans/impl/member-input-validation.md) reads the block exactly that way: a referenced param
+  `slug`) must be ABSENT from it. `h chain run`'s registration-time input validation reads the
+  block exactly that way: a referenced param
   that is neither in the block nor supplied by the member's kind contract / declared `--input`s
   is REFUSED at registration. An optional param missing from the block breaks every chain that
   names the workflow.

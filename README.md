@@ -305,7 +305,7 @@ make down-host               # stop them (leaves infra up; `make infra-down` sto
 process groups, logs → `.host-logs/<service>.log`); `make wait-host` gates readiness by
 TCP-probing each service's app port. Service membership per mode lives in `cli/scripts/_services.sh`
 (the single source of truth the launcher and the zellij layouts share — kept in step by
-`scripts/check-services.mjs` at lint time). See docs/plans/impl/agent-host-mode-bringup.md.
+`scripts/check-services.mjs` at lint time).
 
 ### 5. Run a test
 

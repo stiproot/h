@@ -65,7 +65,7 @@ wiring is small. What needs planning is the semantics.
   inherited, not restated.
 - docs/plans/impl/schedule-and-fallback.md owns the fallback continuation this must compose
   with (question 3).
-- [model-fallback-continuity](./model-fallback-continuity.md) — the broader
+- [model-fallback-continuity](../model-fallback-continuity.md) — the broader
   keep-working-across-provider-limits arc; this plan is its fencing primitive.
 
 ## Log

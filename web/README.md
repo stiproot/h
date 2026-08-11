@@ -6,14 +6,13 @@
 > layout variants below coexist on purpose because the right visual language is
 > still an open question. D3 v7 is the chosen medium for that exploration.
 > Expect churn, dead ends, and frozen "we liked this one" baselines living
-> beside their in-progress successors. `docs/plans/workflow-viz.md` is the
-> running research log; treat it as a notebook, not a spec.
+> beside their in-progress successors. The research log lives with the other
+> plan docs; treat this package as a notebook, not a spec.
 
 A live, read-only force-directed view of what the h runtime is doing: workflow
 instances (circles, colored by status, sized by run cost), chain hubs (diamonds)
 with ordered member edges, watch rings around supervised instances, cron squares
 (recur + discover) with their re-fire edges, and per-run agent satellite dots.
-Increments 2+3 of `docs/plans/workflow-viz.md`.
 
 Standalone Vite + Vue 3 + D3 v7 package — deliberately **not** part of the bun
 workspace (see the plan doc for why). Because it sits outside the workspace,

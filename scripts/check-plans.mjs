@@ -14,16 +14,24 @@
 //      ARCHIVED plan additionally declares a `Lifted to:` list (the archiving checklist's central
 //      gate: if you cannot say where a finding now lives, it is not lifted).
 //
-//   2. PLAN REFERENCES. Two rules by file genre (decided 2026-07-30, when a sweep removed ~160
-//      plan citations from source):
-//        a. SOURCE CODE never references docs/plans/ AT ALL. Plans are transient — a plan
-//           pointer in a code comment is rationale parked in a file that will be archived and
-//           forgotten. State the rationale in the comment itself, or cite the durable home
-//           (ARCHITECTURE.md, CLAUDE.md, a skill, the cookbook). This is the lift-on-archive
-//           discipline applied at write time.
-//        b. NON-source files (steering docs, runbooks, READMEs — where pointing at in-flight
-//           work is legitimate): every cited `docs/plans/**.md` path must resolve to a real
-//           file, because archiving a plan silently rots such citations.
+//   2. PLAN REFERENCES FROM OUTSIDE. Nothing outside docs/plans/ may reference a plan — not
+//      source, not steering docs, not runbooks, not READMEs, not skills. A citation is a
+//      DEPENDENCY, and a plan is by design written, used, archived and forgotten, so pointing
+//      contextual documentation at one guarantees it rots. State the fact where you are, or cite
+//      the durable home (ARCHITECTURE.md, CLAUDE.md, a skill, the cookbook, a lint rule). This is
+//      the lift-on-archive discipline applied at WRITE time, and it is what makes archiving a
+//      plan a change confined to docs/plans/.
+//
+//      History: 2026-07-30 a sweep removed ~160 such citations from SOURCE and the rule was
+//      source-only, with documentation merely required to RESOLVE. That weaker half coupled every
+//      archive move to a doc sweep and was tightened to a ban on 2026-08-11 (39 citations removed).
+//
+//   3. INTRA-PLAN LINK ROT. Plans may cite each other — they are transient together — but an
+//      archive move gains a directory level and silently mis-levels every relative link in the
+//      moved file (../FOO.md must become ../../FOO.md). That is ROT, distinct from the legitimate
+//      staleness a point-in-time record is allowed. The two are told apart by whether the target
+//      still EXISTS somewhere in the repo: still there ⇒ wrong path, fail with the correction;
+//      gone ⇒ genuinely retired, exempt. Six such links had accumulated undetected.
 //
 // What this guard deliberately does NOT do: infer that a plan *should* be archived. An earlier
 // proposal to fail lint on headline words like DONE|SHIPPED was rejected during the hardening
@@ -31,9 +39,10 @@
 // research log), and archiving is gated on a lift-then-archive judgment no regex can proxy. This
 // guard checks that what a plan CLAIMS is well-formed, never what it should claim.
 //
-// Plan BODIES are exempt from the link check: a plan is a point-in-time record, so a body may
-// legitimately cite a doc that has since been retired or a path in another repo. This mirrors the
-// same exemption check-vocabulary.mjs makes for docs/plans/.
+// Plan BODIES stay exempt from strict link resolution — a plan is a point-in-time record, so a
+// body may legitimately cite a doc since retired or a path in another repo. Check 3 narrows that
+// exemption to exactly the case it was written for, without letting move-rot hide behind it. This
+// mirrors the same exemption check-vocabulary.mjs makes for docs/plans/.
 //
 // See the plan-management plugin skill (v0.1.0) + the CLAUDE.md Plans section (the convention
 // this enforces) and the *Harden by encoding* principle in ARCHITECTURE.md. Wired into
@@ -157,10 +166,8 @@ const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" 
   .filter(Boolean)
   .filter((f) => !f.startsWith("docs/plans/") && !SKIP_EXT.test(f));
 
-// SOURCE = everything that is not markdown and not this guard (whose own comments must name the
-// path shapes it enforces). Markdown anywhere — docs/, READMEs beside code, the skills — is the
-// documentation genre, where citing an in-flight plan is legitimate.
-const isSource = (f) => !f.endsWith(".md") && f !== "scripts/check-plans.mjs";
+// This guard's own comments must name the path shapes it enforces, so it cannot obey its own rule.
+const isSelf = (f) => f === "scripts/check-plans.mjs";
 
 // Two citation shapes, both of which broke when plans were archived:
 //   - a repo-root-style path in prose or a code comment: docs/plans/<name>.md
@@ -173,6 +180,7 @@ const PLAN_PATH = /docs\/plans\/[A-Za-z0-9._/-]*\.md/g;
 const MD_LINK = /\]\((\.{0,2}\/?[A-Za-z0-9._/-]*\.md)(?:#[^)]*)?\)/g;
 
 for (const rel of tracked) {
+  if (isSelf(rel)) continue;
   const abs = join(root, rel);
   let text;
   try {
@@ -182,39 +190,71 @@ for (const rel of tracked) {
   }
 
   const seen = new Set();
-  const check = (display, absTarget) => {
-    if (display.includes("<") || seen.has(display)) return; // `docs/plans/<name>.md` documents the convention
+  const banned = (display) => {
+    // `docs/plans/<name>.md` is the convention being DESCRIBED, not a citation.
+    if (display.includes("<") || seen.has(display)) return;
     seen.add(display);
-    if (!existsSync(absTarget)) {
-      fail(
-        abs,
-        `references "${display}", which does not exist — a plan that moved to docs/plans/impl/ takes its citations with it`,
-      );
-    }
+    fail(
+      abs,
+      `references the plan "${display}" — plans are TRANSIENT, so nothing outside docs/plans/ ` +
+        `may point at one. State the fact itself here, or cite its durable home ` +
+        `(ARCHITECTURE.md, CLAUDE.md, a skill, the cookbook, a lint rule)`,
+    );
   };
 
   if (text.includes("docs/plans/")) {
-    if (isSource(rel)) {
-      // Rule (a): a plan path in source is an error regardless of whether it resolves.
-      for (const m of text.matchAll(PLAN_PATH)) {
-        if (m[0].includes("<")) continue;
-        fail(
-          abs,
-          `source code references "${m[0]}" — plans are transient; state the rationale in the ` +
-            `comment or cite the durable home (ARCHITECTURE.md, CLAUDE.md, a skill, the cookbook)`,
-        );
-        break; // one error per file is enough to point at the sweep
-      }
-    } else {
-      for (const m of text.matchAll(PLAN_PATH)) check(m[0], join(root, m[0]));
-    }
+    for (const m of text.matchAll(PLAN_PATH)) banned(m[0]);
   }
   if (rel.endsWith(".md")) {
     for (const m of text.matchAll(MD_LINK)) {
-      const target = resolve(dirname(abs), m[1]);
-      // Only plan citations are in scope; other doc links are not this guard's business.
-      if (target.startsWith(PLANS + "/")) check(m[1], target);
+      // A relative link never contains the literal "docs/plans/" — docs/h-builds-h-runbook.md
+      // cited ](./plans/<name>.md) and rotted invisibly — so resolve and check where it LANDS.
+      if (resolve(dirname(abs), m[1]).startsWith(PLANS + "/")) banned(m[1]);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. Intra-plan link rot — plans may cite each other, but the links must survive archiving
+// ---------------------------------------------------------------------------
+//
+// Plan bodies stay exempt from rule 2 (they are transient together, so a plan citing a plan is
+// fine) and from strict link resolution (a point-in-time record may cite something since
+// RETIRED). But an archive move silently mis-levels every relative link in the moved file — a
+// plan gains a directory level, so ../FOO.md becomes ../../FOO.md — and that is rot, not
+// staleness.
+//
+// The two are told apart by whether the target still EXISTS somewhere: a basename that is still
+// in the repo means the link points at a live document by the wrong path (fix it, and the
+// suggestion below says where); a basename that is gone means the document was genuinely retired
+// (exempt, as before). Six such links had accumulated undetected when this check was added.
+
+const basenameIndex = new Map();
+for (const f of execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
+  .split("\n")
+  .filter((f) => f.endsWith(".md"))) {
+  const base = f.slice(f.lastIndexOf("/") + 1);
+  if (!basenameIndex.has(base)) basenameIndex.set(base, []);
+  basenameIndex.get(base).push(f);
+}
+
+for (const file of planFiles) {
+  const text = readFileSync(file, "utf8");
+  const seen = new Set();
+  for (const m of text.matchAll(MD_LINK)) {
+    const link = m[1];
+    if (link.includes("<") || seen.has(link)) continue;
+    seen.add(link);
+    const target = resolve(dirname(file), link);
+    if (existsSync(target)) continue;
+    const elsewhere = basenameIndex.get(link.slice(link.lastIndexOf("/") + 1)) ?? [];
+    if (elsewhere.length === 0) continue; // genuinely retired — a point-in-time record may say so
+    const suggestion = relative(dirname(file), join(root, elsewhere[0])) || elsewhere[0];
+    fail(
+      file,
+      `link "${link}" does not resolve, but that file still exists at ${elsewhere[0]} — an ` +
+        `archive move mis-levels relative links (a plan gains a directory). Use "${suggestion}"`,
+    );
   }
 }
 

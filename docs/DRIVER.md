@@ -3,8 +3,8 @@
 The DRIVER is the interactive session that fires chains, reads verdicts, verifies at head,
 and merges. This doc is its durable procedure: any FRESH session — Claude, or a fallback
 model — must be able to pick up the driver role from this file plus the runtime's durable
-state, with zero conversation history. (docs/plans/model-fallback-continuity.md is the
-plan behind this; the continuity inventory there lists what state lives where.)
+state, with zero conversation history — so anything a successor needs must live in this file,
+in the registries, or in the run ledger, never only in a conversation.
 
 ## Identity and fallback
 
