@@ -432,6 +432,11 @@ def _resolve_workflow(
             f"--cron on '{member.label}' needs the cron engine — drop --local (a member cannot "
             "self-arm a recurrence on a substrate with no engine to service it)"
         )
+    if local and cfg.budget:
+        _fail(
+            f"--budget on '{member.label}' needs the watcher engine — drop --local (no watcher "
+            "engine exists on the local substrate to enforce the wall-clock budget)"
+        )
     if cfg.max_fires and not cfg.cron:
         _fail(f"--max-fires on '{member.label}' needs --cron (it's the cron's fire budget)")
     if cfg.budget and cfg.cron:
