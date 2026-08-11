@@ -662,7 +662,12 @@ def run(
 
       --agent A --model M --budget DUR --fresh --inline --kind K   bind to the workflow they
                         FOLLOW; before the first workflow they set chain-wide defaults (a prefix
-                        --budget is the whole-chain wall clock: <n>m, <n>h, or milliseconds).
+                        --budget is the whole-chain wall clock: <n>m, <n>h, or milliseconds; a
+                        SUFFIX --budget is instead that one member's watch policy, enforced by the
+                        watcher — the two compose whichever-trips-first).
+                        Under --local the prefix budget is enforced by the driver BETWEEN STAGES
+                        (it declines to start more work; it cannot terminate a running agent), and
+                        a suffix budget is refused: there is no watcher here.
                         --inline embeds the composed steps in the chain row instead of publishing.
 
       --agent A B C...  SEVERAL names are a panel ROSTER: the member is panelized — each roster
@@ -872,6 +877,12 @@ def _run_local_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
         "group": group_id(f"chain-{slug}"),
         "runsDir": str(AGENT_RUNS_DIR),
         "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
+        # The whole-chain wall clock rides to the local driver exactly as it rides to the chain
+        # row — including the per-member-count DEFAULT, so a local chain is bounded like a
+        # registered one rather than running unbounded on the operator's own machine. The driver
+        # checks it between stages (it cannot terminate a running agent; timeoutMs bounds that).
+        # A per-MEMBER budget is refused earlier — it is a watch policy, and there is no watcher.
+        "budgetMs": body["budgetMs"],
         "worktreeRoot": str(LOCAL_WORKTREES_DIR),
         "repoPath": repo_root(Path.cwd()),
     }

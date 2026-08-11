@@ -1,4 +1,4 @@
-import { Cause, Effect } from "effect";
+import { Cause, Clock, Effect } from "effect";
 import { contractFor, lastStage, loopIsClean, membersInStage } from "workflow-core";
 import type { ChainData } from "workflow-core";
 
@@ -13,9 +13,18 @@ import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
  * group into stages (`membersInStage`/`lastStage`), how a member's declared or coded contract
  * builds its params and captures its output (`contractFor`), and when a loop is clean
  * (`loopIsClean`). What is NOT shared is the engine: `chain-engine.ts`'s `decide` is a per-tick
- * state machine over a durable row, and every part of it — epoch fences, unknown-status streaks,
- * orphan detection, wall-clock budgets — exists because the runs it sequences outlive the process
- * watching them. Here the driver awaits the stage, so the loop below IS the engine.
+ * state machine over a durable row, and most of it — epoch fences, unknown-status streaks, orphan
+ * detection — exists because the runs it sequences outlive the process watching them. Here the
+ * driver awaits the stage, so the loop below IS the engine.
+ *
+ * The WALL-CLOCK BUDGET is the exception, and is mirrored rather than dropped: it needs no
+ * durability, only a deadline, and the driver being the supervisor is precisely what lets it own
+ * one. The guarantee is weaker than the engine's by one step — the engine terminates a RUNNING
+ * instance mid-flight, while here the deadline is checked BETWEEN stages, so an overrunning agent
+ * is still bounded only by the per-step timeout. A budget that trips reports `exhausted`, the same
+ * status the iteration budget uses: stopped early on purpose, not failed. (The per-MEMBER budget
+ * is a different animal — a watch policy a separate engine services — and the CLI refuses it here
+ * by name.)
  *
  * Two consequences worth naming rather than hiding:
  *  - **Atomic failure comes free.** A stage runs under one `Effect.all`, so a member failing
@@ -36,9 +45,26 @@ export const runChain = (
     const loop = job.strategy === "loop-until-clean" ? job.loop : undefined;
     let iterations = 0;
 
+    // An ABSOLUTE deadline, stamped once, so a loop-until-clean chain is bounded as a whole rather
+    // than per iteration. Clock rather than Date.now() so a test can drive it.
+    const startedAt = yield* Clock.currentTimeMillis;
+    const deadline = job.budgetMs === undefined ? undefined : startedAt + job.budgetMs;
+
     const outcome = yield* Effect.gen(function* () {
       let cursor = 0;
       while (cursor <= last) {
+        // Checked BEFORE firing a stage, never mid-stage: the driver can decline to start more
+        // work, but it cannot terminate an agent already running (that is the per-step timeout's
+        // job). So a budget bounds what the chain STARTS, and the note says which stage it stopped
+        // short of rather than implying the chain was killed at the deadline.
+        if (deadline !== undefined && (yield* Clock.currentTimeMillis) >= deadline) {
+          yield* progress.emit(`⏱ chain budget exceeded — stopping before stage ${cursor}`);
+          return {
+            status: "exhausted" as const,
+            note: `chain budget ${job.budgetMs}ms exceeded — stopped before stage ${cursor} of ${last}`,
+          };
+        }
+
         const indices = membersInStage(job.members, cursor);
         yield* progress.emit(
           `▸ stage ${cursor}/${last}: ${indices.map((i) => label(job.members[i]!)).join(" ∥ ")}`,

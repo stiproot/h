@@ -220,3 +220,81 @@ def test_an_exhausted_loop_exits_nonzero_and_says_why(monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "findings may remain" in _all_output(result)
+
+
+@needs_helm
+def test_local_carries_the_chain_wide_budget_to_the_driver(captured_job) -> None:
+    """A prefix --budget reaches the local driver as budgetMs — the local substrate mirrors the
+    chain engine's wall clock rather than dropping it (a dropped budget reports a bound that was
+    never armed). The per-MEMBER budget is refused separately: it is a watch policy."""
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "demo",
+            "--local",
+            "--budget",
+            "30m",
+            "-p",
+            "task=q",
+            "-w",
+            "answer",
+        ],
+    )
+
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_job[0]["budgetMs"] == 30 * 60_000
+
+
+@needs_helm
+def test_local_defaults_the_budget_so_a_chain_is_never_unbounded(captured_job) -> None:
+    """With no --budget the per-member default still rides, exactly as it does onto the chain row
+    — an unbounded chain on the operator's own machine is the thing this closes."""
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "demo",
+            "--local",
+            "-p",
+            "task=q",
+            "-w",
+            "answer",
+            "-w",
+            "answer",
+        ],
+    )
+
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_job[0]["budgetMs"] == 2 * 45 * 60_000
+
+
+@needs_helm
+def test_local_still_refuses_a_per_member_budget(captured_job) -> None:
+    """The two positions keep their different answers: chain-wide is enforced here, per-member is
+    refused because the watcher that would service it does not exist on this substrate."""
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "demo",
+            "--local",
+            "-p",
+            "task=q",
+            "-w",
+            "answer",
+            "--budget",
+            "10m",
+        ],
+    )
+
+    assert result.exit_code == 1
+    out = " ".join(_all_output(result).split())
+    assert "--budget" in out and "watcher engine" in out
+    assert not captured_job

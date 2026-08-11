@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, TestClock, TestContext } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { runChain } from "./chain.ts";
@@ -263,6 +263,92 @@ describe("runChain", () => {
       expect(envelope.status).toBe("exhausted");
       expect(envelope.note).toMatch(/stopped after 2 iteration/);
       expect(recorder.runs.filter((r) => r.task === "review")).toHaveLength(2);
+    });
+  });
+
+  // The whole-chain wall clock — the ONE branch of the durable engine's `decide` this driver
+  // mirrors, because it needs a deadline rather than durability.
+  describe("chain budget", () => {
+    it("runs the whole chain when the budget has room", async () => {
+      const { layer, recorder } = stubs({
+        implement: '{"pr": 42, "url": "https://example/pr/42"}',
+        review: '{"verdict": "CLEAN", "summary": ""}',
+      });
+      const envelope = await run(
+        job(
+          [
+            member({ kind: "implement-pr", params: { marker: "implement" } }),
+            member({ kind: "review-pr", params: { marker: "review" } }),
+          ],
+          { data: { slug: "s", spec: "x" }, budgetMs: 60 * 60_000 },
+        ),
+        layer,
+      );
+
+      expect(envelope.status).toBe("completed");
+      expect(recorder.runs).toHaveLength(2);
+    });
+
+    it("starts no work at all when the budget is already spent", async () => {
+      const { layer, recorder } = stubs({ implement: "{}" });
+      const envelope = await run(
+        job([member({ kind: "implement-pr", params: { marker: "implement" } })], {
+          data: { slug: "s", spec: "x" },
+          budgetMs: 0,
+        }),
+        layer,
+      );
+
+      expect(envelope.ok).toBe(false);
+      expect(envelope.status).toBe("exhausted");
+      expect(envelope.note).toMatch(/chain budget 0ms exceeded/);
+      // Checking BEFORE the stage is the point: no agent ran, so no cost was incurred.
+      expect(recorder.runs).toHaveLength(0);
+    });
+
+    it("stops mid-chain once time spent in earlier stages has eaten the budget", async () => {
+      // Each agent run advances a TEST clock, so "time passed while the agent worked" is
+      // deterministic: 40m per stage against a 60m budget means stage 0 runs, stage 1 runs
+      // (t=40m), and stage 2 is declined (t=80m) — the deadline is ABSOLUTE, not per stage.
+      const ran: string[] = [];
+      const layer = Layer.mergeAll(
+        Layer.succeed(AgentPort, {
+          run: (request: AgentRunRequest) =>
+            TestClock.adjust("40 minutes").pipe(
+              Effect.as({
+                agent: request.agent,
+                status: "completed",
+                cwd: request.cwd,
+                output:
+                  'prose\n\n```json\n{"pr": 1, "url": "u", "verdict": "FINDINGS", "summary": "s"}\n```\n',
+                durationMs: 1,
+              } satisfies AgentRunReport),
+              Effect.tap(() => Effect.sync(() => ran.push(request.task))),
+            ),
+        }),
+        Layer.succeed(WorkspacePort, {
+          prepare: (spec) => Effect.succeed(spec.worktreePath),
+          provision: () => Effect.void,
+        }),
+        Layer.succeed(ProgressPort, { emit: () => Effect.void }),
+      );
+
+      const envelope = await Effect.runPromise(
+        runChain(
+          job(
+            [
+              member({ kind: "implement-pr", params: { marker: "implement" } }),
+              member({ kind: "review-pr", params: { marker: "review" } }),
+              member({ kind: "revise-pr", params: { marker: "revise" } }),
+            ],
+            { data: { slug: "s", spec: "x" }, budgetMs: 60 * 60_000 },
+          ),
+        ).pipe(Effect.provide(layer), Effect.provide(TestContext.TestContext)),
+      );
+
+      expect(envelope.status).toBe("exhausted");
+      expect(envelope.note).toMatch(/stopped before stage 2 of 2/);
+      expect(ran).toEqual(["implement", "review"]);
     });
   });
 });

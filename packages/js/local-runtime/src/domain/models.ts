@@ -189,6 +189,12 @@ export const ChainJob = Schema.Struct({
   group: Schema.String,
   runsDir: Schema.String,
   timeoutMs: Schema.Number,
+  /**
+   * Whole-chain wall clock (the PREFIX `--budget`), mirroring the chain row's `budgetMs`. Checked
+   * between stages, so it bounds what the chain STARTS — an agent already running is bounded by
+   * `timeoutMs` instead. The per-MEMBER budget is a watch policy and is refused on this substrate.
+   */
+  budgetMs: Schema.optional(Schema.Number),
   worktreeRoot: Schema.String,
   repoPath: Schema.String,
   withSetup: Schema.optional(Schema.Boolean),
