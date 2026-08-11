@@ -45,26 +45,20 @@ merged is unit-level plus a CLI-level refusal check.
 *Revisit when:* a service stack is up for other reasons and a chain is being fired anyway —
 this rides along rather than justifying its own bring-up.
 
-### 1b. Chain-wide `--budget` is silently dropped on `--local`
+### 1b. Chain-wide `--budget` silently dropped on `--local` — RESOLVED 2026-08-11
 
-`chain.py` now refuses a PER-MEMBER `--budget` on `--local` by name (it needs the watcher
-engine). A CHAIN-WIDE prefix `--budget` in the same command is still accepted and then
-dropped: it lands in `body["budgetMs"]`, and `_run_local_chain` filters the job through
-`_LOCAL_MEMBER_FIELDS` and never carries a chain-level budget, so nothing enforces it and
-nothing says so. One command therefore refuses one budget position by name while silently
-ignoring the other.
+`chain.py` refused a PER-MEMBER `--budget` on `--local` by name while accepting a chain-wide one
+and then dropping it — one command, two budget positions, one stated answer and one silent.
 
-This contradicts the substrate's own rule — local execution declines what needs an engine
-rather than ignoring it, because a silently-dropped budget reports a supervision that was
-never armed. `h workflow run --local` gets this right via `_refuse_engine_flags`; `chain.py`
-has no equivalent for budgets, so the two local surfaces disagree.
+Resolved by completing a mirror rather than adding a refusal: `local-runtime`'s `chain.ts` already
+reimplemented the chain engine's `decide` (stages, join, loop-until-clean, iteration budget) and
+lacked only its wall-clock branch — the one branch needing a deadline rather than durability.
+`ChainJob` now carries `budgetMs`, `runChain` stamps an absolute deadline and checks it between
+stages, and the CLI passes it through including the per-member-count default, so a local chain is
+bounded like a registered one. The guarantee is weaker by one step and documented as such: the
+driver declines to START a stage, where the engine terminates a running instance.
 
-Found 2026-08-11 while verifying the PR #108 review's fix — the review named only the
-per-member half, and the revise leg faithfully fixed only what it was told about.
-
-*Revisit when:* touching `chain.py`'s local path for any reason — the fix is a few lines
-beside the existing `if local and cfg.cron` / `if local and cfg.budget` guards, reading
-`expr.defaults.budget` rather than the member's own.
+The per-member budget stays refused — it is a watch policy, and there is no watcher here.
 
 ---
 

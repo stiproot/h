@@ -194,7 +194,10 @@ used here. This section is the terse runtime-facing index.
   `effective_config`'s chain-wide→member merge (`chain_expr.py`) — merging it would make a documented
   whole-chain budget silently arm a watch row on every member. `--budget` on a `--cron` member is
   refused (recurrence is the cron engine's business), as is a per-member budget on `--local` (no
-  watcher exists there); a chain-wide one on `--local` is still silently dropped, plus declarative
+  watcher exists there). A CHAIN-WIDE budget IS honoured on `--local`: the local driver mirrors
+  the engine's wall-clock branch (it needs a deadline, not durability, and in-process the driver
+  IS the supervisor), checking it BETWEEN STAGES — so it declines to start more work but cannot
+  terminate a running agent, which the per-step timeout bounds instead, plus declarative
   threading mappings `--capture BB=FIELD / --input PARAM=SRC (SRC = flat key or dotted id.field) /
   --until PATH=VALUE` (validated at registration on BOTH sides: captures/until against the declared
   outputs schema, and every `{{params.X}}` a member's definition references against what its kind
