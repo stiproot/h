@@ -432,8 +432,20 @@ def _resolve_workflow(
             f"--cron on '{member.label}' needs the cron engine — drop --local (a member cannot "
             "self-arm a recurrence on a substrate with no engine to service it)"
         )
+    if local and cfg.budget:
+        _fail(
+            f"--budget on '{member.label}' needs the watcher engine — drop --local (no watcher "
+            "engine exists on the local substrate to enforce the wall-clock budget)"
+        )
     if cfg.max_fires and not cfg.cron:
         _fail(f"--max-fires on '{member.label}' needs --cron (it's the cron's fire budget)")
+    if cfg.budget and cfg.cron:
+        _fail(
+            f"--budget on '{member.label}' cannot combine with --cron — a cron member's "
+            "recurrence is owned by the cron engine (the chain only observes "
+            "wf:<member>.resolved and never re-fires it), so there is no per-member "
+            "wall clock to enforce"
+        )
     if inline and member.key is not None and not roster and not local:
         _fail(
             f"--inline/--cron member '{member.label}' must be composed with -t — an inline "
@@ -491,12 +503,6 @@ def _resolve_workflow(
         key_field = key
         if params:
             _check_identity_slots(key, cfg, kind)
-    if cfg.budget:
-        _warn(
-            f"per-workflow --budget on '{member.label}' is not yet enforced "
-            "(per-workflow watch lands with the engine's next slice); ignored"
-        )
-
     prefix, fresh_default = KIND_FIRE[kind]
     entry: dict[str, Any] = {"kind": kind}
     if steps is not None:
@@ -509,6 +515,8 @@ def _resolve_workflow(
     if not inline and not in_parallel:
         entry["instanceId"] = f"{prefix}-{slug}"
     entry["fresh"] = cfg.fresh or fresh_default
+    if cfg.budget:
+        entry["watch"] = {"maxDurationMs": _budget_ms(cfg.budget)}
     # stage: emitted on every member once the chain uses stages (a --parallel group or an explicit
     # --stage); a purely sequential chain omits it (the engine defaults a member's stage to index).
     if uses_stages:
@@ -910,15 +918,29 @@ def list_() -> None:
         err_console.print("Is workflow-svc running? (make dev-tab)")
         raise typer.Exit(1) from err
     chains = result.get("chains", [])
-    table = Table("chain", "status", "workflow", "outcome", title=f"chains ({len(chains)})")
+    table = Table(
+        "chain",
+        "status",
+        "workflow",
+        "member budget (ms)",
+        "outcome",
+        title=f"chains ({len(chains)})",
+    )
     for c in chains:
         workflows = c.get("members", [])
         cursor = c.get("cursor", 0)
-        kind = workflows[cursor]["kind"] if 0 <= cursor < len(workflows) else "-"
+        current = workflows[cursor] if 0 <= cursor < len(workflows) else None
+        kind = current["kind"] if current else "-"
+        # The CURRENT member's own wall clock (`-w X --budget 10m`), read off the watch policy
+        # its registration emitted. Distinct from the chain-wide budget: this one is enforced
+        # per-member by the WATCHER engine, not by the chain engine. "-" means unbudgeted.
+        watch = current.get("watch") if current else None
+        member_budget = str(watch.get("maxDurationMs", "-")) if watch else "-"
         table.add_row(
             c.get("chainId", ""),
             c.get("status", ""),
             f"{cursor + 1}/{len(workflows)} ({kind})",
+            member_budget,
             c.get("outcome") or "-",
         )
     console.print(table)

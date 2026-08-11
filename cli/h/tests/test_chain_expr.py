@@ -84,11 +84,21 @@ def test_prefix_flags_set_chain_wide_defaults() -> None:
 
 
 def test_effective_config_member_overrides_default_field_by_field() -> None:
-    defaults = WorkflowConfig(agents=("openhands",), model="deepseek", budget="45m")
+    # budget is excluded from chain-wide defaults merging (it has two distinct meanings by
+    # position — see effective_config). A suffix budget stays on the member; a prefix budget
+    # lives only on expr.defaults and is read directly at the budgetMs site in chain.py.
+    defaults = WorkflowConfig(agents=("openhands",), model="deepseek")
     member = WorkflowConfig(agents=("claude",), budget="15m")
     assert effective_config(defaults, member) == WorkflowConfig(
         agents=("claude",), model="deepseek", budget="15m"
     )
+
+
+def test_budget_does_not_inherit_from_chain_wide_defaults() -> None:
+    """Prefix budget is chain wall-clock, suffix is member watch — they must not bleed."""
+    defaults = WorkflowConfig(budget="1h")
+    member = WorkflowConfig()
+    assert effective_config(defaults, member).budget is None
 
 
 def test_effective_config_kind_never_inherits_from_defaults() -> None:
