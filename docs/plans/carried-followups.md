@@ -154,14 +154,26 @@ by the agent* and can't be a fixed step. Semantics unresolved (recurrence of THI
 or of discovered follow-up work, or both?), and it needs a `register-cron` MCP tool — a
 surface expansion that must clear the executor's minimal-MCP review first.
 
-### 8. Liveness-on-death for `wf:` rows
+### 8. Liveness-on-death for `wf:` rows — RESOLVED 2026-08-12
 
 The build assumes clean self-reporting: a workflow writes its own `wf:running` then
 `done`/`failed`. A run that **dies before writing a terminal status** leaves a non-terminal
-row nothing else may write (single-writer). The fix is a READ concern: a reader (chain/cron
-engine) should treat a non-terminal row whose Dapr instance is gone as `orphaned` (the
-existing UNKNOWN-streak logic), with the watcher supervising the live instance as the
-backstop. Not wired yet.
+row nothing else may write (single-writer).
+
+Tracing it before building moved the fix: the chain is already safe — plain members read
+instance status, and cron members deliberately do NOT (a cron retries on its own clock, so a
+transient run failure must not fail the chain). The real hole was one line in the CRON engine's
+in-flight guard, where `UNKNOWN` counts as live. That is right for a degraded status API and
+wrong forever: an instance that is *gone* rather than merely unreadable reads `UNKNOWN` every
+tick, so the guard held permanently and the recurrence ended silently — with nothing to observe
+it, since the cron never deactivated either.
+
+Fixed by giving the cron engine the `unknownStreak` escape the watcher has had all along
+(`CronRow.unknownStreak`, optional so existing rows read 0; the scan persists it per tick,
+without which each tick would restart the count at 1 and the escape would never arrive; a fire
+resets it). It UNPINS rather than deactivating, deliberately — a cron whose status API is wrong
+is still a healthy recurrence, and deactivating would need an operator re-arm. The gates before
+it are untouched, so a spent streak still respects cadence, budget and the goal handshake.
 
 ### 9. Cron source mode 3 — dynamic params
 
@@ -312,7 +324,11 @@ bypass it, exactly as this session's own direct push to `main` did. Either enfor
 `commit-on-main` working convention), or accept the protection as advisory and say so, but
 it should not be left looking enforced when it is not.
 
-*Revisit when:* deciding the merge protocol in `docs/DRIVER.md` — this is the input to it.
+**DECIDED 2026-08-12: leave it advisory, and say so.** Enforcing admins would end direct-to-main
+for the operator and the loop alike, which is a bigger workflow change than this item was; the
+protection stays as documentation of intent rather than a gate. What this item still owes is the
+one sentence in `docs/DRIVER.md` saying that plainly, so nobody reads a required check as an
+enforced one.
 
 ---
 

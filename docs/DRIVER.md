@@ -73,6 +73,13 @@ the driver chooses it when the extra premise and design review is worth its cost
 
 ## Merge protocol (primary driver only)
 
+**The protocol below IS the gate — GitHub is not.** `main` carries branch protection (the
+`Guard surface (lint → build → test → pytest)` check, plus required PR reviews), but
+`enforce_admins` is off and the token h pushes with holds repo admin, so both an operator push
+and an agent push sail straight past it. That is a deliberate 2026-08-12 decision — enforcing it
+would end direct-to-main for everyone — but it means a green tick on GitHub proves nothing was
+*checked*, only that nothing *blocked*. Never substitute it for step 2's sweep.
+
 1. Loop finalized CLEAN (or operator-verified equivalent after an exhausted loop). **A
    first-round CLEAN deserves a spot-check, not trust** — verify the diff against the
    spec's key demand yourself. Two 2026-07-27 cases: trxy #54 was clean churn on a stale
