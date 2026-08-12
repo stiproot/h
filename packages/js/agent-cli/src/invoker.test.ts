@@ -177,6 +177,50 @@ describe("AgentInvoker layer (Command.start pipeline)", () => {
     expect(result.stdout).toContain("Command not found");
   });
 
+  it("blames the working directory, not the binary, when the cwd does not exist", async () => {
+    // The platform reports a missing cwd and a missing executable as the SAME NotFound error, so
+    // before this the command took the blame — `claude` reported "not found" while on PATH.
+    const missing = join(tmpdir(), "agent-cli-no-such-dir-xyz");
+
+    const result = await invoke(nodeStrategy(""), baseParams({ cwd: missing }));
+
+    expect(result.success).toBe(false);
+    expect(result.stderr).toContain("Working directory not found");
+    expect(result.stderr).toContain(missing);
+    expect(result.stdout).not.toContain("Command not found");
+    // Not 127: the shell's "command not found" would misdescribe a cwd we just proved wrong.
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("blames the working directory when the cwd is a file rather than a directory", async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), "agent-cli-test-"));
+    const notADir = join(tmpDir, "regular-file");
+    await writeFile(notADir, "");
+
+    try {
+      const result = await invoke(nodeStrategy(""), baseParams({ cwd: notADir }));
+
+      expect(result.success).toBe(false);
+      expect(result.stderr).toContain("Working directory is not a directory");
+      expect(result.exitCode).toBe(1);
+    } finally {
+      await rm(tmpDir, { recursive: true }).catch(() => {});
+    }
+  });
+
+  it("still blames the binary when the command is missing but the cwd is healthy", async () => {
+    const strategy = nodeStrategy("", {
+      buildInvocation: () => Effect.succeed({ command: "definitely-not-a-real-cmd-xyz", args: [] }),
+    });
+
+    const result = await invoke(strategy, baseParams({ cwd: tmpdir() }));
+
+    expect(result.success).toBe(false);
+    expect(result.exitCode).toBe(127);
+    expect(result.stderr).toContain("not found");
+    expect(result.stderr).not.toContain("Working directory");
+  });
+
   it("resolves exit 127 on the sudo path when the inner command does not exist", async () => {
     // Real sudo requires a password in most test environments; use a fake sudo script that exits 127
     // to simulate the OS-level "command not found" outcome without needing real auth.

@@ -130,7 +130,17 @@ function runPreparedInvocation(
 
     const runProcess = Effect.scoped(
       Effect.gen(function* () {
-        const proc = yield* Command.start(command);
+        // Node reports SOME spawn failures synchronously (ENOTDIR — a cwd that exists but is not a
+        // directory) instead of as the async 'error' event it uses for ENOENT. A throw inside the
+        // platform's `Effect.async` register block is a DEFECT, which would crash the whole run
+        // rather than resolve as a failed InvocationResult like every other spawn failure. Convert
+        // it here; the outer mapError passes an already-typed AgentSpawnError straight through.
+        const proc = yield* Command.start(command).pipe(
+          Effect.catchAllDefect(
+            (defect) =>
+              new AgentSpawnError({ command: prepared.command, cwd: request.cwd, cause: defect }),
+          ),
+        );
 
         // Register for shutdown reaping (app death runs no finalizers — the process-exit hook in
         // reaper.ts reaps live groups) + group-kill on every scope close: timeout interruption
@@ -171,7 +181,13 @@ function runPreparedInvocation(
         });
         return { ...exit, stderrText };
       }),
-    ).pipe(Effect.mapError((cause) => new AgentSpawnError({ command: prepared.command, cause })));
+    ).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof AgentSpawnError
+          ? cause
+          : new AgentSpawnError({ command: prepared.command, cwd: request.cwd, cause }),
+      ),
+    );
 
     // A timeout is handled HERE, where `streamEvents` is still in scope — the interruption kills
     // the child via the scope finalizer, and the result is built from the events collected so far

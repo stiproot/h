@@ -410,12 +410,22 @@ PATH was verified identical in foreground and background jobs, and `.env` sets n
 
 Note the diagnosis is genuinely ambiguous by construction: ENOENT on the EXECUTABLE and ENOENT
 on the CWD are indistinguishable at that layer — a gap agent-cli's own comments already call the
-"masquerades as a missing binary" problem. Worth making the error distinguish them (stat the cwd
-before blaming the binary), which would turn the next occurrence into a diagnosis instead of a
-mystery.
+"masquerades as a missing binary" problem.
 
-*Revisit when:* it happens again — or sooner, since the cwd-vs-binary disambiguation is worth
-having regardless and is a few lines in the spawn error path.
+**The disambiguation is BUILT (2026-08-12), so a recurrence is now diagnosable.** `AgentSpawnError`
+carries the `cwd`, and the invoker stats it before blaming the binary: a broken working directory
+reports itself by name at exit 1, and only a NotFound with a *healthy* cwd still reports exit-127
+"command not found". Verified live through the local runner, not just in unit tests. Building it
+surfaced a second, unrelated hole in the same path: Node raises ENOTDIR (a cwd that exists but is
+not a directory) as a SYNCHRONOUS throw rather than the async `error` event it uses for ENOENT, so
+it escaped the platform's `Effect.async` as a DEFECT and crashed the run instead of resolving as a
+failed result like every other spawn failure — now caught at `Command.start` and typed.
+
+The ROOT CAUSE of the original 8ms failure remains unknown, and this does not find it — it only
+guarantees the next occurrence says which of the two things was missing.
+
+*Revisit when:* it happens again — the error will now name the cause, so the next report either
+points at the cwd (a worktree that vanished mid-run) or genuinely at PATH.
 
 ### 32. `loop-until-clean` has never completed a loop-back live
 

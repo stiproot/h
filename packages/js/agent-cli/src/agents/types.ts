@@ -60,9 +60,15 @@ export const rawLineEvent = (text: string): RawLineEvent => ({ type: "raw", text
 
 export type AgentType = "claude" | "codex" | "openhands" | "pi";
 
-/** The agent CLI subprocess could not be spawned or its stdio streams failed. */
+/**
+ * The agent CLI subprocess could not be spawned or its stdio streams failed.
+ * Carries the `cwd` because the platform's spawn ENOENT is AMBIGUOUS — a missing
+ * EXECUTABLE and a missing WORKING DIRECTORY are indistinguishable at that layer,
+ * so the invoker needs the path to tell them apart before blaming the binary.
+ */
 export class AgentSpawnError extends Data.TaggedError("AgentSpawnError")<{
   readonly command: string;
+  readonly cwd: string;
   readonly cause: unknown;
 }> {}
 
