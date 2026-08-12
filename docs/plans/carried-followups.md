@@ -16,6 +16,14 @@ proliferation of near-empty follow-up docs. An item leaves here by being built, 
 a GitHub issue (the h-builds-h loop's queue — the route `panels-as-a-modifier` took for
 #76–#79), or by being explicitly dropped with a reason.
 
+**Interrogate an item before building it.** These are PARKED ideas, some written months before
+they are read, and an item's presence here is not a reason to build it. Before designing anything,
+state what it was trying to achieve, whether its stated revisit trigger has actually fired, what
+real usage exists, and what has changed since it was written. A premise that has expired is a
+normal outcome — §2 was dropped that way, and the deciding argument was not staleness at all but
+that its stated benefit (fewer flags) was something this repo does not want. Finding that out at
+the START is cheap; finding it out after a design is not.
+
 This absorbs the former `workflow-registry-followups.md` (established 2026-07-12), whose
 items are §5–§10 below; its two resolved items are recorded as such rather than deleted, so
 the record of *why* they closed survives.
@@ -64,17 +72,29 @@ The per-member budget stays refused — it is a watch policy, and there is no wa
 
 ## From [chain-plan-atom](./impl/chain-plan-atom.md)
 
-### 2. No first-class `plan` member kind
+### 2. No first-class `plan` member kind — DROPPED 2026-08-12
 
-`-t plan` has no entry in the closed `MEMBER_KINDS` literal, so it rides `--kind answer`
-with both threading halves declared explicitly (`--capture plan=plan` /
-`--input spec=plan.plan`), which fully replaces the kind's coded contract. It works; it is
-just more ceremony than the other kinds need. A `plan` kind would carry the contract in
-code like its siblings — added on BOTH sides (engine `MEMBER_KINDS` + CLI tables), per the
-standing rule.
+`-t plan` has no entry in the closed `MEMBER_KINDS` literal, so it rides `--kind answer` with both
+threading halves declared explicitly (`--capture plan=plan` / `--input spec=plan.plan`), which
+fully replaces the kind's coded contract. This item called that "more ceremony than the other
+kinds need" and wanted a coded contract instead.
 
-*Revisit when:* plan-then-implement chains become routine enough that the explicit
-threading flags are noise (the spec-review pipeline would make this so).
+**Dropped, because the premise was wrong in two ways — and only one of them was staleness.**
+
+The ceremony is not a cost. An explicit expression keeps a chain DECLARATIVE: the command you read
+IS the threading contract. A coded kind moves that contract into TypeScript, where the person
+reading the command can no longer see it. Trading it for six fewer flags is a readability loss.
+
+And the argument that a kind buys something structural is simply false: **a `-t` group publishes
+under `<slug>-w<N>` by default anyway** (`chain.py`; `--inline` is what embeds it instead). So
+`-w plan` and `-t plan …` differ only in who published the definition and when — never in whether
+one is persisted. The kind bought nothing but typing.
+
+Separately, its own revisit trigger had not fired: it named the spec-review pipeline, still
+`Status: Planning`, and the shape has exactly one known use (a cookbook line).
+
+*Not revisited unless* a plan-threading contract appears that explicit flags genuinely cannot
+express — which is a different item from this one, and would need that evidence first.
 
 ---
 
