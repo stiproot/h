@@ -426,14 +426,27 @@ noted alongside it are NOT litter: finalized rows are by-design audit retention.
 ### 26. system-c4-container layout polish
 
 The container diagram (PR #104) compiles and is complete, but its render is the scruffiest
-of the set: long crossing arrows and several relationship labels overlapping element boxes
-(the C4 grid did NOT collapse — this is UpdateRelStyle-offset polish, not a structure
-problem). Carried from docs/plans/impl/core-component-diagrams.md.
+of the set: long crossing arrows and several relationship labels overlapping element boxes.
+Carried from docs/plans/impl/core-component-diagrams.md.
 
-*Revisit when:* the next time the container diagram is updated for a topology change — fix
-the offsets in the same change. (2026-08-06: still open. The two-substrate story was added as
-its OWN diagram rather than by extending this one — a trial extension rendered as an unreadable
-5000px column, which is evidence the diagram is already at capacity, not just scruffy.)
+**Labels fixed 2026-08-12; the diagnosis was wrong about the rest.** Every relationship now
+carries an `UpdateRelStyle` offset, moving the labels off the boxes and into the margins — they
+previously sat on top of `workflow-svc`, `claude-agent`, `openhands-agent`, Zipkin and the
+boundary title. Two still graze a box edge; the rest are clear.
+
+What the old note got wrong is worth keeping, because it will mislead the next person too: this
+is NOT purely offset polish, and the grid did not merely fail to collapse — **`UpdateLayoutConfig`
+is INERT in mermaid 11.16.0**. Verified rather than assumed: rendering the same diagram at
+`$c4ShapeInRow` 2 vs 6, and a minimal 4-container diagram at 2 vs 4, produced *byte-identical*
+SVGs, and passing `{"c4":{"c4ShapeInRow":4}}` as a mermaid config changed nothing either (the
+unquoted form is a parse error, so the syntax in the file is the correct one). C4 lays out two
+shapes per row regardless. That is the real reason the diagram is a ~3400px column, and it is
+also why the 2026-08-06 "trial extension rendered as a 5000px column" — the width knob those
+attempts were reaching for does not exist.
+
+*Revisit when:* mermaid gains a working `$c4ShapeInRow` (then the column becomes a grid and the
+offsets need redoing), or the topology changes enough to want a second, narrower diagram — which
+is the only lever that currently works, and the one the two-substrate diagram already took.
 
 ## From [direct-execution-runtime](./impl/direct-execution-runtime.md)
 
