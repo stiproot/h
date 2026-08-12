@@ -207,7 +207,10 @@ The plan's phase-4 backlog, minus the items that its own supersession made moot 
 `issue-sweep` promotion died with the sweep; the runner-side terminate listener shipped —
 `invoker.terminate` now reaches the subprocess through the run's scope finalizer).
 
-### 16. Worktree GC — the disk-leak half
+### 28. Worktree GC — the disk-leak half
+
+*(Renumbered from a second §16 on 2026-08-12 — two items shared that number, in a doc whose whole
+job is to be the one greppable home. 28 was the free slot.)*
 
 [chain-engine-followups](./impl/chain-engine-followups.md) #76 fixed the *collision* half by
 making `addWorktree` reuse an existing worktree for a branch. The **leak** half is untouched:
@@ -297,8 +300,19 @@ workflow-svc.
 With the self-hosted runner live (2026-07-29), the `guards` check reports again, so
 requiring it on `main` is safe — the old "never add branch protection, the check never
 reports" warning is inverted. An operator repo-settings action (plus deciding whether the
-h-builds-h loop's merges go through PRs only). *Revisit when:* the next time a red-CI
-commit lands on main, or when tightening the merge protocol in `docs/DRIVER.md`.
+h-builds-h loop's merges go through PRs only).
+
+**The settings half is DONE** (observed 2026-08-12): `main` requires the status check
+`Guard surface (lint → build → test → pytest)` and pull-request reviews. What remains is a
+DECISION, and it is sharper than "PRs only" — the protection currently binds nothing h
+actually uses, because `enforce_admins` is `false` and the token the loop pushes with
+(`GH_TOKEN`) has `admin: true` on the repo. So an agent push and an operator push both
+bypass it, exactly as this session's own direct push to `main` did. Either enforce admins
+(which also binds the operator, and would end direct-to-main commits — see the
+`commit-on-main` working convention), or accept the protection as advisory and say so, but
+it should not be left looking enforced when it is not.
+
+*Revisit when:* deciding the merge protocol in `docs/DRIVER.md` — this is the input to it.
 
 ---
 
@@ -419,16 +433,29 @@ diagrams makes the attribution cheap to write from memory.
 
 ## From the first agent-built PR on the local substrate (#110)
 
-### 30. `h worktrees sweep` is still untested against reality
+### 30. `h worktrees sweep` is still untested against reality — RESOLVED 2026-08-12
 
-`list` and `rm` have now been exercised on a real checkout (the worktree this very feature was
-built in): `list` found it, `rm` refused it as dirty, `rm --force` removed it and deleted the
-branch. `sweep` — the BATCH form, which classifies many entries and removes the safe ones — has
-only ever run against monkeypatched git. Its per-entry classification and its
-`removed N, skipped M` accounting are unverified against a filesystem.
+Verified exactly as this item prescribed, in two halves.
 
-*Revisit when:* two or more real worktrees accumulate — run `sweep --dry-run` against them
-first, and compare its classification to `list` before letting it remove anything.
+**Classification, against 7 real worktrees** (the trxy-v2 clone's, left from the fun-content
+arc — read-only, nothing removed): `sweep --dry-run` agreed with `list` on every entry — the 4
+`clean` ones "would remove", the 1 `unpushed` and 2 `dirty` ones "would skip".
+
+**Batch removal and accounting, end to end** on three throwaway worktrees cut from h (two clean,
+one dirty): dry-run and real run agreed, `removed 2, skipped 1` was correct, the directories were
+actually gone, the removed branches were deleted while the skipped one kept both worktree and
+branch, and `rm --force` then removed the dirty one with its warning. No trace left.
+
+Two things worth knowing that the verification surfaced:
+
+- **`clean` is a stronger guarantee than it sounds**, which is why deleting the branch with
+  `-D` is safe: `worktree_has_unpushed` asks `git log HEAD --not --remotes`, so a branch with no
+  remote at all — never pushed — reports unpushed and is skipped. `clean` means every commit is
+  reachable from some remote, so a swept branch is recoverable.
+- **`h worktrees` is CWD-scoped, with no `--repo` flag**, so from h's own checkout it correctly
+  reports "no local-substrate worktrees found" while 7 worktrees for another clone sit in the
+  shared `h-worktrees/` root. Correct per-repo behaviour, but it means the §28 disk leak is
+  invisible from the obvious place to look for it — worth a thought when §28 is built.
 
 ### 31. An unexplained spawn failure on the local substrate
 
