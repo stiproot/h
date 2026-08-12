@@ -165,3 +165,125 @@ def get(
         err_console.print(f"[red]helm:[/red] {err}")
         raise typer.Exit(1) from err
     console.print(Syntax(rendered, "yaml", background_color="default"))
+
+
+# --- drift ---------------------------------------------------------------------------------------
+#
+# A saved workflow is a SNAPSHOT of a template render, taken at publish time. Nothing keeps the two
+# in step afterwards: edit a template and the live definition keeps running the old shape until
+# someone re-publishes, and a definition edited directly in the control plane looks identical from
+# the outside. Both failures are silent, and both are visible by simply re-rendering and comparing.
+
+# Sections compared. Deliberately not the whole stored record: savedAt/schedule/workspaceId/disabled
+# are publish-time OPERATIONAL choices, not template content, so they are not drift.
+DRIFT_SECTIONS = ("steps", "params", "outputs")
+
+
+def _template_for_saved_key(key: str) -> str | None:
+    """The chart template a saved key came from, or None when it did not come from one.
+
+    Chain members publish under `<slug>-w<N>` and agents can save ad-hoc definitions; those have no
+    template to re-render, so they are reported as unchecked rather than as drift.
+    """
+    name = template_name_for_key(key)
+    return (
+        name
+        if (CHARTS_DIR / "workflows" / "templates" / f"{name}{TEMPLATE_SUFFIX}").is_file()
+        else None
+    )
+
+
+def _render_published(template: str) -> dict[str, Any]:
+    """Re-render a template exactly as `h workflow publish` would."""
+    rendered = helm.render_workflow(template, values={"publish": "true"})
+    loaded = yaml.safe_load(rendered)
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _diff_sections(stored: dict[str, Any], fresh: dict[str, Any]) -> list[str]:
+    """Which compared sections differ. Absent and empty are the SAME thing here — a template that
+    renders no `outputs` and a stored record that omits the key are not in conflict."""
+    return [
+        section
+        for section in DRIFT_SECTIONS
+        if (stored.get(section) or None) != (fresh.get(section) or None)
+    ]
+
+
+@app.command()
+def drift(
+    keys: Annotated[
+        list[str] | None,
+        typer.Argument(help="Saved keys to check; default every saved workflow."),
+    ] = None,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print machine-readable rows instead of the table.")
+    ] = False,
+) -> None:
+    """Compare saved workflow definitions against a fresh render of the template they came from.
+
+    Catches a saved definition that has fallen behind its template (nobody re-published after an
+    edit) and a live definition changed out from under the chart. Exits 1 when anything drifted, so
+    it can gate.
+    """
+    try:
+        targets = keys or sorted(workflow_svc.list_keys())
+    except httpx.HTTPError as err:
+        err_console.print(f"[red]http:[/red] {err}")
+        err_console.print("Is workflow-svc running?")
+        raise typer.Exit(1) from err
+
+    rows: list[dict[str, Any]] = []
+    for key in targets:
+        template = _template_for_saved_key(key)
+        if template is None:
+            rows.append({"key": key, "template": None, "status": "unchecked", "sections": []})
+            continue
+        try:
+            stored = workflow_svc.get(key)
+        except httpx.HTTPError as err:
+            rows.append(
+                {"key": key, "template": template, "status": "error", "sections": [str(err)]}
+            )
+            continue
+        try:
+            fresh = _render_published(template)
+        except helm.HelmError as err:
+            rows.append(
+                {"key": key, "template": template, "status": "error", "sections": [str(err)]}
+            )
+            continue
+        differing = _diff_sections(stored, fresh)
+        rows.append(
+            {
+                "key": key,
+                "template": template,
+                "status": "drifted" if differing else "ok",
+                "sections": differing,
+            }
+        )
+
+    if as_json:
+        console.print_json(data=rows)
+    else:
+        table = Table("key", "template", "status", "differs in", title="template drift")
+        for row in rows:
+            status = {
+                "ok": "[green]ok[/green]",
+                "drifted": "[red]drifted[/red]",
+                "error": "[red]error[/red]",
+                "unchecked": "[dim]no template[/dim]",
+            }[row["status"]]
+            table.add_row(
+                row["key"], row["template"] or "-", status, ", ".join(row["sections"]) or "-"
+            )
+        console.print(table)
+        drifted = [r["key"] for r in rows if r["status"] == "drifted"]
+        if drifted:
+            console.print(
+                f"[red]{len(drifted)} drifted[/red] — re-publish with "
+                f"`h workflow publish <template>`, or investigate if you did not edit the chart."
+            )
+
+    if any(row["status"] in ("drifted", "error") for row in rows):
+        raise typer.Exit(1)
