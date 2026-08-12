@@ -226,11 +226,28 @@ job is to be the one greppable home. 28 was the free slot.)*
 
 [chain-engine-followups](./impl/chain-engine-followups.md) #76 fixed the *collision* half by
 making `addWorktree` reuse an existing worktree for a branch. The **leak** half is untouched:
-a finalized chain never removes its worktrees, so `../h-workspace` grows without bound. Reuse
-makes this benign, which is why it was deferred — a lifecycle sweep (prune worktrees whose
-`feature/*` branch has a merged or closed PR) can follow.
+a finalized chain never removes its worktrees, so `../h-workspace` grows without bound.
 
-*Revisit when:* disk pressure appears.
+**Partly resolved 2026-08-12 — the GC surface exists now; the automatic half does not.** The
+leak was measured, not theorised: one worktree for a MERGED PR (#109) holding 803MB, 463MB of it
+`node_modules`, plus a 4K husk git no longer tracks. It was also *unreachable* — `h worktrees`
+filtered to the local root only and scoped to the cwd's clone, so from h's own checkout it
+truthfully reported "none". Both fixed: the filter now covers both roots h cuts into
+(`h-worktrees/` `local/*` and `<workspace>/worktrees/` `feature/*`), and `--repo PATH` reaches
+another checkout.
+
+Two things still open, and the first is the more interesting:
+
+- **The safety rule makes the sweep mostly ineffective on exactly these worktrees.** One stray
+  UNTRACKED file marks a whole finished worktree dirty, and agent runs routinely leave one — the
+  803MB worktree is skipped because an agent left `plan-feature-review-spec-template.md` in it.
+  So reclaiming an agent worktree needs `--force`, which is the blunt instrument. Loosening the
+  rule (e.g. ignoring untracked files matching a known scratch shape, or treating untracked-only
+  dirt as sweepable) is a SAFETY decision, deliberately not taken unilaterally.
+- **Nothing runs it.** A finalized chain still removes nothing; this is still an operator command.
+
+*Revisit when:* deciding whether untracked-only dirt should block a sweep — or when wiring the
+sweep into a chain's finalize, which needs that answer first.
 
 ### 17. Template drift-check
 
