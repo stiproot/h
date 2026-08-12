@@ -378,7 +378,10 @@ h-builds-h-tab: ## Add the supervised h-builds-h stack as a new tab in the curre
 # the orchestration layer differs (detached process groups + log files, not zellij
 # panes). MODE=dev (default) or MODE=h-builds-h.
 
-.PHONY: up-host wait-host up-host-wait down-host
+.PHONY: check-env-local up-host wait-host up-host-wait down-host
+check-env-local: ## Preflight the .env keys a host-mode bring-up needs (MODE=dev|h-builds-h)
+	node scripts/check-env-local.mjs --mode $(MODE)
+
 up-host: infra-up ## Start all host-mode services detached (MODE=dev|h-builds-h); returns immediately
 	cli/scripts/up-host.sh $(MODE)
 

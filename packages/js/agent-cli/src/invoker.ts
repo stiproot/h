@@ -8,6 +8,7 @@ import type {
   AgentEventCallback,
   AgentInvocationRequest,
   AgentStrategy,
+  AgentType,
   InvocationResult,
   LiteLlmError,
   LlmConfig,
@@ -93,6 +94,20 @@ export const CodexInvokerLive: Layer.Layer<
   never,
   CommandExecutor.CommandExecutor | HttpClient.HttpClient
 > = layerAgentInvoker(codexStrategy);
+
+/**
+ * Every agent this package can drive, keyed by its `AgentType`.
+ *
+ * Exported so a caller can ask a strategy what it NEEDS without invoking it — `validateEnvironment`
+ * is the authoritative statement of an agent's auth requirements, so a preflight
+ * (`scripts/check-env-local.mjs`) reads it here rather than restating the keys and drifting.
+ */
+export const AGENT_STRATEGIES: Readonly<Record<AgentType, AgentStrategy>> = {
+  claude: claudeStrategy,
+  codex: codexStrategy,
+  openhands: openhandsStrategy,
+  pi: piStrategy,
+};
 
 function invokeAgent(
   strategy: AgentStrategy,

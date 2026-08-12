@@ -30,6 +30,15 @@ if [ "${#missing[@]}" -ne 0 ]; then
   exit 1
 fi
 
+# --- env preflight: report EVERY missing key at once, before launching anything ----------------
+# Without this the stack dies one key at a time inside whichever run script starts first, or comes
+# up green and only fails when an agent is finally invoked with no credentials. Errors (a `set -u`
+# unbound variable) abort; missing agent auth only warns, since that service still starts.
+# H_SKIP_ENV_CHECK=1 is the break-glass for a deliberately partial bring-up.
+if [ "${H_SKIP_ENV_CHECK:-0}" != "1" ]; then
+  node "${PROJECT_DIR}/scripts/check-env-local.mjs" --mode "${MODE}" || exit 1
+fi
+
 mapfile -t SERVICES < <(services_for_mode "${MODE}")
 echo "up-host: launching ${#SERVICES[@]} service(s) for mode '${MODE}' (logs → ${LOG_DIR})"
 

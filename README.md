@@ -307,6 +307,13 @@ TCP-probing each service's app port. Service membership per mode lives in `cli/s
 (the single source of truth the launcher and the zellij layouts share — kept in step by
 `scripts/check-services.mjs` at lint time).
 
+`up-host` first runs an **env preflight** (`make check-env-local [MODE=…]`, skip with
+`H_SKIP_ENV_CHECK=1`) that reports every missing key at once instead of dying one at a time inside
+whichever run script starts first. It hand-maintains no key list — a missing key is *derived*,
+either from a `${VAR}` a `set -u` run script references with no default (an **error**: the stack
+cannot come up) or from an agent strategy's own `validateEnvironment` (a **warning**: that service
+starts fine, but any run dispatched to it fails auth).
+
 ### 5. Run a test
 
 Use the [`h` CLI](#driving-h--the-h-cli) — publish a template, then fire it:
