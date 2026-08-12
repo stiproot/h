@@ -354,14 +354,27 @@ non-goal is deliberately reversed.
 
 ### 22. Audit follow-ups: codex first-turn tokens; py agents never populate cost
 
-Two gaps the Phase 1 audit filed but did not fix: codex's `extractMetrics` reads the FIRST
-`turn.completed` event (multi-turn runs would drop later turns' usage — verify against a
-captured multi-turn events.jsonl before fixing), and the Python agents' `record_run` mirrors
-always carry `costUsd: null` (their runners never populate `cost_usd`), so every py run is a
-permanent cost gap.
+Both halves INVESTIGATED 2026-08-12, neither built — the evidence says don't.
 
-*Revisit when:* a codex or py-agent run's spend matters to a budget decision — today both
-executors are low-volume.
+**Codex first-turn tokens: premise unsupported.** The item asked for a captured multi-turn
+`events.jsonl` before fixing. Every codex ledger on this machine was checked — 12 real runs,
+including ones with 59 completed items — and each contains exactly ONE `turn.completed`. A
+non-interactive `codex exec` run is one turn, so `find(type === "result")` reading "the first"
+is reading the only one. Building multi-turn accumulation now would be machinery for a case
+that has never occurred.
+
+*Revisit when:* a codex ledger shows two `turn.completed` events — likeliest if codex gains a
+resumed/interactive mode in h. The check is one grep over `AGENT_RUNS_DIR`.
+
+**Python cost: real, already honest, and blocked by a standing non-goal.** Confirmed that
+`cost_usd` is set nowhere outside a test, so every py `run:` mirror carries `costUsd: null`.
+But the tally does NOT read that as $0: `tallyCost` counts only `costUsd > 0` and books
+everything else as `gapRuns` + `costGap: true`, so a py run is reported as unaccounted, not as
+free. Closing it properly needs a price per token — the explicit non-goal that also refuted
+§21 — so the gap stands *as a gap*, which is the honest state.
+
+*Revisit when:* the no-pricing-table non-goal is deliberately reversed (§21 shares that
+trigger), or a py agent starts routing through something that reports its own cost.
 
 ---
 
