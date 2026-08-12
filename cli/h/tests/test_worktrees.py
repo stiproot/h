@@ -1,11 +1,11 @@
-"""h worktrees — the local-substrate sweep surface (monkeypatched git, no HTTP)."""
+"""h worktrees — the sweep surface for both substrates (monkeypatched git, no HTTP)."""
 
 import json
 from pathlib import Path
 
 from typer.testing import CliRunner
 
-from h_cli.config import LOCAL_WORKTREES_DIR
+from h_cli.config import H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure.git import WorktreeEntry
 from h_cli.main import app
 
@@ -57,7 +57,7 @@ def test_list_empty(monkeypatch) -> None:
     _patch_git(monkeypatch, [])
     result = runner.invoke(app, ["worktrees", "list"])
     assert result.exit_code == 0
-    assert "no local-substrate worktrees found" in result.output
+    assert "no h-managed worktrees found" in result.output
 
 
 def test_list_json(monkeypatch) -> None:
@@ -115,7 +115,7 @@ def test_rm_unknown_branch_loud_refusal(monkeypatch) -> None:
     _patch_git(monkeypatch, [_entry("local/260101-010101")])
     result = runner.invoke(app, ["worktrees", "rm", "local/nope"])
     assert result.exit_code == 1
-    assert "no local-substrate worktree" in result.output
+    assert "no h-managed worktree" in result.output
     assert "h worktrees list" in result.output
 
 
@@ -198,7 +198,7 @@ def test_sweep_empty_no_action(monkeypatch) -> None:
     _capture_remove(monkeypatch, removed)
     result = runner.invoke(app, ["worktrees", "sweep"])
     assert result.exit_code == 0
-    assert "no local-substrate worktrees found" in result.output
+    assert "no h-managed worktrees found" in result.output
     assert removed == []
 
 
@@ -236,3 +236,58 @@ def test_list_finds_an_entry_whose_path_is_not_lexically_normalised(monkeypatch)
 
     assert result.exit_code == 0, result.output
     assert len(json.loads(result.output)) == 1
+
+
+# --- both substrates, and reaching another checkout ---------------------------------------------
+#
+# Worktree admin lives in the CLONE, and the two substrates use different roots: the local one
+# cuts under LOCAL_WORKTREES_DIR (local/*), the service one under <workspace>/worktrees (feature/*).
+# Before this, only the local root was matched, so a merged 803MB feature worktree was invisible.
+
+
+def _service_entry(branch_short: str) -> WorktreeEntry:
+    path = H_WORKSPACE_DIR / "worktrees" / branch_short.replace("/", "-")
+    return WorktreeEntry(path=path, head="abc1234", branch=f"refs/heads/{branch_short}")
+
+
+def test_list_includes_service_substrate_worktrees(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_entry("local/260101-010101"), _service_entry("feature/x")])
+    result = runner.invoke(app, ["worktrees", "list", "--json"])
+    assert result.exit_code == 0
+    branches = {row["branch"] for row in json.loads(result.stdout)}
+    assert branches == {"local/260101-010101", "feature/x"}
+
+
+def test_a_worktree_outside_every_managed_root_is_left_alone(monkeypatch) -> None:
+    # Somebody's own worktree, in neither root — never h's to sweep.
+    outside = WorktreeEntry(path=Path("/elsewhere/mine"), head="abc1234", branch="refs/heads/mine")
+    _patch_git(monkeypatch, [outside])
+    result = runner.invoke(app, ["worktrees", "list", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == []
+
+
+def test_repo_option_resolves_against_the_given_checkout(monkeypatch) -> None:
+    seen: list[Path] = []
+
+    def fake_repo_root(cwd):
+        seen.append(Path(cwd))
+        return str(FAKE_REPO)
+
+    monkeypatch.setattr("h_cli.infrastructure.local_runtime.repo_root", fake_repo_root)
+    monkeypatch.setattr("h_cli.infrastructure.git.worktree_prune", lambda repo: None)
+    monkeypatch.setattr("h_cli.infrastructure.git.worktree_list", lambda repo: [])
+    result = runner.invoke(app, ["worktrees", "list", "--repo", "/some/clone"])
+    assert result.exit_code == 0
+    assert seen == [Path("/some/clone")]
+
+
+def test_sweep_reaches_a_service_worktree_in_another_checkout(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_service_entry("feature/x")])
+    removed: list = []
+    _capture_remove(monkeypatch, removed)
+    _capture_delete(monkeypatch, [])
+    result = runner.invoke(app, ["worktrees", "sweep", "--repo", "/some/clone"])
+    assert result.exit_code == 0
+    assert "removed 1, skipped 0" in result.stdout
+    assert removed[0][0] == H_WORKSPACE_DIR / "worktrees" / "feature-x"

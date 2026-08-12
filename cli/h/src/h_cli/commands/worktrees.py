@@ -1,8 +1,10 @@
-"""h worktrees — list and remove local-substrate worktrees.
+"""h worktrees — list and remove the worktrees h cuts, on either substrate.
 
-The sweep surface for `h delegate --worktree` and `--local` runs of worktree-cutting
-templates. Worktrees land under LOCAL_WORKTREES_DIR with `local/*` branches; until this
-sub-app there was no removal path in the CLI or the runtime. Like `h cron` / `h chain` /
+The sweep surface for both substrates: the LOCAL one lands worktrees under LOCAL_WORKTREES_DIR
+with `local/*` branches, and the SERVICE one's agents cut theirs under `<workspace>/worktrees/`
+with `feature/*` branches. Until this sub-app there was no removal path in the CLI or the
+runtime, and a finalized chain still removes nothing — so both roots accumulate (a single merged
+feature worktree was found holding 803MB). Like `h cron` / `h chain` /
 `h watch`, it is a `list` + `rm` Typer sub-app registered in main.py — and `sweep`, the
 batch form the `list`-then-remove preview makes natural.
 
@@ -18,10 +20,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from h_cli.config import LOCAL_WORKTREES_DIR
+from h_cli.config import H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure import git, local_runtime
 
-app = typer.Typer(no_args_is_help=True, help="List and remove local-substrate worktrees.")
+app = typer.Typer(no_args_is_help=True, help="List and remove the worktrees h cuts.")
 console = Console()
 err_console = Console(stderr=True)
 
@@ -35,21 +37,43 @@ def _resolve_repo(cwd: Path) -> str:
         raise typer.Exit(1) from err
 
 
+def _repo_for(repo_opt: Path | None) -> str:
+    """The checkout to operate on: --repo when given, else the cwd's.
+
+    `--repo` exists because worktree admin lives in the CLONE, so a command scoped to the cwd can
+    only ever see one substrate's worktrees. Run from h's own checkout, `list` truthfully reported
+    "none" while a merged 803MB feature worktree sat on disk under the h-workspace clone — the
+    leak was real and simply unreachable from the obvious place to look.
+    """
+    return _resolve_repo(repo_opt.resolve() if repo_opt else Path.cwd())
+
+
+def _managed_roots() -> list[Path]:
+    """Every root h cuts worktrees into — both substrates.
+
+    The LOCAL substrate uses `h-worktrees/` (branches `local/*`); the SERVICE substrate's agents
+    cut theirs under the shared workspace (`<workspace>/worktrees/`, branches `feature/*`). Both
+    are h-managed and both leak, so both are sweepable; a worktree anywhere else is somebody's own
+    and is left strictly alone.
+    """
+    return [LOCAL_WORKTREES_DIR.resolve(), (H_WORKSPACE_DIR / "worktrees").resolve()]
+
+
 def _local_entries(repo: str) -> list[git.WorktreeEntry]:
-    """The local-substrate worktrees: pruned, minus the main checkout, filtered by path.
+    """The h-managed worktrees: pruned, minus the main checkout, filtered by path.
 
     The filter is `is_relative_to`, never a bare string prefix — a startswith on
     `/h-worktrees` would falsely match `/h-worktrees-extra/foo`.
 
     BOTH sides are resolved first. `is_relative_to` is purely lexical, so a root carrying `..`
     or a symlink never matches the absolute paths git reports — which made this command a silent
-    no-op in its default configuration. Config resolves the root; this resolves the entries, so
+    no-op in its default configuration. Config resolves the roots; this resolves the entries, so
     an operator-set H_LOCAL_WORKTREES_DIR or a symlinked checkout cannot reintroduce the bug.
     """
     git.worktree_prune(repo)
     entries = git.worktree_list(repo)
-    root = LOCAL_WORKTREES_DIR.resolve()
-    return [e for e in entries[1:] if e.path.resolve().is_relative_to(root)]
+    roots = _managed_roots()
+    return [e for e in entries[1:] if any(e.path.resolve().is_relative_to(r) for r in roots)]
 
 
 def _match_entry(entries: list[git.WorktreeEntry], branch: str) -> git.WorktreeEntry | None:
@@ -86,9 +110,17 @@ def list_(
         bool,
         typer.Option("--json", help="Print machine-readable rows instead of the table."),
     ] = False,
+    repo_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--repo",
+            help="Checkout to operate on (default: the current directory's). Worktree admin "
+            "lives in the clone, so this is how you reach another substrate's worktrees.",
+        ),
+    ] = None,
 ) -> None:
-    """List local-substrate worktrees and their safety status (dirty / unpushed)."""
-    repo = _resolve_repo(Path.cwd())
+    """List h-managed worktrees (both substrates) and their safety status (dirty / unpushed)."""
+    repo = _repo_for(repo_path)
     entries = _local_entries(repo)
     rows = []
     for e in entries:
@@ -106,9 +138,9 @@ def list_(
         console.print_json(data=rows)
         return
     if not rows:
-        console.print("[dim]no local-substrate worktrees found[/dim]")
+        console.print("[dim]no h-managed worktrees found[/dim]")
         return
-    table = Table("branch", "path", "status", title="local worktrees", title_justify="left")
+    table = Table("branch", "path", "status", title="h-managed worktrees", title_justify="left")
     for row in rows:
         table.add_row(row["branch"], row["path"], _status_text(row["dirty"], row["unpushed"]))
     console.print(table)
@@ -117,20 +149,28 @@ def list_(
 @app.command("rm")
 def rm(
     branch: str = typer.Argument(
-        ..., help="Branch (or worktree path) of the local-substrate worktree to remove."
+        ..., help="Branch (or worktree path) of the h-managed worktree to remove."
     ),
     force: Annotated[
         bool,
         typer.Option("--force", help="Remove even with uncommitted/unpushed work (dangerous)."),
     ] = False,
+    repo_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--repo",
+            help="Checkout to operate on (default: the current directory's). Worktree admin "
+            "lives in the clone, so this is how you reach another substrate's worktrees.",
+        ),
+    ] = None,
 ) -> None:
-    """Remove one local-substrate worktree and its branch."""
-    repo = _resolve_repo(Path.cwd())
+    """Remove one h-managed worktree and its branch."""
+    repo = _repo_for(repo_path)
     entries = _local_entries(repo)
     entry = _match_entry(entries, branch)
     if entry is None:
         err_console.print(
-            f"[bold red]no local-substrate worktree[/bold red] '{branch}'. "
+            f"[bold red]no h-managed worktree[/bold red] '{branch}'. "
             "Run `h worktrees list` to see what is here."
         )
         raise typer.Exit(1)
@@ -169,12 +209,20 @@ def sweep(
         bool,
         typer.Option("--force", help="Also remove dirty/unpushed worktrees (dangerous)."),
     ] = False,
+    repo_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--repo",
+            help="Checkout to operate on (default: the current directory's). Worktree admin "
+            "lives in the clone, so this is how you reach another substrate's worktrees.",
+        ),
+    ] = None,
 ) -> None:
-    """Remove all clean local-substrate worktrees; keep and report in-progress ones."""
-    repo = _resolve_repo(Path.cwd())
+    """Remove all clean h-managed worktrees; keep and report in-progress ones."""
+    repo = _repo_for(repo_path)
     entries = _local_entries(repo)
     if not entries:
-        console.print("[dim]no local-substrate worktrees found[/dim]")
+        console.print("[dim]no h-managed worktrees found[/dim]")
         return
 
     to_remove: list[tuple[git.WorktreeEntry, bool, bool]] = []
