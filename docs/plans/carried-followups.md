@@ -249,11 +249,28 @@ Two things still open, and the first is the more interesting:
 *Revisit when:* deciding whether untracked-only dirt should block a sweep — or when wiring the
 sweep into a chain's finalize, which needs that answer first.
 
-### 17. Template drift-check
+### 17. Template drift-check — RESOLVED 2026-08-12
 
-A workflow that diffs `get_workflow(<key>)` against a fresh publish render and alerts when
-they diverge — catching live-control-plane tampering, or simply a saved definition that has
-fallen behind its template. Cheap, and it composes from existing pieces.
+BUILT as `h template drift [KEYS…] [--json]`: re-renders each saved key's template in publish
+mode and diffs it against the stored definition, exiting 1 on drift so it can gate.
+
+Built as a COMMAND rather than the workflow the item imagined — the comparison is the whole
+substance, and it needs no agent. A workflow that wants to alert on a schedule can fire this;
+building the workflow first would have been the machinery around an atom that did not exist yet.
+
+Two judgements worth keeping, because both would otherwise make it cry wolf:
+
+- Only `steps`/`params`/`outputs` are compared. `schedule`/`workspaceId`/`disabled`/`savedAt` are
+  publish-time OPERATIONAL choices, not template content — a parked schedule is not drift.
+- Absent and empty compare EQUAL: a template that renders no `outputs` and a stored record that
+  simply omits the key are not in conflict.
+
+Keys with no chart template — chain members publish as `<slug>-w<N>`, and agents can save ad-hoc
+definitions — are reported `unchecked`, never `drifted`.
+
+*Not yet done:* it has only been exercised against mocked wire responses. Its first real run
+needs a stack with saved workflows, and should be read carefully — the interesting outcome is a
+FALSE positive telling us something else belongs in the not-content list.
 
 ### 18. k8s cron leader guard
 
