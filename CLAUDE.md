@@ -712,6 +712,14 @@ Three obligations, in order of how often they are missed:
    image: mermaid will happily emit a valid-but-unreadable 5000px column. `render-diagram
    docs/diagrams docs/diagrams/rendered` (bin from the `@stiproot/code-comprehension`
    devDependency; `docs/diagrams/rendered/` is gitignored — render on demand, share the PNG).
+   **`UpdateLayoutConfig($c4ShapeInRow=…)` is INERT in mermaid 11.16.0** — C4 lays out two shapes
+   per row whatever you write, so a wide diagram is not available and that 5000px column is not
+   something you can widen your way out of. Verified 2026-08-12 by rendering the same diagram at
+   2 vs 6 and a minimal one at 2 vs 4: byte-identical SVGs, and a `{"c4":{"c4ShapeInRow":N}}`
+   mermaid config changes nothing either (the unquoted directive form is a parse error, so the
+   quoted syntax in our files is correct and simply ignored). The levers that DO work are
+   `UpdateRelStyle($offsetX/$offsetY)` for label collisions, and splitting an over-full diagram
+   into a second, narrower one — which is what `execution-substrates-c4-container` is.
 
 **Use the plugin's tooling; never re-implement it.** `@stiproot/code-comprehension` (a root
 devDependency) ships the two bins — `gen-code-diagram` (generate/drift-check managed `-class` docs
