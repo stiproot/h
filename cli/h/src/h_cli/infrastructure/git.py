@@ -15,6 +15,23 @@ class GitError(RuntimeError):
 
 
 @dataclass
+class Dirt:
+    """Uncommitted state in a worktree, split into the two classes that differ in cost."""
+
+    tracked: bool  # modifications to files git tracks — losing them loses real edits
+    untracked: list[str]  # files git neither tracks nor ignores — typically agent scratch
+
+    @property
+    def untracked_only(self) -> bool:
+        """Nothing but scratch: the case a sweep can discard behind its own narrow flag."""
+        return bool(self.untracked) and not self.tracked
+
+    @property
+    def any(self) -> bool:
+        return self.tracked or bool(self.untracked)
+
+
+@dataclass
 class WorktreeEntry:
     path: Path
     head: str  # full SHA
@@ -124,10 +141,17 @@ def worktree_list(repo_path: Path) -> list[WorktreeEntry]:
     return entries
 
 
-def worktree_is_dirty(path: Path) -> bool:
-    """True when `git status --porcelain` is non-empty.
+def worktree_dirt(path: Path) -> Dirt:
+    """What kind of uncommitted state a worktree holds, split by how bad losing it would be.
 
-    Any error (path missing, git failing) is also True — the safe default that never lets
+    `git status --porcelain` lumps two very different things together, and the sweep needs them
+    apart: a `??` line is a file git neither tracks nor ignores (an agent's leftover scratch —
+    ignored paths like `node_modules` never appear), while every other line is a modification to
+    a file git DOES track. Losing the first class costs a file nobody ever committed; losing the
+    second costs edits to real work. Unpushed COMMITS are a third question, answered separately
+    by `worktree_has_unpushed`.
+
+    Any error (path missing, git failing) reports tracked dirt — the safe default that never lets
     unknown state be auto-removed.
     """
     try:
@@ -138,8 +162,18 @@ def worktree_is_dirty(path: Path) -> bool:
             check=True,
         )
     except (OSError, subprocess.CalledProcessError):
-        return True
-    return bool(out.stdout.strip())
+        return Dirt(tracked=True, untracked=[])
+    # These paths are for DISPLAY only — git quotes unusual ones, so never feed them to a command.
+    tracked = False
+    untracked: list[str] = []
+    for line in out.stdout.splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("?? "):
+            untracked.append(line[3:].strip())
+        else:
+            tracked = True
+    return Dirt(tracked=tracked, untracked=untracked)
 
 
 def worktree_has_unpushed(path: Path) -> bool:

@@ -236,18 +236,42 @@ truthfully reported "none". Both fixed: the filter now covers both roots h cuts 
 (`h-worktrees/` `local/*` and `<workspace>/worktrees/` `feature/*`), and `--repo PATH` reaches
 another checkout.
 
-Two things still open, and the first is the more interesting:
+**The safety decision is TAKEN (2026-08-12): grade the dirt, don't loosen the rule.** One stray
+untracked file marked a whole finished worktree dirty — agent runs routinely leave one, and the
+803MB worktree was skipped over `plan-feature-review-spec-template.md` — so reclaiming it needed
+`--force`, the blunt instrument.
 
-- **The safety rule makes the sweep mostly ineffective on exactly these worktrees.** One stray
-  UNTRACKED file marks a whole finished worktree dirty, and agent runs routinely leave one — the
-  803MB worktree is skipped because an agent left `plan-feature-review-spec-template.md` in it.
-  So reclaiming an agent worktree needs `--force`, which is the blunt instrument. Loosening the
-  rule (e.g. ignoring untracked files matching a known scratch shape, or treating untracked-only
-  dirt as sweepable) is a SAFETY decision, deliberately not taken unilaterally.
-- **Nothing runs it.** A finalized chain still removes nothing; this is still an operator command.
+What made the old behaviour wrong was a single dirty/clean bit standing for two losses of very
+different size. `git status --porcelain` lumps them together; the split is one character. A `??`
+line is a file git neither tracks nor IGNORES (so `node_modules` never appears) — losing it costs
+a file nobody ever committed. Every other line is an edit to tracked work. Unpushed COMMITS were
+always a separate question, and stay one.
 
-*Revisit when:* deciding whether untracked-only dirt should block a sweep — or when wiring the
-sweep into a chain's finalize, which needs that answer first.
+So `git.worktree_dirt` returns a `Dirt {tracked, untracked[]}`, `list` reports a fourth status
+`scratch`, and removal gained a second flag: **`--prune-untracked` discards scratch and NAMES
+every file first; `--force` still covers tracked edits and unpushed commits.** Two flags rather
+than one because they accept different classes of loss — a leftover plan doc and a never-staged
+`src/newthing.ts` are indistinguishable to git, so the printed file list is the safety check, and
+the operator is the one who can tell them apart. Unpushed stays blocked whatever the untracked
+state. (`--prune-untracked` must still hand git its OWN `--force`, which refuses a worktree
+holding untracked files.)
+
+**The 803MB is reclaimed** — this ran live, not just in tests. `list` reported the worktree as
+`scratch` where it used to say `dirty`, the dry run named the one file it would discard, and
+`sweep --prune-untracked --repo ../h-workspace/repo` removed the worktree, discarded the plan doc
+and deleted the merged branch. The leak this item was opened for is gone.
+
+Two things still open:
+
+- **Nothing runs it.** A finalized chain removes nothing; this remains an operator command. It now
+  has a defensible default to call, since an agent's leftover is exactly the scratch class.
+- **A husk git does not know about is invisible to the sweep.** An empty `worktrees/per-member-budget`
+  directory survived — `git worktree prune` dropped the admin entry, so nothing lists it and nothing
+  removes it. Harmless at 4K, but the CLASS is not: a directory left behind by a failed
+  `worktree remove` keeps its full size and no h command can see it. A finalize-time GC should
+  reconcile the directory listing against git's, not just sweep what git reports.
+
+*Revisit when:* wiring the sweep into a chain's finalize — the question that needed this answer.
 
 ### 17. Template drift-check — RESOLVED 2026-08-12
 
@@ -341,7 +365,7 @@ workflow-svc.
 
 ## From [local-ci-execution](./impl/local-ci-execution.md)
 
-### 16. Branch protection requiring the `guards` check
+### 16. Branch protection requiring the `guards` check — RESOLVED 2026-08-12
 
 With the self-hosted runner live (2026-07-29), the `guards` check reports again, so
 requiring it on `main` is safe — the old "never add branch protection, the check never
@@ -360,9 +384,11 @@ it should not be left looking enforced when it is not.
 
 **DECIDED 2026-08-12: leave it advisory, and say so.** Enforcing admins would end direct-to-main
 for the operator and the loop alike, which is a bigger workflow change than this item was; the
-protection stays as documentation of intent rather than a gate. What this item still owes is the
-one sentence in `docs/DRIVER.md` saying that plainly, so nobody reads a required check as an
-enforced one.
+protection stays as documentation of intent rather than a gate.
+
+Said plainly where a driver reads it: `docs/DRIVER.md`'s merge protocol now opens with *the
+protocol IS the gate — GitHub is not*, naming `enforce_admins: false` and the admin token, so a
+green tick is never mistaken for an enforced one. Nothing further owed.
 
 ---
 
@@ -534,10 +560,11 @@ Two things worth knowing that the verification surfaced:
   `-D` is safe: `worktree_has_unpushed` asks `git log HEAD --not --remotes`, so a branch with no
   remote at all — never pushed — reports unpushed and is skipped. `clean` means every commit is
   reachable from some remote, so a swept branch is recoverable.
-- **`h worktrees` is CWD-scoped, with no `--repo` flag**, so from h's own checkout it correctly
-  reports "no local-substrate worktrees found" while 7 worktrees for another clone sit in the
-  shared `h-worktrees/` root. Correct per-repo behaviour, but it means the §28 disk leak is
-  invisible from the obvious place to look for it — worth a thought when §28 is built.
+- **`h worktrees` is CWD-scoped**, so from h's own checkout it correctly reported "no
+  local-substrate worktrees found" while 7 worktrees for another clone sat in the shared
+  `h-worktrees/` root. Correct per-repo behaviour, but it made the §28 disk leak invisible from
+  the obvious place to look for it — which is why §28 added `--repo PATH` to reach another
+  checkout's worktree admin.
 
 ### 31. An unexplained spawn failure on the local substrate
 

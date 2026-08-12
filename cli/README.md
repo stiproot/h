@@ -118,9 +118,12 @@ uv run h cron list                        # the cron registry — recur crons + 
 uv run h cron rm <repo> <slug> <workflow>  # disarm a recur cron: set inactive+disabled, keep row for audit (idempotent; calls POST /cron/disarm — single-writer)
 uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
 uv run h status [--json]                  # one-screen driver check-in: active chains, engine heartbeats (stale >5m flagged), verdict OK / ATTENTION
-uv run h worktrees list [--json]          # the local substrate's leftovers: prune + list its worktrees with a dirty/unpushed status
-uv run h worktrees rm BRANCH [--force]    # remove one worktree + its branch; REFUSES while dirty or unpushed unless forced
-uv run h worktrees sweep [--dry-run] [--force]  # batch form: classify, skip the unsafe, report removed N / skipped M
+uv run h worktrees list [--json] [--repo PATH]  # both substrates' leftovers: prune + list, status graded dirty (tracked edits) / scratch (untracked only) / unpushed
+uv run h worktrees rm BRANCH [--force] [--prune-untracked]    # remove one worktree + its branch; REFUSES while dirty or unpushed unless forced
+uv run h worktrees sweep [--dry-run] [--force] [--prune-untracked]  # batch form: classify, skip the unsafe, report removed N / skipped M
+#   --force discards tracked edits AND unpushed commits; --prune-untracked discards only files git
+#   never tracked, naming each one first. Two flags because they accept different classes of loss —
+#   and the narrow one is what reclaims a finished agent worktree held open by a leftover scratch file.
 
 # ---- the LOCAL execution substrate: the same composition, executed in THIS process ----
 # No Dapr, no services, no containers. Prerequisite: `bun run build`, plus CLIs you have

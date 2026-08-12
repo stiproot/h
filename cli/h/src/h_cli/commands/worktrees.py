@@ -8,9 +8,14 @@ feature worktree was found holding 803MB). Like `h cron` / `h chain` /
 `h watch`, it is a `list` + `rm` Typer sub-app registered in main.py — and `sweep`, the
 batch form the `list`-then-remove preview makes natural.
 
-Safety is the point: `rm` and `sweep` refuse to remove a worktree with uncommitted
-changes or unpushed commits unless --force says otherwise, and every git check defaults to
-"unsafe" on any error rather than auto-removing unknown state.
+Safety is the point, and it is graded rather than binary: `rm` and `sweep` refuse to remove a
+worktree holding work, but uncommitted state comes in two classes that cost different amounts to
+lose. Tracked modifications and unpushed commits need --force. Files git merely does not track —
+SCRATCH, typically the plan doc an agent left behind — need only --prune-untracked, which lists
+them before discarding them. Splitting the two is what makes the sweep usable on exactly the
+worktrees it was built for: one stray scratch file used to mark a finished 803MB worktree dirty
+and push the operator to the blunt instrument. Every git check still defaults to "unsafe" on any
+error rather than auto-removing unknown state.
 """
 
 from pathlib import Path
@@ -85,23 +90,61 @@ def _match_entry(entries: list[git.WorktreeEntry], branch: str) -> git.WorktreeE
     return None
 
 
-def _reasons(dirty: bool, unpushed: bool) -> str:
+def _reasons(dirt: git.Dirt, unpushed: bool) -> str:
     parts = []
-    if dirty:
+    if dirt.tracked:
         parts.append("uncommitted changes")
+    if dirt.untracked:
+        n = len(dirt.untracked)
+        parts.append(f"{n} untracked file{'s' if n != 1 else ''}")
     if unpushed:
         parts.append("unpushed commits")
     return ", ".join(parts)
 
 
-def _status_text(dirty: bool, unpushed: bool) -> str:
-    if dirty and unpushed:
-        return "[bold red]dirty + unpushed[/bold red]"
-    if dirty:
-        return "[red]dirty[/red]"
+def _status_text(dirt: git.Dirt, unpushed: bool) -> str:
+    parts = []
+    if dirt.tracked:
+        parts.append("[red]dirty[/red]")
+    elif dirt.untracked:
+        parts.append("[cyan]scratch[/cyan]")
     if unpushed:
-        return "[yellow]unpushed[/yellow]"
-    return "[green]clean[/green]"
+        parts.append("[yellow]unpushed[/yellow]")
+    return " + ".join(parts) if parts else "[green]clean[/green]"
+
+
+def _blocked(dirt: git.Dirt, unpushed: bool, *, force: bool, prune_untracked: bool) -> str | None:
+    """Why this worktree must not be removed, or None when it may be.
+
+    The two flags accept DIFFERENT classes of loss, which is why they are two flags:
+    `--prune-untracked` discards files nobody ever committed, `--force` additionally discards
+    tracked edits and commits that exist nowhere else. Scratch is the only class the narrow flag
+    unlocks — an unpushed worktree stays blocked whatever its untracked state.
+    """
+    if force:
+        return None
+    if dirt.tracked or unpushed:
+        return _reasons(git.Dirt(tracked=dirt.tracked, untracked=[]), unpushed)
+    if dirt.untracked and not prune_untracked:
+        return _reasons(dirt, unpushed)
+    return None
+
+
+def _announce_discard(name: str, dirt: git.Dirt) -> None:
+    """Name every untracked file about to be destroyed — the list IS the safety check.
+
+    A leftover plan doc and a new source file nobody staged are indistinguishable to git, so the
+    operator, not the tool, is the one who can tell them apart. Printing the paths before the
+    removal is what makes `src/newthing.ts` stop somebody.
+    """
+    if not dirt.untracked:
+        return
+    n = len(dirt.untracked)
+    err_console.print(
+        f"[yellow]discarding[/yellow] {n} untracked file{'s' if n != 1 else ''} in '{name}':"
+    )
+    for path in dirt.untracked:
+        err_console.print(f"    {path}")
 
 
 @app.command("list")
@@ -119,30 +162,32 @@ def list_(
         ),
     ] = None,
 ) -> None:
-    """List h-managed worktrees (both substrates) and their safety status (dirty / unpushed)."""
+    """List h-managed worktrees (both substrates) and their status (dirty / scratch / unpushed)."""
     repo = _repo_for(repo_path)
     entries = _local_entries(repo)
     rows = []
     for e in entries:
-        dirty = git.worktree_is_dirty(e.path)
+        dirt = git.worktree_dirt(e.path)
         unpushed = git.worktree_has_unpushed(e.path)
         rows.append(
             {
                 "branch": e.branch_short or "(detached)",
                 "path": str(e.path),
-                "dirty": dirty,
+                "dirty": dirt.tracked,
+                "untracked": dirt.untracked,
                 "unpushed": unpushed,
+                "_status": _status_text(dirt, unpushed),
             }
         )
     if as_json:
-        console.print_json(data=rows)
+        console.print_json(data=[{k: v for k, v in r.items() if k != "_status"} for r in rows])
         return
     if not rows:
         console.print("[dim]no h-managed worktrees found[/dim]")
         return
     table = Table("branch", "path", "status", title="h-managed worktrees", title_justify="left")
     for row in rows:
-        table.add_row(row["branch"], row["path"], _status_text(row["dirty"], row["unpushed"]))
+        table.add_row(row["branch"], row["path"], row["_status"])
     console.print(table)
 
 
@@ -154,6 +199,15 @@ def rm(
     force: Annotated[
         bool,
         typer.Option("--force", help="Remove even with uncommitted/unpushed work (dangerous)."),
+    ] = False,
+    prune_untracked: Annotated[
+        bool,
+        typer.Option(
+            "--prune-untracked",
+            help="Also remove a worktree whose only dirt is untracked files, discarding them "
+            "(they are listed first). Narrower than --force, which also discards tracked "
+            "edits and unpushed commits.",
+        ),
     ] = False,
     repo_path: Annotated[
         Path | None,
@@ -175,22 +229,29 @@ def rm(
         )
         raise typer.Exit(1)
 
-    dirty = git.worktree_is_dirty(entry.path)
+    dirt = git.worktree_dirt(entry.path)
     unpushed = git.worktree_has_unpushed(entry.path)
-    if (dirty or unpushed) and not force:
-        err_console.print(
-            f"[bold red]refused:[/bold red] '{branch}' has {_reasons(dirty, unpushed)}. "
-            "Commit, push, or stash your work first. Use --force to override (dangerous)."
+    blocked = _blocked(dirt, unpushed, force=force, prune_untracked=prune_untracked)
+    if blocked is not None:
+        override = (
+            "Use --prune-untracked to discard them (they are listed first)."
+            if dirt.untracked_only
+            else "Commit, push, or stash your work first. Use --force to override (dangerous)."
         )
+        err_console.print(f"[bold red]refused:[/bold red] '{branch}' has {blocked}. {override}")
         raise typer.Exit(1)
-    if dirty or unpushed:
+    _announce_discard(branch, dirt)
+    if dirt.tracked or unpushed:
         err_console.print(
-            f"[yellow]warning:[/yellow] removing '{branch}' despite {_reasons(dirty, unpushed)} "
-            "— work may be lost."
+            f"[yellow]warning:[/yellow] removing '{branch}' despite "
+            f"{_reasons(git.Dirt(tracked=dirt.tracked, untracked=[]), unpushed)} — "
+            "work may be lost."
         )
 
     try:
-        git.worktree_remove(repo, entry.path, force=force)
+        # git refuses to remove a worktree holding untracked files without --force of its own,
+        # so a --prune-untracked removal must still hand git the flag we withheld from the user.
+        git.worktree_remove(repo, entry.path, force=force or dirt.any)
         if entry.branch_short is not None:
             git.branch_delete(repo, entry.branch_short)
     except git.GitError as err:
@@ -209,6 +270,15 @@ def sweep(
         bool,
         typer.Option("--force", help="Also remove dirty/unpushed worktrees (dangerous)."),
     ] = False,
+    prune_untracked: Annotated[
+        bool,
+        typer.Option(
+            "--prune-untracked",
+            help="Also remove worktrees whose only dirt is untracked files, discarding them "
+            "(they are listed first). The flag for reclaiming a finished agent worktree that "
+            "one leftover scratch file is holding open.",
+        ),
+    ] = False,
     repo_path: Annotated[
         Path | None,
         typer.Option(
@@ -218,40 +288,50 @@ def sweep(
         ),
     ] = None,
 ) -> None:
-    """Remove all clean h-managed worktrees; keep and report in-progress ones."""
+    """Remove clean h-managed worktrees; keep and report the ones holding work."""
     repo = _repo_for(repo_path)
     entries = _local_entries(repo)
     if not entries:
         console.print("[dim]no h-managed worktrees found[/dim]")
         return
 
-    to_remove: list[tuple[git.WorktreeEntry, bool, bool]] = []
+    to_remove: list[tuple[git.WorktreeEntry, git.Dirt, bool]] = []
     to_skip: list[tuple[git.WorktreeEntry, str]] = []
     for e in entries:
-        dirty = git.worktree_is_dirty(e.path)
+        dirt = git.worktree_dirt(e.path)
         unpushed = git.worktree_has_unpushed(e.path)
-        if (dirty or unpushed) and not force:
-            to_skip.append((e, _reasons(dirty, unpushed)))
+        blocked = _blocked(dirt, unpushed, force=force, prune_untracked=prune_untracked)
+        if blocked is not None:
+            to_skip.append((e, blocked))
         else:
-            to_remove.append((e, dirty, unpushed))
+            to_remove.append((e, dirt, unpushed))
 
     if dry_run:
-        for e, _, _ in to_remove:
-            console.print(f"would remove: {e.branch_short or e.path.name}")
+        for e, dirt, _ in to_remove:
+            name = e.branch_short or e.path.name
+            n = len(dirt.untracked)
+            suffix = f" (discarding {n} untracked file{'s' if n != 1 else ''})" if n else ""
+            console.print(f"would remove: {name}{suffix}")
+            for path in dirt.untracked:
+                console.print(f"[dim]    {path}[/dim]")
         for e, reasons in to_skip:
             console.print(f"[dim]would skip: {e.branch_short or e.path.name} ({reasons})[/dim]")
         return
 
     removed = 0
     errors = 0
-    for e, dirty, unpushed in to_remove:
-        if dirty or unpushed:
+    for e, dirt, unpushed in to_remove:
+        name = e.branch_short or e.path.name
+        _announce_discard(name, dirt)
+        if dirt.tracked or unpushed:
             err_console.print(
-                f"[yellow]warning:[/yellow] removing '{e.branch_short or e.path.name}' "
-                f"despite {_reasons(dirty, unpushed)} — work may be lost."
+                f"[yellow]warning:[/yellow] removing '{name}' despite "
+                f"{_reasons(git.Dirt(tracked=dirt.tracked, untracked=[]), unpushed)} — "
+                "work may be lost."
             )
         try:
-            git.worktree_remove(repo, e.path, force=force)
+            # See rm: git's own --force is required for a worktree holding untracked files.
+            git.worktree_remove(repo, e.path, force=force or dirt.any)
             if e.branch_short is not None:
                 git.branch_delete(repo, e.branch_short)
             removed += 1

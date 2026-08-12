@@ -1,12 +1,13 @@
 """h worktrees — the sweep surface for both substrates (monkeypatched git, no HTTP)."""
 
 import json
+import subprocess
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from h_cli.config import H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR
-from h_cli.infrastructure.git import WorktreeEntry
+from h_cli.infrastructure.git import Dirt, WorktreeEntry, worktree_dirt
 from h_cli.main import app
 
 runner = CliRunner()
@@ -20,15 +21,19 @@ def _entry(branch_short: str, under_local: bool = True) -> WorktreeEntry:
     return WorktreeEntry(path=path, head="abc1234", branch=branch)
 
 
-def _patch_git(monkeypatch, entries, dirty=False, unpushed=False) -> None:
+def _patch_git(monkeypatch, entries, dirty=False, unpushed=False, untracked=()) -> None:
     monkeypatch.setattr("h_cli.infrastructure.local_runtime.repo_root", lambda cwd: str(FAKE_REPO))
     monkeypatch.setattr("h_cli.infrastructure.git.worktree_prune", lambda repo: None)
     monkeypatch.setattr(
         "h_cli.infrastructure.git.worktree_list",
         lambda repo: [_entry("main", under_local=False)] + entries,
     )
-    monkeypatch.setattr("h_cli.infrastructure.git.worktree_is_dirty", lambda path: dirty)
+    _patch_dirt(monkeypatch, lambda path: Dirt(tracked=dirty, untracked=list(untracked)))
     monkeypatch.setattr("h_cli.infrastructure.git.worktree_has_unpushed", lambda path: unpushed)
+
+
+def _patch_dirt(monkeypatch, fn) -> None:
+    monkeypatch.setattr("h_cli.infrastructure.git.worktree_dirt", fn)
 
 
 def _capture_remove(monkeypatch, removed):
@@ -150,10 +155,7 @@ def test_sweep_removes_clean_skips_dirty(monkeypatch) -> None:
     dirty = _entry("local/260101-010102")
     _patch_git(monkeypatch, [clean, dirty])
     dirty_paths = {dirty.path}
-    monkeypatch.setattr(
-        "h_cli.infrastructure.git.worktree_is_dirty",
-        lambda path: path in dirty_paths,
-    )
+    _patch_dirt(monkeypatch, lambda path: Dirt(tracked=path in dirty_paths, untracked=[]))
     monkeypatch.setattr("h_cli.infrastructure.git.worktree_has_unpushed", lambda path: False)
     removed, deleted = [], []
     _capture_remove(monkeypatch, removed)
@@ -173,10 +175,7 @@ def test_sweep_force_removes_all_with_warnings(monkeypatch) -> None:
     _patch_git(monkeypatch, [clean, dirty, unpushed])
     dirty_paths = {dirty.path}
     unpushed_paths = {unpushed.path}
-    monkeypatch.setattr(
-        "h_cli.infrastructure.git.worktree_is_dirty",
-        lambda path: path in dirty_paths,
-    )
+    _patch_dirt(monkeypatch, lambda path: Dirt(tracked=path in dirty_paths, untracked=[]))
     monkeypatch.setattr(
         "h_cli.infrastructure.git.worktree_has_unpushed",
         lambda path: path in unpushed_paths,
@@ -291,3 +290,126 @@ def test_sweep_reaches_a_service_worktree_in_another_checkout(monkeypatch) -> No
     assert result.exit_code == 0
     assert "removed 1, skipped 0" in result.stdout
     assert removed[0][0] == H_WORKSPACE_DIR / "worktrees" / "feature-x"
+
+
+# --- scratch: untracked-only dirt is its own class -----------------------------------------
+#
+# One leftover scratch file used to mark a whole finished worktree dirty, so reclaiming it needed
+# --force — the flag that also discards tracked edits and unpushed commits. Untracked-only dirt is
+# now a distinct status with its own narrower flag.
+
+SCRATCH = ["plan-feature-review-spec-template.md"]
+
+
+def test_worktree_dirt_splits_porcelain_by_class(monkeypatch) -> None:
+    """The parse the whole decision rests on: `??` is scratch, every other line is tracked."""
+    porcelain = " M src/a.py\n?? plan.md\nA  src/new.py\n?? notes/scratch.txt\n"
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0, stdout=porcelain, stderr=""),
+    )
+    dirt = worktree_dirt(Path("/anywhere"))
+    assert dirt.tracked is True
+    assert dirt.untracked == ["plan.md", "notes/scratch.txt"]
+    assert dirt.untracked_only is False
+
+
+def test_worktree_dirt_reports_tracked_when_git_fails(monkeypatch) -> None:
+    """Unknown state is never sweepable — the safe default the whole surface leans on."""
+
+    def boom(*a, **kw):
+        raise OSError("no such directory")
+
+    monkeypatch.setattr("subprocess.run", boom)
+    dirt = worktree_dirt(Path("/gone"))
+    assert dirt.tracked is True
+    assert dirt.untracked_only is False
+
+
+def test_list_reports_untracked_only_as_scratch(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_entry("local/260101-010101")], untracked=SCRATCH)
+    result = runner.invoke(app, ["worktrees", "list"])
+    assert result.exit_code == 0
+    assert "scratch" in result.output
+    assert "dirty" not in result.output
+
+
+def test_list_json_separates_untracked_from_tracked_dirt(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_entry("local/260101-010101")], untracked=SCRATCH)
+    rows = json.loads(runner.invoke(app, ["worktrees", "list", "--json"]).stdout)
+    assert rows[0]["dirty"] is False  # `dirty` now means TRACKED modifications only
+    assert rows[0]["untracked"] == SCRATCH
+
+
+def test_sweep_skips_scratch_by_default(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_entry("local/260101-010101")], untracked=SCRATCH)
+    removed: list = []
+    _capture_remove(monkeypatch, removed)
+    result = runner.invoke(app, ["worktrees", "sweep"])
+    assert result.exit_code == 0
+    assert removed == []
+    assert "1 untracked file" in result.output
+
+
+def test_sweep_prune_untracked_removes_scratch_and_names_the_files(monkeypatch) -> None:
+    entry = _entry("local/260101-010101")
+    _patch_git(monkeypatch, [entry], untracked=SCRATCH)
+    removed, deleted = [], []
+    _capture_remove(monkeypatch, removed)
+    _capture_delete(monkeypatch, deleted)
+    result = runner.invoke(app, ["worktrees", "sweep", "--prune-untracked"])
+    assert result.exit_code == 0
+    # git itself refuses a worktree holding untracked files without its own --force.
+    assert removed == [(entry.path, {"force": True})]
+    assert SCRATCH[0] in result.output  # the file list IS the safety check
+    assert "removed 1, skipped 0" in result.output
+
+
+def test_prune_untracked_does_not_unlock_tracked_dirt_or_unpushed(monkeypatch) -> None:
+    tracked = _entry("local/260101-010101")
+    unpushed = _entry("local/260101-010102")
+    _patch_git(monkeypatch, [tracked, unpushed], untracked=SCRATCH)
+    _patch_dirt(
+        monkeypatch,
+        lambda path: Dirt(tracked=path == tracked.path, untracked=list(SCRATCH)),
+    )
+    monkeypatch.setattr(
+        "h_cli.infrastructure.git.worktree_has_unpushed", lambda path: path == unpushed.path
+    )
+    removed: list = []
+    _capture_remove(monkeypatch, removed)
+    result = runner.invoke(app, ["worktrees", "sweep", "--prune-untracked"])
+    assert result.exit_code == 0
+    assert removed == []
+    assert "removed 0, skipped 2" in result.output
+
+
+def test_rm_refuses_scratch_but_points_at_the_narrow_flag(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_entry("local/260101-010101")], untracked=SCRATCH)
+    result = runner.invoke(app, ["worktrees", "rm", "local/260101-010101"])
+    assert result.exit_code == 1
+    assert "--prune-untracked" in result.output
+    assert "--force" not in result.output
+
+
+def test_rm_prune_untracked_removes_scratch(monkeypatch) -> None:
+    entry = _entry("local/260101-010101")
+    _patch_git(monkeypatch, [entry], untracked=SCRATCH)
+    removed, deleted = [], []
+    _capture_remove(monkeypatch, removed)
+    _capture_delete(monkeypatch, deleted)
+    result = runner.invoke(app, ["worktrees", "rm", "local/260101-010101", "--prune-untracked"])
+    assert result.exit_code == 0
+    assert removed == [(entry.path, {"force": True})]
+    assert deleted == [("local/260101-010101", {})]
+
+
+def test_dry_run_shows_what_a_scratch_removal_would_discard(monkeypatch) -> None:
+    _patch_git(monkeypatch, [_entry("local/260101-010101")], untracked=SCRATCH)
+    removed: list = []
+    _capture_remove(monkeypatch, removed)
+    result = runner.invoke(app, ["worktrees", "sweep", "--prune-untracked", "--dry-run"])
+    assert result.exit_code == 0
+    assert removed == []
+    assert "discarding 1 untracked file" in result.output
+    assert SCRATCH[0] in result.output
