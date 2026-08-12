@@ -105,15 +105,33 @@ seeded writable volume, unbuilt. Also unbuilt: the Enterprise `CODEX_ACCESS_TOKE
 
 ## From [agent-host-mode-bringup](./impl/agent-host-mode-bringup.md)
 
-### 5. `make check-env-local` — the headless `.env` contract
+### 5. `make check-env-local` — the headless `.env` contract — RESOLVED 2026-08-12
 
-Phase 3 documented the one-time provisioning step but deferred the machine check: a target
-that fails loudly listing the `.env` keys a headless host-mode bring-up requires
-(`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `GH_TOKEN`, …)
-*before* launching, instead of each `run-*.sh` hard-failing one at a time.
+BUILT as `scripts/check-env-local.mjs`, run by `up-host.sh` before it launches anything
+(`H_SKIP_ENV_CHECK=1` bypasses) and standalone via `make check-env-local [MODE=…]`.
 
-*Revisit when:* a bring-up fails on a missing key often enough to be annoying — or fold it
-into the hardening audit's `check-env-parity.mjs` idea, which overlaps.
+The design point worth keeping: it maintains **no list of keys**, because a restated list is a
+list that drifts. A requirement is DERIVED, from one of two sources that already own the truth —
+a `${VAR}` a `set -u` run script references with no default (found by scanning for that shape,
+so tomorrow's is found too), or an agent strategy's own `validateEnvironment` (which already
+encodes the real either/or auth logic; `agent-cli` gained an `AGENT_STRATEGIES` export so a
+caller can ask a strategy what it needs without invoking it). Membership comes from
+`_services.sh`, the same source the launcher reads.
+
+Two severities, because the failures differ in kind: a missing hard-required key ABORTS the
+bring-up (error), while missing agent auth lets the service start healthy and only fails a
+dispatched run (warning) — blocking a whole dev stack because one agent has no key would be
+wrong. `--strict` promotes warnings for an unattended caller.
+
+It found a real gap on its first run beyond the false positive that taught it DECLARED vs
+USABLE (a bare `KEY=` line satisfies `set -u` but leaves an agent unauthenticated): **this
+machine has no codex credentials in `.env`**, so `--agent codex` on the service substrate fails
+at run time. Not fixed here — it is an operator credential decision, and §4 already tracks the
+codex auth story.
+
+It does NOT overlap `check-env-parity.mjs` after all: that guard asserts compose/k8s vars are
+DOCUMENTED in `.env.example` at lint time, while this one asserts they are SET at bring-up time.
+Different question, different clock — both kept.
 
 ---
 
