@@ -41,7 +41,11 @@ _PREAMBLE = (
     "independent panel. Work alone — do not coordinate with or wait for the others. You may "
     "share a workspace with them: treat any checkout as READ-ONLY — do not switch branches, "
     "install dependencies, run builds, or write files into it; keep scratch reasoning in your "
-    "answer, not on disk."
+    "answer, not on disk. You are the '{agent}' panelist: if the task has you POST anything to "
+    "an external system (a PR review or comment, an issue), begin that body with the literal "
+    "prefix '[panel:{agent}]' — several panelists post to the same place, and without it the "
+    "reader cannot tell which agent said what, nor a later run tell panel output from a "
+    "single-agent one."
 )
 
 # Mirrors h.outputContractEpilogue (cli/charts/workflows/templates/_helpers.tpl) — the per-step
@@ -149,7 +153,6 @@ def panelize(
 
     contract = copy.deepcopy(subject["input"]["outputContract"])
     roster_line = ", ".join(branch_ids)
-    preamble = _PREAMBLE.format(n=len(roster), roster=roster_line)
 
     branches: list[dict[str, Any]] = []
     for (name, activity), bid in zip(roster, branch_ids):
@@ -164,6 +167,9 @@ def panelize(
         }
         if model_override:
             branch_input["model"] = model_override
+        # The preamble is per-BRANCH, not shared: it names which panelist this is, so anything
+        # the branch posts externally is attributable.
+        preamble = _PREAMBLE.format(n=len(roster), roster=roster_line, agent=bid)
         branch_input["task"] = f"{preamble}\n\n{task}"
         branches.append({"id": bid, "activity": activity, "input": branch_input})
 

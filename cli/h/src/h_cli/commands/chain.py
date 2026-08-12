@@ -46,6 +46,7 @@ from typing import Annotated, Any
 import httpx
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
@@ -150,19 +151,22 @@ DEFAULT_EXPR = ["-w", "implement-pr", "-w", "review-pr", "-w", "revise-pr"]
 
 
 def _fail(message: str) -> None:
-    err_console.print(f"[red]{message}[/red]")
+    # escape(): the [red] tags are ours, the message is DATA. A member label like "[answer]" is
+    # valid rich markup for an unknown style, which rich SWALLOWS — the error would drop the very
+    # thing it names. Same reason every interpolation below is escaped.
+    err_console.print(f"[red]{escape(message)}[/red]")
     raise typer.Exit(1)
 
 
 def _warn(message: str) -> None:
-    err_console.print(f"[yellow]warning:[/yellow] {message}")
+    err_console.print(f"[yellow]warning:[/yellow] {escape(message)}")
 
 
 def _guarded(fn: Any) -> Any:
     try:
         return fn()
     except httpx.HTTPError as err:
-        err_console.print(f"[red]http:[/red] {err}")
+        err_console.print(f"[red]http:[/red] {escape(str(err))}")
         err_console.print("Is workflow-svc running, and are the chained workflows published?")
         raise typer.Exit(1) from err
 
@@ -468,7 +472,7 @@ def _resolve_workflow(
             judge_note = " (judge: claude-agent)" if kind in FROZEN_EXECUTOR_KINDS else ""
             model_note = f" (model: {cfg.model})" if cfg.model else ""
             console.print(
-                f"==> panelized '{member.label}' — roster: {', '.join(roster)}"
+                f"==> panelized '{escape(member.label)}' — roster: {escape(', '.join(roster))}"
                 f"{judge_note}{model_note}"
             )
         source = " ⊕ ".join(member.templates) if member.key is None else member.key
@@ -850,8 +854,9 @@ def run(
         else (f" — activates at {body.get('notBefore')}" if body.get("notBefore") else "")
     )
     console.print(
-        f"==> chain '{result['chainId']}' registered [{' -> '.join(labels)}] "
-        f"(branch feature/{slug}, strategy={strategy}){gate}"
+        f"==> chain '{escape(result['chainId'])}' registered "
+        f"\\[{escape(' -> '.join(labels))}] "
+        f"(branch feature/{escape(slug)}, strategy={escape(strategy)}){escape(gate)}"
     )
     console.print("    the chain engine sequences the workflows on the cron tick; non-blocking.")
     console.print(f"    watch it: h chain list  (or h workflow status feature-{slug})")
@@ -894,7 +899,7 @@ def _run_local_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
     try:
         envelope = local_runtime.run_job(job)
     except LocalRunError as err:
-        err_console.print(f"[red]local:[/red] {err}")
+        err_console.print(f"[red]local:[/red] {escape(str(err))}")
         raise typer.Exit(1) from err
 
     runs = envelope.get("runs") or []
@@ -912,10 +917,13 @@ def _run_local_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
 
     status = envelope.get("status", "failed")
     if status == "completed":
-        err_console.print(f"[green]chain completed[/green] — {envelope.get('note', '')}".rstrip())
+        err_console.print(
+            f"[green]chain completed[/green] — {escape(str(envelope.get('note', '')))}".rstrip()
+        )
         return
     colour = "yellow" if status == "exhausted" else "red"
-    err_console.print(f"[{colour}]chain {status}[/{colour}]: {envelope.get('note', 'no detail')}")
+    note = escape(str(envelope.get("note", "no detail")))
+    err_console.print(f"[{colour}]chain {escape(status)}[/{colour}]: {note}")
     raise typer.Exit(1)
 
 
@@ -925,7 +933,7 @@ def list_() -> None:
     try:
         result = workflow_svc.chain_list()
     except httpx.HTTPError as err:
-        err_console.print(f"[red]http:[/red] {err}")
+        err_console.print(f"[red]http:[/red] {escape(str(err))}")
         err_console.print("Is workflow-svc running? (make dev-tab)")
         raise typer.Exit(1) from err
     chains = result.get("chains", [])

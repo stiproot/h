@@ -66,6 +66,21 @@ def test_branches_strip_contract_and_model_and_carry_the_preamble() -> None:
         assert "Review PR {{params.pr}}." in branch["input"]["task"]
 
 
+# Attribution is per-BRANCH: several panelists post to the same PR, and an unprefixed review is
+# indistinguishable from its neighbours' and from a single-agent run's.
+def test_each_branch_is_told_to_attribute_what_it_posts_to_itself() -> None:
+    result = panelize(definition(), ROSTER)
+    branches = result["steps"][1]["parallel"]
+    prefixes = set()
+    for branch in branches:
+        task = branch["input"]["task"]
+        assert f"[panel:{branch['id']}]" in task
+        assert f"the '{branch['id']}' panelist" in task
+        prefixes.add(f"[panel:{branch['id']}]")
+    # Distinct per branch — one shared preamble for the whole panel would defeat the purpose.
+    assert len(prefixes) == len(branches)
+
+
 def test_synthesis_keeps_original_id_contract_and_judge() -> None:
     result = panelize(definition(), ROSTER)
     synthesis = result["steps"][2]

@@ -7,6 +7,13 @@ grammar — no mocks, no CLI runner.
 import pytest
 
 from h_cli.infrastructure.chain_expr import (
+    BOOL_FLAGS,
+    COMMAND_FLAGS,
+    CONNECTOR,
+    MAP_FLAGS,
+    ROSTER_FLAGS,
+    VALUE_FLAGS,
+    WORKFLOW_INTRODUCERS,
     ChainExpr,
     ExprError,
     MemberRef,
@@ -287,3 +294,48 @@ def test_stage_and_max_fires_reject_non_integers() -> None:
         parse_expr(["-w", "a", "--stage", "first"])
     with pytest.raises(ExprError, match="bad --max-fires"):
         parse_expr(["-w", "a", "--cron", "* * * * *", "--max-fires", "lots"])
+
+
+def test_a_command_flag_typed_into_the_expression_says_where_it_belongs() -> None:
+    # The papercut: --strategy after the `--` separator used to report only "unknown token",
+    # listing every expression flag and leaving the reader to notice theirs wasn't among them.
+    with pytest.raises(ExprError, match="is a command flag, not an expression flag"):
+        parse_expr(["-w", "review-pr", "--strategy", "loop-until-clean"])
+    with pytest.raises(ExprError, match="put it BEFORE the workflow list"):
+        parse_expr(["-w", "review-pr", "--max-iterations", "5"])
+
+
+def test_an_actually_unknown_flag_still_lists_the_grammar() -> None:
+    with pytest.raises(ExprError, match="unknown token '--nope'"):
+        parse_expr(["-w", "a", "--nope"])
+
+
+def test_command_flags_and_expression_flags_are_disjoint() -> None:
+    """click consumes a DECLARED option wherever it appears in argv, which would destroy the
+    positional scoping the whole grammar rests on. The module docstring states this rule; this
+    asserts it."""
+    expression = {
+        *WORKFLOW_INTRODUCERS,
+        CONNECTOR,
+        *ROSTER_FLAGS,
+        *VALUE_FLAGS,
+        *MAP_FLAGS,
+        *BOOL_FLAGS,
+    }
+    assert expression & set(COMMAND_FLAGS) == set()
+
+
+def test_command_flags_match_the_real_typer_command() -> None:
+    """COMMAND_FLAGS is a copy of the Typer signature, so it can drift. Read the actual command
+    and assert the two agree — adding a `h chain run` option without updating the list (or, worse,
+    adding one that collides with an expression flag) fails here."""
+    import click
+    import typer.main
+
+    from h_cli.commands.chain import app
+
+    command = typer.main.get_command(app)
+    run = command.commands["run"] if isinstance(command, click.Group) else command
+    declared = {opt for param in run.params for opt in getattr(param, "opts", [])}
+    declared -= {"--help"}
+    assert declared == set(COMMAND_FLAGS)

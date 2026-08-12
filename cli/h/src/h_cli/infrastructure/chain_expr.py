@@ -57,6 +57,28 @@ WORKFLOW_INTRODUCERS = ("-w", "-t")
 # Per-workflow-only value flags: meaningless as chain-wide defaults (each is one member's contract).
 PER_WORKFLOW_FLAGS = ("--kind", "--until", "--stage", "--cron", "--max-fires", "--id")
 
+# Flags `h chain run` declares on the COMMAND, which therefore must appear BEFORE the expression.
+# They are not part of the grammar and reaching the parser means they were typed too late — so the
+# unknown-token error names that, instead of listing every expression flag and leaving the reader
+# to notice their flag isn't among them.
+#
+# This set MUST stay disjoint from the expression flags above (the docstring's rule: click consumes
+# a declared option wherever it appears in argv, destroying the positional scoping the grammar is
+# built on). `test_chain_expr.py` asserts both the disjointness AND that this list matches the
+# Typer command's real parameters, so neither can drift silently.
+COMMAND_FLAGS = (
+    "--slug",
+    "--param",
+    "-p",
+    "--local",
+    "--with-setup",
+    "--strategy",
+    "--max-iterations",
+    "--after",
+    "--at",
+    "--in",
+)
+
 # A watch/chain budget: <n>m, <n>h, or bare milliseconds — validated here so a typo fails at
 # parse time, not minutes later in the engine.
 _BUDGET_RE = re.compile(r"^\d+[mh]?$")
@@ -300,6 +322,12 @@ def parse_expr(tokens: list[str]) -> ChainExpr:
                     f"{token} must follow a workflow (or precede the first workflow as a default)"
                 )
         elif token.startswith("-"):
+            if token in COMMAND_FLAGS:
+                raise ExprError(
+                    f"'{token}' is a command flag, not an expression flag — put it BEFORE the "
+                    "workflow list (and before any '--' separator), e.g. "
+                    f"`h chain run --slug x {token} ... -- -w implement-pr -w review-pr`"
+                )
             known = ", ".join(
                 (
                     *WORKFLOW_INTRODUCERS,
