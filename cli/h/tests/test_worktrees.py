@@ -4,8 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from h_cli.commands.worktrees import _blocked
 from h_cli.config import H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure.git import Dirt, WorktreeEntry, worktree_dirt
 from h_cli.main import app
@@ -299,6 +301,38 @@ def test_sweep_reaches_a_service_worktree_in_another_checkout(monkeypatch) -> No
 # now a distinct status with its own narrower flag.
 
 SCRATCH = ["plan-feature-review-spec-template.md"]
+
+
+# The shared safety contract — see the fixture's own `_why`. The unattended collector
+# (git-core's worktree-gc, TypeScript) reads the SAME file, so the two implementations of these
+# rules can differ in every way except what they would delete. The path is asserted by
+# scripts/check-sweep-parity.mjs, so neither consumer can quietly stop reading it.
+PARITY_FIXTURE = (
+    Path(__file__).resolve().parents[3] / "scripts/fixtures/worktree-classification.json"
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    json.loads(PARITY_FIXTURE.read_text())["cases"],
+    ids=lambda case: case["name"],
+)
+def test_sweep_rule_parity_with_the_unattended_collector(case, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0, stdout=case["porcelain"], stderr=""),
+    )
+    dirt = worktree_dirt(Path("/anywhere"))
+    assert dirt.tracked is case["tracked"]
+    assert list(dirt.untracked) == case["untracked"]
+
+    # `_blocked` returns the REASON; parity is over the decision, so wording may differ across the
+    # two languages while the outcome may not.
+    collectable = lambda prune: (  # noqa: E731 - a local alias keeps the assertions readable
+        _blocked(dirt, case["unpushed"], force=False, prune_untracked=prune) is None
+    )
+    assert collectable(False) is case["collectable"]
+    assert collectable(True) is case["collectableWithPrune"]
 
 
 def test_worktree_dirt_splits_porcelain_by_class(monkeypatch) -> None:

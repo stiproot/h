@@ -1,0 +1,125 @@
+{
+  "_why": [
+    "The worktree sweep rules exist TWICE: in Python (h_cli.infrastructure.git + the h worktrees",
+    "command, run by an operator) and in TypeScript (git-core's worktree-gc, run unattended by the",
+    "gc-worktrees workflow). Two implementations of one safety policy is exactly the shape that",
+    "drifts, and drift here has a specific, bad failure: the unattended collector destroys",
+    "something the attended command refuses to touch.",
+    "",
+    "So neither side owns the rules — this file does. Both test suites read it and assert their own",
+    "API agrees, which makes the check BEHAVIOURAL rather than textual: the two can differ in",
+    "wording, structure and language, but not in what they would delete.",
+    "",
+    "Consumers (both required; scripts/check-sweep-parity.mjs fails the build if either stops",
+    "reading this file):",
+    "  packages/js/git-core/src/worktree-gc.test.ts",
+    "  cli/h/tests/test_worktrees.py",
+    "",
+    "Each case: `porcelain` and `unpushed` are the inputs; `tracked`/`untracked` are how the status",
+    "output must be parsed; `collectable` / `collectableWithPrune` are whether the worktree may be",
+    "removed with, respectively, scratch kept and scratch discarded. AGE is deliberately absent —",
+    "it is the collector's liveness proxy and has no counterpart in the operator command, which",
+    "has a human deciding instead."
+  ],
+  "cases": [
+    {
+      "name": "pristine tree is collectable",
+      "porcelain": "",
+      "unpushed": false,
+      "tracked": false,
+      "untracked": [],
+      "collectable": true,
+      "collectableWithPrune": true
+    },
+    {
+      "name": "scratch only — the case the whole split exists for",
+      "porcelain": "?? plan-feature-review-spec-template.md\n",
+      "unpushed": false,
+      "tracked": false,
+      "untracked": ["plan-feature-review-spec-template.md"],
+      "collectable": false,
+      "collectableWithPrune": true
+    },
+    {
+      "name": "several scratch files",
+      "porcelain": "?? plan.md\n?? notes/scratch.txt\n",
+      "unpushed": false,
+      "tracked": false,
+      "untracked": ["plan.md", "notes/scratch.txt"],
+      "collectable": false,
+      "collectableWithPrune": true
+    },
+    {
+      "name": "modified tracked file blocks even with pruning",
+      "porcelain": " M src/a.ts\n",
+      "unpushed": false,
+      "tracked": true,
+      "untracked": [],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "staged addition is tracked work, not scratch",
+      "porcelain": "A  src/new.ts\n",
+      "unpushed": false,
+      "tracked": true,
+      "untracked": [],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "deletion is tracked work",
+      "porcelain": " D src/gone.ts\n",
+      "unpushed": false,
+      "tracked": true,
+      "untracked": [],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "rename is tracked work",
+      "porcelain": "R  old.ts -> new.ts\n",
+      "unpushed": false,
+      "tracked": true,
+      "untracked": [],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "mixed: scratch does not mask tracked work",
+      "porcelain": " M src/a.ts\n?? plan.md\n",
+      "unpushed": false,
+      "tracked": true,
+      "untracked": ["plan.md"],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "unpushed commits block a clean tree",
+      "porcelain": "",
+      "unpushed": true,
+      "tracked": false,
+      "untracked": [],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "pruning never unlocks unpushed work",
+      "porcelain": "?? plan.md\n",
+      "unpushed": true,
+      "tracked": false,
+      "untracked": ["plan.md"],
+      "collectable": false,
+      "collectableWithPrune": false
+    },
+    {
+      "name": "blank lines in porcelain are not dirt",
+      "porcelain": "\n\n",
+      "unpushed": false,
+      "tracked": false,
+      "untracked": [],
+      "collectable": true,
+      "collectableWithPrune": true
+    }
+  ]
+}

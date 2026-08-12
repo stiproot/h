@@ -35,6 +35,12 @@ const isBuiltin = (name: string): name is BuiltinActivity =>
  */
 const REFUSED: Readonly<Record<string, string>> = {
   "write-wf-row": "it writes the wf: status registry, which only workflow-svc owns",
+  // Not a missing capability — a DIFFERENT workspace. The activity sweeps an agent SERVICE's
+  // shared workspace over Dapr; this substrate's own worktrees are the operator's, under
+  // h-worktrees/, and `h worktrees sweep` is their collector.
+  "gc-worktrees":
+    "it collects an agent service's shared workspace. Local worktrees are yours: sweep them " +
+    "with `h worktrees sweep [--prune-untracked]`",
   "register-cron": "arming a recurrence needs the cron engine (a workflow never recurs itself)",
   "register-discover": "arming a discovery cron needs the cron engine",
   "run-itest":

@@ -192,3 +192,14 @@ plan:
   # half, so it defaults to the stronger model — same choice implement.models.plan makes.
   models:
     plan: claude-sonnet-4-6
+
+# gc-worktrees workflow (templates/gc-worktrees.tmpl.yaml): the collector for the worktrees h cuts
+# and never removes. Defaults are the CONSERVATIVE ones — an unattended sweep keeps anything it is
+# not explicitly told it may discard, and the age floor is the liveness proxy (a supervised run is
+# bounded by its watch policy, so a worktree older than this cannot belong to one).
+gcWorktrees:
+  # Discard untracked scratch files. Off here so a hand render is safe; the daily cron sets
+  # -p pruneUntracked=true, which is what actually reclaims a finished agent worktree.
+  pruneUntracked: false
+  # 24h in ms.
+  minAgeMs: 86400000

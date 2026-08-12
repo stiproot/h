@@ -7,6 +7,7 @@ import { runActivity } from "./activity-runtime.ts";
 import { cloneRepoActivity } from "./activities/clone-repo.activity.ts";
 import { copySessionActivity } from "./activities/copy-session.activity.ts";
 import { createWorktreeActivity } from "./activities/create-worktree.activity.ts";
+import { gcWorktreesActivity } from "./activities/gc-worktrees.activity.ts";
 import { registerCronActivity } from "./activities/register-cron.activity.ts";
 import { registerDiscoverActivity } from "./activities/register-discover.activity.ts";
 import { runClaudeActivity } from "./activities/run-claude.activity.ts";
@@ -72,6 +73,7 @@ const registry: Record<string, ActivityFn> = Object.fromEntries(
     setup: setupActivity,
     "clone-repo": cloneRepoActivity,
     "create-worktree": createWorktreeActivity,
+    "gc-worktrees": gcWorktreesActivity,
     "run-claude": runClaudeActivity,
     "run-claude-managed": runClaudeManagedActivity,
     "run-codex": runCodexActivity,

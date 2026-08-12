@@ -1,7 +1,11 @@
-import { Command } from "@effect/platform";
+import { Command, FileSystem } from "@effect/platform";
 import type { CommandExecutor } from "@effect/platform";
 import type { PlatformError } from "@effect/platform/Error";
-import { Context, Data, Duration, Effect, Layer, Stream } from "effect";
+import { Context, Data, Duration, Effect, Layer } from "effect";
+
+import { GitExitError, causeText, redactedCause, runGit } from "./git-exec.ts";
+import { gcWorktreesEffect } from "./worktree-gc.ts";
+import type { GcOptions, GcReport } from "./worktree-gc.ts";
 
 /**
  * How git authenticates to the remote. Strategies are *named* in workflow/step config; the
@@ -129,9 +133,6 @@ export class GitWorktreeError extends Data.TaggedError("GitWorktreeError")<{
   }
 }
 
-const causeText = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause);
-
 /**
  * The git port: today's `clone()`/`addWorktree()` contract made explicit as a tag.
  * Methods are `R = never`; the adapter layer captures `CommandExecutor` at build time.
@@ -151,57 +152,15 @@ export class GitClient extends Context.Tag("GitClient")<
      * fetch + reset against origin themselves.
      */
     readonly addWorktree: (opts: WorktreeOptions) => Effect.Effect<string, GitWorktreeError>;
+    /**
+     * Collect the h-managed worktrees under `opts.roots` that hold nothing worth keeping, and
+     * the directories git has no record of. Never fails: a worktree it could not classify is
+     * REPORTED as kept, because a collector that aborts halfway leaves the leak it was sent to
+     * fix. See {@link GcOptions} for what bounds what it may destroy.
+     */
+    readonly gcWorktrees: (opts: GcOptions) => Effect.Effect<GcReport>;
   }
 >() {}
-
-/** Internal: a git subprocess exited non-zero. Raw stderr — scrubbed before leaving the port. */
-class GitExitError extends Data.TaggedError("GitExitError")<{
-  readonly exitCode: number;
-  readonly stderr: string;
-}> {}
-
-const collectText = (
-  stream: Stream.Stream<Uint8Array, PlatformError>,
-): Effect.Effect<string, PlatformError> =>
-  stream.pipe(
-    Stream.decodeText("utf-8"),
-    Stream.runFold("", (acc, chunk) => acc + chunk),
-  );
-
-// Run git with the given args, capturing stdout as the result and stderr for diagnostics
-// (the Effect sibling of execFileSync's `stdio: "pipe"` throw). stdout/stderr/exit are read
-// concurrently so a chatty stream can never deadlock the pipe buffer.
-const runGit = (
-  args: ReadonlyArray<string>,
-  cwd?: string,
-  env?: Record<string, string>,
-): Effect.Effect<string, GitExitError | PlatformError, CommandExecutor.CommandExecutor> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const base = Command.make("git", ...args);
-      const withCwd = cwd ? Command.workingDirectory(base, cwd) : base;
-      const command = env ? Command.env(withCwd, env) : withCwd;
-      const process = yield* Command.start(command);
-      const [stdout, stderr, exitCode] = yield* Effect.all(
-        [collectText(process.stdout), collectText(process.stderr), process.exitCode],
-        { concurrency: "unbounded" },
-      );
-      if (exitCode !== 0) return yield* new GitExitError({ exitCode, stderr });
-      return stdout;
-    }),
-  );
-
-const REDACTED = "<redacted>";
-
-const scrub = (text: string, token: string | undefined): string =>
-  token ? text.split(token).join(REDACTED) : text;
-
-// The only path from a raw git failure into a port error: every piece of text that could echo
-// the authenticated URL (stderr, platform error messages) passes through scrub() first.
-const redactedCause = (failure: GitExitError | PlatformError, token: string | undefined): Error =>
-  failure._tag === "GitExitError"
-    ? new Error(scrub(`git exited with code ${failure.exitCode}: ${failure.stderr.trim()}`, token))
-    : new Error(scrub(failure.message, token));
 
 const cloneEffect = (
   opts: CloneOptions,
@@ -342,47 +301,53 @@ const isLockRefError = (err: GitWorktreeError): boolean =>
  * `CommandExecutor` at build time so the port methods stay `R = never`; the consuming composition
  * root provides `NodeContext.layer` (or `NodeCommandExecutor.layer`).
  */
-export const ExecGitClient: Layer.Layer<GitClient, never, CommandExecutor.CommandExecutor> =
-  Layer.effect(
-    GitClient,
-    Effect.gen(function* () {
-      const executor = yield* Effect.context<CommandExecutor.CommandExecutor>();
-      // In-process mutex per repo path: all worktree cuts for a given repo go through one
-      // agent-service process, so a permit-1 semaphore per path serializes concurrent
-      // addWorktree calls and eliminates `cannot lock ref` races on the shared pre-clone's
-      // ref files. Assumption: every caller runs inside the same process; cross-process
-      // callers are protected by the one-shot retry below instead.
-      const mutexMap = new Map<string, Effect.Semaphore>();
-      const getOrCreateMutex = (repoPath: string): Effect.Effect<Effect.Semaphore> =>
-        Effect.suspend(() => {
-          const existing = mutexMap.get(repoPath);
-          if (existing !== undefined) return Effect.succeed(existing);
-          // Effect.makeSemaphore is backed by Ref.make (Effect.sync) — no yield point —
-          // so the check-and-set completes without interleaving with other fibers.
-          return Effect.map(Effect.makeSemaphore(1), (sem) => {
-            mutexMap.set(repoPath, sem);
-            return sem;
-          });
+export const ExecGitClient: Layer.Layer<
+  GitClient,
+  never,
+  CommandExecutor.CommandExecutor | FileSystem.FileSystem
+> = Layer.effect(
+  GitClient,
+  Effect.gen(function* () {
+    const executor = yield* Effect.context<
+      CommandExecutor.CommandExecutor | FileSystem.FileSystem
+    >();
+    // In-process mutex per repo path: all worktree cuts for a given repo go through one
+    // agent-service process, so a permit-1 semaphore per path serializes concurrent
+    // addWorktree calls and eliminates `cannot lock ref` races on the shared pre-clone's
+    // ref files. Assumption: every caller runs inside the same process; cross-process
+    // callers are protected by the one-shot retry below instead.
+    const mutexMap = new Map<string, Effect.Semaphore>();
+    const getOrCreateMutex = (repoPath: string): Effect.Effect<Effect.Semaphore> =>
+      Effect.suspend(() => {
+        const existing = mutexMap.get(repoPath);
+        if (existing !== undefined) return Effect.succeed(existing);
+        // Effect.makeSemaphore is backed by Ref.make (Effect.sync) — no yield point —
+        // so the check-and-set completes without interleaving with other fibers.
+        return Effect.map(Effect.makeSemaphore(1), (sem) => {
+          mutexMap.set(repoPath, sem);
+          return sem;
         });
-      return {
-        clone: (opts: CloneOptions) => cloneEffect(opts).pipe(Effect.provide(executor)),
-        addWorktree: (opts: WorktreeOptions) => {
-          const attempt = addWorktreeEffect(opts).pipe(Effect.provide(executor));
-          return getOrCreateMutex(opts.repoPath).pipe(
-            Effect.flatMap((sem) =>
-              sem.withPermits(1)(
-                // Belt-and-braces retry for cross-process callers: if a concurrent fetch from
-                // another process still wins the lock, back off 200 ms and retry once before
-                // propagating loudly.
-                attempt.pipe(
-                  Effect.catchIf(isLockRefError, () =>
-                    Effect.zipRight(Effect.sleep(Duration.millis(200)), attempt),
-                  ),
+      });
+    return {
+      clone: (opts: CloneOptions) => cloneEffect(opts).pipe(Effect.provide(executor)),
+      addWorktree: (opts: WorktreeOptions) => {
+        const attempt = addWorktreeEffect(opts).pipe(Effect.provide(executor));
+        return getOrCreateMutex(opts.repoPath).pipe(
+          Effect.flatMap((sem) =>
+            sem.withPermits(1)(
+              // Belt-and-braces retry for cross-process callers: if a concurrent fetch from
+              // another process still wins the lock, back off 200 ms and retry once before
+              // propagating loudly.
+              attempt.pipe(
+                Effect.catchIf(isLockRefError, () =>
+                  Effect.zipRight(Effect.sleep(Duration.millis(200)), attempt),
                 ),
               ),
             ),
-          );
-        },
-      };
-    }),
-  );
+          ),
+        );
+      },
+      gcWorktrees: (opts: GcOptions) => gcWorktreesEffect(opts).pipe(Effect.provide(executor)),
+    };
+  }),
+);

@@ -320,6 +320,28 @@
   
   '''
 # ---
+# name: test_gc_worktrees_golden
+  '''
+  role: standalone
+  params:
+    agentId: "claude-agent"
+    pruneUntracked: "false"
+    minAgeMs: "86400000"
+    keep: ""
+    dryRun: "false"
+  steps:
+    - id: gc
+      activity: gc-worktrees
+      input:
+        agentId: "{{params.agentId}}"
+        pruneUntracked: "{{params.pruneUntracked}}"
+        minAgeMs: "{{params.minAgeMs}}"
+        keep: "{{params.keep}}"
+        dryRun: "{{params.dryRun}}"
+        traceparent: "{{traceparent}}"
+  
+  '''
+# ---
 # name: test_implement_publish_mode_golden
   '''
   role: base

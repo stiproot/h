@@ -219,7 +219,7 @@ The plan's phase-4 backlog, minus the items that its own supersession made moot 
 `issue-sweep` promotion died with the sweep; the runner-side terminate listener shipped —
 `invoker.terminate` now reaches the subprocess through the run's scope finalizer).
 
-### 28. Worktree GC — the disk-leak half
+### 28. Worktree GC — the disk-leak half — RESOLVED 2026-08-12
 
 *(Renumbered from a second §16 on 2026-08-12 — two items shared that number, in a doc whose whole
 job is to be the one greppable home. 28 was the free slot.)*
@@ -261,17 +261,42 @@ holding untracked files.)
 `sweep --prune-untracked --repo ../h-workspace/repo` removed the worktree, discarded the plan doc
 and deleted the merged branch. The leak this item was opened for is gone.
 
-Two things still open:
+**The automatic half is BUILT (2026-08-12) — but not as a finalize hook, and the reason is the
+substance of the item.** Tracing where cleanup could actually live refuted the shape this item
+had assumed since it was written:
 
-- **Nothing runs it.** A finalized chain removes nothing; this remains an operator command. It now
-  has a defensible default to call, since an agent's leftover is exactly the scratch class.
-- **A husk git does not know about is invisible to the sweep.** An empty `worktrees/per-member-budget`
-  directory survived — `git worktree prune` dropped the admin entry, so nothing lists it and nothing
-  removes it. Harmless at 4K, but the CLASS is not: a directory left behind by a failed
-  `worktree remove` keeps its full size and no h command can see it. A finalize-time GC should
-  reconcile the directory listing against git's, not just sweep what git reports.
+- **workflow-svc cannot delete a worktree.** It mounts no shared workspace at all (`claude-agent`
+  mounts `../h-workspace:/workspace`; workflow-svc mounts none of it). A finalize hook would need
+  a new engine→agent-filesystem edge, and the engines act on WORKFLOWS through a closed
+  vocabulary — they do no filesystem work.
+- **Finalizing collects exactly what does not leak.** A finalize hook covers chains that reached
+  finalize. Runs that died, chains terminated with the engine disarmed, and standalone
+  `h workflow run` / feature runs — which have no chain at all — leak regardless. The 803MB
+  worktree came from a `feature/*` branch.
+- **It would fight `workspaceId`.** Reusable workspaces exist so a recurring cron workflow keeps
+  one provisioned dir; deleting at finalize breaks that by design.
 
-*Revisit when:* wiring the sweep into a chain's finalize — the question that needed this answer.
+So collection is WORK, not an engine action: a `gc-worktrees` template (one step, one activity, no
+agent), armed with the existing cron primitive, sweeping BY AGE from outside any single run's
+lifecycle. No engine changed. The pieces: `git-core`'s `worktreeGc` (the TS home of the rules,
+including the husk reconciliation), agent-server's `POST /worktree/gc` (cleanup goes back through
+the seam that created it), the `gc-worktrees` activity + template, and — because the rules now
+exist in two languages — `scripts/fixtures/worktree-classification.json`, one shared contract both
+test suites assert against, held in place by `scripts/check-sweep-parity.mjs`.
+
+Two judgements worth keeping:
+
+- **The age threshold IS the liveness proxy** (24h default), and it is defensible because a
+  supervised run is bounded by its watch policy — 45 minutes by default. Building it surfaced why
+  a tight threshold would be wrong: a worktree's directory mtime moves when a file is written at
+  its top level but NOT on a deep edit, so a short window would read a stale clock and yank a
+  workspace from under a live agent.
+- **The collector has no `--force` equivalent, deliberately.** Tracked edits and unpushed commits
+  are always kept whatever the params say; the only thing a param can widen is discarding scratch.
+  An unattended sweep must never be able to destroy committed work.
+
+*Revisit when:* the daily cron has run against a real workspace — it has only been exercised
+against real git in tests and has never been armed live.
 
 ### 17. Template drift-check — RESOLVED 2026-08-12
 

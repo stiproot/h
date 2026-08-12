@@ -7,6 +7,7 @@ import {
   registerAgentRoutesEffect,
   registerCloneRouteEffect,
   registerWorkflowRoute,
+  registerGcRouteEffect,
   registerWorktreeRouteEffect,
   RunLedgerLive,
   WorkflowBabysitter,
@@ -62,6 +63,9 @@ const fastify = Fastify({ logger: true });
 registerAgentRoutesEffect(fastify, { runtime, resolveWorkspaceDir, ledger });
 registerCloneRouteEffect(fastify, { runtime, resolveWorkspaceDir, ledger });
 registerWorktreeRouteEffect(fastify, { runtime, sharedRoot, ledger });
+// Collecting those worktrees lives beside creating them: the shared workspace is on THIS
+// service's filesystem, and workflow-svc — which owns the engines — mounts none of it.
+registerGcRouteEffect(fastify, { runtime, sharedRoot, ledger });
 // The standard workflow endpoint: submit-and-babysit (non-blocking) — makes this agent
 // service a workflow entry point on the same contract as every other agent service.
 registerWorkflowRoute(

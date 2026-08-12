@@ -1,0 +1,81 @@
+{{- /*
+gc-worktrees workflow — collect the worktrees h has finished with.
+
+A STANDALONE, machine-only template: one step, one activity, no agent and no worktree of its own.
+h cuts a worktree per run and removes none of them, so the shared workspace grows without bound
+(one merged PR's worktree was found holding 803MB).
+
+WHY THIS IS A WORKFLOW AND NOT AN ENGINE ACTION. Collecting when a run finalizes would collect
+exactly the runs that finalized, and the ones that leak worst are the ones that DIED — plus
+standalone runs, which have no chain to finalize at all. So collection is by age, fired from
+outside any single run's lifecycle: arm this with the cron primitive and it catches every leak
+whatever killed the run that made it. The engines are untouched; this is ordinary work.
+
+It targets an AGENT because that is where the workspace is — workflow-svc mounts none of it.
+
+SAFETY. The activity never gets a `--force` equivalent: a worktree with tracked edits or with
+commits that exist on no remote is always kept, whatever the params say. The only thing params
+can widen is `pruneUntracked` — discarding files git never tracked (an agent's leftover plan doc
+is the usual one, and under a single dirty/clean bit that one file holds a finished worktree open
+forever). Every collected path, and every path refused with its reason, is in the step result.
+
+Fire-time params:
+  pruneUntracked  "true" to discard untracked scratch files (default "false" — keeps them)
+  minAgeMs        Minimum worktree age before collection (default 24h). The liveness proxy: a
+                  supervised run is bounded by its watch policy, so anything older is not live
+  keep            Space-separated workspace keys to spare whatever their age
+  dryRun          "true" to classify and report without removing anything
+
+Identity params (fire-time, baked as stored defaults from values):
+  agentId  Agent service whose workspace is swept (default: claude-agent)
+
+Publish:
+  helm template gc-worktrees cli/charts/workflows -s templates/gc-worktrees.tmpl.yaml \
+    --set template=gc-worktrees --set publish=true
+
+Arm it daily:
+  h workflow publish gc-worktrees
+  h workflow run gc-worktrees -p pruneUntracked=true --cron "0 4 * * *"
+*/ -}}
+{{- /* Template gate — bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "gc-worktrees" }}
+role: standalone
+{{- $gc := .Values.gcWorktrees | default dict }}
+{{- $publish := .Values.publish | default false }}
+{{- if $publish }}
+params:
+  agentId: {{ .Values.agentId | quote }}
+  {{- /*
+  Every optional param the steps reference appears here with an author-sanctioned default — the
+  params block is the optional-param CONTRACT that chain registration validates against, so an
+  omission here breaks any chain naming this workflow. There are no required content params: a
+  collection with no params at all is the safe default (nothing pruned, nothing forced).
+  */}}
+  pruneUntracked: {{ $gc.pruneUntracked | default false | quote }}
+  minAgeMs: {{ $gc.minAgeMs | default 86400000 | int64 | quote }}
+  keep: ""
+  dryRun: "false"
+{{- end }}
+steps:
+  - id: gc
+    activity: gc-worktrees
+    input:
+      {{- if $publish }}
+      agentId: {{ include "h.token" "params.agentId" | quote }}
+      pruneUntracked: {{ include "h.token" "params.pruneUntracked" | quote }}
+      minAgeMs: {{ include "h.token" "params.minAgeMs" | quote }}
+      keep: {{ include "h.token" "params.keep" | quote }}
+      dryRun: {{ include "h.token" "params.dryRun" | quote }}
+      {{- else }}
+      agentId: {{ .Values.agentId | quote }}
+      pruneUntracked: {{ $gc.pruneUntracked | default false }}
+      minAgeMs: {{ $gc.minAgeMs | default 86400000 | int64 }}
+      {{- end }}
+      traceparent: {{ include "h.token" "traceparent" | quote }}
+{{- /*
+No `outputs:` block, deliberately. An output contract is the seam that validates an AGENT's final
+fenced json block; this workflow has no agent step, and the collector's report is already a
+structured activity result carried in the run ledger and the workflow output. Declaring a contract
+here would advertise a chain-threadable signature that nothing populates.
+*/}}
+{{- end }}

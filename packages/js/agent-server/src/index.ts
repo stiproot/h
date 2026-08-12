@@ -6,6 +6,8 @@ export { registerCloneRouteEffect } from "./clone-route.ts";
 export type { CloneRouteEffectConfig, CloneRouteEffectEnv } from "./clone-route.ts";
 export { registerWorktreeRouteEffect } from "./worktree-route.ts";
 export type { WorktreeRouteEffectConfig, WorktreeRouteEffectEnv } from "./worktree-route.ts";
+export { registerGcRouteEffect } from "./gc-route.ts";
+export type { GcRouteEffectConfig, GcRouteEffectEnv } from "./gc-route.ts";
 // Re-exported for the apps that register the clone/worktree routes: their runtime must
 // provide the `GitClient` those routes yield, and agent-server (not each agent app) owns
 // the git-core dependency.

@@ -35,6 +35,7 @@ describe("POST /worktree defaults", () => {
         Effect.sync(() => {
           calls.push(opts);
         }),
+      gcWorktrees: () => Effect.succeed({ removed: [], kept: [] }),
     });
     const runtime = ManagedRuntime.make(Layer.mergeAll(NodeFileSystem.layer, noOpLedger, git));
     const app = Fastify();

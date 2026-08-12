@@ -38,6 +38,10 @@ PINNED_OR_OVERLAY_IDENTITY = {
     "create-pr",
     "arm-revise-pr",
     "run-itest",
+    # No executor to name: gc-worktrees runs one machine activity and no agent at all. It still
+    # parameterizes agentId, because WHICH agent service is swept is a real fire-time choice —
+    # each has its own workspace.
+    "gc-worktrees",
 }
 
 
@@ -102,6 +106,37 @@ def test_verify_requires_a_cmd() -> None:
     """verify.cmd is required — composing verify without it fails loud, never a silent no-op."""
     with pytest.raises(helm.HelmError, match="verify.cmd is required"):
         helm.render_workflow("verify", values={"publish": "true"}, include_local=False)
+
+
+def test_gc_worktrees_golden(snapshot) -> None:
+    """gc-worktrees — one machine activity, no agent: collect the worktrees h finished with."""
+    rendered = helm.render_workflow("gc-worktrees", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_gc_worktrees_defaults_collect_nothing_extra() -> None:
+    """The conservative defaults are the contract, not a coincidence.
+
+    An unattended sweep armed on a cron must keep anything it was not explicitly told it may
+    discard — so `pruneUntracked` defaults false, and the age floor is a full day. A future edit
+    that flips either default silently would turn a safe daily job into a destructive one.
+    """
+    definition = json.loads(
+        helm.to_wire_json(
+            helm.render_workflow("gc-worktrees", values={"publish": "true"}, include_local=False)
+        )
+    )
+    assert definition["params"]["pruneUntracked"] == "false"
+    assert definition["params"]["minAgeMs"] == "86400000"
+    # Every optional param the steps reference is in the params block — the block IS the
+    # optional-param contract chain registration validates against.
+    referenced = {
+        value[len("{{params.") : -len("}}")]
+        for step in definition["steps"]
+        for value in step["input"].values()
+        if isinstance(value, str) and value.startswith("{{params.")
+    }
+    assert referenced <= set(definition["params"])
 
 
 def test_revise_golden(snapshot) -> None:
