@@ -378,6 +378,12 @@ rotated — an operator action on github.com.
 *Revisit when:* immediately, at the operator's next console session — this is the only
 carried item that is a standing exposure rather than a parked improvement.
 
+**Consider the alternative at the same moment.** [github-app-identities](./github-app-identities.md)
+(parked 2026-08-12) would replace this PAT with per-role GitHub Apps minting 1-hour installation
+tokens — which turns this whole class from "a standing exposure needing an operator rotation" into
+"a leak that expires by lunchtime". Rotating is still the right immediate action; the rotation is
+just the cheapest moment to decide whether to rotate *into* an app instead of another PAT.
+
 ---
 
 ## From [cost-containment](./impl/cost-containment.md)
