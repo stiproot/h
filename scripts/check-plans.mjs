@@ -155,6 +155,44 @@ for (const file of planFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. Every OPEN carried follow-up names what brings it back
+// ---------------------------------------------------------------------------
+//
+// The carried-followups doc holds parked ideas that get read months after they were written, so
+// the standing rule (CLAUDE.md, Plans) is to interrogate one before building it: has its trigger
+// actually fired, what real usage exists, what changed? That check needs something to check
+// AGAINST. An item with no stated trigger cannot be interrogated at all — it can only be
+// rediscovered and rebuilt on faith, which is how §2 nearly got built for a benefit this repo
+// does not want.
+//
+// So: an `### N. Title` section is either RESOLVED/DROPPED (its outcome recorded, nothing owed)
+// or it names a trigger. Deliberately scoped to this one doc — it is the only place where parked
+// items accumulate across plans; a plan's own body is a point-in-time record.
+
+const CARRIED = join(PLANS, "carried-followups.md");
+// The three spellings in use. `Revisit as part of` defers to another plan that owns the story;
+// `Not revisited unless` parks something behind evidence that does not exist yet.
+const TRIGGERS = ["*Revisit when:*", "*Revisit as part of*", "*Not revisited unless*"];
+const CLOSED = /\b(RESOLVED|DROPPED|refuted)\b/;
+
+if (existsSync(CARRIED)) {
+  const sections = readFileSync(CARRIED, "utf8").split(/\n### /).slice(1);
+  for (const section of sections) {
+    const heading = section.split("\n")[0].trim();
+    // Only numbered items are follow-ups; "Resolved since the list was written" is a ledger.
+    if (!/^\d+[a-z]?\./.test(heading)) continue;
+    if (CLOSED.test(heading)) continue;
+    if (TRIGGERS.some((trigger) => section.includes(trigger))) continue;
+    fail(
+      CARRIED,
+      `open item "${heading}" names no trigger — add a "${TRIGGERS[0]}" line saying what brings ` +
+        `it back, or mark it RESOLVED/DROPPED with the reasoning. An item nobody can interrogate ` +
+        `gets rebuilt on faith (CLAUDE.md, Plans).`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 2. Plan references: prohibited in source, must resolve elsewhere
 // ---------------------------------------------------------------------------
 

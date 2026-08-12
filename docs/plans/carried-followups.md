@@ -166,6 +166,9 @@ mechanisms that both "run a workflow on a clock." Decide: generalize into one, o
 deliberately distinct (schedule = fire-a-template forever; cron = recur-until-goal).
 Leaning coexist, but worth an explicit call before either grows more surface.
 
+*Revisit when:* either mechanism is about to gain surface — a flag, a row field, a new
+caller. The call is cheap now and expensive once both have grown.
+
 ### 7. `--dynamic-cron` — an agent registers a cron mid-run
 
 We chose the deterministic `arm-revise`/`arm-cron` *step* over an agent deciding, mid-run,
@@ -173,6 +176,9 @@ to register a cron. This remains open for the case where the follow-up work is *
 by the agent* and can't be a fixed step. Semantics unresolved (recurrence of THIS workflow,
 or of discovered follow-up work, or both?), and it needs a `register-cron` MCP tool — a
 surface expansion that must clear the executor's minimal-MCP review first.
+
+*Revisit when:* a real run needs follow-up work the AGENT discovered, which no fixed `arm-*`
+step could have named in advance. Until one exists the semantics cannot be settled honestly.
 
 ### 8. Liveness-on-death for `wf:` rows — RESOLVED 2026-08-12
 
@@ -202,11 +208,17 @@ or a frozen definition (mode 2). Needs a param-source contract — where fresh v
 from (a reader plugin, prior `wf:` output, a GitHub query). Modes 1 and 2 shipped; the
 discovery cron already covers the common "enumerate a source → fan out" shape without it.
 
+*Revisit when:* a recurrence needs params derived fresh per tick that the discovery cron's
+enumerate-and-fan-out shape cannot express — the param-source contract follows from that case.
+
 ### 10. Compose-to-disk — authoring a new template file
 
 `h template compose … --save` persists the composed *definition to workflow-svc state*, not
 a new `.tmpl.yaml` on disk. Authoring a genuinely new reusable **template file** alongside
 the others (re-composable, git-trackable) is wanted but unspecced.
+
+*Revisit when:* an AGENT needs to author a durable new template. An operator writing a
+`.tmpl.yaml` by hand is the current path, and is not obviously worse.
 
 ### 11. Optional worktree for a workflow, and the `review-pr` case — security-gated
 
@@ -219,6 +231,9 @@ no-secrets/egress-restricted posture; (3) keep the reviewer read-only via MCP an
 "needs to run" to a separate trusted validation workflow. Creation must be a conditional
 *workflow step* (a `withWorktree` param), never an agent tool. `review-pr` capabilities
 stay as-is until this is decided. See [reviewer-identity-security](./reviewer-identity-security.md).
+
+*Revisit when:* a review needs to RUN commands on a PR's code rather than read it — that is
+what forces the trust-tier choice. The reviewer stays read-only via MCP until then.
 
 ### Resolved since the list was written
 
@@ -346,6 +361,9 @@ FALSE positive telling us something else belongs in the not-content list.
 A hard prerequisite before the loop can ever run on Kubernetes: the cron binding double-fires
 across replicas. Until this exists, the loop is deliberately local/compose only.
 
+*Revisit when:* the h-builds-h loop must run on Kubernetes. Note this machine deliberately
+runs host/container mode only, so nothing is currently pushing toward it.
+
 ---
 
 ## From [panels-as-a-modifier](./impl/panels-as-a-modifier.md)
@@ -379,6 +397,9 @@ prompt-engineering slice), positional per-branch `--model` mirroring the roster,
 sugar over `--parallel` stage composition, and per-branch worktree isolation if the advisory
 read-only concurrency preamble proves insufficient.
 
+*Revisit when:* a panel need arises that a `--parallel` stage plus an `--agent` roster cannot
+express — or when the advisory read-only preamble actually fails to hold two panelists apart.
+
 ---
 
 ## From [schedule-and-fallback](./impl/schedule-and-fallback.md)
@@ -405,6 +426,9 @@ machinery was built (*build what's needed*). The tripwire is explicit: **the fir
 expensive re-run burned by a tail-of-output validation failure.** The shape to build when it
 trips is pinned — a composition (a cheap-agent extract atom), never LLM credentials on
 workflow-svc.
+
+*Revisit when:* the tripwire trips — the first expensive re-run burned by a tail-of-output
+validation failure. Still zero across every contracted live run.
 
 ---
 

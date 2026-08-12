@@ -192,6 +192,15 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
   file/rule/flow exist? is the config already flipped?). Spec-aware review CANNOT catch
   this — the panel checks the diff against the spec, so a spec built on a false premise
   passes clean.
+- **Interrogate a parked item before building it.** The sibling of the rule above, and the one
+  that catches what it cannot: that convention asks whether a doc's claims are still TRUE, this
+  asks whether its goal is still WANTED. Before designing anything from `carried-followups.md` or
+  a plan's backlog, state what it was for, whether its `Revisit when:` trigger actually fired,
+  what real usage exists, and what has changed since it was written. Dropping it is a normal
+  outcome — record it in place with the reasoning. (2026-08-12: §2 proposed a coded chain-member
+  kind whose whole benefit was six fewer CLI flags; every claim in it was accurate, its trigger
+  had not fired, and the brevity it offered is the opposite of what this repo wants from a chain
+  expression. A design review would only ever have caught HOW to build it, never WHETHER.)
 - **The verify FLOOR must be green on base before a batch fires.** Prove the exact floor
   command passes on the target repo's main (fresh worktree) BEFORE registering chains on
   it — a floor that is red on base walls every honest run (2026-07-26: game-visibility

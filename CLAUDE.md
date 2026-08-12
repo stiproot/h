@@ -57,6 +57,22 @@ the two REFERENCE rules that follow from plans being transient:
 Items an otherwise-finished plan parks go to the single carried-followups doc under
 `docs/plans/`, not into a new near-empty follow-up doc.
 
+**INTERROGATE A PARKED ITEM BEFORE BUILDING IT.** A plan item's presence on a list is not a
+reason to build it — these are ideas written to be read months later, by which time their premise
+may have quietly expired. Before designing anything, state four things: what the item was trying
+to achieve, whether its stated `Revisit when:` trigger has ACTUALLY fired, what real usage of the
+shape exists, and what has changed since it was written. Deciding to drop or re-trigger it is a
+normal, valuable outcome — record it in place with the reasoning, exactly like a completion.
+Every open item therefore carries a trigger line (`Revisit when:` / `Revisit as part of` /
+`Not revisited unless`), and **`scripts/check-plans.mjs` enforces that** — an item with no
+trigger cannot be interrogated at all, only rediscovered and rebuilt on faith.
+
+This is distinct from DRIVER.md's "verify a plan doc's CLAIMS" convention, and both are needed:
+that one asks whether what the doc SAYS is still true, this one asks whether what it WANTS is
+still worth having. Carried-followups §2 (2026-08-12) failed the second test while passing the
+first — its facts were accurate and its stated benefit, fewer CLI flags, was something this repo
+actively does not want.
+
 ## Execution substrates
 
 h composes work ONE way and executes it two. A template (⊕ overlays) renders to a **workflow
