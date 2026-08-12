@@ -1,4 +1,5 @@
 import { type CronOutcome, type CronRow } from "./models/cron.model.ts";
+import { DEFAULT_UNKNOWN_STREAK_LIMIT } from "./models/watch.model.ts";
 import { isDue } from "./scheduling.ts";
 
 /**
@@ -26,6 +27,16 @@ export type CronDecision =
 // as still live, so a degraded status API never double-fires — the watch engine's conservative rule.
 const TERMINAL = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
+/**
+ * The observed UNKNOWN streak after this tick — 0 the moment any real status is seen.
+ *
+ * Exported so the scan can persist it: `decide` stays pure, so it cannot record the count itself.
+ */
+export function nextUnknownStreak(row: CronRow, runtimeStatus: string | undefined): number {
+  if (row.currentInstanceId === undefined) return 0;
+  return (runtimeStatus ?? "UNKNOWN") === "UNKNOWN" ? (row.unknownStreak ?? 0) + 1 : 0;
+}
+
 export function decide(
   row: CronRow,
   resolved: boolean,
@@ -39,7 +50,17 @@ export function decide(
   if (row.fires >= row.budget.maxFires) return { kind: "deactivate", outcome: "budget-exhausted" };
   // In-flight guard: never re-fire while the last instance is live. A cron that has never fired
   // (no currentInstanceId) is not in flight.
-  const inFlight = row.currentInstanceId !== undefined && !TERMINAL.has(runtimeStatus ?? "UNKNOWN");
+  //
+  // The streak escape: UNKNOWN counts as live (above), which is right for a degraded status API but
+  // wrong forever — an instance that is GONE rather than merely unreadable (purged, or its history
+  // lost) reads UNKNOWN on every tick, pinning the cron in flight and silently ending the
+  // recurrence. Past the limit we stop believing it is alive and let the cadence fire again; the
+  // watcher supervises whatever that fire produces. Deliberately NOT a deactivate: a cron whose
+  // status API is wrong is still a healthy recurrence, and ending it would need an operator to
+  // re-arm. Mirrors WatchRow's unknownStreak, sharing its default so one constant tunes both.
+  const gone = nextUnknownStreak(row, runtimeStatus) >= DEFAULT_UNKNOWN_STREAK_LIMIT;
+  const inFlight =
+    row.currentInstanceId !== undefined && !TERMINAL.has(runtimeStatus ?? "UNKNOWN") && !gone;
   if (inFlight) return { kind: "wait" };
   // Due on the cadence since the last fire (else creation)?
   const due = isDue(

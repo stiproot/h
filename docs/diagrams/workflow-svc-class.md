@@ -154,6 +154,7 @@ classDiagram
     +currentInstanceId? string
     +lastRunAt? string
     +lastStatus? string
+    +unknownStreak? number
     +outcome? CronOutcome
     +note? string
     +createdAt string

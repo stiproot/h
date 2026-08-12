@@ -1,6 +1,8 @@
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_UNKNOWN_STREAK_LIMIT } from "./models/watch.model.ts";
+
 import {
   disarmCron,
   disarmEventEffect,
@@ -252,6 +254,42 @@ describe("scanCronsEffect", () => {
     const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.fires).toBe(2);
     expect(row.epoch).toBe(2);
+  });
+
+  // A vanished instance reads UNKNOWN forever. Without an accumulating streak the cron would sit
+  // in-flight for good; without PERSISTING it, every tick would restart the count at 1 and the
+  // escape would never be reached.
+  it("accumulates the UNKNOWN streak across ticks and eventually fires again", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow());
+    const inv = recordingInvoker({
+      "revise-pi-agent": { instanceId: "revise-pi-agent", runtimeStatus: "UNKNOWN" },
+    });
+    const key = "stiproot/h:pi-agent:revise-pr";
+
+    for (let tick = 1; tick < DEFAULT_UNKNOWN_STREAK_LIMIT; tick += 1) {
+      const report = await scan(cs.service, inv.service);
+      expect(report.fired).toEqual([]);
+      expect(cs.rows.get(key)!.unknownStreak).toBe(tick);
+    }
+
+    // The tick that reaches the limit stops believing the instance is alive.
+    const report = await scan(cs.service, inv.service);
+    expect(report.fired).toEqual([key]);
+    expect(inv.invokes).toHaveLength(1);
+    // A fresh fire is a fresh instance to observe - the streak resets with it.
+    expect(cs.rows.get(key)!.unknownStreak).toBe(0);
+  });
+
+  it("a real status clears an accumulated streak", async () => {
+    const cs = memoryCronStore();
+    cs.rows.set("stiproot/h:pi-agent:revise-pr", activeRow({ unknownStreak: 3 }));
+    const inv = recordingInvoker({
+      "revise-pi-agent": { instanceId: "revise-pi-agent", runtimeStatus: "RUNNING" },
+    });
+    const report = await scan(cs.service, inv.service);
+    expect(report.fired).toEqual([]);
+    expect(cs.rows.get("stiproot/h:pi-agent:revise-pr")!.unknownStreak).toBe(0);
   });
 
   it("deactivates 'resolved' when the target wf: row reports the goal met — no fire", async () => {

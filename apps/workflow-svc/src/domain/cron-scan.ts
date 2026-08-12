@@ -1,7 +1,7 @@
 import { WorkflowError } from "core";
 import { Effect, Option, Schema } from "effect";
 
-import { decide } from "./cron-engine.ts";
+import { decide, nextUnknownStreak } from "./cron-engine.ts";
 import {
   type CronBudget,
   type CronOutcome,
@@ -244,6 +244,17 @@ const processRow = (
       : undefined;
 
     const decision = decide(row, resolved, runtimeStatus, nowMs);
+    // Persist the streak the decision was made against, so consecutive UNKNOWN ticks accumulate
+    // toward the escape instead of each tick starting from zero. Best-effort and epoch-fenced: this
+    // is bookkeeping, so a lost write only delays the escape by a tick, and it must never fail the
+    // scan. A `fire` skips it — executeFire rewrites the row (bumping the epoch) and stamps a fresh
+    // instance, which resets the streak anyway.
+    const streak = nextUnknownStreak(row, runtimeStatus);
+    if (decision.kind !== "fire" && streak !== (row.unknownStreak ?? 0)) {
+      yield* saveFenced(row.epoch, { ...row, unknownStreak: streak }).pipe(
+        Effect.catchAll(() => Effect.succeed(false)),
+      );
+    }
     switch (decision.kind) {
       case "wait":
         return;
@@ -292,6 +303,9 @@ const executeFire = (
       currentInstanceId: row.instanceId,
       lastRunAt: now,
       lastStatus: "SCHEDULED",
+      // A fresh fire is a fresh instance to observe — carrying the previous one's UNKNOWN streak
+      // over would let one vanished instance shorten the escape for every fire after it.
+      unknownStreak: 0,
       note: `fire ${row.fires + 1}/${row.budget.maxFires}`,
       updatedAt: now,
     };

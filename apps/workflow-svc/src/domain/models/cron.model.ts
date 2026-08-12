@@ -99,6 +99,12 @@ export const CronRow = Schema.Struct({
   currentInstanceId: Schema.optional(Schema.String),
   lastRunAt: Schema.optional(Schema.String),
   lastStatus: Schema.optional(Schema.String),
+  // Consecutive UNKNOWN observations of currentInstanceId. UNKNOWN counts as still-live so a
+  // degraded status API never double-fires — but an instance that is GONE (purged, or lost with
+  // its history) reads UNKNOWN forever, which would pin the cron in-flight and stop it recurring
+  // for good. A sustained streak is the escape, exactly as WatchRow.unknownStreak is for the
+  // watcher. Absent on rows written before this field existed, so it reads as 0.
+  unknownStreak: Schema.optional(Schema.Number),
   outcome: Schema.optional(CronOutcome),
   note: Schema.optional(Schema.String),
   createdAt: Schema.String,
