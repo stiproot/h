@@ -232,14 +232,27 @@ across replicas. Until this exists, the loop is deliberately local/compose only.
 
 ## From [panels-as-a-modifier](./impl/panels-as-a-modifier.md)
 
-### 12. Panelist attribution and expression cosmetics
+### 12. Panelist attribution and expression cosmetics — RESOLVED 2026-08-12
 
-Two minor findings from the panel e2e that were never filed: posted PR reviews carry no
-`[panel:<agent>]` prefix (design Q4 called for one; `panelize`'s preamble doesn't inject
-posting-attribution prose), and two console/grammar papercuts — rich markup swallows a
-`[label]`-shaped member label in a chain-run line, and `--strategy`/`--max-iterations` must
-precede the `--` separator, which deserves a hint in the `ExprError` for known Typer flag
-names.
+All three built. Attribution: the branch preamble is now per-BRANCH (panelize being the single
+author of panel-branch prose) and names the panelist, asking it to prefix anything it posts
+externally with `[panel:<agent>]`.
+
+The second was worse than "cosmetic" once reproduced: rich parsed the literal brackets in
+`registered [answer -> review-pr]` as a style tag and **swallowed the contents**, so the
+registration line named no members at all — it dropped the very thing it was confirming, and
+`_fail`/`_warn` did the same to any bracketed label. Fixed by escaping the DATA rather than
+disabling markup, so the colour tags (which are ours) still render.
+
+The third gained a guard beyond the hint itself: command flags and expression flags MUST be
+disjoint — click consumes a declared option wherever it appears in argv, destroying the
+positional scoping the grammar rests on — which `chain_expr`'s docstring asserted and nothing
+checked. Two tests now hold it, including one that reads the real Typer command so the list
+cannot drift.
+
+Still open, deliberately: whether panelists should post to the PR *at all*. Attribution makes
+N reviews + a synthesis legible, not quiet. That is a design question for §13's write-panel
+work, not a papercut.
 
 ### 13. Panel shape extensions
 
