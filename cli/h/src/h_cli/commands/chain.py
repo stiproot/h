@@ -54,10 +54,10 @@ from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
 from h_cli.config import (
     AGENT_IDENTITY,
     AGENT_RUNS_DIR,
-    CHARTS_DIR,
     LOCAL_WORKTREES_DIR,
     agent_identity_params,
     baked_models_suit,
+    chart_root_for,
 )
 from h_cli.infrastructure import local_runtime, workflow_svc
 from h_cli.infrastructure.chain_expr import (
@@ -222,8 +222,7 @@ def _panel_definition(key: str, local: bool = False) -> dict[str, Any]:
     On the local substrate there is no store to fall back to, so a key with no template fails
     loud rather than reaching for a service that is the whole point of not needing."""
     template_name = template_name_for_key(key)
-    template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
-    if template_path.exists():
+    if chart_root_for(template_name) is not None:
         return compose_templates([template_name])
     if local:
         _fail(
@@ -559,10 +558,9 @@ def _resolve_workflow(
     # rather than block a valid chain (member-input-validation's false-positive rule).
     if merged is None:
         template_name = template_name_for_key(key)
-        template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
         definition: dict[str, Any] | None
         try:
-            if template_path.exists():
+            if chart_root_for(template_name) is not None:
                 definition = compose_templates([template_name])
             else:
                 stored_def = workflow_svc.get(key)

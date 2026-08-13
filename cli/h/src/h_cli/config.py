@@ -1,22 +1,109 @@
-"""Env-derived settings — defaults mirror the cli/scripts siblings, overridable the same way.
+"""Settings — env > the consumer repo's .h/config.toml > h-checkout defaults, per setting.
 
 The CLI is installed editable as a uv workspace member, so file-relative resolution reaches the
 repo checkout: this file lives at cli/h/src/h_cli/config.py, making parents[3] the cli/ dir.
 """
 
 import os
+import tomllib
 from pathlib import Path
 
 _CLI_DIR = Path(__file__).resolve().parents[3]
 _REPO_DIR = _CLI_DIR.parent
 
-# Template source (strategy 2 — see cli/README.md) and the gitignored feature-spec home.
-CHARTS_DIR = Path(os.getenv("H_CHARTS_DIR", str(_CLI_DIR / "charts")))
+# --- Consumer-repo config (.h/config.toml) ---------------------------------------------------
+# A repo that CONSUMES h — carrying its own domain chart, firing `h … --local` from its own
+# checkout — declares its paths once in `<repo>/.h/config.toml` instead of exporting env vars
+# per shell. The CLI discovers the file by walking UP from the invoking cwd (first hit wins), so
+# `h` behaves per-repo the way `git` does. Precedence per setting stays explicit-first:
+# env var > .h/config.toml > h-checkout default. Relative paths in the file resolve against the
+# repo that carries it; absolute paths pass through. Unknown keys and non-string values fail
+# LOUD — a typo'd key silently falling back to a default is how a run lands in the wrong charts.
+_CONSUMER_KEYS = frozenset(
+    {
+        "charts_dir",  # → H_CHARTS_DIR
+        "local_bin",  # → H_LOCAL_BIN
+        "workspace_dir",  # → H_WORKSPACE_DIR
+        "worktrees_dir",  # → H_LOCAL_WORKTREES_DIR
+        "runs_dir",  # → AGENT_RUNS_DIR
+        "dotenv",  # → H_DOTENV
+        "events_store",  # → H_EVENTS_STORE
+    }
+)
+
+
+def _discover_consumer_config() -> tuple[Path | None, dict[str, str]]:
+    """The nearest ancestor `.h/config.toml`, as (repo root carrying it, parsed keys)."""
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        path = candidate / ".h" / "config.toml"
+        if not path.is_file():
+            continue
+        try:
+            loaded = tomllib.loads(path.read_text())
+        except tomllib.TOMLDecodeError as err:
+            raise SystemExit(f"h: malformed {path}: {err}") from err
+        unknown = sorted(set(loaded) - _CONSUMER_KEYS)
+        if unknown:
+            raise SystemExit(
+                f"h: unknown key(s) in {path}: {', '.join(unknown)} — "
+                f"supported: {', '.join(sorted(_CONSUMER_KEYS))}"
+            )
+        non_string = sorted(key for key, value in loaded.items() if not isinstance(value, str))
+        if non_string:
+            raise SystemExit(f"h: {path}: values must be path strings: {', '.join(non_string)}")
+        return candidate, loaded
+    return None, {}
+
+
+CONSUMER_CONFIG_ROOT, _CONSUMER_CONF = _discover_consumer_config()
+
+
+def _setting(env: str, key: str, default: Path) -> Path:
+    """One setting under the precedence rule. Config-file paths resolve against the consumer
+    repo root (absolute values pass through pathlib's `/` untouched)."""
+    value = os.getenv(env)
+    if value:
+        return Path(value)
+    if CONSUMER_CONFIG_ROOT is not None and key in _CONSUMER_CONF:
+        return (CONSUMER_CONFIG_ROOT / _CONSUMER_CONF[key]).resolve()
+    return default
+
+
+# Template source (strategy 2 — see cli/README.md). STOCK_CHARTS_DIR is h's own chart and the
+# FALLBACK of the search path below; CHARTS_DIR is the primary (a consumer's own chart when
+# configured, else the stock chart itself).
+STOCK_CHARTS_DIR = _CLI_DIR / "charts"
+CHARTS_DIR = _setting("H_CHARTS_DIR", "charts_dir", STOCK_CHARTS_DIR)
+
+
+def charts_roots() -> tuple[Path, ...]:
+    """The chart search path: the primary root first, h's stock chart as fallback.
+
+    This is what makes a consumer chart ADDITIVE: pointing charts_dir/H_CHARTS_DIR at a domain
+    chart keeps the stock templates reachable instead of replacing all of them (the
+    all-or-nothing failure the h-packaged POC hit live, 2026-08-13). A name present in both
+    resolves to the primary — shadowing a stock template is the overlay semantics, not an error.
+    """
+    if CHARTS_DIR.resolve() == STOCK_CHARTS_DIR.resolve():
+        return (STOCK_CHARTS_DIR,)
+    return (CHARTS_DIR, STOCK_CHARTS_DIR)
+
+
+def chart_root_for(template: str) -> Path | None:
+    """The chart root whose workflows chart carries `template`, in charts_roots() order."""
+    for root in charts_roots():
+        if (root / "workflows" / "templates" / f"{template}.tmpl.yaml").is_file():
+            return root
+    return None
+
 
 # --- Local execution substrate -------------------------------------------------------------
 # The runner binary the CLI spawns instead of firing a workflow through workflow-svc. It is a
 # built workspace package, so `bun run build` is the one prerequisite local execution has.
-LOCAL_BIN = Path(os.getenv("H_LOCAL_BIN", str(_REPO_DIR / "packages/js/local-runtime/dist/bin.js")))
+LOCAL_BIN = _setting(
+    "H_LOCAL_BIN", "local_bin", _REPO_DIR / "packages/js/local-runtime/dist/bin.js"
+)
 
 # Run-ledger root. Defaults to the SAME directory the agent services write (host mode's
 # AGENT_BASE_DIR sibling, which is the compose bind mount too), so a local run shows up in
@@ -26,13 +113,13 @@ LOCAL_BIN = Path(os.getenv("H_LOCAL_BIN", str(_REPO_DIR / "packages/js/local-run
 # filtered its entries that way and so found nothing at all in the default configuration (caught
 # on its first real run, 2026-08-06). Resolving here fixes every consumer at once — and stops the
 # unresolved form leaking into user-facing output.
-AGENT_RUNS_DIR = Path(
-    os.getenv("AGENT_RUNS_DIR", str(_REPO_DIR / "../h-workspace/.runs"))
+AGENT_RUNS_DIR = _setting(
+    "AGENT_RUNS_DIR", "runs_dir", _REPO_DIR / "../h-workspace/.runs"
 ).resolve()
 
 # Where per-agent worktrees are cut for a delegated write task.
-LOCAL_WORKTREES_DIR = Path(
-    os.getenv("H_LOCAL_WORKTREES_DIR", str(_REPO_DIR / "../h-worktrees"))
+LOCAL_WORKTREES_DIR = _setting(
+    "H_LOCAL_WORKTREES_DIR", "worktrees_dir", _REPO_DIR / "../h-worktrees"
 ).resolve()
 
 # The workspace root h OWNS: the clones it works on live here (`h-workspace/<repo>`), beside the
@@ -40,7 +127,9 @@ LOCAL_WORKTREES_DIR = Path(
 # workspace root, `<sharedRoot>/repo` for the /worktree route); making the LOCAL substrate honour
 # the same root is what keeps the two symmetric — one place to look for "what h is working on",
 # and one boundary an operator's own checkouts sit outside of.
-H_WORKSPACE_DIR = Path(os.getenv("H_WORKSPACE_DIR", str(_REPO_DIR / "../h-workspace"))).resolve()
+H_WORKSPACE_DIR = _setting(
+    "H_WORKSPACE_DIR", "workspace_dir", _REPO_DIR / "../h-workspace"
+).resolve()
 
 # --- Local event fabric ----------------------------------------------------------------------
 # The local substrate's event fabric: one nats-server -js child (`h events up`), no containers.
@@ -48,11 +137,13 @@ H_WORKSPACE_DIR = Path(os.getenv("H_WORKSPACE_DIR", str(_REPO_DIR / "../h-worksp
 # directory tree, and NATS_URL is the standard client env var so external tooling (the `nats`
 # CLI) reads the same fabric without configuration.
 EVENTS_URL = os.getenv("NATS_URL", "nats://127.0.0.1:4222")
-EVENTS_STORE_DIR = Path(os.getenv("H_EVENTS_STORE", str(AGENT_RUNS_DIR.parent / ".nats"))).resolve()
+EVENTS_STORE_DIR = _setting(
+    "H_EVENTS_STORE", "events_store", AGENT_RUNS_DIR.parent / ".nats"
+).resolve()
 
 # The repo's .env — the same file compose and the run scripts feed the agent services from. A
 # local run reads it too, so the substrate does not need its own credential setup.
-DOTENV_PATH = Path(os.getenv("H_DOTENV", str(_REPO_DIR / ".env")))
+DOTENV_PATH = _setting("H_DOTENV", "dotenv", _REPO_DIR / ".env")
 FEATURE_SPECS_DIR = Path(
     os.getenv("H_FEATURE_SPECS_DIR", str(_CLI_DIR / "scripts/payloads/domain/feature-requests"))
 )

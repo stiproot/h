@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from h_cli.config import CHARTS_DIR
+from h_cli.config import CHARTS_DIR, chart_root_for
 
 
 class HelmError(RuntimeError):
@@ -35,7 +35,9 @@ def render_workflow(
     """
     if shutil.which("helm") is None:
         raise HelmError("helm is required on PATH (https://helm.sh) — it renders cli/charts")
-    chart = CHARTS_DIR / "workflows"
+    # The owning chart root comes from the search path (consumer primary, stock fallback); an
+    # unknown template falls through to the primary so helm's own missing-file error surfaces.
+    chart = (chart_root_for(template) or CHARTS_DIR) / "workflows"
     # --set template=… gates which template body evaluates: helm renders every template even under
     # -s, so without the gate one template's `required` values would break another's render.
     cmd = [

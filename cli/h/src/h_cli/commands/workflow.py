@@ -19,15 +19,15 @@ from h_cli.config import (
     AGENT_IDENTITY,
     AGENT_RUNS_DIR,
     AGENT_URLS,
-    CHARTS_DIR,
     FROZEN_EXECUTOR_KEYS,
     LOCAL_WORKTREES_DIR,
     MODEL_PARAM_SLOTS,
     agent_identity_params,
     baked_models_suit,
+    chart_root_for,
     resolve_agent_url,
 )
-from h_cli.infrastructure import agent_service, helm, local_runtime, workflow_svc
+from h_cli.infrastructure import agent_service, helm, local_runtime, workflow_svc, workspace
 from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
 from h_cli.infrastructure.panelize import PanelizeError, panelize, roster_pairs
 from h_cli.params import parse_params
@@ -230,8 +230,7 @@ def _roster_definition(keys: list[str], inline: bool) -> dict[str, Any]:
         return _inline_definition(keys)
     key = keys[0]
     template_name = template_name_for_key(key)
-    template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
-    if template_path.exists():
+    if chart_root_for(template_name) is not None:
         return _render_template(template_name)
     stored = _guarded(lambda: workflow_svc.get(key))
     if not isinstance(stored, dict) or not stored.get("steps"):
@@ -450,6 +449,14 @@ def run(
             "provision the OPERATOR's own HOME (~/.claude) on this substrate, not a container's.",
         ),
     ] = False,
+    allow_external: Annotated[
+        bool,
+        typer.Option(
+            "--allow-external",
+            help="--local only: run from a checkout outside the workspace h manages. "
+            "Deliberately a flag you type per fire, not a config you can forget you set.",
+        ),
+    ] = False,
 ) -> None:
     """Fire a saved workflow (or, with --inline, a template rendered on the fly) with fire-time
     params; prints the instance id.
@@ -519,12 +526,14 @@ def run(
     elif with_setup:
         err_console.print("[red]--with-setup applies to --local only[/red]")
         raise typer.Exit(1)
+    if allow_external and not local:
+        err_console.print("[red]--allow-external applies to --local only[/red]")
+        raise typer.Exit(1)
     if inline:
         refuse_overlay(key, "run")
     elif roster:
         template_name = template_name_for_key(key)
-        template_path = CHARTS_DIR / "workflows" / "templates" / f"{template_name}.tmpl.yaml"
-        if template_path.exists():
+        if chart_root_for(template_name) is not None:
             refuse_overlay(template_name, "run")
     if agent and not roster:
         params.update(_identity_params(key, agent[0]))
@@ -607,6 +616,19 @@ def run(
             )
             raise typer.Exit(1)
     if local:
+        # The boundary check its siblings already make (delegate --cwd, events serve --repo):
+        # the invoking checkout is the run's repoPath — worktrees are cut from it and the agent
+        # works in it as the operator — so it must be a checkout h manages.
+        try:
+            workspace.assert_managed(
+                Path(repo_root(Path.cwd())), allow_external=allow_external, flag="--local: cwd"
+            )
+        except workspace.ExternalWorkspaceError as err:
+            err_console.print(f"[red]local:[/red] {err}")
+            raise typer.Exit(1) from err
+        except LocalRunError as err:
+            err_console.print(f"[red]local:[/red] {err}")
+            raise typer.Exit(1) from err
         # The local substrate composes on the fly: there is no saved-workflow store to read
         # (a registry is engine machinery), so the argument names a chart TEMPLATE and the
         # rendered definition IS the artifact — the same one the service path would have POSTed.

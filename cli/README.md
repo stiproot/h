@@ -153,6 +153,41 @@ and Python paths, and `h feature render` is verified to produce output structura
 identical to `_render.sh`. The YAML-canonical / JSON-at-the-wire layering carries over
 verbatim (`infrastructure/helm.py: render_workflow` vs `to_wire_json`).
 
+### The consumer surface — using h from ANOTHER repo
+
+A repo that consumes h (composes its own domain workflow templates and fires them `--local`)
+declares its paths ONCE in `<repo>/.h/config.toml`; the CLI discovers the file by walking up
+from the invoking cwd, the way git resolves its repo, so `h` run anywhere inside that repo
+needs no exported environment. Precedence per setting: **env var > .h/config.toml >
+h-checkout default**. Relative paths in the file resolve against the repo carrying it.
+
+```toml
+# <consumer repo>/.h/config.toml
+charts_dir = ".h/charts"    # the consumer's own workflow chart (see below)
+# also supported: local_bin, workspace_dir, worktrees_dir, runs_dir, dotenv, events_store
+```
+
+Each key pairs with an env var (`charts_dir`→`H_CHARTS_DIR`, `local_bin`→`H_LOCAL_BIN`,
+`workspace_dir`→`H_WORKSPACE_DIR`, `worktrees_dir`→`H_LOCAL_WORKTREES_DIR`,
+`runs_dir`→`AGENT_RUNS_DIR`, `dotenv`→`H_DOTENV`, `events_store`→`H_EVENTS_STORE`). Unknown
+keys and non-string values fail loud — a typo'd key silently falling back is how a run lands
+in the wrong charts.
+
+**Charts are a SEARCH PATH, not a replacement**: the configured chart is the primary and h's
+stock chart (`cli/charts`) is the fallback, so a consumer keeps the stock templates
+(`answer`, `implement`, …) alongside its own; a name present in both resolves to the primary
+(shadowing). A consumer chart is an ordinary helm chart —
+`.h/charts/workflows/{Chart.yaml,values.yaml,templates/*.tmpl.yaml}` — vendoring the two
+authoring helpers it needs from the stock `_helpers.tpl` (`h.token`,
+`h.outputContractEpilogue`).
+
+`h doctor` reports the whole toolchain on one screen — required binaries (node, git, helm),
+agent CLIs, optional pieces (nats-server for `h events`), the built runner, both chart roots,
+and which consumer config is in effect. It is a report, not a gate: every surface still
+refuses loud by name at its own point of use (the operator-provisioned posture — h never
+auto-installs). `h workflow run --local` checks the invoking checkout against the managed
+workspace boundary exactly like `h delegate --cwd` (override: `--allow-external`).
+
 ### Tests (`cli/h/tests/`)
 
 ```sh

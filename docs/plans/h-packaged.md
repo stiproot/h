@@ -1,6 +1,6 @@
 # h packaged — the local substrate + CLI as tooling other repos install
 
-Status: Active — Phase 0 COMPLETE 2026-08-13 (skate-sim POC ran end-to-end from the trxy clone, zero h changes); Phase 1 backlog confirmed by live findings
+Status: Active — Phases 0+1 built 2026-08-13 (POC ran end-to-end; .h/config.toml discovery, charts search path, h doctor, --local boundary all landed); Phase 2 (install story) next
 Established: 2026-08-12
 
 ## The idea
@@ -269,28 +269,39 @@ agent decided every move from `trxy_get_skate_game`, exercised both vote paths, 
    winner must be resolved via the teams array.
 4. Still no roster-listing tool (the bogus-actor error remains the workaround).
 
-### Phase 1 — harden the seams the POC leaned on
+### Phase 1 — harden the seams the POC leaned on — BUILT 2026-08-13 (core set)
 
-Confirmed by Phase 0 findings (ordered by observed friction):
+Landed in one change set (all guards green: `make lint`, 457 CLI tests, goldens untouched):
 
-- **Per-repo config discovery** (finding 3, the biggest friction): the CLI discovers a
-  consumer's `.h/` config from cwd so `H_CHARTS_DIR` et al. need not be exported per
-  invocation.
-- **An `h doctor`-style presence check** (operator request 2026-08-13): report which optional
-  tools are installed (nats-server, helm, agent CLIs, the built runner) — a warning surface,
-  while point-of-use refusals stay the enforcement.
+- **Per-repo config discovery** — `<repo>/.h/config.toml`, discovered by walking up from cwd
+  (git-style); precedence env var > config file > h-checkout default; keys
+  `charts_dir`/`local_bin`/`workspace_dir`/`worktrees_dir`/`runs_dir`/`dotenv`/`events_store`;
+  unknown keys and non-string values fail loud. Relative paths resolve against the repo
+  carrying the file. Validated live: trxy's `.h/config.toml` (`charts_dir = ".h/charts"`)
+  makes `h template list|get` and `--local` runs work from anywhere in the clone with no
+  exported env.
+- **Charts search path** — `charts_roots()` = configured primary, stock fallback;
+  `chart_root_for()` resolves the owning chart per template; name collisions resolve to the
+  primary (shadowing). All seven probe sites (template role/list/drift, workflow ×2, chain
+  ×2) and helm's render migrated. Validated live: 16 templates listed from the trxy clone —
+  `simulate-skate-game` beside the 15 stock ones, with a `chart` column showing ownership.
+- **`h doctor`** — one-screen toolchain report (required binaries, agent CLIs, optional
+  pieces incl. nats-server, the built runner, both chart roots, discovered consumer config).
+  A report, never a gate; point-of-use refusals unchanged.
+- **Boundary closed** — `h workflow run --local` now calls `assert_managed` on the invoking
+  checkout like `delegate --cwd`/`events serve --repo`, with `--allow-external` (refused
+  without `--local`). Validated live: refusal fires from an unmanaged scratch checkout.
+- **Docs** — cli/README "consumer surface" section (config file, env pairs, search path,
+  doctor, vendored-helper set); CLAUDE.md CLI line extended (check-steering enforces the
+  pairing).
 
-Original candidates, all still standing:
+Still open in Phase 1:
 
-- Document the `H_*` consumer surface (`.env.example`, `check-env-parity`, cli/README) — the
-  overrides exist; make them contract instead of folklore.
-- A chart **search path / overlay** (consumer chart beside h's stock chart) so pointing at a
-  domain chart stops costing the 16 stock templates; alternatively a blessed starter-chart
-  (the `_helpers.tpl` contract as a copyable, versioned artifact).
-- Close the boundary gaps: `h workflow run --local` calls `assert_managed` like its siblings;
-  define `managed_roots()` for an installed h (drop or reinterpret the h-checkout root).
-- Fail-loud `config.py` resolution when `_REPO_DIR` is not an h checkout (today it silently
-  points at nonsense — the direct blocker to any non-editable install).
+- **`managed_roots()` for an INSTALLED h** (no checkout ⇒ the third root is wrong) and
+  fail-loud `config.py` resolution when `_REPO_DIR` is not an h checkout — both deferred
+  into Phase 2, whose install story is what makes them real.
+- A **drift check for vendored helpers** (a consumer's `_helpers.tpl` vs h's) — parked until
+  a second consumer chart exists; one copy drifting is caught by its own render breaking.
 
 ### Phase 2 — the install story
 
@@ -334,3 +345,8 @@ plugin-marketplace distribution of template packs).
   findings queued for trxy issues. Operator confirmed direction and clarified the model:
   NATS stays the event fabric only (optional, `h events`); a doctor-style presence check
   added to Phase 1.
+- **2026-08-13 (later)** — Phase 1 core built and validated live from the trxy clone (see the
+  phase section): config discovery, charts search path, `h doctor`, the `--local` boundary,
+  docs. The consumer UX is now `cd <trxy clone> && h workflow run simulate-skate-game
+  --local` with zero exported env. Installed-h boundary semantics + config fail-loud deferred
+  to Phase 2; vendored-helper drift check parked pending a second consumer.

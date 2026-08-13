@@ -7,6 +7,7 @@ into ONE workflow definition — one run, one worktree, one agent context. `-t` 
 everywhere in the CLI; operands here are space-separated (`rm`-style), never `+`-joined.
 """
 
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -16,7 +17,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
-from h_cli.config import CHARTS_DIR
+from h_cli.config import chart_root_for, charts_roots
 from h_cli.infrastructure import helm, workflow_svc
 from h_cli.infrastructure.overlay import overlay
 
@@ -39,10 +40,11 @@ def template_name_for_key(key: str) -> str:
 
 def template_role(name: str) -> str:
     """Read a template's required plain top-level role declaration."""
-    path = CHARTS_DIR / "workflows" / "templates" / f"{name}{TEMPLATE_SUFFIX}"
-    if not path.is_file():
+    root = chart_root_for(name)
+    if root is None:
         err_console.print(f"[red]Unknown template '{name}'[/red] — run `h template list`.")
         raise typer.Exit(1)
+    path = root / "workflows" / "templates" / f"{name}{TEMPLATE_SUFFIX}"
     roles = [
         line.removeprefix("role:").strip()
         for line in path.read_text().splitlines()
@@ -138,19 +140,24 @@ def compose(
 
 @app.command("list")
 def list_() -> None:
-    """List the chart templates (the overlay atoms under cli/charts/workflows/templates)."""
-    templates_dir = CHARTS_DIR / "workflows" / "templates"
-    paths = sorted(templates_dir.glob(f"*{TEMPLATE_SUFFIX}"))
-    if not paths:
-        err_console.print(f"[red]No templates found[/red] under {templates_dir}")
+    """List the chart templates across the search path (consumer chart first, stock fallback);
+    a name in both charts lists once, owned by the primary (shadowing)."""
+    roots = charts_roots()
+    owned: dict[str, Path] = {}
+    for root in roots:
+        for p in sorted((root / "workflows" / "templates").glob(f"*{TEMPLATE_SUFFIX}")):
+            owned.setdefault(p.name.removesuffix(TEMPLATE_SUFFIX), root)
+    if not owned:
+        err_console.print(
+            f"[red]No templates found[/red] under {' or '.join(str(r) for r in roots)}"
+        )
         raise typer.Exit(1)
-    rows = [
-        (p.name.removesuffix(TEMPLATE_SUFFIX), template_role(p.name.removesuffix(TEMPLATE_SUFFIX)))
-        for p in paths
-    ]
-    table = Table("template", "role", title=f"chart templates ({len(rows)})")
-    for name, role in rows:
-        table.add_row(name, role)
+    multi = len(roots) > 1
+    columns = ("template", "role", "chart") if multi else ("template", "role")
+    table = Table(*columns, title=f"chart templates ({len(owned)})")
+    for name in sorted(owned):
+        row = (name, template_role(name)) + ((str(owned[name]),) if multi else ())
+        table.add_row(*row)
     console.print(table)
 
 
@@ -186,11 +193,7 @@ def _template_for_saved_key(key: str) -> str | None:
     template to re-render, so they are reported as unchecked rather than as drift.
     """
     name = template_name_for_key(key)
-    return (
-        name
-        if (CHARTS_DIR / "workflows" / "templates" / f"{name}{TEMPLATE_SUFFIX}").is_file()
-        else None
-    )
+    return name if chart_root_for(name) is not None else None
 
 
 def _render_published(template: str) -> dict[str, Any]:
