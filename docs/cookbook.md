@@ -65,6 +65,25 @@ h workflow run answer --local --cron '@daily'
   ✗ --cron need workflow-svc's engines — drop --local to use them
 ```
 
+## Run a CONSUMER repo's own domain workflow — h as installed tooling
+
+```sh
+cd ~/code/h-workspace/trxy-v2       # a consumer repo: carries .h/config.toml + .h/charts
+h template list                     # 16 templates — simulate-skate-game beside h's 15 stock ones
+h workflow run simulate-skate-game --local --instance-id skate-sim-poc-1
+```
+
+A repo that consumes h declares `charts_dir = ".h/charts"` once in `.h/config.toml` (discovered
+by walking up from cwd — no exported env); its domain templates resolve via the chart search
+path (consumer primary, stock fallback), and the agent inherits the consumer's own `.mcp.json`
+(D5), so a domain workflow drives the consumer's MCP tools with zero h changes. `h doctor`
+shows the whole toolchain + which consumer config is in effect. *(Validated 2026-08-13 — run
+`skate-sim-poc-1`: a full 9-round team game of S.K.A.T.E. driven through the trxy MCP, game 50,
+Bot Rats def. Bot Gulls, $2.79, output contract validated. The run predated config discovery by
+hours — it used the `H_CHARTS_DIR` env form, which still works and wins over the file; the
+`.h/config.toml` + search-path resolution was validated the same day on the compose path,
+`h template list|get` from the clone.)*
+
 ## Build a real feature locally — implement, verified against a spec
 
 ```sh

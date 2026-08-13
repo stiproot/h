@@ -16,8 +16,8 @@ package / the `generated-diagrams` plugin skill; members are code truth via
     {"id": "ChainCmd", "kind": "module", "file": "cli/h/src/h_cli/commands/chain.py", "functions": ["run", "list_", "rm"], "consts": ["WELL_KNOWN", "KIND_MODEL_PARAMS", "KIND_CONTRACT_SUPPLIES", "WRITE_KINDS"], "stereotype": "Typer app chain.py"},
     {"id": "WorkflowCmd", "kind": "module", "file": "cli/h/src/h_cli/commands/workflow.py", "functions": ["publish", "run", "pause", "resume", "terminate"], "stereotype": "Typer app workflow.py"},
     {"id": "TemplateCmd", "kind": "module", "file": "cli/h/src/h_cli/commands/template.py", "functions": ["compose", "compose_templates", "template_role"], "stereotype": "Typer app template.py"},
-    {"id": "Views", "kind": "external", "stereotype": "Typer apps", "note": "watch / cron / schedule / agents / status / feature: registry views + ops"},
-    {"id": "Config", "kind": "module", "file": "cli/h/src/h_cli/config.py", "functions": ["agent_identity_params", "baked_models_suit", "resolve_agent_url"], "consts": ["AGENT_IDENTITY", "MODEL_PARAM_SLOTS", "FROZEN_EXECUTOR_KEYS"], "stereotype": "env-derived settings config.py"},
+    {"id": "Views", "kind": "external", "stereotype": "Typer apps", "note": "watch / cron / schedule / agents / status / doctor / feature: registry views + ops"},
+    {"id": "Config", "kind": "module", "file": "cli/h/src/h_cli/config.py", "functions": ["agent_identity_params", "baked_models_suit", "resolve_agent_url", "charts_roots", "chart_root_for"], "consts": ["AGENT_IDENTITY", "MODEL_PARAM_SLOTS", "FROZEN_EXECUTOR_KEYS"], "stereotype": "settings config.py", "note": "env > consumer .h/config.toml > h-checkout default; charts_roots/chart_root_for = the chart search path (consumer primary, stock fallback)"},
     {"id": "ChainExprParser", "kind": "module", "file": "cli/h/src/h_cli/infrastructure/chain_expr.py", "functions": ["parse_expr", "effective_config"]},
     {"id": "ChainExpr", "kind": "class", "file": "cli/h/src/h_cli/infrastructure/chain_expr.py", "symbol": "ChainExpr"},
     {"id": "MemberRef", "kind": "class", "file": "cli/h/src/h_cli/infrastructure/chain_expr.py", "symbol": "MemberRef"},
@@ -95,17 +95,19 @@ classDiagram
 
   class Views {
     <<Typer apps>>
-    watch / cron / schedule / agents / status / feature: registry views + ops
+    watch / cron / schedule / agents / status / doctor / feature: registry views + ops
   }
 
   class Config {
-    <<env-derived settings config.py>>
+    <<settings config.py>>
     +AGENT_IDENTITY dict~str~
     +MODEL_PARAM_SLOTS tuple~str~
     +FROZEN_EXECUTOR_KEYS frozenset~str~
     +agent_identity_params(agent) dict~str~ | None
     +baked_models_suit(agent) bool
     +resolve_agent_url(agent) str | None
+    +charts_roots() tuple~Path~
+    +chart_root_for(template) Path | None
   }
 
   class ChainExprParser {
