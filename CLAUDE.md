@@ -665,6 +665,21 @@ Skills install unconditionally on every setup; Claude Code marketplace plugins a
 per-run via `h.pluginSetupSteps` in the setup step — only when the `plugins` fire-time param is
 non-empty (distinct from skills, which copy on every run regardless).
 
+h is also a plugin marketplace ITSELF, in the other direction — skills h ships TO its consumers,
+not skills its agents consume: the repo-root `.claude-plugin/marketplace.json` (+ the Codex
+sibling `.agents/plugins/marketplace.json`) publishes the **`h` plugin** (`plugins/h/`), the
+CONSUMER steering surface for repos that use h as installed tooling. Its skills are `use-h` (run
+domain workflows from a consumer repo — the consumer contract, the local substrate, refusals,
+ledger/cost) and `author-h-template` (author a domain chart under `.h/charts/` — vendored
+helpers, gate, params-as-contract, output contract, verify-without-goldens; its starter-chart
+reference is the canonical vendoring source). A consumer installs it like the other ecosystem
+plugins: `extraKnownMarketplaces` → `{"source": "github", "repo": "stiproot/h"}` +
+`"h@h-marketplace"` in `enabledPlugins`. Consumer-facing prose in these skills must stay
+env-agnostic (no h-checkout paths, no operator-machine specifics). Metadata invariants are
+guarded by `scripts/check-plugins.mjs` in `bun run lint` (manifest/name/version parity across
+both agents' manifests, skill frontmatter = exactly name+description, executable bundled
+scripts — mirroring the ecosystem's validate.sh).
+
 ## Observability
 
 `workflowInstanceId` is the join key across every surface — it is the Dapr workflow instance id, the

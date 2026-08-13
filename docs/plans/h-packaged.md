@@ -1,6 +1,6 @@
 # h packaged — the local substrate + CLI as tooling other repos install
 
-Status: Active — Phases 0+1 built 2026-08-13 (POC ran end-to-end; .h/config.toml discovery, charts search path, h doctor, --local boundary all landed); Phase 2 (install story) next
+Status: Active — Phases 0+1+1b built 2026-08-13 (POC ran end-to-end; .h/config.toml discovery, charts search path, h doctor, --local boundary; the `h` consumer plugin published from the repo-root marketplace and installed into trxy); Phase 2 (install story) next
 Established: 2026-08-12
 
 ## The idea
@@ -303,6 +303,40 @@ Still open in Phase 1:
 - A **drift check for vendored helpers** (a consumer's `_helpers.tpl` vs h's) — parked until
   a second consumer chart exists; one copy drifting is caught by its own render breaking.
 
+### Phase 1b — the consumer steering surface (the `h` plugin) — BUILT 2026-08-13
+
+Phase 1 made the mechanics work from a consumer repo; this phase made the consumer's AGENTS
+know they exist. The gap it closed: trxy consumed h through two artifacts (`.h/config.toml` +
+the domain chart) and one operator's memory — nothing in trxy said what h is, when to reach
+for it, or how to author a template. Steering context is part of what "h installed in a repo"
+means, and it ships the way this ecosystem ships steering: a Claude Code plugin.
+
+- **h is now its own plugin marketplace** — repo-root `.claude-plugin/marketplace.json` + the
+  Codex sibling `.agents/plugins/marketplace.json`, publishing one plugin: **`h`**
+  (`plugins/h/`), following the ecosystem standard (code-comprehension's layout + validate
+  checks). Two skills, consumer-facing and deliberately env-agnostic:
+  - `use-h` — what h is from a consumer's seat; the consumer contract (config discovery,
+    chart search path, doctor); running (`h workflow run --local`, `h delegate`, panels,
+    chains); what `--local` refuses and why; ledger/cost; safety. Reference:
+    `references/cli-reference.md` (config-key/env table, command surface, event fabric).
+  - `author-h-template` — the consumer-side authoring recipe (vendored helpers, gate, role,
+    params-as-contract, output contract in its three places, safety posture in the template,
+    verify-without-goldens). Reference: `references/starter-chart.md`, the canonical
+    vendoring source — which also answers the open question below: consumer charts stay
+    unguarded by h's repo-side gates; the render is the check, and the starter chart is the
+    drift anchor.
+- **Guarded**: `scripts/check-plugins.mjs` in `bun run lint` (mirrors the ecosystem's
+  validate.sh — marketplace/manifest coherence, dir=name=entry, semver, Claude↔Codex version
+  parity, `.skills` → `./skills/`, skill frontmatter exactly name+description, executable
+  bundled scripts).
+- **Installed into trxy** (the rebased `local/h-packaged-poc` branch): `h-marketplace`
+  (`github: stiproot/h`) + `h@h-marketplace` in `.claude/settings.json`, plus a CLAUDE.md
+  "h — agentic workflow tooling" section (consumer posture, `.h/` contract, run surface,
+  plugin skills as the how-to home, the shared-local-Supabase hazard from Phase 0 finding 4)
+  and a pointer in its "Where knowledge lives" skill roster.
+- **Docs**: CLAUDE.md (h skills section — the marketplace-in-the-other-direction paragraph),
+  cli/README consumer surface (install-the-plugin paragraph).
+
 ### Phase 2 — the install story
 
 `uv tool install` of `h-cli` from GitHub actually works (wheel contents, path resolution, a
@@ -325,7 +359,9 @@ plugin-marketplace distribution of template packs).
   and h's `domain/` reverts to h-side scratch. Decide when the POC plan needs a home.
 - **Guards for consumer charts** — `check-templates`/goldens don't reach a consumer chart. Ship
   a checkable contract (values.schema.json + a tiny validator) or accept unguarded consumer
-  templates?
+  templates? *(Phase 1b's answer, for now: accepted unguarded — the `author-h-template` skill
+  names the render as the check and the starter-chart reference is the vendoring/drift anchor.
+  Revisit when a consumer chart breaks in a way a render wouldn't have caught.)*
 - **The trxy MCP roster gap** — no tool lists available bot actors (the workaround is a
   deliberate bogus-actor error). Worth a trxy-side issue before the POC hard-codes names.
 - **Sim environment posture** — POC pins `env=local`. What would ever justify a prod
@@ -350,3 +386,10 @@ plugin-marketplace distribution of template packs).
   docs. The consumer UX is now `cd <trxy clone> && h workflow run simulate-skate-game
   --local` with zero exported env. Installed-h boundary semantics + config fail-loud deferred
   to Phase 2; vendored-helper drift check parked pending a second consumer.
+- **2026-08-13 (later still)** — Phase 1b: the consumer steering surface. trxy-v2 clone
+  consolidated (main fast-forwarded, `local/h-packaged-poc` rebased onto it). h made its own
+  plugin marketplace publishing the `h` plugin (`plugins/h/`: skills `use-h` +
+  `author-h-template` with cli-reference and starter-chart references), guarded by
+  `scripts/check-plugins.mjs` in lint; installed into trxy (`h@h-marketplace` in settings +
+  a CLAUDE.md "h — agentic workflow tooling" section). The consumer-charts open question
+  answered for now: unguarded, render-is-the-check, starter chart as the drift anchor.

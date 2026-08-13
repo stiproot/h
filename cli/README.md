@@ -181,6 +181,14 @@ stock chart (`cli/charts`) is the fallback, so a consumer keeps the stock templa
 authoring helpers it needs from the stock `_helpers.tpl` (`h.token`,
 `h.outputContractEpilogue`).
 
+The consumer's steering context ships as the **`h` plugin** (`plugins/h/` at the h repo root,
+published via `.claude-plugin/marketplace.json` — the h repo is its own plugin marketplace):
+skills `use-h` (running domain workflows from a consumer repo) and `author-h-template`
+(authoring a domain chart, with a starter-chart reference to vendor from). A consumer repo
+installs it in `.claude/settings.json` — marketplace source `{"source": "github", "repo":
+"stiproot/h"}`, plugin `h@h-marketplace` — so its agents know what h is and how to drive it
+without reading h's own docs.
+
 `h doctor` reports the whole toolchain on one screen — required binaries (node, git, helm),
 agent CLIs, optional pieces (nats-server for `h events`), the built runner, both chart roots,
 and which consumer config is in effect. It is a report, not a gate: every surface still

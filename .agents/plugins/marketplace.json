@@ -1,0 +1,20 @@
+{
+  "name": "h-marketplace",
+  "interface": {
+    "displayName": "h"
+  },
+  "plugins": [
+    {
+      "name": "h",
+      "source": {
+        "source": "local",
+        "path": "./plugins/h"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

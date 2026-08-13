@@ -1,0 +1,12 @@
+{
+  "name": "h-marketplace",
+  "description": "Consumer-facing skills for h — the agentic workflow runtime — installed into repos that consume h as tooling.",
+  "owner": { "name": "stiproot" },
+  "plugins": [
+    {
+      "name": "h",
+      "source": "./plugins/h",
+      "description": "Use h from a consumer repo: run domain agentic workflows on the local substrate, author domain workflow chart templates, and read results from the run ledger."
+    }
+  ]
+}
