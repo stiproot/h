@@ -1,6 +1,6 @@
 # h packaged — the local substrate + CLI as tooling other repos install
 
-Status: Planning — researched 2026-08-12; POC scoped (trxy skate-game simulation), packaging approach recommended, nothing built
+Status: Active — Phase 0 COMPLETE 2026-08-13 (skate-sim POC ran end-to-end from the trxy clone, zero h changes); Phase 1 backlog confirmed by live findings
 Established: 2026-08-12
 
 ## The idea
@@ -219,18 +219,68 @@ Rejected alternatives:
 
 ## Phases
 
-### Phase 0 — the POC, on today's seams (no h changes)
+### Phase 0 — the POC, on today's seams (no h changes) — COMPLETE 2026-08-13
 
-Prove the whole story end-to-end before building any packaging: configure the trxy bot roster +
-local Supabase, author `simulate-skate-game` in the trxy clone's `.h/charts/`, run it
-`--local` via `H_CHARTS_DIR`, drive a full Bot Rats vs Bot Gulls match, capture the structured
-result. Every friction hit (chart vendoring pain, env-var sprawl, refusal quality, missing
-roster-listing tool) is a **finding recorded here** — Phase 1's backlog is whatever Phase 0
-proves annoying, not what this plan guesses.
+Proven end-to-end, exactly as scoped and with **zero h changes**: the trxy clone provisioned
+(local-only env keys copied from the operator's checkout — NOT re-provisioned, see finding 4),
+`simulate-skate-game` authored in the clone's `.h/charts/workflows/` (branch
+`local/h-packaged-poc`), fired as
+
+```sh
+cd <trxy clone> && H_CHARTS_DIR=<trxy>/.h/charts \
+  uv run --project <h repo> h workflow run simulate-skate-game --local --instance-id skate-sim-poc-1
+```
+
+**Result: a complete 9-round, 18-turn team game of S.K.A.T.E. (game 50, local env) — Bot Rats
+won, Bot Gulls spelled SKATE.** Output contract validated; run ledger under
+`.runs/skate-sim-poc-1` (94 MCP tool calls, 95 agent turns, $2.79, claude-sonnet-4-6). The
+agent decided every move from `trxy_get_skate_game`, exercised both vote paths, and used
+`trxy_admin_expire_skate_turn` only where the mechanics forced it (see trxy findings).
+
+**h-side findings → the Phase 1 backlog:**
+
+1. **`H_CHARTS_DIR` all-or-nothing confirmed live** — with it set, `h template list` shows one
+   template; h's 16 stock templates vanish. The overlay/search-path item is real.
+2. **The minimal vendored helper set is tiny**: `h.token` + `h.outputContractEpilogue` (~30
+   lines). Vendoring is cheap; the cost is silent drift from h's copy — a starter-chart or a
+   drift check is the fix, not avoiding vendoring.
+3. **Invocation is the clunkiest seam**: `H_CHARTS_DIR=… uv run --project <h repo> h …` from
+   the consumer cwd. What a consumer wants is `h` on PATH plus per-repo config discovered from
+   cwd (e.g. `.h/config`) supplying `H_CHARTS_DIR` et al. — firms up Phase 1 (config
+   discovery) and Phase 2 (install).
+4. **Shared-local-stack hazard (consumer-side ops)**: two checkouts of the same repo share one
+   local Supabase (same `project_id` → same containers), and `bots:provision` generates its
+   password per-checkout — re-running it from a second checkout rotates the shared bots'
+   passwords and silently breaks the first. The POC copied credentials instead. A packaged h
+   runbook must name this class of hazard: provisioning scripts that assume one checkout.
+5. `--instance-id`, the run ledger, and contract validation all worked unchanged from the
+   consumer repo — the observability story transfers for free.
+
+**trxy-side findings (surfaced by the simulation — for trxy issues, not h work):**
+
+1. A `re_do`-voted failed ATTEMPT turn stays active (`completedAt` null);
+   `trxy_complete_skate_turn` won't advance past it while the deadline is future —
+   `trxy_admin_expire_skate_turn` + a second complete was needed for every failure (5×). A
+   simulated match shouldn't need admin tooling for its normal loop.
+2. Re-submitting on a `re_do`-voted SET turn with `video_url` omitted violates the
+   `tb_skate_videos_file_path_key` unique constraint — the placeholder path derives from
+   game+turn only. Fix: derive per-submission (or the workaround: distinct `video_url`).
+3. `winnerUsername` is null on a completed team game even though `winnerTeamId` is set —
+   winner must be resolved via the teams array.
+4. Still no roster-listing tool (the bogus-actor error remains the workaround).
 
 ### Phase 1 — harden the seams the POC leaned on
 
-Candidates, to be confirmed/reordered by Phase 0 findings:
+Confirmed by Phase 0 findings (ordered by observed friction):
+
+- **Per-repo config discovery** (finding 3, the biggest friction): the CLI discovers a
+  consumer's `.h/` config from cwd so `H_CHARTS_DIR` et al. need not be exported per
+  invocation.
+- **An `h doctor`-style presence check** (operator request 2026-08-13): report which optional
+  tools are installed (nats-server, helm, agent CLIs, the built runner) — a warning surface,
+  while point-of-use refusals stay the enforcement.
+
+Original candidates, all still standing:
 
 - Document the `H_*` consumer surface (`.env.example`, `check-env-parity`, cli/README) — the
   overrides exist; make them contract instead of folklore.
@@ -277,3 +327,10 @@ plugin-marketplace distribution of template packs).
   (JS runner repo-agnostic; all coupling in `config.py` behind existing-but-undocumented env
   overrides; charts all-or-nothing; GitHub-source + operator-provisioned as the distribution
   precedent). POC scoped, phases drafted, nothing built.
+- **2026-08-13** — Phase 0 executed and COMPLETE: consumer chart authored in the trxy clone
+  (`.h/charts/workflows/`, branch `local/h-packaged-poc`, commit 766c88ba), full simulated
+  team S.K.A.T.E. match driven through the trxy MCP on the local substrate ($2.79, 18 game
+  turns, contract validated). Five h-side findings recorded into Phase 1; four trxy-side
+  findings queued for trxy issues. Operator confirmed direction and clarified the model:
+  NATS stays the event fabric only (optional, `h events`); a doctor-style presence check
+  added to Phase 1.
