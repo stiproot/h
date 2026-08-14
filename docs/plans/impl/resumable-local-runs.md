@@ -1,7 +1,8 @@
 # resumable local runs — journal a run's state so a dead driver's spend survives it
 
-Status: Active — increment 1 (chain-level resume, journal-as-stream) BUILT + validated live 2026-08-14; increment 2 (workflow step-level resume + `h runs watch`) open
+Status: Complete — both increments built + validated live 2026-08-14 (chain stage-level resume; workflow step-level resume incl. partial parallel groups; `h runs watch`)
 Established: 2026-08-14
+Lifted to: CLAUDE.md (execution substrates — the RUN JOURNAL paragraph + fabric streams), cli/README.md (local substrate commands + doctor prose), skills/delegate-locally + plugins/h use-h (consumer steering, plugin 0.1.2), docs/cookbook.md (two validated resume entries), carried-followups (the two rejected non-goals with triggers)
 
 ## The idea
 
@@ -164,3 +165,14 @@ required-for-journaling wording), and the delegate-locally + use-h skills where 
   captures overlay them for completed stages) — re-seeding a resume is allowed; changing the
   COMPOSITION is not. Steering updated in the same change set (CLAUDE.md substrates + fabric
   streams, cli/README, delegate-locally + use-h skills, doctor, cookbook entry).
+- **2026-08-14 (increment 2 built + validated — plan COMPLETE)** — workflow step-level resume:
+  `execute.ts` journals every completed step AND every parallel BRANCH individually (seq
+  serialized behind one permit; the group map reconstructed from branches, so a dead panel
+  re-pays only unfinished branches); `--resume INSTANCE`/`--no-journal` on `h workflow run`
+  (preflight deduped into `commands/_local_journal.py`, shared with chain); `h runs watch
+  GROUP` (new `runs` command group) replays a journal and follows live to the terminal record
+  via an ephemeral consumer. 6 new JS tests (incl. partial-parallel resume), 4 new CLI tests.
+  LIVE: `journal-wf-poc` — the plan template SIGINT-killed mid-agent-step with worktree+setup
+  journaled; resume replayed both, ran only the agent, contract validated; watch printed the
+  full journal and exited 0. Non-goals moved to carried-followups; steering lifted (see
+  header); archived.

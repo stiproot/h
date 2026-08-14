@@ -43,6 +43,12 @@ def captured_job(monkeypatch) -> list[dict[str, Any]]:
         }
 
     monkeypatch.setattr("h_cli.commands.workflow.local_runtime.run_job", fake_run_job)
+    # The journal preflight reaches for the fabric (a real socket) — stubbed like the runner,
+    # so these tests pin the JOB the driver hands over, not the fabric's liveness.
+    monkeypatch.setattr(
+        "h_cli.commands.workflow._journal_preflight",
+        lambda resume: {"url": "nats://stub:4222", **({"resume": True} if resume else {})},
+    )
     return jobs
 
 
@@ -162,6 +168,9 @@ def test_a_failed_step_exits_nonzero_and_names_the_step(monkeypatch) -> None:
             "error": "output contract declared but the agent output has no fenced ```json block",
         },
     )
+    monkeypatch.setattr(
+        "h_cli.commands.workflow._journal_preflight", lambda resume: {"url": "nats://stub:4222"}
+    )
     result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q"])
 
     assert result.exit_code == 1
@@ -210,3 +219,60 @@ def test_local_composition_still_refuses_a_bare_overlay(captured_job) -> None:
     assert result.exit_code == 1
     assert "overlay" in _all_output(result)
     assert not captured_job
+
+
+@needs_helm
+def test_local_journals_by_default_and_no_journal_opts_out(captured_job) -> None:
+    result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q"])
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_job[0]["journal"] == {"url": "nats://stub:4222"}
+
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "--no-journal", "-p", "task=q"]
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert "journal" not in captured_job[1]
+
+
+@needs_helm
+def test_resume_reuses_the_journaled_instance(captured_job) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "workflow",
+            "run",
+            "answer",
+            "--local",
+            "--resume",
+            "answer-260814-000000",
+            "-p",
+            "task=q",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    job = captured_job[0]
+    assert job["group"] == "answer-260814-000000"
+    assert job["journal"] == {"url": "nats://stub:4222", "resume": True}
+
+
+def test_workflow_resume_and_no_journal_refusals() -> None:
+    """Refusals by name — the journal flags are the local substrate's surface, nothing else's."""
+    result = runner.invoke(app, ["workflow", "run", "answer", "--resume", "g"])
+    assert result.exit_code == 1
+    assert "--resume applies to --local only" in _all_output(result)
+
+    result = runner.invoke(app, ["workflow", "run", "answer", "--no-journal"])
+    assert result.exit_code == 1
+    assert "--no-journal applies to --local only" in _all_output(result)
+
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "--resume", "g", "--no-journal"]
+    )
+    assert result.exit_code == 1
+    assert "drop --no-journal" in _all_output(result)
+
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "--resume", "g", "--instance-id", "x"]
+    )
+    assert result.exit_code == 1
+    assert "drop --instance-id" in _all_output(result)

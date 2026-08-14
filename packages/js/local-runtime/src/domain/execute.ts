@@ -1,12 +1,13 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-import { Cause, Effect } from "effect";
+import { Cause, Clock, Effect } from "effect";
 import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-core";
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
-import type { WorkflowEnvelope, WorkflowJob, WorkflowRunRef } from "./models.ts";
-import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import type { JournalRecord, WorkflowEnvelope, WorkflowJob, WorkflowRunRef } from "./models.ts";
+import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /** A step did not produce a result. Carries the step id so the envelope can name the failure. */
 export class StepError extends Error {
@@ -41,25 +42,128 @@ const stepId = (step: StepDefinition): string => step.id ?? step.activity;
  * What it does NOT mirror is the engine's brackets — the `write-wf-row` status row and the
  * `armCron` closing bracket. Those write registries this substrate does not have, and the
  * activities behind them are refused by name rather than quietly skipped.
+ *
+ * THE JOURNAL (step granularity): with `job.journal` set, every completed step — and every
+ * completed BRANCH of a parallel group, individually, so a panel that dies mid-fan-out re-pays
+ * only its unfinished branches — publishes its result to the fabric, and `resume` replays those
+ * records to skip completed steps with their results reloaded. Appends from concurrent branches
+ * are serialized behind one permit so seqs stay monotonic; the group's own map entry is
+ * reconstructed from its branches rather than journaled. Only `completed` writes a terminal.
  */
 export const runWorkflow = (
   job: WorkflowJob,
-): Effect.Effect<WorkflowEnvelope, never, AgentPort | WorkspacePort | ProgressPort> =>
+): Effect.Effect<WorkflowEnvelope, never, AgentPort | WorkspacePort | ProgressPort | JournalPort> =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
+    const journal = yield* JournalPort;
     const results: Record<string, unknown> = { params: job.params ?? {} };
     // Accumulated as steps run, so the envelope reports the runs of a FAILED job too — the
     // accounting must survive the failure that makes it most interesting.
     const runs: WorkflowRunRef[] = [];
+    const jc = job.journal;
+    const hash = jc ? definitionHash(job) : "";
+    /** Journaled results by step id, restored on resume; consulted before every step/branch. */
+    const done = new Map<string, unknown>();
+    let alreadyTerminal = false;
+    let note: string | undefined;
+
+    // Concurrent branches complete in any order; the permit keeps seq assignment + publish
+    // atomic, so the stream's `<group>:<seq>` identities stay monotonic and collision-free.
+    const appendLock = yield* Effect.makeSemaphore(1);
+    let seq = 1;
+    const appendStep = (id: string, result: unknown) =>
+      jc === undefined
+        ? Effect.void
+        : appendLock.withPermits(1)(
+            Effect.gen(function* () {
+              yield* journal.append(jc.url, job.group, {
+                seq,
+                type: "step",
+                stepId: id,
+                result,
+                ts: yield* Clock.currentTimeMillis,
+              });
+              seq += 1;
+            }),
+          );
+
+    // A step already journaled replays its result; one that is not runs and then journals —
+    // the append's ACK is the completion barrier, so its failure fails the step.
+    const journaled = (
+      step: StepDefinition,
+      execute: Effect.Effect<unknown, StepError, AgentPort | WorkspacePort>,
+    ): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort> => {
+      const id = stepId(step);
+      if (done.has(id)) {
+        return progress.emit(`↟ ${id}: from journal`).pipe(Effect.map(() => done.get(id)));
+      }
+      return execute.pipe(
+        Effect.tap((result) =>
+          appendStep(id, result).pipe(Effect.mapError((err) => new StepError(id, err.message))),
+        ),
+      );
+    };
 
     const run = Effect.gen(function* () {
+      if (jc?.resume) {
+        const records = yield* journal
+          .replay(jc.url, job.group)
+          .pipe(Effect.mapError((err) => new StepError("journal", err.message)));
+        const meta = records.find((record) => record.type === "meta");
+        if (!meta) {
+          return yield* Effect.fail(
+            new StepError(
+              "journal",
+              `no journal for group '${job.group}' — nothing to resume (was it run with ` +
+                "--no-journal, or has the record aged out of the stream?)",
+            ),
+          );
+        }
+        if (meta.definitionHash !== hash) {
+          return yield* Effect.fail(
+            new StepError(
+              "journal",
+              "the composition differs from the journaled run — a changed workflow is a NEW " +
+                "run, so re-fire without --resume",
+            ),
+          );
+        }
+        const steps = records.filter(
+          (record): record is Extract<JournalRecord, { type: "step" }> => record.type === "step",
+        );
+        for (const record of steps) done.set(record.stepId, record.result);
+        seq = (records.at(-1)?.seq ?? 0) + 1;
+        if (records.some((record) => record.type === "terminal")) {
+          alreadyTerminal = true;
+          note = "journal shows this run already completed — nothing to resume";
+        }
+        yield* progress.emit(
+          `↻ resuming '${job.group}': ${steps.length} step(s) journaled` +
+            (alreadyTerminal ? " (already completed)" : ""),
+        );
+      } else if (jc) {
+        yield* journal
+          .append(jc.url, job.group, {
+            seq: 0,
+            type: "meta",
+            kind: "workflow",
+            definitionHash: hash,
+            group: job.group,
+            ts: yield* Clock.currentTimeMillis,
+          })
+          .pipe(Effect.mapError((err) => new StepError("journal", err.message)));
+      }
+
       for (const step of job.steps) {
         if ("parallel" in step) {
           // Branches resolve against the results map as it stood BEFORE the group — which is what
           // makes them parallelizable — then all run at once. Any branch failing fails the group.
+          // Journal-completed branches replay individually, so only the unfinished ones re-run.
           const before = { ...results };
           const outs = yield* Effect.all(
-            step.parallel.map((branch) => runStep(branch, before, job, progress, runs)),
+            step.parallel.map((branch) =>
+              journaled(branch, runStep(branch, before, job, progress, runs)),
+            ),
             { concurrency: "unbounded" },
           );
           step.parallel.forEach((branch, index) => {
@@ -72,12 +176,21 @@ export const runWorkflow = (
           }
           continue;
         }
-        results[stepId(step)] = yield* runStep(step, results, job, progress, runs);
+        results[stepId(step)] = yield* journaled(step, runStep(step, results, job, progress, runs));
       }
     });
 
-    return yield* run.pipe(
-      Effect.map(() => ({ ok: true, group: job.group, results, runs }) satisfies WorkflowEnvelope),
+    const envelope = yield* run.pipe(
+      Effect.map(
+        () =>
+          ({
+            ok: true,
+            group: job.group,
+            results,
+            runs,
+            ...(note ? { note } : {}),
+          }) satisfies WorkflowEnvelope,
+      ),
       // Every exit path answers with an envelope, so a caller never has to reconstruct what
       // happened from an exit code — and the results map up to the failure is preserved.
       Effect.catchAllCause((cause) => {
@@ -92,7 +205,38 @@ export const runWorkflow = (
         } satisfies WorkflowEnvelope);
       }),
     );
+
+    // Terminal record ONLY on success (and only once): a failed run is exactly the one --resume
+    // exists for, so its journal stays open. A lost terminal costs a future resume its no-op
+    // answer, not the completion — report and keep going.
+    if (jc && envelope.ok && !alreadyTerminal) {
+      yield* appendLock.withPermits(1)(
+        journal
+          .append(jc.url, job.group, {
+            seq,
+            type: "terminal",
+            status: "completed",
+            ts: yield* Clock.currentTimeMillis,
+          })
+          .pipe(
+            Effect.catchAll((error) =>
+              progress.emit(`⚠ terminal journal record failed: ${error.message}`),
+            ),
+          ),
+      );
+    }
+    return envelope;
   });
+
+/**
+ * What identifies a workflow composition for resume: the steps alone. Params are fire-time data
+ * (the chain-seed rule): a resumed run may re-parameterize its REMAINING steps deliberately —
+ * completed steps' results come off the journal either way.
+ */
+const definitionHash = (job: WorkflowJob): string =>
+  createHash("sha256")
+    .update(JSON.stringify({ steps: job.steps }))
+    .digest("hex");
 
 const runStep = (
   step: StepDefinition,

@@ -49,6 +49,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from h_cli.commands._local_journal import journal_preflight as _journal_preflight
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
 from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
 from h_cli.config import (
@@ -887,31 +888,6 @@ def run(
     console.print("    the chain engine sequences the workflows on the cron tick; non-blocking.")
     console.print(f"    watch it: h chain list  (or h workflow status feature-{slug})")
     console.print_json(data=result)
-
-
-def _journal_preflight(resume: str | None) -> dict[str, Any]:
-    """Auto-ensure the fabric for a journaled run, framing a refusal with its outs.
-
-    The binary stays operator-provisioned (refused loud by name — h never installs it); the
-    PROCESS is h-managed from here on: the same idempotent spawn `h events up` performs.
-    """
-    from h_cli.config import EVENTS_URL
-    from h_cli.infrastructure import events_fabric
-
-    try:
-        report = events_fabric.ensure_journal_ready()
-    except events_fabric.FabricError as err:
-        err_console.print(f"[red]journal preflight failed:[/red] {escape(str(err))}")
-        outs = (
-            "The journal is what makes --resume possible; provision nats-server"
-            + (" and retry" if resume else ", or run with --no-journal to skip it for this run")
-            + "."
-        )
-        err_console.print(outs)
-        raise typer.Exit(1) from err
-    state = "started" if report.get("started") else "already running"
-    err_console.print(f"journal: fabric at {report.get('url', EVENTS_URL)} ({state})")
-    return {"url": report.get("url", EVENTS_URL), **({"resume": True} if resume else {})}
 
 
 def _run_local_chain(

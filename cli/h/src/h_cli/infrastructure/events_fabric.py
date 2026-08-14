@@ -379,6 +379,42 @@ async def consume_results(
         await nc.close()
 
 
+async def watch_journal(
+    group: str, emit: Callable[[dict[str, Any]], None]
+) -> dict[str, Any] | None:
+    """Replay `h.journal.<group>` then follow live, returning the terminal record when it lands.
+
+    An EPHEMERAL consumer replaying from the stream's start (the `await_result` pattern): a run
+    that finished before this call still answers, and watching leaves nothing durable behind.
+    Endless until the terminal record — the caller's Ctrl-C is the other exit.
+    """
+    nc = await connect()
+    try:
+        js = nc.jetstream()
+        await ensure_streams(js)
+        psub = await js.pull_subscribe(
+            protocol.journal_subject(group),
+            stream=protocol.JOURNAL_STREAM,
+            config=ConsumerConfig(deliver_policy=DeliverPolicy.ALL),
+        )
+        while True:
+            try:
+                msgs = await psub.fetch(1, timeout=10)
+            except (TimeoutError, nats.errors.TimeoutError):
+                continue
+            for msg in msgs:
+                await msg.ack()
+                try:
+                    record = json.loads(msg.data)
+                except json.JSONDecodeError:
+                    continue
+                emit(record)
+                if record.get("type") == "terminal":
+                    return record
+    finally:
+        await nc.close()
+
+
 async def watch(subject: str, emit: Callable[[str, dict[str, Any] | str], None]) -> None:
     """Live core-NATS subscription — the observability tail, deliberately not a consumer (it takes
     nothing from the work queue)."""

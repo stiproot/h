@@ -136,11 +136,16 @@ uv run h workflow run answer --local --agent claude --agent codex   # a judged p
 uv run h chain run --slug s --local EXPR # sequence the stages in-process; BLOCKS, prints the threaded chain data
                                           # JOURNALED by default: each completed stage lands on the fabric's
                                           #   h-journal stream (auto-ensured; missing nats-server BINARY refuses
-                                          #   loud), so a dead driver's paid stages survive it
+                                          #   loud), so a dead driver's paid stages survive it. Workflow runs
+                                          #   journal too, at STEP granularity (each parallel branch its own
+                                          #   record, so a dead panel re-pays only unfinished branches)
 uv run h chain run --slug s --local --resume GROUP EXPR  # CONTINUE that journaled group at its cursor —
                                           #   completed stages replay from the journal, not from your wallet;
                                           #   a changed composition is refused (definition hash)
+uv run h workflow run <t> --local --resume INSTANCE [-p k=v]...  # the workflow sibling: completed STEPS replay
 uv run h chain run --slug s --local --no-journal EXPR    # opt out (throwaway run / unprovisioned machine)
+uv run h runs watch GROUP [--json]        # replay a run's journal, then follow live until its terminal
+                                          #   record — progress from ANY shell, not just the driving one
                                           # --with-setup opts into the definition's setup steps (skipped by
 
 # ---- the local substrate's EVENT FABRIC (POC): NATS JetStream + the relay ----

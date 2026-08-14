@@ -289,7 +289,7 @@ const runMember = (
 ): Effect.Effect<
   { group: string; output: string },
   Error,
-  AgentPort | WorkspacePort | ProgressPort
+  AgentPort | WorkspacePort | ProgressPort | JournalPort
 > =>
   Effect.gen(function* () {
     const member = job.members[index]!;

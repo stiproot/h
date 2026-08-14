@@ -84,7 +84,9 @@ h events tail 'h.result.>'                      # live watch only — misses wha
 ## Results and leftovers
 
 ```sh
-h runs                                          # recent runs off the ledger
+h workflow run <t> --local --resume INSTANCE    # continue a journaled run — completed steps replay
+h chain run --slug s --local --resume GROUP …   # the chain sibling (stage granularity)
+h runs watch GROUP [--json]                     # replay a run's journal + follow live to its terminal
 h worktrees list [--json] [--repo PATH]         # worktrees h cut, status-graded (dirty/scratch/unpushed)
 h worktrees rm BRANCH [--force] [--prune-untracked]
 h worktrees sweep [--dry-run] [--force] [--prune-untracked]

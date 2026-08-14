@@ -13,6 +13,7 @@ from h_cli.commands import (
     cron,
     events,
     feature,
+    runs,
     schedule,
     template,
     watch,
@@ -36,6 +37,7 @@ app.add_typer(cron.app, name="cron")
 app.add_typer(schedule.app, name="schedule")
 app.add_typer(workflow.app, name="workflow")
 app.add_typer(worktrees.app, name="worktrees")
+app.add_typer(runs.app, name="runs")
 app.command("status")(status)
 # The consumer's one-screen toolchain report; refusals stay at each surface's point of use.
 app.command("doctor")(doctor)

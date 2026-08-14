@@ -673,3 +673,20 @@ BEFORE the loop-back. The path that re-enters the review stage with `iterations 
 
 *Revisit when:* the next real review→revise cycle — check that the SECOND review actually reads
 the revised diff rather than a cached one, and that each iteration gets its own ledger group.
+
+## From [resumable-local-runs](./impl/resumable-local-runs.md)
+
+**A local engine daemon (workflow-svc without Dapr / NATS-as-state-plane).** Rejected during
+the substrate-parity discussion: engines exist outside workflows by design, host mode IS the
+local durable option, and a laptop daemon inherits the who-supervises-the-supervisor problem.
+The journal (built) covers the real gap — a dead driver's paid work.
+
+*Revisit when:* a consumer repo genuinely needs recurrence/supervision and demonstrably cannot
+run the service stack — and then the first question is a slimmer stack bring-up (workflow-svc +
+Redis + placement only), not a parallel engine.
+
+**Journal-driven observability (merging journal + run ledger).** The ledger + obs surfaces stay
+the read path; the journal is resume state plus `h runs watch`.
+
+*Revisit when:* the journal proves to duplicate ledger content byte-for-byte and merging them
+would delete code.

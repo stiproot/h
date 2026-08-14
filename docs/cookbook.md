@@ -199,6 +199,21 @@ chain budget tripped before stage 1; the resume replayed stage 0 from the journa
 stage 1 ($0.26), and completed with both stages in the table. Resume-of-completed no-op'd;
 a renamed member id refused with "the composition differs from the journaled run".)*
 
+Workflows journal too, at STEP granularity — each parallel branch its own record, so a dead
+panel re-pays only unfinished branches:
+
+```sh
+h workflow run plan --local --instance-id my-run -p slug=… -p spec=@s.md
+# …Ctrl-C / crash mid-agent-step…
+h workflow run plan --local --resume my-run -p slug=… -p spec=@s.md   # plumbing steps replay
+h runs watch my-run          # any shell: replay the journal + follow live to ■ completed
+```
+
+*(Validated 2026-08-14 — `journal-wf-poc`: the `plan` template SIGINT-killed mid-agent-step
+with `worktree` + `setup` journaled; the resume replayed both and ran only the plan agent to a
+validated contract; `h runs watch` printed meta → worktree → setup → plan → ■ completed and
+exited 0.)*
+
 ## Scout an external repo — review it, select ONE opportunity, POC it
 
 ```sh

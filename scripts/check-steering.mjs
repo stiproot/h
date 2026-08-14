@@ -303,7 +303,9 @@ if (failed) {
 // ---------------------------------------------------------------------------
 
 // Command modules that are not a user-facing `h <name>` surface belong here, with a reason.
-const OMIT_COMMANDS = new Set(["__init__"]);
+// _local_journal: the journal preflight shared by `h chain run --local` and `h workflow run
+// --local` — a helper both commands import, never an `h _local_journal` surface of its own.
+const OMIT_COMMANDS = new Set(["__init__", "_local_journal"]);
 
 const commandViolations = [];
 for (const file of readdirSync(resolve(root, "cli/h/src/h_cli/commands"))) {

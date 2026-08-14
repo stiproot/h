@@ -83,11 +83,12 @@ cost of `—` means the agent reported none (e.g. codex on a ChatGPT plan), neve
 was free. A template that declares an `outputs:` schema ends its run with a machine-validated
 fenced JSON block — the last thing in `output.txt`, and the thing to parse, not the prose.
 
-Chain runs are additionally **journaled by default** (h auto-ensures its event fabric; a
-missing `nats-server` binary refuses loud, `--no-journal` opts a run out): if a chain dies or
-fails mid-way, `h chain run --local --resume GROUP <same expression>` continues it at the
-cursor — completed stages replay from the journal instead of being re-paid. The expression
-must match the journaled composition; a changed chain is a new run and is refused.
+Workflow and chain runs are additionally **journaled by default** (h auto-ensures its event
+fabric; a missing `nats-server` binary refuses loud, `--no-journal` opts a run out): if a run
+dies or fails mid-way, `--resume <group>` with the same composition continues it — completed
+steps/stages replay from the journal instead of being re-paid (a changed composition is a new
+run and is refused). `h runs watch GROUP` replays a run's journal and follows it live until
+completion, from any shell.
 
 ## Safety
 

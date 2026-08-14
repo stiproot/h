@@ -3,8 +3,14 @@ import type { WorkflowStep } from "workflow-core";
 import { describe, expect, it } from "vitest";
 
 import { runWorkflow } from "./execute.ts";
-import type { AgentRunReport, AgentRunRequest, WorkflowJob, WorktreeSpec } from "./models.ts";
-import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import type {
+  AgentRunReport,
+  AgentRunRequest,
+  JournalRecord,
+  WorkflowJob,
+  WorktreeSpec,
+} from "./models.ts";
+import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 const job = (steps: WorkflowStep[], over: Partial<WorkflowJob> = {}): WorkflowJob => ({
   kind: "workflow",
@@ -22,13 +28,22 @@ type Recorder = {
   worktrees: WorktreeSpec[];
   provisioned: { cwd: string; commands: ReadonlyArray<{ cmd: string }> }[];
   progress: string[];
+  journal: Map<string, JournalRecord[]>;
 };
+
+type Ports = AgentPort | WorkspacePort | ProgressPort | JournalPort;
 
 const stubs = (
   outputs: Record<string, string> = {},
   failing: string[] = [],
-): { layer: Layer.Layer<AgentPort | WorkspacePort | ProgressPort>; recorder: Recorder } => {
-  const recorder: Recorder = { agentRuns: [], worktrees: [], provisioned: [], progress: [] };
+): { layer: Layer.Layer<Ports>; recorder: Recorder } => {
+  const recorder: Recorder = {
+    agentRuns: [],
+    worktrees: [],
+    provisioned: [],
+    progress: [],
+    journal: new Map(),
+  };
   const layer = Layer.mergeAll(
     Layer.succeed(AgentPort, {
       run: (request: AgentRunRequest) =>
@@ -62,11 +77,22 @@ const stubs = (
           recorder.progress.push(line);
         }),
     }),
+    // In-memory journal shared across run() calls on one stub set (the resume tests' seam);
+    // seq-dedup mirrors the stream's msgID identity.
+    Layer.succeed(JournalPort, {
+      replay: (_url, group) => Effect.succeed(recorder.journal.get(group) ?? []),
+      append: (_url, group, record) =>
+        Effect.sync(() => {
+          const list = recorder.journal.get(group) ?? [];
+          if (!list.some((existing) => existing.seq === record.seq)) list.push(record);
+          recorder.journal.set(group, list);
+        }),
+    }),
   );
   return { layer, recorder };
 };
 
-const run = (j: WorkflowJob, layer: Layer.Layer<AgentPort | WorkspacePort | ProgressPort>) =>
+const run = (j: WorkflowJob, layer: Layer.Layer<Ports>) =>
   Effect.runPromise(runWorkflow(j).pipe(Effect.provide(layer)));
 
 describe("runWorkflow", () => {
@@ -305,5 +331,142 @@ describe("runWorkflow", () => {
     const envelope = await run(job([{ id: "s", activity: "run-nonsense", input: {} }]), layer);
     expect(envelope.ok).toBe(false);
     expect(envelope.error).toMatch(/unknown activity/);
+  });
+
+  // Step-granularity journal + resume. The fake journal lives on the RECORDER, so a "second
+  // life" is a fresh stub set with the first life's journal copied over — different agent
+  // behavior, same durable records, which is exactly the crash-and-retry shape.
+  describe("journal + resume", () => {
+    const journaled = { url: "nats://test:4222" };
+    const contract = { type: "object", required: ["a"] };
+    const okOut = 'prose\n\n```json\n{"a": 1}\n```\n';
+
+    const twoSteps = (over: Partial<WorkflowJob> = {}): WorkflowJob =>
+      job(
+        [
+          { id: "first", activity: "run-claude", input: { task: "t1", outputContract: contract } },
+          { id: "second", activity: "run-claude", input: { task: "t2", outputContract: contract } },
+        ],
+        { journal: journaled, ...over },
+      );
+
+    const adopt = (from: Recorder, to: Recorder) => {
+      for (const [group, records] of from.journal) to.journal.set(group, [...records]);
+    };
+
+    it("journals meta, each completed step, and a terminal", async () => {
+      const { layer, recorder } = stubs({ t1: okOut, t2: okOut });
+      const envelope = await run(twoSteps(), layer);
+
+      expect(envelope.ok).toBe(true);
+      const records = recorder.journal.get(envelope.group)!;
+      expect(records.map((r) => r.type)).toEqual(["meta", "step", "step", "terminal"]);
+      expect(records.map((r) => r.seq)).toEqual([0, 1, 2, 3]);
+    });
+
+    it("resumes after a failed step, replaying the paid one", async () => {
+      // First life: step one passes (journaled), step two fails its output contract.
+      const first = stubs({ t1: okOut, t2: "no fenced block" });
+      const life1 = await run(twoSteps(), first.layer);
+      expect(life1.ok).toBe(false);
+      expect(life1.failedStep).toBe("second");
+      expect(first.recorder.journal.get(life1.group)!.map((r) => r.type)).toEqual(["meta", "step"]);
+
+      // Second life: the agent behaves; the journal says step one is done.
+      const second = stubs({ t1: okOut, t2: okOut });
+      adopt(first.recorder, second.recorder);
+      const life2 = await run(twoSteps({ journal: { ...journaled, resume: true } }), second.layer);
+
+      expect(life2.ok).toBe(true);
+      expect(second.recorder.agentRuns.map((r) => r.task)).toEqual(["t2"]);
+      expect(second.recorder.progress).toContain("↟ first: from journal");
+      expect(second.recorder.journal.get(life2.group)!.map((r) => r.type)).toEqual([
+        "meta",
+        "step",
+        "step",
+        "terminal",
+      ]);
+    });
+
+    it("re-runs only the unfinished branches of a parallel group", async () => {
+      const group: WorkflowStep = {
+        id: "panel",
+        parallel: [
+          { id: "a", activity: "run-claude", input: { task: "ta", outputContract: contract } },
+          { id: "b", activity: "run-claude", input: { task: "tb", outputContract: contract } },
+        ],
+      };
+      const first = stubs({ ta: okOut, tb: "no fenced block" });
+      const life1 = await run(job([group], { journal: journaled }), first.layer);
+      expect(life1.ok).toBe(false);
+      // Branch a completed and journaled before the group failed.
+      const journaledIds = first.recorder.journal
+        .get(life1.group)!
+        .filter((r): r is Extract<JournalRecord, { type: "step" }> => r.type === "step")
+        .map((r) => r.stepId);
+      expect(journaledIds).toEqual(["a"]);
+
+      const second = stubs({ ta: okOut, tb: okOut });
+      adopt(first.recorder, second.recorder);
+      const life2 = await run(
+        job([group], { journal: { ...journaled, resume: true } }),
+        second.layer,
+      );
+
+      expect(life2.ok).toBe(true);
+      expect(second.recorder.agentRuns.map((r) => r.task)).toEqual(["tb"]);
+      // The group map is reconstructed from the replayed branch + the live one.
+      expect(Object.keys(life2.results.panel as Record<string, unknown>).sort()).toEqual([
+        "a",
+        "b",
+      ]);
+    });
+
+    it("refuses to resume a changed composition, and an unjournaled group", async () => {
+      const first = stubs({ t1: okOut, t2: "no fenced block" });
+      const life1 = await run(twoSteps(), first.layer);
+      expect(life1.ok).toBe(false);
+
+      const second = stubs({ t1: okOut, t2: okOut });
+      adopt(first.recorder, second.recorder);
+      const changed = twoSteps({ journal: { ...journaled, resume: true } });
+      const tampered = {
+        ...changed,
+        steps: [...changed.steps.slice(0, 1), { id: "other", activity: "run-claude", input: {} }],
+      } as WorkflowJob;
+      const refused = await run(tampered, second.layer);
+      expect(refused.ok).toBe(false);
+      expect(refused.error).toMatch(/differs from the journaled run/);
+
+      const fresh = stubs({});
+      const missing = await run(twoSteps({ journal: { ...journaled, resume: true } }), fresh.layer);
+      expect(missing.ok).toBe(false);
+      expect(missing.error).toMatch(/no journal for group/);
+      expect(fresh.recorder.agentRuns).toHaveLength(0);
+    });
+
+    it("resuming a completed run replays everything and runs nothing", async () => {
+      const first = stubs({ t1: okOut, t2: okOut });
+      const life1 = await run(twoSteps(), first.layer);
+      expect(life1.ok).toBe(true);
+
+      const second = stubs({ t1: okOut, t2: okOut });
+      adopt(first.recorder, second.recorder);
+      const life2 = await run(twoSteps({ journal: { ...journaled, resume: true } }), second.layer);
+
+      expect(life2.ok).toBe(true);
+      expect(life2.note).toMatch(/already completed/);
+      expect(second.recorder.agentRuns).toHaveLength(0);
+      // No second terminal: the journal is not extended by a no-op resume.
+      expect(
+        second.recorder.journal.get(life2.group)!.filter((r) => r.type === "terminal"),
+      ).toHaveLength(1);
+    });
+
+    it("writes nothing when the job carries no journal", async () => {
+      const { layer, recorder } = stubs({ t1: okOut, t2: okOut });
+      await run(twoSteps({ journal: undefined }), layer);
+      expect(recorder.journal.size).toBe(0);
+    });
   });
 });

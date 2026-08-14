@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 
+from h_cli.commands._local_journal import journal_preflight as _journal_preflight
 from h_cli.commands.template import compose_templates, refuse_overlay, template_name_for_key
 from h_cli.config import (
     AGENT_IDENTITY,
@@ -457,6 +458,25 @@ def run(
             "Deliberately a flag you type per fire, not a config you can forget you set.",
         ),
     ] = False,
+    resume: Annotated[
+        str | None,
+        typer.Option(
+            "--resume",
+            metavar="INSTANCE",
+            help="--local only: CONTINUE the journaled run named by this instance id instead of "
+            "starting a new one — completed steps replay from the journal (paid work is not "
+            "re-paid). The composition must match the journaled one; a changed workflow is a "
+            "new run and is refused.",
+        ),
+    ] = None,
+    no_journal: Annotated[
+        bool,
+        typer.Option(
+            "--no-journal",
+            help="--local only: skip the run journal (no fabric involved, nothing resumable). "
+            "For throwaway runs or a machine without nats-server provisioned.",
+        ),
+    ] = False,
 ) -> None:
     """Fire a saved workflow (or, with --inline, a template rendered on the fly) with fire-time
     params; prints the instance id.
@@ -528,6 +548,29 @@ def run(
         raise typer.Exit(1)
     if allow_external and not local:
         err_console.print("[red]--allow-external applies to --local only[/red]")
+        raise typer.Exit(1)
+    if not local:
+        # The journal is the LOCAL substrate's durability; the service substrate's is the Dapr
+        # engine's own. Refused by name so nobody reads --resume as a generic retry flag.
+        if resume:
+            err_console.print(
+                "[red]--resume applies to --local only[/red] (the service substrate resumes "
+                "via its engine)"
+            )
+            raise typer.Exit(1)
+        if no_journal:
+            err_console.print("[red]--no-journal applies to --local only[/red]")
+            raise typer.Exit(1)
+    if resume and no_journal:
+        err_console.print(
+            "[red]--resume needs the journal it would replay[/red] — drop --no-journal"
+        )
+        raise typer.Exit(1)
+    if resume and instance_id:
+        err_console.print(
+            "[red]--resume already names the instance[/red] — drop --instance-id "
+            "(the journaled group id IS the instance)"
+        )
         raise typer.Exit(1)
     if inline:
         refuse_overlay(key, "run")
@@ -648,7 +691,15 @@ def run(
                 raise typer.Exit(1) from err
             console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
         merged = {**(definition.get("params") or {}), **params}
-        _run_local(template_name, definition, merged, instance_id, with_setup)
+        _run_local(
+            template_name,
+            definition,
+            merged,
+            instance_id,
+            with_setup,
+            resume=resume,
+            no_journal=no_journal,
+        )
         return
     if roster:
         # Panel path: panelize the definition and fire the
@@ -772,28 +823,37 @@ def _run_local(
     params: dict[str, Any],
     instance_id: str | None,
     with_setup: bool,
+    resume: str | None = None,
+    no_journal: bool = False,
 ) -> None:
-    """Execute a rendered definition on the local substrate and report what its steps produced."""
-    group = instance_id or group_id(template)
+    """Execute a rendered definition on the local substrate and report what its steps produced.
+
+    A `--resume INSTANCE` run REUSES the journaled group id (the composition must hash-match
+    the journal; the executor refuses otherwise) instead of minting or taking a fresh one.
+    """
+    group = resume if resume else (instance_id or group_id(template))
+    job: dict[str, Any] = {
+        "kind": "workflow",
+        "steps": definition["steps"],
+        "params": params,
+        "group": group,
+        "runsDir": str(AGENT_RUNS_DIR),
+        "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
+        "worktreeRoot": str(LOCAL_WORKTREES_DIR),
+        # The checkout the operator invoked from is the default worktree source; a
+        # template's own clonePath param still wins per step (the multi-repo knob).
+        "repoPath": repo_root(Path.cwd()),
+        **({"withSetup": True} if with_setup else {}),
+    }
+    if not no_journal:
+        job["journal"] = _journal_preflight(resume)
     try:
-        envelope = local_runtime.run_job(
-            {
-                "kind": "workflow",
-                "steps": definition["steps"],
-                "params": params,
-                "group": group,
-                "runsDir": str(AGENT_RUNS_DIR),
-                "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
-                "worktreeRoot": str(LOCAL_WORKTREES_DIR),
-                # The checkout the operator invoked from is the default worktree source; a
-                # template's own clonePath param still wins per step (the multi-repo knob).
-                "repoPath": repo_root(Path.cwd()),
-                **({"withSetup": True} if with_setup else {}),
-            }
-        )
+        envelope = local_runtime.run_job(job)
     except LocalRunError as err:
         err_console.print(f"[red]local:[/red] {err}")
         raise typer.Exit(1) from err
+    if envelope.get("note"):
+        err_console.print(f"[yellow]{envelope['note']}[/yellow]")
 
     results: dict[str, Any] = envelope.get("results") or {}
     # The last step that produced agent output is what the run was FOR; earlier steps are
