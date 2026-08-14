@@ -30,8 +30,10 @@ h doctor          # one-screen report: required binaries (node, git, helm), agen
 ```
 
 Prerequisites for `--local` runs: an h checkout built once (`bun install && bun run build`),
-`helm` and `node` on PATH, and agent CLIs the operator has already authenticated —
-credentials come from the shell, with the repo's `dotenv` filling gaps.
+`helm` and `node` on PATH, agent CLIs the operator has already authenticated — credentials
+come from the shell, with the repo's `dotenv` filling gaps — and `nats-server` for the run
+journal (journaled chain runs refuse loud without the binary; h starts and manages the
+process itself, and `--no-journal` opts a run out).
 
 ## Templates
 

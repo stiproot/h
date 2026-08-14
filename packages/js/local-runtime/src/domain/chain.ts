@@ -1,10 +1,18 @@
+import { createHash } from "node:crypto";
+
 import { Cause, Clock, Effect } from "effect";
 import { contractFor, lastStage, loopIsClean, membersInStage } from "workflow-core";
 import type { ChainData } from "workflow-core";
 
 import { runWorkflow } from "./execute.ts";
-import type { ChainEnvelope, ChainJob, ChainMemberRun, LocalChainMember } from "./models.ts";
-import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import type {
+  ChainEnvelope,
+  ChainJob,
+  ChainMemberRun,
+  JournalRecord,
+  LocalChainMember,
+} from "./models.ts";
+import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /**
  * Run a chain in-process: ordered members, grouped into stages, threading state between them.
@@ -26,6 +34,13 @@ import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
  * is a different animal — a watch policy a separate engine services — and the CLI refuses it here
  * by name.)
  *
+ * THE JOURNAL is what survives this process: with `job.journal` set, every completed stage
+ * publishes its post-capture chain data to the fabric's `h-journal` stream (the append's ACK is
+ * the completion barrier — a stage whose record cannot land durably fails the chain rather than
+ * reporting resumable-from), and `resume` replays those records to continue a dead run at its
+ * cursor instead of re-paying finished stages. Only `completed` writes a terminal record: a
+ * failed or budget-exhausted run is precisely the one worth resuming.
+ *
  * Two consequences worth naming rather than hiding:
  *  - **Atomic failure comes free.** A stage runs under one `Effect.all`, so a member failing
  *    interrupts its still-running siblings — the durable engine's D6 teardown, without the
@@ -36,22 +51,93 @@ import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
  */
 export const runChain = (
   job: ChainJob,
-): Effect.Effect<ChainEnvelope, never, AgentPort | WorkspacePort | ProgressPort> =>
+): Effect.Effect<ChainEnvelope, never, AgentPort | WorkspacePort | ProgressPort | JournalPort> =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
+    const journal = yield* JournalPort;
     const data: ChainData = { ...job.data };
     const runs: ChainMemberRun[] = [];
     const last = lastStage(job.members);
     const loop = job.strategy === "loop-until-clean" ? job.loop : undefined;
     let iterations = 0;
+    let seq = 1;
+    let alreadyTerminal = false;
+
+    const jc = job.journal;
+    const hash = jc ? definitionHash(job) : "";
 
     // An ABSOLUTE deadline, stamped once, so a loop-until-clean chain is bounded as a whole rather
-    // than per iteration. Clock rather than Date.now() so a test can drive it.
+    // than per iteration. Clock rather than Date.now() so a test can drive it. A RESUMED run
+    // stamps its own — the budget bounds this process's work, not the group's lifetime spend.
     const startedAt = yield* Clock.currentTimeMillis;
     const deadline = job.budgetMs === undefined ? undefined : startedAt + job.budgetMs;
 
     const outcome = yield* Effect.gen(function* () {
       let cursor = 0;
+
+      if (jc?.resume) {
+        const records = yield* journal.replay(jc.url, job.group);
+        const meta = records.find((record) => record.type === "meta");
+        if (!meta) {
+          return yield* Effect.fail(
+            new Error(
+              `no journal for group '${job.group}' — nothing to resume (was it run with ` +
+                "--no-journal, or has the record aged out of the stream?)",
+            ),
+          );
+        }
+        if (meta.definitionHash !== hash) {
+          return yield* Effect.fail(
+            new Error(
+              "the composition differs from the journaled run — a changed chain is a NEW " +
+                "run, so re-fire without --resume",
+            ),
+          );
+        }
+        const stages = records.filter(
+          (record): record is Extract<JournalRecord, { type: "stage" }> => record.type === "stage",
+        );
+        seq = (records.at(-1)?.seq ?? 0) + 1;
+        for (const stage of stages) runs.push(...stage.runs);
+        const lastRecord = stages.at(-1);
+        if (lastRecord) Object.assign(data, lastRecord.data);
+        if (records.some((record) => record.type === "terminal")) {
+          alreadyTerminal = true;
+          return {
+            status: "completed" as const,
+            note: "journal shows this run already completed — nothing to resume",
+          };
+        }
+        if (lastRecord) {
+          if (loop && lastRecord.cursor === last) {
+            if (lastRecord.iteration + 1 >= loop.maxIterations) {
+              return {
+                status: "exhausted" as const,
+                note: `journal shows the iteration budget (${loop.maxIterations}) already spent`,
+              };
+            }
+            iterations = lastRecord.iteration + 1;
+            cursor = loop.startCursor;
+          } else {
+            iterations = lastRecord.iteration;
+            cursor = lastRecord.cursor + 1;
+          }
+        }
+        yield* progress.emit(
+          `↻ resuming '${job.group}': ${stages.length} stage(s) journaled — continuing at ` +
+            `stage ${cursor}${loop ? `, iteration ${iterations}` : ""}`,
+        );
+      } else if (jc) {
+        yield* journal.append(jc.url, job.group, {
+          seq: 0,
+          type: "meta",
+          kind: "chain",
+          definitionHash: hash,
+          group: job.group,
+          ts: yield* Clock.currentTimeMillis,
+        });
+      }
+
       while (cursor <= last) {
         // Checked BEFORE firing a stage, never mid-stage: the driver can decline to start more
         // work, but it cannot terminate an agent already running (that is the per-step timeout's
@@ -75,14 +161,13 @@ export const runChain = (
           { concurrency: "unbounded" },
         );
 
-        indices.forEach((index, slot) => {
-          runs.push({
-            member: label(job.members[index]!),
-            stage: cursor,
-            group: outputs[slot]!.group,
-            iteration: iterations,
-          });
-        });
+        const stageRuns: ChainMemberRun[] = indices.map((index, slot) => ({
+          member: label(job.members[index]!),
+          stage: cursor,
+          group: outputs[slot]!.group,
+          iteration: iterations,
+        }));
+        runs.push(...stageRuns);
 
         // Capture every member of the stage before advancing, so a downstream member reads a
         // complete stage. A declared capture namespaces under the member's id (concurrent members
@@ -90,6 +175,22 @@ export const runChain = (
         for (const [slot, index] of indices.entries()) {
           const member = job.members[index]!;
           contractFor(member).capture(outputs[slot]!.output, data);
+        }
+
+        // The stage is durable only once this ACKs — written after capture so the record carries
+        // the complete post-capture data, and before the loop decisions so every continuation
+        // path resumes from it. Death between capture and ack redoes exactly this stage.
+        if (jc) {
+          yield* journal.append(jc.url, job.group, {
+            seq,
+            type: "stage",
+            cursor,
+            iteration: iterations,
+            data: JSON.parse(JSON.stringify(data)) as Record<string, unknown>,
+            runs: stageRuns,
+            ts: yield* Clock.currentTimeMillis,
+          });
+          seq += 1;
         }
 
         // loop-until-clean: the stage at `startCursor` is the review. Clean ⇒ the chain is done.
@@ -128,6 +229,26 @@ export const runChain = (
       }),
     );
 
+    // Terminal record ONLY on completed (and only once): failed and exhausted runs are exactly
+    // the ones --resume exists for, so their journals stay open.
+    if (jc && outcome.status === "completed" && !alreadyTerminal) {
+      yield* journal
+        .append(jc.url, job.group, {
+          seq,
+          type: "terminal",
+          status: "completed",
+          ...(outcome.note ? { note: outcome.note } : {}),
+          ts: yield* Clock.currentTimeMillis,
+        })
+        .pipe(
+          // The chain IS complete; a lost terminal record only costs a future resume its no-op
+          // answer. Report the miss, keep the completion.
+          Effect.catchAll((error) =>
+            progress.emit(`⚠ terminal journal record failed: ${error.message}`),
+          ),
+        );
+    }
+
     return {
       ok: outcome.status === "completed",
       chain: job.group,
@@ -139,6 +260,18 @@ export const runChain = (
   });
 
 const label = (member: LocalChainMember): string => member.id ?? member.kind;
+
+/**
+ * What identifies a composition for resume: the members (steps, params, threading), the strategy,
+ * and the loop. Deliberately NOT the budget or timeouts — a resumed run may re-budget freely;
+ * it may not quietly run different work under a journaled group's name.
+ */
+const definitionHash = (job: ChainJob): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({ members: job.members, strategy: job.strategy, loop: job.loop ?? null }),
+    )
+    .digest("hex");
 
 /**
  * One member: build its params from the chain data through its contract, run its embedded

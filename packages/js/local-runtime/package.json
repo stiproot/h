@@ -1,7 +1,7 @@
 {
   "name": "local-runtime",
   "version": "0.1.0",
-  "description": "Local execution substrate for h \u2014 runs agent CLIs as local child processes, with no Dapr, services or registries",
+  "description": "Local execution substrate for h — runs agent CLIs as local child processes, with no Dapr, services or registries",
   "type": "module",
   "exports": {
     ".": {
@@ -27,6 +27,7 @@
     "agent-cli": "workspace:*",
     "effect": "^3.21.4",
     "git-core": "workspace:*",
+    "nats": "^2.29.2",
     "run-ledger": "workspace:*",
     "workflow-core": "workspace:*"
   },

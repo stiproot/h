@@ -43,6 +43,13 @@ def captured_job(monkeypatch) -> list[dict[str, Any]]:
         }
 
     monkeypatch.setattr("h_cli.commands.chain.local_runtime.run_job", fake_run_job)
+    # The journal preflight reaches for the fabric (a real socket) — stubbed here exactly like
+    # the runner, so these tests pin the JOB the driver hands over, not the fabric's liveness.
+    # The stub mirrors the real contract: {url} + resume flag when continuing.
+    monkeypatch.setattr(
+        "h_cli.commands.chain._journal_preflight",
+        lambda resume: {"url": "nats://stub:4222", **({"resume": True} if resume else {})},
+    )
     return jobs
 
 
@@ -214,6 +221,9 @@ def test_an_exhausted_loop_exits_nonzero_and_says_why(monkeypatch) -> None:
             "runs": [],
         },
     )
+    monkeypatch.setattr(
+        "h_cli.commands.chain._journal_preflight", lambda resume: {"url": "nats://stub:4222"}
+    )
     result = runner.invoke(
         app, ["chain", "run", "--slug", "demo", "--local", "-p", "task=q", "-w", "answer"]
     )
@@ -298,3 +308,96 @@ def test_local_still_refuses_a_per_member_budget(captured_job) -> None:
     out = " ".join(_all_output(result).split())
     assert "--budget" in out and "watcher engine" in out
     assert not captured_job
+
+
+@needs_helm
+def test_local_journals_by_default_and_no_journal_opts_out(captured_job) -> None:
+    """The journal is the local substrate's durability: on unless deliberately declined."""
+    result = runner.invoke(
+        app, ["chain", "run", "--slug", "demo", "--local", "-p", "task=q", "-w", "answer"]
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_job[0]["journal"] == {"url": "nats://stub:4222"}
+
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "demo",
+            "--local",
+            "--no-journal",
+            "-p",
+            "task=q",
+            "-w",
+            "answer",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert "journal" not in captured_job[1]
+
+
+@needs_helm
+def test_resume_reuses_the_journaled_group_instead_of_minting_one(captured_job) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "chain",
+            "run",
+            "--slug",
+            "demo",
+            "--local",
+            "--resume",
+            "chain-demo-260814-000000",
+            "-p",
+            "task=q",
+            "-w",
+            "answer",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    job = captured_job[0]
+    assert job["group"] == "chain-demo-260814-000000"
+    assert job["journal"] == {"url": "nats://stub:4222", "resume": True}
+
+
+def test_resume_and_no_journal_are_local_only_and_exclusive() -> None:
+    """Refusals by name: --resume/--no-journal are the local journal's surface, nothing else's."""
+    result = runner.invoke(app, ["chain", "run", "--slug", "s", "--resume", "g", "-w", "answer"])
+    assert result.exit_code == 1
+    assert "--resume applies to --local only" in _all_output(result)
+
+    result = runner.invoke(app, ["chain", "run", "--slug", "s", "--no-journal", "-w", "answer"])
+    assert result.exit_code == 1
+    assert "--no-journal applies to --local only" in _all_output(result)
+
+    result = runner.invoke(
+        app,
+        ["chain", "run", "--slug", "s", "--local", "--resume", "g", "--no-journal", "-w", "answer"],
+    )
+    assert result.exit_code == 1
+    assert "drop --no-journal" in _all_output(result)
+
+
+@needs_helm
+def test_journal_preflight_refusal_names_the_outs(monkeypatch) -> None:
+    """A missing nats-server refuses loud BEFORE any agent fires, and names --no-journal."""
+    from h_cli.infrastructure import events_fabric
+
+    def boom() -> dict:
+        raise events_fabric.FabricError("nats-server is not installed (…)")
+
+    monkeypatch.setattr("h_cli.infrastructure.events_fabric.ensure_journal_ready", boom)
+    ran: list = []
+    monkeypatch.setattr(
+        "h_cli.commands.chain.local_runtime.run_job", lambda job, bin_path=None: ran.append(job)
+    )
+    result = runner.invoke(
+        app, ["chain", "run", "--slug", "demo", "--local", "-p", "task=q", "-w", "answer"]
+    )
+    assert result.exit_code == 1
+    out = _all_output(result)
+    assert "journal preflight failed" in out
+    assert "--no-journal" in out
+    assert ran == [], "no agent work may start after a failed preflight"

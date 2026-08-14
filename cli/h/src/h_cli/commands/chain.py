@@ -614,6 +614,25 @@ def run(
             "own HOME on this substrate, so they are skipped by default).",
         ),
     ] = False,
+    resume: Annotated[
+        str | None,
+        typer.Option(
+            "--resume",
+            metavar="GROUP",
+            help="--local only: CONTINUE the journaled run named by this chain group id instead "
+            "of starting a new one — completed stages replay from the journal (paid work is not "
+            "re-paid), execution re-enters at the cursor. The expression must match the "
+            "journaled composition; a changed chain is a new run and is refused.",
+        ),
+    ] = None,
+    no_journal: Annotated[
+        bool,
+        typer.Option(
+            "--no-journal",
+            help="--local only: skip the run journal (no fabric involved, nothing resumable). "
+            "For throwaway runs or a machine without nats-server provisioned.",
+        ),
+    ] = False,
     strategy: Annotated[
         str,
         typer.Option(
@@ -724,6 +743,15 @@ def run(
             )
     elif with_setup:
         _fail("--with-setup applies to --local only")
+    if not local:
+        # The journal is the LOCAL substrate's durability; the service substrate's is the Dapr
+        # engine's own. Refused by name so nobody reads --resume as a generic retry flag.
+        if resume:
+            _fail("--resume applies to --local only (the service substrate resumes via its engine)")
+        if no_journal:
+            _fail("--no-journal applies to --local only (only local runs journal)")
+    if resume and no_journal:
+        _fail("--resume needs the journal it would replay — drop --no-journal")
 
     tokens = list(ctx.args)
     if not any(token in ("-w", "-t") for token in tokens):
@@ -840,7 +868,7 @@ def run(
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
     if local:
-        _run_local_chain(body, slug, with_setup)
+        _run_local_chain(body, slug, with_setup, resume=resume, no_journal=no_journal)
         return
 
     result = _guarded(lambda: workflow_svc.chain_run(body))
@@ -861,13 +889,47 @@ def run(
     console.print_json(data=result)
 
 
-def _run_local_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
+def _journal_preflight(resume: str | None) -> dict[str, Any]:
+    """Auto-ensure the fabric for a journaled run, framing a refusal with its outs.
+
+    The binary stays operator-provisioned (refused loud by name — h never installs it); the
+    PROCESS is h-managed from here on: the same idempotent spawn `h events up` performs.
+    """
+    from h_cli.config import EVENTS_URL
+    from h_cli.infrastructure import events_fabric
+
+    try:
+        report = events_fabric.ensure_journal_ready()
+    except events_fabric.FabricError as err:
+        err_console.print(f"[red]journal preflight failed:[/red] {escape(str(err))}")
+        outs = (
+            "The journal is what makes --resume possible; provision nats-server"
+            + (" and retry" if resume else ", or run with --no-journal to skip it for this run")
+            + "."
+        )
+        err_console.print(outs)
+        raise typer.Exit(1) from err
+    state = "started" if report.get("started") else "already running"
+    err_console.print(f"journal: fabric at {report.get('url', EVENTS_URL)} ({state})")
+    return {"url": report.get("url", EVENTS_URL), **({"resume": True} if resume else {})}
+
+
+def _run_local_chain(
+    body: dict[str, Any],
+    slug: str,
+    with_setup: bool,
+    resume: str | None = None,
+    no_journal: bool = False,
+) -> None:
     """Execute a composed chain on the local substrate and report what it threaded.
 
     The chain BODY is the same one the service substrate would have registered — same members,
     same stages, same captures/inputs/until, same loop. Only `data` is flattened here (the engine
     merges `defaultData` under `data` at activation; there is no activation on this substrate) and
     the members are already embedded, since `--local` forces compose-on-fire.
+
+    A `--resume GROUP` run REUSES the journaled group id (the composition must hash-match the
+    journal; the executor refuses otherwise) instead of minting a fresh one.
     """
     members = [
         {k: v for k, v in member.items() if k in _LOCAL_MEMBER_FIELDS} for member in body["members"]
@@ -877,7 +939,7 @@ def _run_local_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
         "members": members,
         "data": {**body.get("defaultData", {}), **body.get("data", {})},
         "strategy": body["strategy"],
-        "group": group_id(f"chain-{slug}"),
+        "group": resume if resume else group_id(f"chain-{slug}"),
         "runsDir": str(AGENT_RUNS_DIR),
         "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
         # The whole-chain wall clock rides to the local driver exactly as it rides to the chain
@@ -893,6 +955,8 @@ def _run_local_chain(body: dict[str, Any], slug: str, with_setup: bool) -> None:
         job["loop"] = body["loop"]
     if with_setup:
         job["withSetup"] = True
+    if not no_journal:
+        job["journal"] = _journal_preflight(resume)
 
     try:
         envelope = local_runtime.run_job(job)

@@ -175,6 +175,50 @@ export const LocalChainMember = Schema.Struct({
 });
 export type LocalChainMember = Schema.Schema.Type<typeof LocalChainMember>;
 
+/**
+ * Journal wiring for a run — where the fabric answers, and whether this fire CONTINUES a
+ * journaled group instead of starting one. The driver's preflight owns the server lifecycle and
+ * the stream; the executor owns every record, the way it owns the run ledger.
+ */
+export const JournalConfig = Schema.Struct({
+  /** The fabric URL the executor publishes to (the driver has already ensured it answers). */
+  url: Schema.String,
+  /** Replay `h.journal.<group>` and continue after the last journaled stage. */
+  resume: Schema.optional(Schema.Boolean),
+});
+export type JournalConfig = Schema.Schema.Type<typeof JournalConfig>;
+
+/**
+ * One journal record — the resume state of a run, published per completed unit with a
+ * `<group>:<seq>` dedup identity so a crashed writer's retry can never fork a journal.
+ *
+ * `stage` snapshots the FULL post-capture chain data (structured fields, never transcripts), so
+ * stage-level resume reads one record. `terminal` exists ONLY for `completed`: a failed or
+ * budget-exhausted run stays resumable — resuming a completed one must be a loud no-op instead
+ * of a silent re-run.
+ */
+export type JournalRecord =
+  | {
+      seq: number;
+      type: "meta";
+      kind: "chain";
+      /** Hash of {members, strategy, loop}: resuming a changed composition refuses loud. */
+      definitionHash: string;
+      group: string;
+      ts: number;
+    }
+  | {
+      seq: number;
+      type: "stage";
+      /** The stage that COMPLETED (not the next one). */
+      cursor: number;
+      iteration: number;
+      data: Record<string, unknown>;
+      runs: ChainMemberRun[];
+      ts: number;
+    }
+  | { seq: number; type: "terminal"; status: "completed"; note?: string; ts: number };
+
 /** Sequence several workflow definitions in-process, threading state between them. */
 export const ChainJob = Schema.Struct({
   kind: Schema.Literal("chain"),
@@ -198,6 +242,8 @@ export const ChainJob = Schema.Struct({
   worktreeRoot: Schema.String,
   repoPath: Schema.String,
   withSetup: Schema.optional(Schema.Boolean),
+  /** Present ⇒ journal every stage to the fabric (absent under `--no-journal`). */
+  journal: Schema.optional(JournalConfig),
 });
 export type ChainJob = Schema.Schema.Type<typeof ChainJob>;
 

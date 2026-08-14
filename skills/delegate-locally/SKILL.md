@@ -73,6 +73,11 @@ credentials `h delegate` would need (e.g. `CODEX_AUTH_MODE=chatgpt` for codex).
   there is no watcher on this substrate, so **that table and `h runs` are the only cost
   accounting**. A cost of `—` means the agent reported none (e.g. codex on a ChatGPT plan), never
   that the run was free.
+- A `--local` CHAIN additionally journals each completed stage (the fabric's `h-journal`
+  stream; auto-ensured, `--no-journal` opts out), so a run that dies or fails mid-chain resumes
+  with `h chain run --local --resume GROUP <same expression>` — completed stages replay from
+  the journal instead of being re-paid. A changed expression is refused (it is a NEW run);
+  resuming a completed group is a loud no-op.
 - `--json` on `h delegate` gives the raw envelope: one report per roster slot, each with
   `status`, `output`, `costUsd`, `runId`.
 - One agent failing does not lose the others' answers; the job just reports `ok: false`.

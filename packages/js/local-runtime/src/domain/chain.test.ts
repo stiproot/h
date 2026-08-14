@@ -2,8 +2,14 @@ import { Effect, Layer, TestClock, TestContext } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { runChain } from "./chain.ts";
-import type { AgentRunReport, AgentRunRequest, ChainJob, LocalChainMember } from "./models.ts";
-import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import type {
+  AgentRunReport,
+  AgentRunRequest,
+  ChainJob,
+  JournalRecord,
+  LocalChainMember,
+} from "./models.ts";
+import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /**
  * A member whose single step echoes a canned structured block, keyed by the member's marker.
@@ -36,17 +42,23 @@ const job = (members: LocalChainMember[], over: Partial<ChainJob> = {}): ChainJo
   ...over,
 });
 
-type Recorder = { runs: AgentRunRequest[]; progress: string[] };
+type Recorder = {
+  runs: AgentRunRequest[];
+  progress: string[];
+  journal: Map<string, JournalRecord[]>;
+};
 
 /**
  * Each agent run answers with a fenced json block chosen by the task marker, so a member's
  * captured output is controllable from the test. `sequence` lets one marker answer differently
  * on successive calls (the loop cases).
  */
+type Ports = AgentPort | WorkspacePort | ProgressPort | JournalPort;
+
 const stubs = (
   answers: Record<string, string | string[]>,
-): { layer: Layer.Layer<AgentPort | WorkspacePort | ProgressPort>; recorder: Recorder } => {
-  const recorder: Recorder = { runs: [], progress: [] };
+): { layer: Layer.Layer<Ports>; recorder: Recorder } => {
+  const recorder: Recorder = { runs: [], progress: [], journal: new Map() };
   const seen = new Map<string, number>();
   const layer = Layer.mergeAll(
     Layer.succeed(AgentPort, {
@@ -73,6 +85,17 @@ const stubs = (
       prepare: (spec) => Effect.succeed(spec.worktreePath),
       provision: () => Effect.void,
     }),
+    // An in-memory journal shared across run() calls on ONE stub set, so a resume test can
+    // die and continue against the same records. Seq-dedup mirrors the stream's msgID identity.
+    Layer.succeed(JournalPort, {
+      replay: (_url, group) => Effect.succeed(recorder.journal.get(group) ?? []),
+      append: (_url, group, record) =>
+        Effect.sync(() => {
+          const list = recorder.journal.get(group) ?? [];
+          if (!list.some((existing) => existing.seq === record.seq)) list.push(record);
+          recorder.journal.set(group, list);
+        }),
+    }),
     Layer.succeed(ProgressPort, {
       emit: (line: string) =>
         Effect.sync(() => {
@@ -83,7 +106,7 @@ const stubs = (
   return { layer, recorder };
 };
 
-const run = (j: ChainJob, layer: Layer.Layer<AgentPort | WorkspacePort | ProgressPort>) =>
+const run = (j: ChainJob, layer: Layer.Layer<Ports>) =>
   Effect.runPromise(runChain(j).pipe(Effect.provide(layer)));
 
 describe("runChain", () => {
@@ -331,6 +354,10 @@ describe("runChain", () => {
           provision: () => Effect.void,
         }),
         Layer.succeed(ProgressPort, { emit: () => Effect.void }),
+        Layer.succeed(JournalPort, {
+          replay: () => Effect.succeed([]),
+          append: () => Effect.void,
+        }),
       );
 
       const envelope = await Effect.runPromise(
@@ -349,6 +376,116 @@ describe("runChain", () => {
       expect(envelope.status).toBe("exhausted");
       expect(envelope.note).toMatch(/stopped before stage 2 of 2/);
       expect(ran).toEqual(["implement", "review"]);
+    });
+  });
+
+  // The journal: what survives the driver. These run against the in-memory fake — the NATS
+  // adapter is wire plumbing; the RECORDS and the resume semantics are the domain under test.
+  describe("journal + resume", () => {
+    const journaled = { url: "nats://test:4222" };
+
+    const twoStage = (over: Partial<ChainJob> = {}) =>
+      job(
+        [
+          member({
+            kind: "answer",
+            id: "one",
+            params: { marker: "one" },
+            captures: { answer: "answer" },
+          }),
+          member({
+            kind: "answer",
+            id: "two",
+            params: { marker: "two" },
+            captures: { answer: "answer" },
+          }),
+        ],
+        { data: { task: "q" }, journal: journaled, ...over },
+      );
+
+    it("writes meta, one record per stage, and a terminal on completion", async () => {
+      const { layer, recorder } = stubs({ one: '{"answer": "a1"}', two: '{"answer": "a2"}' });
+      const envelope = await run(twoStage(), layer);
+
+      expect(envelope.ok).toBe(true);
+      const records = recorder.journal.get(envelope.chain)!;
+      expect(records.map((r) => r.type)).toEqual(["meta", "stage", "stage", "terminal"]);
+      const stage0 = records[1]! as Extract<JournalRecord, { type: "stage" }>;
+      expect(stage0.cursor).toBe(0);
+      // The record snapshots POST-capture data: resume reads one record, not a replay of work.
+      expect(stage0.data.one).toEqual({ answer: "a1" });
+      expect(records.map((r) => r.seq)).toEqual([0, 1, 2, 3]);
+    });
+
+    it("writes nothing when the job carries no journal", async () => {
+      const { layer, recorder } = stubs({ one: '{"answer": "a1"}', two: '{"answer": "a2"}' });
+      await run(twoStage({ journal: undefined }), layer);
+      expect(recorder.journal.size).toBe(0);
+    });
+
+    it("resumes a failed run at its cursor without re-paying finished stages", async () => {
+      // First run: stage 0 succeeds (journaled), stage 1 fails — the scout-chain shape.
+      const { layer, recorder } = stubs({
+        one: '{"answer": "a1"}',
+        two: ["FAIL", '{"answer": "a2"}'],
+      });
+      const first = await run(twoStage(), layer);
+      expect(first.status).toBe("failed");
+      expect(recorder.journal.get(first.chain)!.map((r) => r.type)).toEqual(["meta", "stage"]);
+
+      const resumed = await run(twoStage({ journal: { ...journaled, resume: true } }), layer);
+      expect(resumed.ok).toBe(true);
+      // Member one ran ONCE across both lives; its capture came back off the journal.
+      expect(recorder.runs.map((r) => r.task)).toEqual(["one", "two", "two"]);
+      expect(resumed.data.one).toEqual({ answer: "a1" });
+      expect(resumed.data.two).toEqual({ answer: "a2" });
+      // The resumed life journals its stage and the terminal under continued seqs.
+      expect(recorder.journal.get(first.chain)!.map((r) => r.type)).toEqual([
+        "meta",
+        "stage",
+        "stage",
+        "terminal",
+      ]);
+    });
+
+    it("refuses to resume under a changed composition", async () => {
+      const { layer } = stubs({ one: '{"answer": "a1"}', two: ["FAIL", '{"answer": "a2"}'] });
+      const first = await run(twoStage(), layer);
+      expect(first.status).toBe("failed");
+
+      const changed = twoStage({ journal: { ...journaled, resume: true } });
+      const tampered = {
+        ...changed,
+        members: changed.members.map((m, i) =>
+          i === 1 ? { ...m, params: { ...m.params, marker: "different" } } : m,
+        ),
+      };
+      const resumed = await run(tampered as ChainJob, layer);
+      expect(resumed.status).toBe("failed");
+      expect(resumed.note).toMatch(/differs from the journaled run/);
+    });
+
+    it("refuses to resume a group that was never journaled", async () => {
+      const { layer, recorder } = stubs({ one: '{"answer": "a1"}' });
+      const envelope = await run(twoStage({ journal: { ...journaled, resume: true } }), layer);
+      expect(envelope.status).toBe("failed");
+      expect(envelope.note).toMatch(/no journal for group/);
+      expect(recorder.runs).toHaveLength(0);
+    });
+
+    it("resuming a completed run is a loud no-op", async () => {
+      const { layer, recorder } = stubs({ one: '{"answer": "a1"}', two: '{"answer": "a2"}' });
+      const first = await run(twoStage(), layer);
+      expect(first.ok).toBe(true);
+
+      const resumed = await run(twoStage({ journal: { ...journaled, resume: true } }), layer);
+      expect(resumed.ok).toBe(true);
+      expect(resumed.note).toMatch(/already completed/);
+      // Nothing re-ran, and no second terminal was written.
+      expect(recorder.runs.map((r) => r.task)).toEqual(["one", "two"]);
+      expect(recorder.journal.get(first.chain)!.filter((r) => r.type === "terminal")).toHaveLength(
+        1,
+      );
     });
   });
 });

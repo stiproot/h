@@ -19,6 +19,7 @@ import { runWorkflow } from "./domain/execute.ts";
 import { LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
+import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
 import { StderrProgressLive } from "./infrastructure/stderr-progress.ts";
 
 // NodeContext supplies FileSystem + CommandExecutor (spawning the agent CLIs, git and setup
@@ -31,6 +32,9 @@ const AppLive = Layer.mergeAll(
   AgentCliAgentLive.pipe(Layer.provide(Layer.merge(ledger, platform))),
   GitWorkspaceLive.pipe(Layer.provide(Layer.merge(git, NodeContext.layer))),
   StderrProgressLive,
+  // Connects nothing until a journaled chain actually appends/replays — an unjournaled run
+  // never touches the fabric.
+  NatsJournalLive,
 );
 
 const readStdin = (): Promise<string> =>

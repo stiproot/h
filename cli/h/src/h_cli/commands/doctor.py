@@ -26,17 +26,18 @@ from h_cli.config import (
 console = Console()
 
 # The local substrate's binaries, split by when they matter. Required: a --local run refuses
-# without them. Agent CLIs: at least one is needed, whichever the roster names. Optional:
-# specific surfaces light up when present (h events → nats-server; the nats CLI is inspection
-# tooling only).
+# without them. Agent CLIs: at least one is needed, whichever the roster names. nats-server sits
+# between the tiers: journaled `--local` chain runs (the default) refuse loud without it, and
+# `--no-journal` is the per-run out — so it is listed with the required set but named for what
+# actually needs it. The binary stays operator-provisioned; h only manages the process.
 _REQUIRED = (
     ("node", "spawns the h-local runner"),
     ("git", "clones and worktrees"),
     ("helm", "renders workflow charts"),
+    ("nats-server", "the run journal (--local chains; --no-journal opts out) + h events"),
 )
 _AGENT_CLIS = ("claude", "codex", "openhands", "pi")
 _OPTIONAL = (
-    ("nats-server", "the event fabric (h events up/serve)"),
     ("nats", "fabric inspection (optional tooling)"),
     ("bun", "build-time only (bun run build in the h checkout)"),
 )

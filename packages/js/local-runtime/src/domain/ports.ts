@@ -1,6 +1,6 @@
 import { Context, Data, type Effect } from "effect";
 
-import type { AgentRunReport, AgentRunRequest, WorktreeSpec } from "./models.ts";
+import type { AgentRunReport, AgentRunRequest, JournalRecord, WorktreeSpec } from "./models.ts";
 
 /**
  * Running one agent CLI to completion.
@@ -42,6 +42,41 @@ export class WorkspacePort extends Context.Tag("local-runtime/WorkspacePort")<
       cwd: string,
       commands: ReadonlyArray<SetupCommand>,
     ) => Effect.Effect<void, WorkspaceError>;
+  }
+>() {}
+
+/** A journal read/write failed — fatal to a journaled run: the publish ack IS the completion
+ * barrier, so a stage whose record cannot land durably must not report as resumable-from. */
+export class JournalError extends Data.TaggedError("JournalError")<{
+  readonly group: string;
+  readonly cause: unknown;
+}> {
+  override get message(): string {
+    const detail = this.cause instanceof Error ? this.cause.message : String(this.cause);
+    return `journal for '${this.group}' failed: ${detail}`;
+  }
+}
+
+/**
+ * The run journal — resume state on the fabric's `h-journal` stream, one subject per run group.
+ *
+ * The executor owns the records the way it owns the run ledger (run state written at the moment
+ * it exists); the driver's preflight owns the server lifecycle and the stream's existence.
+ */
+export class JournalPort extends Context.Tag("local-runtime/JournalPort")<
+  JournalPort,
+  {
+    /** Every record for `group`, in publish order — empty when nothing was ever journaled. */
+    readonly replay: (
+      url: string,
+      group: string,
+    ) => Effect.Effect<ReadonlyArray<JournalRecord>, JournalError>;
+    /** Publish one record with its `<group>:<seq>` dedup identity; resolves on the ACK. */
+    readonly append: (
+      url: string,
+      group: string,
+      record: JournalRecord,
+    ) => Effect.Effect<void, JournalError>;
   }
 >() {}
 

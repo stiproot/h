@@ -30,6 +30,13 @@ TASK_STREAM = "h-tasks"
 TASK_SUBJECTS = "h.task.>"
 RESULT_STREAM = "h-results"
 RESULT_SUBJECTS = "h.result.>"
+# The third stream is the RUN JOURNAL — resume state for journaled `--local` runs, one subject
+# per run group, LIMITS-retained (resume and watch both replay) with an age cap: a journal's
+# claim to resume expires; the run ledger stays the permanent record. Records are published by
+# the JS executor (which owns run state the way it owns the ledger); this side only ensures the
+# stream and names the constants.
+JOURNAL_STREAM = "h-journal"
+JOURNAL_SUBJECTS = "h.journal.>"
 
 # A runaway loop is spend: budgets are refused above this outright, whatever the seed says.
 MAX_STEPS_CEILING = 25
@@ -44,6 +51,10 @@ def task_subject(queue: str) -> str:
 
 def result_subject(group: str) -> str:
     return f"h.result.{group}"
+
+
+def journal_subject(group: str) -> str:
+    return f"h.journal.{group}"
 
 
 def msg_id(descriptor: dict[str, Any]) -> str:

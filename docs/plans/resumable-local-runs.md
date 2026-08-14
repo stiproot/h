@@ -1,6 +1,6 @@
 # resumable local runs — journal a run's state so a dead driver's spend survives it
 
-Status: Planning — scoped 2026-08-14; store decision REVISED same day (operator call: journal-as-stream on NATS JetStream, coupling the local substrate to the fabric); design below awaiting build
+Status: Active — increment 1 (chain-level resume, journal-as-stream) BUILT + validated live 2026-08-14; increment 2 (workflow step-level resume + `h runs watch`) open
 Established: 2026-08-14
 
 ## The idea
@@ -144,3 +144,23 @@ required-for-journaling wording), and the delegate-locally + use-h skills where 
   ledger), Python driver auto-ensures the fabric, `--no-journal` escape hatch,
   publish-ack replaces the torn-line rule, `h runs watch` becomes increment 2's surface.
   Steering-update checklist recorded for the build change set.
+- **2026-08-14 (increment 1 built + validated)** — chain-level resume landed end-to-end:
+  `h-journal` third stream (limits, 14d age, 600s duplicate window) in `ensure_streams` +
+  `h events status`; JS executor gains nats.js and owns the journal (`nats-journal.ts`
+  JournalPort adapter, connection-per-call; `chain.ts` writes meta/stage/terminal with
+  publish-ack as the stage's completion barrier, replays + hash-checks on resume);
+  Python driver preflight (`_journal_preflight` → `ensure_journal_ready`: idempotent server
+  spawn + stream ensure, refusal naming `--no-journal`), `--resume GROUP`/`--no-journal`
+  flags with local-only + mutual-exclusion refusals; `h doctor` moves nats-server to the
+  required tier named for what needs it. 6 new JS tests (in-memory journal fake: records,
+  resume-skips-stages, hash refusal, no-journal, completed-no-op), 5 new CLI tests
+  (default-on job config, resume group reuse, refusals, preflight gating — the fail-closed
+  network guard caught the preflight in hermetic tests exactly as designed, stubbed like the
+  runner); `COMMAND_FLAGS` sync guard caught the new flags. Full lint + 46 JS + 463 CLI
+  tests green. LIVE: `chain-journal-poc-260814-213309` — stage 0 ($0.29) journaled, 10s
+  budget tripped; resume replayed stage 0, ran only stage 1 ($0.26), completed; no-op and
+  changed-composition refusal both exercised. One recorded nuance: `-p` SEEDS are
+  deliberately outside the definition hash (they are fire-time chain DATA, and journaled
+  captures overlay them for completed stages) — re-seeding a resume is allowed; changing the
+  COMPOSITION is not. Steering updated in the same change set (CLAUDE.md substrates + fabric
+  streams, cli/README, delegate-locally + use-h skills, doctor, cookbook entry).

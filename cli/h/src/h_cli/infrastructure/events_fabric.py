@@ -48,6 +48,10 @@ MAX_DELIVER = 3
 # of its successor is rejected instead of forking the loop.
 DUPLICATE_WINDOW_SECONDS = 600
 RESULT_MAX_AGE_SECONDS = 7 * 24 * 3600
+# A journal's claim to resume expires — the run ledger is the permanent record. Journals are
+# small (structured fields, never transcripts), so the cap is about honesty, not space: a
+# fortnight-old half-run has no live resume story.
+JOURNAL_MAX_AGE_SECONDS = 14 * 24 * 3600
 
 _PID_FILE = EVENTS_STORE_DIR / "nats.pid"
 _LOG_FILE = EVENTS_STORE_DIR / "nats.log"
@@ -154,6 +158,15 @@ async def ensure_streams(js: Any) -> None:
             subjects=[protocol.RESULT_SUBJECTS],
             max_age=RESULT_MAX_AGE_SECONDS,
         ),
+        # The run journal (resumable --local runs): LIMITS-retained like results — resume and
+        # watch both REPLAY, so work-queue consumption would eat the very records resume needs.
+        # The duplicate window backs the executor's `<group>:<seq>` publish identity.
+        StreamConfig(
+            name=protocol.JOURNAL_STREAM,
+            subjects=[protocol.JOURNAL_SUBJECTS],
+            max_age=JOURNAL_MAX_AGE_SECONDS,
+            duplicate_window=DUPLICATE_WINDOW_SECONDS,
+        ),
     )
     for config in wanted:
         try:
@@ -185,6 +198,27 @@ async def publish_seed(descriptor: dict[str, Any]) -> bool:
         return await publish_task(js, descriptor)
     finally:
         await nc.drain()
+
+
+def ensure_journal_ready() -> dict[str, Any]:
+    """Auto-ensure the fabric for a JOURNALED local run: server answering (idempotent spawn —
+    the same one `h events up` uses), streams present. Returns the start_server report.
+
+    Raises FabricError when the BINARY is missing: provisioning stays the operator's act; h
+    only manages the process. The caller frames the refusal (it knows whether --no-journal is
+    an out).
+    """
+    report = start_server()
+
+    async def _ensure() -> None:
+        nc = await connect()
+        try:
+            await ensure_streams(nc.jetstream())
+        finally:
+            await nc.drain()
+
+    asyncio.run(_ensure())
+    return report
 
 
 RelayHandler = Callable[[dict[str, Any]], tuple[dict[str, Any] | None, dict[str, Any] | None]]
@@ -367,7 +401,7 @@ async def stream_report() -> list[dict[str, Any]]:
     try:
         js = nc.jetstream()
         report: list[dict[str, Any]] = []
-        for name in (protocol.TASK_STREAM, protocol.RESULT_STREAM):
+        for name in (protocol.TASK_STREAM, protocol.RESULT_STREAM, protocol.JOURNAL_STREAM):
             try:
                 info = await js.stream_info(name)
             except nats.js.errors.NotFoundError:

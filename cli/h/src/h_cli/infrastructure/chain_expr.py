@@ -72,6 +72,8 @@ COMMAND_FLAGS = (
     "-p",
     "--local",
     "--with-setup",
+    "--resume",
+    "--no-journal",
     "--strategy",
     "--max-iterations",
     "--after",

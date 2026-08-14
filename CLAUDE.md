@@ -110,16 +110,33 @@ The reason is that a local agent runs as the operator with their credentials and
 the path someone typed is the only thing bounding the blast radius: clone the target under
 `h-workspace/` and work there. (Bit us live 2026-08-10 — an agent reached a second clone of the
 target repo and committed into the operator's in-flight work.) Local runs write the standard run ledger, so
-`h runs`/obs-mcp/the viz read them beside service runs; there is no watcher, so that ledger is also
-the only cost accounting. The substrates COMPOSE: a local-substrate agent inherits the repo's
+`h runs`/obs-mcp/the viz read them beside service runs; there is no watcher, so that ledger plus
+the RUN JOURNAL below are the whole accounting/durability story. The substrates COMPOSE: a
+local-substrate agent inherits the repo's
 `.mcp.json` (D5 leaves it alone) and can therefore save and fire durable workflows onto a running
 service stack — triggers are data, so nothing cares who fired them. Surface: `h delegate` (the
 atom), `h workflow run <template> --local`. Examples: [docs/cookbook.md](./docs/cookbook.md).
 
+**The RUN JOURNAL (2026-08-14, operator call — the one deliberate NATS coupling):** a `--local`
+CHAIN run journals each completed stage to the fabric's third stream (`h-journal`, limits
+retention + 14d age cap, subject `h.journal.<group>`, `Nats-Msg-Id <group>:<seq>` dedup) so a
+dead driver's paid stages survive it: `h chain run --local --resume GROUP` replays the journal,
+restores post-capture chain data at the cursor, and re-enters the stage loop — a definition hash
+(members+strategy+loop, deliberately NOT budgets) refuses a changed composition, and only
+`completed` writes a terminal record (failed/exhausted runs are exactly the resumable ones). The
+JS executor owns the records the way it owns the ledger (`local-runtime` `nats-journal.ts`,
+publish-ack = the stage's completion barrier); the Python driver owns preflight — auto-ensure
+the fabric (idempotent `h events up` spawn) + the stream, REFUSING LOUD when the nats-server
+BINARY is missing (still operator-provisioned; h manages only the process). `--no-journal` opts
+a run out; `--resume`/`--no-journal` without `--local` are refused by name (the service
+substrate's durability is the Dapr engine's). Workflow-level (step-granularity) resume is
+deliberately not built yet — see the resumable-local-runs plan.
+
 The local substrate also has an **event fabric** (`h events`, POC): one `nats-server -js` child (operator-provisioned binary,
-refused loud by name; JetStream store beside the run ledger at `<workspace>/.nats`) carrying two
-streams — `h-tasks` (work-queue retention on `h.task.>`) and `h-results` (limits retention on
-`h.result.>`). A task message is a FIRE DESCRIPTOR (`{template, params, agent, group, step,
+refused loud by name; JetStream store beside the run ledger at `<workspace>/.nats`) carrying three
+streams — `h-tasks` (work-queue retention on `h.task.>`), `h-results` (limits retention on
+`h.result.>`), and `h-journal` (the run journal above — written by the local EXECUTOR, not the
+relay). A task message is a FIRE DESCRIPTOR (`{template, params, agent, group, step,
 maxSteps}` — the trigger payload made local); the RELAY (`h events serve`) is a durable pull
 consumer that composes the template on fire and executes it through the local executor, exactly
 like `--local`. The LOOP EDGE: an agent's structured block may carry `publish: {task, agent?}`

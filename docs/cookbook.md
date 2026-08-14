@@ -176,6 +176,29 @@ little about code that already exists. On the run above, the plan drew 11 findin
 `review-pr` of the resulting diff found 2 — the implementer had resolved most of them along the
 way. Use both stages, and judge the code with `review-pr`.
 
+## Resume a dead local chain — paid stages replay from the journal
+
+```sh
+h chain run --slug demo --local -p task=… \
+    -w answer --kind answer --id first  --capture a=answer \
+    -w answer --kind answer --id second --input task=first.a --capture b=answer
+# …dies / fails / trips its budget after stage 0; the run prints its group id…
+h chain run --slug demo --local --resume chain-demo-<ts> \
+    -w answer --kind answer --id first  --capture a=answer \
+    -w answer --kind answer --id second --input task=first.a --capture b=answer  # same expression
+```
+
+`--local` chains journal each completed stage to the fabric's `h-journal` stream by default
+(preflight auto-starts `nats-server` — the BINARY is operator-provisioned and refused loud;
+`--no-journal` opts out). `--resume GROUP` replays the journal, restores the post-capture chain
+data at the cursor, and re-enters the stage loop — completed stages are not re-paid. The
+expression must hash-match the journaled composition (members/strategy/loop — `-p` seeds are
+fire-time DATA and may differ); resuming a completed group is a loud no-op. *(Validated
+2026-08-14 — `chain-journal-poc-260814-213309`: stage 0 ran ($0.29, capture `first.a`), a 10s
+chain budget tripped before stage 1; the resume replayed stage 0 from the journal, ran only
+stage 1 ($0.26), and completed with both stages in the table. Resume-of-completed no-op'd;
+a renamed member id refused with "the composition differs from the journaled run".)*
+
 ## Scout an external repo — review it, select ONE opportunity, POC it
 
 ```sh

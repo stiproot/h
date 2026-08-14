@@ -134,6 +134,13 @@ uv run h delegate "TASK" --agent codex --worktree       # cut an isolated worktr
 uv run h workflow run <template> --local [-p k=v]...   # render the template and execute its steps here
 uv run h workflow run answer --local --agent claude --agent codex   # a judged panel, nothing running
 uv run h chain run --slug s --local EXPR # sequence the stages in-process; BLOCKS, prints the threaded chain data
+                                          # JOURNALED by default: each completed stage lands on the fabric's
+                                          #   h-journal stream (auto-ensured; missing nats-server BINARY refuses
+                                          #   loud), so a dead driver's paid stages survive it
+uv run h chain run --slug s --local --resume GROUP EXPR  # CONTINUE that journaled group at its cursor —
+                                          #   completed stages replay from the journal, not from your wallet;
+                                          #   a changed composition is refused (definition hash)
+uv run h chain run --slug s --local --no-journal EXPR    # opt out (throwaway run / unprovisioned machine)
                                           # --with-setup opts into the definition's setup steps (skipped by
 
 # ---- the local substrate's EVENT FABRIC (POC): NATS JetStream + the relay ----
@@ -189,8 +196,9 @@ installs it in `.claude/settings.json` — marketplace source `{"source": "githu
 "stiproot/h"}`, plugin `h@h-marketplace` — so its agents know what h is and how to drive it
 without reading h's own docs.
 
-`h doctor` reports the whole toolchain on one screen — required binaries (node, git, helm),
-agent CLIs, optional pieces (nats-server for `h events`), the built runner, both chart roots,
+`h doctor` reports the whole toolchain on one screen — required binaries (node, git, helm, and
+nats-server, which journaled `--local` chain runs refuse loud without — `--no-journal` is the
+per-run out), agent CLIs, the remaining optional pieces, the built runner, both chart roots,
 and which consumer config is in effect. It is a report, not a gate: every surface still
 refuses loud by name at its own point of use (the operator-provisioned posture — h never
 auto-installs). `h workflow run --local` checks the invoking checkout against the managed
