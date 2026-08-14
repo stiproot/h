@@ -1,6 +1,6 @@
-# resumable local runs — a JSONL journal so a dead driver's spend survives it
+# resumable local runs — journal a run's state so a dead driver's spend survives it
 
-Status: Planning — scoped 2026-08-14 (store decision locked: JSONL beside the run ledger); increment order and journal format below awaiting build
+Status: Planning — scoped 2026-08-14; store decision REVISED same day (operator call: journal-as-stream on NATS JetStream, coupling the local substrate to the fabric); design below awaiting build
 Established: 2026-08-14
 
 ## The idea
@@ -19,86 +19,128 @@ with a real spec re-pays both earlier stages. The general form is the long-run d
 partially covers: that convention checkpoints the AGENT'S work (commits on a branch); the
 journal checkpoints the RUN'S state (which steps completed, with what structured results).
 
-## Store decision (locked 2026-08-14)
+## Store decision — REVISED 2026-08-14: NATS JetStream journal-as-stream
 
-**Plain JSONL beside the run ledger.** `<runsDir>/<group>/journal.jsonl`, append-only, one
-record per completed unit. Rationale, recorded so it isn't relitigated:
+The first scoping locked plain JSONL beside the run ledger, on the posture argument: the
+fabric is optional, and journaling through it would make plain `--local` runs depend on a
+daemon. **The operator reversed this deliberately the same day**: h's users are its
+operators, nats-server is already provisioned wherever h runs (h's machine and the first
+consumer repo both install it), and the fabric benefits are worth the coupling. Recorded so
+the posture change is legible:
 
-- **Not NATS JetStream KV** — NATS is an OPTIONAL piece of one feature (`h events`),
-  operator-provisioned and refused by name; journaling there would make plain `--local`
-  runs depend on a daemon that is optional today (dependency inversion: the fabric rides ON
-  the substrate, never under it). Everything JetStream is good at — delivery, consumers,
-  watches — is concurrency machinery a single-writer/single-reader journal never touches.
-  The fabric remains the answer to a DIFFERENT question: durable delivery BETWEEN runs;
-  the journal is resumable state WITHIN a run. They compose — a relay-executed step is an
-  ordinary local run and resumes like one.
-- **Not SQLite** — transactions and queries an append log doesn't need, at the cost of a
-  native module (or the still-experimental `node:sqlite`), an opaque binary beside
-  otherwise human-readable local artifacts, and this repo's existing SQLite scar (the
-  2026-07-05 name-resolver WAL lock-stall).
-- **JSONL is the house pattern with fresh endorsement** — the run ledger is already
-  `events.jsonl` replayed on read, and the pi-autoresearch scout specifically flagged its
-  `.auto/log.jsonl` + replay-on-restart (`reconstructJsonlState`) as the pattern worth
-  learning. This plan is that pattern applied to h itself.
+- **What is accepted**: journaled `--local` runs depend on the nats-server BINARY being
+  provisioned. The operator-provisioned rule survives intact — h never installs it, and a
+  missing binary refuses loud by name — but h now MANAGES THE PROCESS: a journaled run
+  auto-ensures the fabric (the same idempotent spawn `h events up` uses) instead of asking
+  the operator to start it. "Nothing running" becomes "nothing the operator must start".
+- **What it buys over JSONL**: publish-with-ack atomicity (no torn-line rule); live
+  watchability (`h runs watch GROUP` falls out of a subscription); ONE persistence plane for
+  the whole local substrate (tasks, results, journals — all streams in the store beside the
+  run ledger); and the redelivery+resume composition with fabric loops (JetStream redelivers
+  a died step's descriptor, the journal makes the redelivered run RESUME rather than
+  restart).
+- **No dual backend**: journal-as-stream is the one mechanism (atomic-cutovers rule — no
+  JSONL fallback mode to rot). The prior JSONL rationale stays above in history only.
+- **Un-revisit trigger**: if h ever gains operators who cannot provision nats-server (a
+  consumer class beyond h-packaged's own posture), the JSONL shape in this plan's history
+  is the fallback design to resurrect.
 
 ## Design
 
-### Journal format
+### The stream
 
-One JSONL file per run group, written by the executor (JS side — `h-local` owns execution,
-so it owns the journal; the Python CLI only reads it to answer `--resume` preflight
-questions). Records:
+A third stream beside the fabric's two, created idempotently by the same ensure path:
 
-- `{"seq": n, "type": "meta", "kind": "workflow"|"chain", "definitionHash": "...",
-  "group": "...", "ts": ...}` — first line; the hash is over the composed definition/member
-  set, so resuming under a silently-changed composition refuses loud.
-- `{"seq": n, "type": "step", "stepId": "...", "result": {...}, "structured": {...}, "ts"}`
-  — a workflow step completed (parallel groups: one record per branch + one for the group).
-- `{"seq": n, "type": "stage", "cursor": k, "data": {...}, "ts"}` — a chain stage completed
-  and captured; `data` is the full chain data AFTER capture (small — structured fields, not
-  transcripts), so stage-level resume needs exactly one record read.
-- Torn-write rule: a final line that fails to parse is treated as ABSENT — the unit it
-  described redoes. You can only lose the record of the unit in flight at death, which is
-  the unit that must redo anyway. At-least-once per unit; agent steps are re-fired
-  idempotently (same instance id reuses the worktree, the established re-fire semantics).
+- **`h-journal`** — subjects `h.journal.>`, **limits retention** (like `h-results`, because
+  resume AND watch both replay; work-queue would consume-once). `max_age` ~14d: a journal
+  is small (structured fields, never transcripts) and a run older than that has no live
+  resume claim; the run ledger stays the permanent record.
+- One subject per run group: `h.journal.<group>`. Every record publishes with
+  `Nats-Msg-Id: <group>:<seq>` — the fabric's existing dedup idiom — so a crashed writer's
+  retry can never fork a journal.
+- Records (`seq` monotonic per group):
+  - `{"seq":0,"type":"meta","kind":"workflow"|"chain","definitionHash":"…","group":"…","ts"}`
+    — hash over the composed definition/member set; resuming under a silently-changed
+    composition refuses loud (no `--force` in increment 1: a changed composition is a NEW
+    run).
+  - `{"type":"step","stepId":"…","result":{…},"structured":{…},"ts"}` — workflow step done
+    (parallel groups: one record per branch + one for the group).
+  - `{"type":"stage","cursor":k,"data":{…},"ts"}` — chain stage done and captured; `data`
+    is the full post-capture chain data, so stage-level resume reads ONE record.
+
+### Ownership split (who speaks NATS)
+
+Today the NATS client lives ONLY in Python (`nats-py` in h-cli; the fabric + relay). The
+journal is EXECUTION state, and the executor owns execution — so **the JS local-runtime
+gains a NATS client** (nats.js) and writes/reads the journal itself, exactly as it already
+owns the run ledger:
+
+- **Python driver (preflight)**: ensure the fabric (idempotent spawn; refuse loud on
+  missing binary), ensure the stream, resolve the `--resume` group, pass
+  `{journal: {url, group, resume}}` on the stdin job.
+- **JS executor**: on resume, replay `h.journal.<group>` from the start (ephemeral ordered
+  consumer — the `h events await` pattern), rebuild cursor/results/data, skip completed
+  units; during execution, publish a record after each completed unit and treat the ACK as
+  the completion barrier.
+
+The split keeps each side doing what it already does: Python owns server lifecycle and CLI
+surface, JS owns run state at the moment it exists.
 
 ### Surface
 
 - `h chain run --local --resume GROUP …` — same expression required (validated against the
-  journal's definitionHash; mismatch refuses loud, no `--force` in the first increment —
-  a changed composition is a NEW run, by design). Continues at the journaled cursor with
-  the journaled chain data.
-- `h workflow run <t> --local --resume INSTANCE` — same shape at step granularity.
-- `--resume` without `--local` is refused by name: the service substrate's durability is
-  the Dapr engine's, not the journal's.
+  journaled definitionHash). Continues at the journaled cursor with the journaled data.
+- `h workflow run <t> --local --resume INSTANCE` — step granularity.
+- `--resume` without `--local` refused by name (the service substrate's durability is the
+  Dapr engine's).
+- `--no-journal` opts a run out (tests, throwaway runs, a machine without the binary);
+  journaling is otherwise DEFAULT-ON for `--local` workflow/chain runs. `h delegate` stays
+  unjournaled — the atom is a single bounded run with nothing to resume.
+- `h runs watch GROUP` — live subscription + replay over `h.journal.<group>` (increment 2).
 
-### Increment order
+### Steering updates owed at build time
 
-1. **Chain-level (stage granularity) first** — cheapest, and the increment the scout run
-   would have used: the stage record already carries the complete post-capture chain data,
-   so resume = read last stage record, set cursor+data, re-enter the existing stage loop
-   (`chain.ts`). No change to step execution.
-2. **Workflow-level (step granularity) second** — `execute.ts` consults the journal before
-   each step; completed steps load results instead of running. Parallel-group semantics
-   (partial branch completion) live here, which is why it is second.
+Coupling changes documented posture, so the SAME change set updates: CLAUDE.md's execution
+substrates section + `h events` prose (nats-server: from "event fabric only" to "fabric +
+journal; auto-ensured"), cli/README's consumer surface (consumer prerequisite list gains
+nats-server for journaled runs), `h doctor` (nats-server moves from optional to
+required-for-journaling wording), and the delegate-locally + use-h skills where they state
+"no watcher, ledger is the only accounting" (now: ledger + journal; resume exists).
+`scripts/check-steering.mjs` will hold the CLI surface additions to their doc pairings.
+
+## Increments
+
+1. **Chain-level resume** (stage granularity) — journal writes in the executor's stage
+   loop (`chain.ts`), replay-on-resume, the CLI preflight + `--resume`/`--no-journal`
+   flags, fabric auto-ensure, refusals. Validation: kill the tooling-scout chain after
+   stage 2, resume, watch it skip straight to implement.
+2. **Workflow step-level resume + `h runs watch`** — `execute.ts` consults the journal
+   before each step; parallel-group partial completion semantics; the live watch surface.
 
 ## Non-goals
 
-- **A local engine daemon / workflow-svc-without-Dapr** — full operational parity is the
-  wrong target: the engines exist outside workflows by design, host mode IS the local
-  durable option, and a laptop daemon inherits the who-supervises-the-supervisor problem.
-  Revisit when: a consumer repo genuinely needs recurrence/supervision and demonstrably
-  cannot run the service stack — and then the first question is a slimmer stack bring-up,
-  not a parallel engine.
-- **Journal-driven observability** — the run ledger + obs surfaces stay the read path;
-  the journal is resume state, not a second ledger. Revisit when: the journal proves to
-  duplicate ledger content byte-for-byte and merging them would delete code.
+- **A local engine daemon / workflow-svc-without-Dapr** — full operational parity stays the
+  wrong target: engines exist outside workflows by design, host mode IS the local durable
+  option, and a laptop daemon inherits the who-supervises-the-supervisor problem. Revisit
+  when: a consumer repo genuinely needs recurrence/supervision and demonstrably cannot run
+  the service stack — and then the first question is a slimmer stack bring-up, not a
+  parallel engine. (NATS-as-state-plane for such a daemon is the same non-goal wearing a
+  different store.)
+- **Journal-driven observability** — the run ledger + obs surfaces stay the read path; the
+  journal is resume state (+ live watch), not a second ledger. Revisit when: the journal
+  proves to duplicate ledger content byte-for-byte and merging them would delete code.
 
 ## Log
 
 - **2026-08-14** — scoped from the substrate-parity discussion (operator + assessment
-  agreed): no local engine service (parked, trigger above); JSONL-on-filesystem locked
-  over NATS KV and SQLite with rationale recorded; chain-level resume named increment 1
-  with the scout chain as the live trigger. Also clarified for the record: NATS was never
-  part of the plain `--local` path — the events fabric rides ON the local executor
-  (relay → ordinary local runs), so the journal composes with it rather than replacing it.
+  agreed): no local engine service (parked, trigger above); JSONL-on-filesystem initially
+  locked over NATS KV and SQLite; chain-level resume named increment 1 with the scout
+  chain as the live trigger. Clarified for the record: NATS was never part of the plain
+  `--local` path — the fabric rides ON the local executor.
+- **2026-08-14 (later)** — store decision REVISED by operator call: journal-as-stream on
+  JetStream, accepting the binary dependency for journaled local runs ("we are the only
+  users of h; the benefits are worth the coupling"). Design reshaped: `h-journal` stream +
+  `Nats-Msg-Id` dedup, JS executor gains the NATS client (owns journal like it owns the
+  ledger), Python driver auto-ensures the fabric, `--no-journal` escape hatch,
+  publish-ack replaces the torn-line rule, `h runs watch` becomes increment 2's surface.
+  Steering-update checklist recorded for the build change set.
