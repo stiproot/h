@@ -176,6 +176,31 @@ little about code that already exists. On the run above, the plan drew 11 findin
 `review-pr` of the resulting diff found 2 — the implementer had resolved most of them along the
 way. Use both stages, and judge the code with `review-pr`.
 
+## Scout an external repo — review it, select ONE opportunity, POC it
+
+```sh
+git clone --depth 50 https://github.com/<owner>/<repo> ~/code/h-workspace/<repo>
+h chain run --slug scout-<repo> --local \
+    -p repoPath=$HOME/code/h-workspace/<repo> -p slug=scout-<repo>-poc -p clonePath=$HOME/code/h \
+    -w scout-repo --kind answer --id scout --input repoPath=repoPath --capture report=report \
+    -w plan-poc   --kind answer --id poc   --input findings=scout.report --capture spec=spec \
+    -w implement  --kind implement-pr --input spec=poc.spec --input slug=slug --input clonePath=clonePath
+```
+
+The tooling-scout chain: `scout-repo` reviews the clone against four lenses (executor /
+orchestration / tooling / observability, file-path evidence required), `plan-poc` interrogates
+every claimed opportunity against this repo's principles and selects EXACTLY ONE with a
+~1-day POC shape, `implement` builds it on a worktree. Two grammar notes this run earned:
+a novel template chains under `--kind answer` (kinds are the closed threading-contract set;
+declared `--capture`/`--input` replace the kind's halves), and chain-wide `-p` seeds land on
+the CHAIN DATA — each member pulls what it needs via `--input param=source`. A selector
+verdict of `chosen: "none"` leaves `spec` empty and the implement member REFUSES loud — a
+no-opportunity scout ends as a failed third stage by design; drop the implement member for a
+review-only scout. *(Validated 2026-08-14 — `chain-scout-pi-autoresearch-260814-091135`:
+scouted pi-autoresearch (MIT), scout $0.64 + selector $1.29; verdict "nothing to take" — all
+eight surfaced patterns either already covered by chain/watcher/cron primitives or premature —
+and the implement stage refused the empty spec exactly as designed.)*
+
 ## An EVENT-DRIVEN agent loop — agents handing work to agents (`h events`)
 
 ```sh

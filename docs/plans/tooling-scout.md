@@ -1,6 +1,6 @@
 # tooling scout — a formal process for mining external agent tooling for h
 
-Status: Planning — strategy drafted 2026-08-14; scout-chain design awaiting operator preview (templates not yet built)
+Status: Active — process built + first scout run 2026-08-14 (pi-autoresearch: verdict "nothing to take", the process's skeptical selection working as designed); this doc is the scout log until the scout-tooling skill exists
 Established: 2026-08-14
 
 ## The idea
@@ -58,27 +58,25 @@ One scout = one candidate repo through five steps:
 Every lens answers with evidence (file paths in the clone), not vibes — the same
 grounded-in-paths discipline the code-comprehension plugin enforces for diagrams.
 
-## The scout chain (design — PREVIEW, not yet built)
+## The scout chain (BUILT 2026-08-14)
 
 Three stages on the LOCAL substrate (`h chain run --local` — blocks, prints threaded data;
 no engines needed, and the implement stage's worktree isolates the write work):
 
 ```
-stage 1  scout-repo   (NEW template)  cwd = the external clone; read-only review
-                                      outputs: {summary, license, opportunities, report}
-stage 2  plan-poc     (NEW template)  input findings = scout.report
-                                      outputs: {chosen, rationale, spec}
-stage 3  implement    (stock)         input spec = poc.spec; worktree on h's checkout
+stage 1  scout-repo   cwd = the external clone; read-only review
+                      outputs: {summary, license, opportunities, recommendation, report}
+stage 2  plan-poc     input findings = scout.report
+                      outputs: {chosen, rationale, spec}
+stage 3  implement    input spec = poc.spec; worktree on h's checkout
 ```
 
-```sh
-h chain run --slug scout-pi-autoresearch --local \
-  -p repoPath=$HOME/code/h-workspace/pi-autoresearch \
-  -p slug=scout-autoresearch-poc -p clonePath=$HOME/code/h \
-  -w scout-repo --id scout --capture report=report \
-  -w plan-poc   --id poc   --input findings=scout.report --capture spec=spec \
-  -w implement  --input spec=poc.spec
-```
+The validated command lives in [docs/cookbook.md](../cookbook.md) ("Scout an external
+repo"). Two grammar facts the first fire established: a novel template chains under
+`--kind answer` (kinds are the closed threading-contract set; declared `--capture`/`--input`
+replace the kind's halves), and chain-wide `-p` seeds land on the CHAIN DATA, pulled per
+member via `--input param=source` — registration-time validation named the exact fix at each
+step.
 
 Template design notes:
 
@@ -106,7 +104,7 @@ Template design notes:
   shape, pointed outward). Revisit when: the manual scout cadence exceeds ~1/week.
 - **A `scout-tooling` skill** — the process as steering, once ≥3 scouts have validated the
   lens list. Revisit when: the third scout completes.
-- **Cookbook entry** — on the first validated run (part of this POC's definition of done).
+- **Cookbook entry** — DONE 2026-08-14 ("Scout an external repo" in docs/cookbook.md).
 
 ## POC subject: pi-autoresearch (recon 2026-08-14)
 
@@ -125,6 +123,37 @@ poc-able opportunity. Secondary: pi extension provisioning per-run (the `pluginS
 sibling for the pi executor), and the auto-resume/compaction guards vs h's checkpoint-first
 convention.
 
+## Scout log (verdicts)
+
+### 1. pi-autoresearch — 2026-08-14 — NOTHING TO TAKE
+
+Run `chain-scout-pi-autoresearch-260814-091135` (local substrate, $0.64 scout + $1.29
+selector). The scout surfaced eight patterns with file-path evidence (deterministic
+compaction summary, consecutive-failure halt, segment state, MAD confidence scoring, the
+`METRIC name=value` stdout protocol, per-iteration `.auto/hooks/{before,after}.sh` with JSON
+payloads, ASI self-annotation, the project-local replayable JSONL experiment ledger); the
+selector interrogated each against h's primitives and dropped all eight with stated reasons —
+most already covered by chain data threading, structured outputs, watcher retry and budgets;
+the METRIC protocol actively fights the fail-closed explicit-contract design. Executor lens:
+nothing (a pi extension over closed-source peer deps, no headless surface). Parked with
+triggers:
+
+- **Benchmark-driven keep/revert loop** (the shape MAD scoring + METRIC lines serve).
+  Revisit when: an optimization workflow with a numeric convergence target actually arrives
+  (e.g. "make this benchmark faster" as an h workflow) — the loop strategy comes first, the
+  quality signals only after it.
+- **Between-stage hooks** (the one genuine gap: operator side effects with per-stage context,
+  no workflow edit). Revisit when: a second workflow wants a between-stage side effect —
+  one demand is a coincidence to note, two is the pattern (3–5 days, chain model + scan +
+  CLI, both stacks).
+
+Process finding: a `chosen: "none"` verdict fails the implement stage loud (empty `spec`),
+so a full three-stage scout of a no-opportunity repo terminates as a FAILED chain. Correct
+per D6 fail-as-unit, but the exit reads wrong for a verdict the process explicitly honors.
+Revisit when: none-verdicts recur and the failed-chain exit misleads someone — the fix
+space is run the two-stage form by default and fire implement manually on a real spec, vs
+a conditional-advance chain feature (a real primitive change; interrogate hard).
+
 ## Open questions
 
 - **Where does stage 3 point for a scout POC?** Default h's own checkout (the opportunity is
@@ -139,3 +168,11 @@ convention.
   four lenses, chain design (scout-repo + plan-poc + stock implement, local substrate),
   pi-autoresearch cloned and reconned as the POC subject. Design preview pending operator
   confirmation; nothing built.
+- **2026-08-14 (later)** — process BUILT and first scout RUN: `scout-repo` + `plan-poc`
+  templates landed (459 CLI tests green, goldens untouched), the three-stage chain fired on
+  the local substrate against pi-autoresearch, and the selector returned "nothing to take"
+  with all eight opportunities dropped on stated reasons — the skeptical-selection design
+  doing its job on its first outing. Verdict + parked items (with triggers) in the scout
+  log above; validated command lifted to the cookbook. Chain-grammar learnings (novel
+  templates ride `--kind answer`; seeds are chain data, pulled via `--input`) recorded in
+  the cookbook entry.
