@@ -1,0 +1,151 @@
+{{- /*
+scout-repo workflow — review an EXTERNAL repo (an agent, harness, orchestration framework, or
+agent tooling) for what h can take from it: patterns, plug-and-play executors, integrations.
+The review half of the tooling-scout chain (scout-repo → plan-poc → implement); runnable
+standalone for a review-only scout.
+
+The workspace is PASSED, never described: repoPath becomes the agent step's cwd, so the scout
+reads the clone it was pointed at instead of going looking. Point it only at a clone inside
+the managed workspace (h-workspace/<repo>).
+
+Fire-time params:
+  repoPath     absolute path of the cloned repo to review (required; becomes the step cwd)
+  focus        optional intake question — what h wants from this candidate (default none)
+  runActivity  / agentId — fire-time identity (--agent), defaulting to claude
+
+Template config (values, baked at publish time): scoutRepo.models.scout.
+
+Run:
+  h workflow run scout-repo --local -p repoPath=<workspace>/<repo> [-p focus=…]
+*/ -}}
+{{- define "h.contract.scoutRepo" -}}
+type: object
+required:
+  - summary
+  - license
+  - opportunities
+  - recommendation
+  - report
+properties:
+  summary:
+    type: string
+    description: what this repo IS, in two or three sentences
+  license:
+    type: string
+    description: the repo's license (SPDX id or "unknown") — gates code lifts vs pattern learning
+  opportunities:
+    type: array
+    description: concrete things h could take, best first
+    items:
+      type: object
+      required:
+        - title
+        - lens
+        - value
+        - effort
+        - pocShape
+      properties:
+        title:
+          type: string
+          description: the opportunity, as an imperative phrase
+        lens:
+          type: string
+          enum: [executor, orchestration, tooling, observability]
+          description: which review lens surfaced it
+        value:
+          type: string
+          description: what h gains, stated against h's existing primitives
+        effort:
+          type: string
+          enum: [hours, day, week, more]
+          description: honest cost of a first shippable increment
+        pocShape:
+          type: string
+          description: what a ~1-day POC would build and how success is judged
+  recommendation:
+    type: string
+    description: the single best opportunity and why — or "nothing to take" with the reason
+  report:
+    type: string
+    description: >-
+      the full findings document (markdown) — every lens answered with file-path evidence;
+      this is what downstream members consume
+{{- end }}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "scout-repo" }}
+role: standalone
+{{- $s := .Values.scoutRepo }}
+{{- $contract := include "h.contract.scoutRepo" . | fromYaml }}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  focus: ""
+  {{- with $s.models.scout }}
+  modelScout: {{ . | quote }}
+  {{- end }}
+steps:
+  - id: scout
+    activity: {{ include "h.token" "params.runActivity" | quote }}
+    input:
+      cwd: {{ include "h.token" "params.repoPath" | quote }}
+      outputContract: {{ $contract | toJson }}
+      {{- with $s.models.scout }}
+      model: {{ include "h.token" "params.modelScout" | quote }}
+      {{- end }}
+      task: |-
+        You are scouting an external open-source repository for h — an agentic workflow
+        runtime that composes work as workflow definitions (steps invoking activities, most
+        of them "run an agent CLI against this task") executed either in-process (the local
+        substrate) or on a durable service substrate whose watcher/chain/cron engines
+        supervise, sequence and recur workflows. h is a harness FOR harnesses: agent CLIs
+        plug into workflows and chains as fire-time identity. Your job is to work out what h
+        can TAKE from this repo — read-only: review the code in your working directory (it is
+        the cloned candidate repo), and change nothing.
+
+        Review the ACTUAL code, not the README's claims: entry points, the core loop, how it
+        talks to models/agents, how it persists state, how it is extended. Then answer each
+        of the four lenses, grounding every claim in file paths from this clone:
+
+        1. EXECUTOR — is this (or does it wrap) a headless-drivable agent CLI h could plug in
+           as an executor? Look for: non-interactive invocation, machine-readable output
+           (JSON/JSONL), autonomy flags, auth model, MCP support.
+        2. ORCHESTRATION PATTERNS — loops, budgets, checkpointing/resume, supervision,
+           scheduling, state threading. For each: what does it express that h's primitives
+           (supervised workflows, staged chains with structured-output threading, recurring
+           crons, step-budgeted event loops) cannot — and does that look like a gap in h or a
+           design h deliberately rejected?
+        3. TOOLING & INTEGRATIONS — extensions, MCP servers, skills/steering packaging that
+           an h agent could consume per-run.
+        4. OBSERVABILITY & UX — run/experiment ledgers, dashboards, replay or resume UX
+           worth learning from.
+
+        A lens with nothing behind it gets an explicit "nothing here", not padding. Record
+        the LICENSE — code and integration lifts need a compatible one; patterns can be
+        learned from anything. Be skeptical: most repos yield one real opportunity or none,
+        and "nothing to take" is a valid, useful verdict. For each real opportunity, state
+        its value AGAINST what h already has (name the existing primitive it extends or
+        duplicates), an honest effort grade, and what a ~1-day POC would build.
+
+        Write the full findings as a markdown document in the `report` field — lens by lens,
+        with the evidence paths — and mirror the discrete fields (summary, license,
+        opportunities, recommendation) from it.
+        {{- $focus := include "h.token" "params.focus" }}
+
+        ===INTAKE FOCUS===
+        {{ $focus }}
+        (If empty, review broadly across all four lenses.)
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "h.contract.scoutRepo" . | nindent 2 }}
+{{- /*
+panelSynthesis — how to judge a panel of scouts: merge coverage, adjudicate contested
+opportunities on evidence quality.
+*/}}
+panelSynthesis: |-
+  Merge the panelists' reports into ONE findings document: union their evidence, dedupe
+  opportunities that name the same underlying idea, and where panelists grade the same
+  opportunity differently, prefer the grade backed by file-path evidence over the optimistic
+  one. The merged `recommendation` names the single best opportunity (or "nothing to take");
+  keep every panelist's real, distinct opportunity in `opportunities` even when it loses.
+{{- end }}

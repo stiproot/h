@@ -1,0 +1,87 @@
+{{- /*
+plan-poc workflow — turn a scout's findings into ONE implementable POC spec. The selection
+half of the tooling-scout chain (scout-repo → plan-poc → implement); runnable standalone on
+any findings document.
+
+Deliberately a SELECTOR, not a summarizer: it interrogates every claimed opportunity against
+h's principles, picks exactly one with a shippable ~1-day shape, and writes the spec as the
+whole brief an implementing agent needs — the rest of the findings are the chain data's
+business, not this spec's.
+
+Fire-time params:
+  findings     the scout's findings document to select from (required; markdown)
+  runActivity  / agentId — fire-time identity (--agent), defaulting to claude
+
+Template config (values, baked at publish time): planPoc.models.plan.
+
+Run:
+  h workflow run plan-poc --local -p findings=@report.md
+*/ -}}
+{{- define "h.contract.planPoc" -}}
+type: object
+required:
+  - chosen
+  - rationale
+  - spec
+properties:
+  chosen:
+    type: string
+    description: the selected opportunity's title (or "none" when nothing survives interrogation)
+  rationale:
+    type: string
+    description: why this one won — and in one line each, why the runners-up lost
+  spec:
+    type: string
+    description: >-
+      the complete implementable POC spec (markdown) — goal, grounding file paths, the
+      increment to build, and the full acceptance command; empty when chosen is "none"
+{{- end }}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "plan-poc" }}
+role: standalone
+{{- $p := .Values.planPoc }}
+{{- $contract := include "h.contract.planPoc" . | fromYaml }}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  {{- with $p.models.plan }}
+  modelPlan: {{ . | quote }}
+  {{- end }}
+steps:
+  - id: poc
+    activity: {{ include "h.token" "params.runActivity" | quote }}
+    input:
+      outputContract: {{ $contract | toJson }}
+      {{- with $p.models.plan }}
+      model: {{ include "h.token" "params.modelPlan" | quote }}
+      {{- end }}
+      task: |-
+        You are turning a tooling scout's findings into ONE implementable POC spec for the
+        repo in your working directory. Under ===FINDINGS=== is a review of an external
+        repo, listing opportunities this repo could take from it.
+
+        First INTERROGATE every opportunity — an item's presence on the list is not a reason
+        to build it. Test each against this repo's stated principles (read its steering
+        docs: CLAUDE.md, ARCHITECTURE.md where present): does it duplicate an existing
+        primitive, does it fight a deliberate design decision, is its value real against
+        what already exists, is the license compatible with the lift? Dropping an
+        opportunity with a stated reason is a valuable outcome; so is concluding "none"
+        when nothing survives.
+
+        Then pick EXACTLY ONE survivor with a shippable ~1-day increment and write its spec
+        as the WHOLE BRIEF — the implementing agent has none of your context:
+        - the goal and why this repo wants it (one paragraph, citing the scouted repo's
+          pattern by file path);
+        - the grounding: the real files/symbols in THIS repo to start from (verify they
+          exist — read them);
+        - the increment: exactly what the POC builds, and what it deliberately leaves out;
+        - the FULL acceptance command, formatters and linters included, verified runnable
+          in this repo.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+
+        ===FINDINGS===
+        {{- include "h.token" "params.findings" | nindent 8 }}
+outputs:
+  {{- include "h.contract.planPoc" . | nindent 2 }}
+{{- end }}
