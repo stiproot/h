@@ -30,13 +30,16 @@ steps:
     activity: create-worktree
     input:
       agentId: {{ .Values.agentId | quote }}
-      branch: {{ printf "improve/%s" (include "h.token" "params.slug") | quote }}
       {{- with $p.clonePath }}
       clonePath: {{ . | quote }}
       {{- end }}
-      {{- with $p.remoteBase }}
-      remoteBase: {{ . | quote }}
-      {{- end }}
+      {{- /* The WRITE checkout strategy: the improvement lands on its own branch. */}}
+      checkout:
+        kind: branch
+        branch: {{ printf "improve/%s" (include "h.token" "params.slug") | quote }}
+        {{- with $p.remoteBase }}
+        remoteBase: {{ . | quote }}
+        {{- end }}
   - id: setup
     activity: setup
     input:

@@ -85,7 +85,13 @@ steps:
         4. GAPS. What does it leave undefined that an implementer would have to guess — error
            handling, edge cases, the done-condition, anything it touches but never resolves?
         5. FIT. Does it match how this codebase already does things (its conventions, its
-           existing seams), or does it introduce a parallel way of doing something?
+           existing seams), or does it introduce a parallel way of doing something? When a
+           checkout is present, read what the repository states about itself before answering —
+           CLAUDE.md / AGENTS.md at the root AND in the directories the plan touches, whatever
+           they import, its architecture docs, its agent rule directories (`.claude/`,
+           `.cursor/rules`) and the commands that gate a change there. A plan that contradicts a
+           rule the repo states is a FINDING; quote the rule and name its file, so fixing the
+           plan does not require rediscovering it.
         6. HAND-WAVING. Flag steps that sound complete but are not: "handle appropriately",
            "update the relevant places", any instruction whose real work is hidden in a verb.
 

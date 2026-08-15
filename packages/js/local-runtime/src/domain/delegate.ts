@@ -147,8 +147,9 @@ const prepareCwds = (
       const effective = yield* workspace.prepare({
         repoPath: spec.repoPath,
         worktreePath,
-        branch,
-        remoteBase: spec.remoteBase,
+        // Always the branch strategy: `--worktree` exists to isolate WRITE work, and write work
+        // is what a branch is for. A read-only delegate simply runs in the job's cwd.
+        checkout: { kind: "branch", branch, remoteBase: spec.remoteBase },
       });
       yield* progress.emit(`⎇ ${branch} → ${effective}`);
       paths.push(effective);

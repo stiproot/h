@@ -49,13 +49,17 @@ describe("POST /worktree defaults", () => {
     const response = await app.inject({
       method: "POST",
       url: "/worktree",
-      payload: { workflowInstanceId: "wf", workspaceId: "ws", branch: "feature/x" },
+      payload: {
+        workflowInstanceId: "wf",
+        workspaceId: "ws",
+        checkout: { kind: "branch", branch: "feature/x" },
+      },
     });
     expect(response.statusCode).toBe(200);
     expect(calls[0]).toMatchObject({
       repoPath: join(sharedRoot, "repo"),
       worktreePath: join(sharedRoot, "worktrees", "ws"),
-      remoteBase: "main",
+      checkout: { kind: "branch", branch: "feature/x", remoteBase: "main" },
     });
     await app.close();
     await runtime.dispose();
@@ -72,9 +76,43 @@ describe("POST /worktree defaults", () => {
     await app.inject({
       method: "POST",
       url: "/worktree",
-      payload: { workflowInstanceId: "wf", ...extra },
+      payload: { workflowInstanceId: "wf", checkout: { kind: "branch", ...extra } },
     });
-    expect(calls[0]?.remoteBase).toBe(expected);
+    const checkout = calls[0]?.checkout;
+    expect(checkout?.kind === "branch" ? checkout.remoteBase : undefined).toBe(expected);
+    await app.close();
+    await runtime.dispose();
+  });
+
+  // A body with NO checkout still means the bare branch strategy — the shape a caller that only
+  // wants "a worktree here" has always sent.
+  it("defaults an absent checkout to the branch strategy, refreshed from origin/main", async () => {
+    const { app, calls, runtime } = await harness();
+    await app.inject({
+      method: "POST",
+      url: "/worktree",
+      payload: { workflowInstanceId: "wf" },
+    });
+    expect(calls[0]?.checkout).toEqual({ kind: "branch", remoteBase: "main" });
+    await app.close();
+    await runtime.dispose();
+  });
+
+  // The read strategy passes through untouched — no remoteBase default is invented for it.
+  it("forwards a detached checkout verbatim", async () => {
+    const { app, calls, runtime } = await harness();
+    const checkout = {
+      kind: "detached" as const,
+      ref: "refs/remotes/origin/pr/7/head",
+      fetch: { remoteRef: "refs/pull/7/head", depth: 1 },
+    };
+    const response = await app.inject({
+      method: "POST",
+      url: "/worktree",
+      payload: { workflowInstanceId: "wf", checkout },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(calls[0]?.checkout).toEqual(checkout);
     await app.close();
     await runtime.dispose();
   });

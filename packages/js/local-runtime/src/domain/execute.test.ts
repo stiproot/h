@@ -138,7 +138,11 @@ describe("runWorkflow", () => {
     const { layer, recorder } = stubs();
     await run(
       job([
-        { id: "worktree", activity: "create-worktree", input: { branch: "feature/x" } },
+        {
+          id: "worktree",
+          activity: "create-worktree",
+          input: { checkout: { kind: "branch", branch: "feature/x" } },
+        },
         {
           id: "implement",
           activity: "run-claude",
@@ -148,12 +152,54 @@ describe("runWorkflow", () => {
       layer,
     );
 
-    expect(recorder.worktrees[0]?.branch).toBe("feature/x");
+    const cut = recorder.worktrees[0]?.checkout;
+    expect(cut?.kind === "branch" ? cut.branch : undefined).toBe("feature/x");
     expect(recorder.worktrees[0]?.worktreePath).toBe("/wt/answer-260806-120000");
     // The worktree is cut from the checkout the operator invoked from, absent an explicit
     // clonePath — local execution has no pre-cloned shared workspace.
     expect(recorder.worktrees[0]?.repoPath).toBe("/repo");
     expect(recorder.agentRuns[0]?.cwd).toBe("/wt/answer-260806-120000");
+  });
+
+  // Substrate parity: a review template's detached checkout must mean the same thing here as it
+  // does through the agent service's /worktree — including that no origin/main default is invented
+  // for it, which would be the branch strategy's behaviour and would review the wrong commit.
+  it("passes a detached checkout through, inventing no branch defaults", async () => {
+    const { layer, recorder } = stubs();
+    await run(
+      job([
+        {
+          id: "worktree",
+          activity: "create-worktree",
+          input: {
+            checkout: {
+              kind: "detached",
+              ref: "refs/remotes/origin/pr/42/head",
+              fetch: { remoteRef: "refs/pull/42/head", depth: 1 },
+            },
+          },
+        },
+      ]),
+      layer,
+    );
+    expect(recorder.worktrees[0]?.checkout).toEqual({
+      kind: "detached",
+      ref: "refs/remotes/origin/pr/42/head",
+      fetch: { remoteRef: "refs/pull/42/head", depth: 1 },
+    });
+  });
+
+  // The counterpart default: a create-worktree step with no checkout at all still means the branch
+  // strategy refreshed from origin/main, exactly as /worktree defaults it.
+  it("defaults an absent checkout to the branch strategy off origin/main", async () => {
+    const { layer, recorder } = stubs();
+    await run(job([{ id: "worktree", activity: "create-worktree", input: {} }]), layer);
+    expect(recorder.worktrees[0]?.checkout).toEqual({
+      kind: "branch",
+      branch: undefined,
+      baseRef: undefined,
+      remoteBase: "main",
+    });
   });
 
   it("lets a step's own clonePath override the invoking checkout", async () => {

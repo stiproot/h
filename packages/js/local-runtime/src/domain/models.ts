@@ -26,17 +26,24 @@ export const LOCAL_AGENT_TYPES = ["claude", "codex", "openhands", "pi"] as const
 
 export type LocalAgentType = (typeof LOCAL_AGENT_TYPES)[number];
 
+/**
+ * WHAT a worktree gets checked out to. Structurally the mirror of git-core's `GitCheckout`, which
+ * the domain may not import (git-core is an I/O package — `.dependency-cruiser.cjs` IO_PACKAGES);
+ * `git-workspace.ts` passes a value of this type straight into `addWorktree`, so any drift between
+ * the two shapes is a COMPILE error at that assignment rather than a convention to remember.
+ */
+export type CheckoutSpec =
+  | { kind: "branch"; branch?: string; baseRef?: string; remoteBase?: string }
+  | { kind: "detached"; ref: string; fetch?: { remoteRef: string; depth?: number } };
+
 /** A worktree to cut before a run, so delegated write work never lands in the live checkout. */
 export type WorktreeSpec = {
   /** An existing checkout whose object store the worktree shares. */
   repoPath: string;
   /** Absolute destination path for the new worktree. */
   worktreePath: string;
-  branch?: string;
-  /** Explicit start point for a new branch; wins over `remoteBase`. */
-  baseRef?: string;
-  /** Fetch this branch from origin and start from its tip, rather than the local checkout. */
-  remoteBase?: string;
+  /** WHAT to check out there — the named strategy, identical on both substrates. */
+  checkout: CheckoutSpec;
 };
 
 /** One agent's slice of a delegate job, after the roster has been resolved and cwds assigned. */

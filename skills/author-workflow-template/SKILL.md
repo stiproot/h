@@ -123,7 +123,24 @@ uses the flags.
 
 - Agent steps: `activity: run-claude` (or `{{params.runActivity}}` token for fire-time identity),
   `cwd: {{ h.token "worktree.worktreePath" }}` when working in a worktree, optional `model`.
-- Setup: `{{- include "h.setupSteps" . | nindent 8 }}` installs skills + the h-runtime steering.
+- Worktree steps: `activity: create-worktree` takes a NAMED `checkout` strategy — pick by whether
+  your workflow WRITES or READS.
+  - Writing (commits land on a branch): `checkout: {kind: branch, branch: "feature/…"}`, plus
+    `remoteBase` when you want the freshly-fetched remote tip.
+  - Reading (review, audit, scout): `checkout: {kind: detached, ref: …, fetch: {remoteRef: …}}` —
+    no branch is created, so nothing collides with a concurrent run holding the same one.
+  - **Reviewing a PR? You cannot name its branch.** A PR head is not a local ref in the shallow
+    pre-clone, so the branch strategy would silently cut a new branch from `origin/main` and
+    review MAIN; a fork PR has no branch on origin at all. Fetch `refs/pull/{{params.pr}}/head`
+    detached instead, as `review-pr.tmpl.yaml` does — and expose the `head`/`merge` choice as a
+    param rather than baking it.
+  - A read-only agent generally still WANTS a checkout: it is what makes the target repo's own
+    steering (root and nested CLAUDE.md/AGENTS.md, `.claude/`, `.cursor/rules`, its gate commands)
+    discoverable at all. Through an API alone, nothing enters context unless your prose named an
+    exact path — so an agent judging a repo against its own conventions needs the tree.
+- Setup: `{{- include "h.setupSteps" . | nindent 8 }}` installs skills + the h-runtime steering,
+  ADDITIVELY — it never overwrites a CLAUDE.md or a same-named skill it did not write. Keep any
+  setup step you add to that rule: on the local substrate this is the operator's own HOME.
 - Cross-step references: `{{stepId.field}}` in strings, `{"$ref": "stepId.field"}` for typed
   values — dotted paths reach into results (e.g. `{{plan.structured.plan}}`).
 - Org/repo config (clonePath, models, verifyCmd, gitAuth) bakes from values.yaml +

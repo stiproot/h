@@ -141,14 +141,27 @@ reviewPr:
   # the diff satisfies THE SPEC, not merely the PR's self-description. Empty = spec-less review
   # (identical render to the no-spec default — the chain passes this through when present).
   spec: ""
+  # Local path of the pre-cloned target repo the review's worktree is cut from; empty = the
+  # agent's own <sharedRoot>/repo (the mode-agnostic default). Fire-time -p clonePath=… retargets.
+  clonePath: ""
+  # WHICH GitHub PR ref the review checks out: "head" (the PR's own tip) or "merge" (the PR as
+  # merged into the base — catches semantic conflicts with main that head cannot see). Fire-time
+  # -p prRef=merge switches it; both refs exist for every PR, forks included.
+  prRef: "head"
+  # Git auth strategy NAME for the PR-ref fetch ("pat" | "ssh"); empty = the service default.
+  gitAuth: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL.
   models:
     review: ""
 
-# review-spec workflow (templates/review-spec.tmpl.yaml): setup → spec review. Publish-native —
-# repo/pr/focus are fire-time params; chains use the existing review-pr kind.
+# review-spec workflow (templates/review-spec.tmpl.yaml): setup → worktree → spec review.
+# Publish-native — repo/pr/focus are fire-time params; chains use the existing review-pr kind.
 reviewSpec:
   repo: ""
+  # See the reviewPr block above — same three knobs, same meanings.
+  clonePath: ""
+  prRef: "head"
+  gitAuth: ""
   models:
     review: ""
 

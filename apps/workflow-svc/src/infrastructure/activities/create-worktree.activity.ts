@@ -8,11 +8,17 @@ type Input = {
   workspaceId?: string;
   // Local path of the pre-cloned repo to cut the worktree from (NOT a GitHub owner/name).
   clonePath?: string;
-  branch?: string;
-  baseRef?: string;
-  // Branch to refresh from origin before cutting a new branch (defaults to "main" in the agent's
-  // /worktree route). Pass an explicit "" to skip the refresh and branch from the local checkout.
-  remoteBase?: string;
+  // WHAT to check out — git-core's GitCheckout strategy, forwarded verbatim to the agent's
+  // /worktree, which owns the defaulting (absent = the bare branch strategy; a branch strategy
+  // with no baseRef refreshes from origin/main).
+  checkout?: {
+    kind: "branch" | "detached";
+    branch?: string;
+    baseRef?: string;
+    remoteBase?: string;
+    ref?: string;
+    fetch?: { remoteRef: string; depth?: number };
+  };
   // Git auth strategy NAME ("pat" | "ssh") forwarded to the agent's /worktree; secrets stay
   // in the agent service's env.
   auth?: string;
@@ -26,24 +32,15 @@ export async function createWorktreeActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<{ worktreePath: string }> {
-  const {
-    workflowInstanceId,
-    workspaceId,
-    clonePath,
-    branch,
-    baseRef,
-    remoteBase,
-    auth,
-    agentId,
-    traceparent,
-  } = input as Input;
+  const { workflowInstanceId, workspaceId, clonePath, checkout, auth, agentId, traceparent } =
+    input as Input;
   const targetAgent = agentId ?? "claude-agent";
   return runActivity(
     invokeAgentMethod({
       label: "create-worktree",
       appId: targetAgent,
       method: "worktree",
-      body: { workflowInstanceId, workspaceId, clonePath, branch, baseRef, remoteBase, auth },
+      body: { workflowInstanceId, workspaceId, clonePath, checkout, auth },
       span: "client",
       parse: "json",
     }).pipe(Effect.map((json) => json as { worktreePath: string })),

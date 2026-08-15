@@ -242,7 +242,8 @@ def test_implement_publish_mode_opens_param_slots() -> None:
         )
     )
     assert "instanceId" not in definition
-    assert definition["steps"][0]["input"]["branch"] == "feature/{{params.slug}}"
+    checkout = definition["steps"][0]["input"]["checkout"]
+    assert checkout == {"kind": "branch", "branch": "feature/{{params.slug}}"}
     assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
     # implement carries no PR params — opening a PR is the create-pr overlay's job, not feature's.
     assert "{{params.createPr}}" not in definition["steps"][3]["input"]["task"]
@@ -459,11 +460,14 @@ def test_review_spec_publish_mode_opens_param_slots() -> None:
             )
         )
     )
-    assert [step["id"] for step in definition["steps"]] == ["setup", "review"]
-    task = definition["steps"][1]["input"]["task"]
+    # The worktree is what makes the premise check possible — the spec review reads the repo,
+    # not just the PR it is fetching files from one at a time.
+    assert [step["id"] for step in definition["steps"]] == ["setup", "worktree", "review"]
+    review = next(s for s in definition["steps"] if s["id"] == "review")
+    task = review["input"]["task"]
     for token in ("{{params.repo}}", "{{params.pr}}", "{{params.focus}}"):
         assert token in task
-    output_contract = definition["steps"][1]["input"]["outputContract"]
+    output_contract = review["input"]["outputContract"]
     expected_verdicts = ["CLEAN", "FINDINGS"]
     assert output_contract["properties"]["verdict"]["enum"] == expected_verdicts
     assert definition["outputs"]["properties"]["verdict"]["enum"] == expected_verdicts
@@ -507,8 +511,9 @@ def test_review_pr_publish_mode_opens_param_slots() -> None:
             )
         )
     )
-    assert [s["id"] for s in definition["steps"]] == ["setup", "review"]
-    review_task = definition["steps"][1]["input"]["task"]
+    assert [s["id"] for s in definition["steps"]] == ["setup", "worktree", "review"]
+    review = next(s for s in definition["steps"] if s["id"] == "review")
+    review_task = review["input"]["task"]
     assert "{{params.pr}}" in review_task
     assert "{{params.focus}}" in review_task
     assert "{{params.repo}}" in review_task  # the target repo is a fire-time identity token
@@ -516,7 +521,13 @@ def test_review_pr_publish_mode_opens_param_slots() -> None:
     assert "OUTPUT CONTRACT" in review_task and "verdict" in review_task
     # Executor is claude-agent — the loop's pinned reviewer (trust model; no longer claude-coder).
     assert definition["steps"][0]["input"]["agentId"] == "claude-agent"
-    assert definition["steps"][1]["activity"] == "run-claude"
+    assert review["activity"] == "run-claude"
+    # The reviewer runs IN the checkout, detached at the PR ref: a branch checkout would cut a new
+    # branch from origin/main in the shallow pre-clone and silently review main.
+    assert review["input"]["cwd"] == "{{worktree.worktreePath}}"
+    checkout = next(s for s in definition["steps"] if s["id"] == "worktree")["input"]["checkout"]
+    assert checkout["kind"] == "detached"
+    assert checkout["fetch"]["remoteRef"] == "refs/pull/{{params.pr}}/{{params.prRef}}"
 
 
 def test_review_pr_repo_is_a_fire_param_not_required() -> None:
@@ -525,8 +536,8 @@ def test_review_pr_repo_is_a_fire_param_not_required() -> None:
     definition = json.loads(
         helm.to_wire_json(helm.render_workflow("review-pr", values={}, include_local=False))
     )
-    review_task = definition["steps"][1]["input"]["task"]
-    assert "{{params.repo}}" in review_task
+    review = next(s for s in definition["steps"] if s["id"] == "review")
+    assert "{{params.repo}}" in review["input"]["task"]
 
 
 def test_plugin_setup_steps_with_marketplaces_golden(snapshot) -> None:

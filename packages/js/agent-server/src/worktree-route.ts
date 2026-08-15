@@ -4,7 +4,7 @@ import { FileSystem } from "@effect/platform";
 import { CloneError } from "core";
 import { Effect, type ManagedRuntime, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
-import { GitClient } from "git-core";
+import { GitClient, type GitCheckout } from "git-core";
 import { withServerSpan } from "telemetry";
 
 import { resolveGitAuth } from "./git-auth.ts";
@@ -19,12 +19,34 @@ const WorktreeBody = Schema.Struct({
   // Local path of the pre-cloned repo to cut the worktree from; defaults to <sharedRoot>/repo.
   // NB: a filesystem path, NOT a GitHub owner/name (that is `repo`, the wf-identity segment).
   clonePath: Schema.optional(Schema.String),
-  branch: Schema.optional(Schema.String),
-  baseRef: Schema.optional(Schema.String),
-  // Branch to refresh from origin before cutting a new branch, so the worktree is up to date with the
-  // remote rather than the pre-clone's stale local checkout. Defaults to "main"; ignored when baseRef
-  // pins an explicit start point. Pass an empty string to skip the refresh (branch from local HEAD).
-  remoteBase: Schema.optional(Schema.String),
+  // WHAT to check out — the named strategy (git-core's GitCheckout). `branch` is the write
+  // strategy (implement/plan/revise); `detached` is the read strategy (review/audit), fetching a
+  // ref that need not exist in the shallow pre-clone. Adding a strategy is a change HERE and in
+  // the union — selecting one is data a template author writes.
+  checkout: Schema.optional(
+    Schema.Union(
+      Schema.Struct({
+        kind: Schema.Literal("branch"),
+        branch: Schema.optional(Schema.String),
+        baseRef: Schema.optional(Schema.String),
+        // Branch to refresh from origin before cutting a new branch, so the worktree is up to date
+        // with the remote rather than the pre-clone's stale local checkout. Defaults to "main";
+        // ignored when baseRef pins an explicit start point. Pass an empty string to skip the
+        // refresh (branch from local HEAD).
+        remoteBase: Schema.optional(Schema.String),
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("detached"),
+        ref: Schema.String,
+        fetch: Schema.optional(
+          Schema.Struct({
+            remoteRef: Schema.String,
+            depth: Schema.optional(Schema.Number),
+          }),
+        ),
+      }),
+    ),
+  ),
   // Auth strategy NAME only (secrets stay in the service env — see resolveGitAuth).
   auth: Schema.optional(Schema.Literal("pat", "ssh")),
 });
@@ -68,12 +90,22 @@ const worktreeEffect = (
   { sharedRoot, ledger }: Pick<WorktreeRouteEffectConfig, "sharedRoot" | "ledger">,
 ) =>
   Effect.gen(function* () {
-    const { workflowInstanceId, workspaceId, clonePath, branch, baseRef, remoteBase, auth } =
+    const { workflowInstanceId, workspaceId, clonePath, checkout, auth } =
       yield* Schema.decodeUnknown(WorktreeBody)(rawBody);
+    // Absent checkout = the bare branch strategy (git names a branch after the worktree path),
+    // which is what a body carrying no checkout has always meant.
+    const strategy: GitCheckout = checkout ?? { kind: "branch" };
     // Refresh from origin/main by default so a new worktree is cut from the latest remote tip, not
     // the pre-clone's stale local checkout. A pinned baseRef wins; an explicit empty remoteBase
-    // opts out (branch from local HEAD, the pre-refresh behaviour).
-    const effectiveRemoteBase = baseRef ? undefined : (remoteBase ?? "main") || undefined;
+    // opts out (branch from local HEAD, the pre-refresh behaviour). Detached checkouts carry their
+    // own fetch and take no default.
+    const effectiveCheckout: GitCheckout =
+      strategy.kind === "branch"
+        ? {
+            ...strategy,
+            remoteBase: strategy.baseRef ? undefined : (strategy.remoteBase ?? "main") || undefined,
+          }
+        : strategy;
     const startedAtMs = Date.now();
     const key = workspaceId ?? workflowInstanceId;
     const worktreePath = join(sharedRoot, "worktrees", key);
@@ -113,9 +145,7 @@ const worktreeEffect = (
       return yield* git.addWorktree({
         repoPath,
         worktreePath,
-        branch,
-        baseRef,
-        remoteBase: effectiveRemoteBase,
+        checkout: effectiveCheckout,
         auth: resolveGitAuth(auth),
       });
     }).pipe(

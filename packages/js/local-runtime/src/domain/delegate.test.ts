@@ -163,12 +163,18 @@ describe("runDelegate", () => {
     );
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(recorder.worktrees.map((w) => w.branch)).toEqual(["local/job-codex", "local/job-pi"]);
+    expect(
+      recorder.worktrees.map((w) => (w.checkout.kind === "branch" ? w.checkout.branch : undefined)),
+    ).toEqual(["local/job-codex", "local/job-pi"]);
     expect(recorder.worktrees.map((w) => w.worktreePath)).toEqual([
       "/work/.h-worktrees/local-job-codex",
       "/work/.h-worktrees/local-job-pi",
     ]);
-    expect(recorder.worktrees.every((w) => w.remoteBase === "main")).toBe(true);
+    expect(
+      recorder.worktrees.every(
+        (w) => w.checkout.kind === "branch" && w.checkout.remoteBase === "main",
+      ),
+    ).toBe(true);
     expect(recorder.requests.map((r) => r.cwd)).toEqual([
       "/work/.h-worktrees/local-job-codex",
       "/work/.h-worktrees/local-job-pi",

@@ -156,7 +156,7 @@ describe("gcWorktrees (ExecGitClient layer)", () => {
         return yield* client.addWorktree({
           repoPath: repo,
           worktreePath: join(worktrees, branch.replace(/\//g, "-")),
-          branch,
+          checkout: { kind: "branch", branch },
         });
       }),
     );
@@ -258,7 +258,7 @@ describe("gcWorktrees (ExecGitClient layer)", () => {
         return yield* client.addWorktree({
           repoPath: repo,
           worktreePath: join(worktrees, "fresh"),
-          branch: "feature/fresh",
+          checkout: { kind: "branch", branch: "feature/fresh" },
         });
       }),
     );
@@ -305,7 +305,7 @@ describe("gcWorktrees (ExecGitClient layer)", () => {
         return yield* client.addWorktree({
           repoPath: repo,
           worktreePath: outside,
-          branch: "feature/theirs",
+          checkout: { kind: "branch", branch: "feature/theirs" },
         });
       }),
     );

@@ -148,6 +148,22 @@
             }
           },
           "additionalProperties": false
+        },
+        "clonePath": {
+          "type": "string",
+          "$comment": "Local path of the pre-cloned target repo the review worktree is cut from; empty = the agent's <sharedRoot>/repo."
+        },
+        "prRef": {
+          "type": "string",
+          "enum": [
+            "head",
+            "merge"
+          ],
+          "$comment": "Which GitHub PR ref the review checks out: the PR's own tip, or the PR as merged into its base."
+        },
+        "gitAuth": {
+          "type": "string",
+          "$comment": "Git auth strategy NAME for the PR-ref fetch (pat | ssh); secrets stay in the agent service env."
         }
       },
       "additionalProperties": false
@@ -167,6 +183,22 @@
             }
           },
           "additionalProperties": false
+        },
+        "clonePath": {
+          "type": "string",
+          "$comment": "Local path of the pre-cloned target repo the review worktree is cut from; empty = the agent's <sharedRoot>/repo."
+        },
+        "prRef": {
+          "type": "string",
+          "enum": [
+            "head",
+            "merge"
+          ],
+          "$comment": "Which GitHub PR ref the review checks out: the PR's own tip, or the PR as merged into its base."
+        },
+        "gitAuth": {
+          "type": "string",
+          "$comment": "Git auth strategy NAME for the PR-ref fetch (pat | ssh); secrets stay in the agent service env."
         }
       },
       "additionalProperties": false
@@ -176,7 +208,10 @@
       "$comment": "bootstrap-repo template (templates/bootstrap-repo.tmpl.yaml). Publish-native: repoName/spec/verifyCmd/plugins/visibility are fire-time params; only visibility default and models bake here.",
       "properties": {
         "visibility": {
-          "enum": ["private", "public"],
+          "enum": [
+            "private",
+            "public"
+          ],
           "$comment": "Default GitHub repo visibility for newly created repositories."
         },
         "models": {
@@ -197,7 +232,9 @@
       "properties": {
         "marketplaces": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

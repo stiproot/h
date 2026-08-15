@@ -37,12 +37,13 @@ export const GitWorkspaceLive: Layer.Layer<
         yield* fs.makeDirectory(dirname(spec.worktreePath), { recursive: true });
         // addWorktree returns the EFFECTIVE path: a branch lives in at most one worktree, so if
         // one already holds it, that path comes back instead of an error.
+        // spec.checkout is git-core's GitCheckout in all but name (the domain may not import an
+        // I/O package). This assignment is the drift guard: a shape change on either side fails
+        // the typecheck here.
         return yield* git.addWorktree({
           repoPath: spec.repoPath,
           worktreePath: spec.worktreePath,
-          branch: spec.branch,
-          baseRef: spec.baseRef,
-          remoteBase: spec.remoteBase,
+          checkout: spec.checkout,
         });
       }).pipe(
         Effect.mapError((cause) => new WorkspaceError({ worktreePath: spec.worktreePath, cause })),

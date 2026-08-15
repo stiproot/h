@@ -72,11 +72,14 @@ steps:
     activity: create-worktree
     input:
       agentId: {{ $agentIdRef | quote }}
-      branch: {{ printf "feature/%s" $slug | quote }}
       clonePath: {{ include "h.token" "params.clonePath" | quote }}
-      {{- with $r.remoteBase }}
-      remoteBase: {{ . | quote }}
-      {{- end }}
+      {{- /* The WRITE checkout strategy: the revision pushes to the PR's own branch. */}}
+      checkout:
+        kind: branch
+        branch: {{ printf "feature/%s" $slug | quote }}
+        {{- with $r.remoteBase }}
+        remoteBase: {{ . | quote }}
+        {{- end }}
       {{- with $r.gitAuth }}
       auth: {{ . | quote }}
       {{- end }}

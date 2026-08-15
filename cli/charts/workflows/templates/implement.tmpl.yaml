@@ -85,11 +85,14 @@ steps:
     activity: create-worktree
     input:
       agentId: {{ $agentIdRef | quote }}
-      branch: {{ printf "feature/%s" $slug | quote }}
       clonePath: {{ include "h.token" "params.clonePath" | quote }}
-      {{- with $f.remoteBase }}
-      remoteBase: {{ . | quote }}
-      {{- end }}
+      {{- /* The WRITE checkout strategy: this run's whole point is commits on a named branch. */}}
+      checkout:
+        kind: branch
+        branch: {{ printf "feature/%s" $slug | quote }}
+        {{- with $f.remoteBase }}
+        remoteBase: {{ . | quote }}
+        {{- end }}
       {{- with $f.gitAuth }}
       auth: {{ . | quote }}
       {{- end }}

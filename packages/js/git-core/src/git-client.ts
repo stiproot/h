@@ -79,21 +79,53 @@ export const authEnv = (auth: GitAuth): Record<string, string> | undefined =>
 const authToken = (auth: GitAuth): string | undefined =>
   auth.kind === "pat" ? auth.token : undefined;
 
+/**
+ * WHAT a worktree gets checked out to — a named strategy chosen in workflow/step config, the
+ * sibling of {@link GitAuth} (which names HOW git authenticates). Adding a strategy is a change in
+ * exactly two places: this union and the wire schema that names it; SELECTING one is data, so a
+ * template author explores a different checkout without a code change.
+ *
+ *  - `branch` — put the worktree on a branch, creating it when absent. The WRITE strategy
+ *    (implement, plan, revise): the run's whole point is commits on a named branch.
+ *  - `detached` — check out an existing commit-ish with NO branch. The READ strategy (review,
+ *    audit, scout): a read-only agent should not be holding a branch, and a detached checkout
+ *    creates nothing in the shared clone that another run could collide with.
+ *
+ * Deliberately git-only: a GitHub PR head (`refs/pull/N/head`) is expressed by the CALLER as a
+ * `detached` fetch, never as a `kind` here — keeping the forge's conventions out of git-core is
+ * what lets a template swap a PR's `head` for its `merge` ref as a fire-time param.
+ */
+export type GitCheckout =
+  | {
+      kind: "branch";
+      // Branch to put the worktree on. If it already exists, the worktree checks it out (preserving
+      // its commits); if not, it is created. Omit to let git name a branch after the worktree path.
+      branch?: string;
+      // Start point for a newly created branch; ignored when checking out an existing branch.
+      baseRef?: string;
+      // When set (e.g. "main"), fetch this branch from origin before cutting a NEW branch and start
+      // it from the freshly-fetched remote tip, so the worktree is up to date with the remote rather
+      // than the source clone's possibly-stale local checkout. Ignored when checking out an existing
+      // branch (its commits are preserved) or when an explicit baseRef pins a start point.
+      remoteBase?: string;
+    }
+  | {
+      kind: "detached";
+      // The commit-ish to check out, and — when `fetch` is set — the local ref the fetch writes.
+      ref: string;
+      // Fetch `remoteRef` from origin into `ref` first, so the target need NOT already exist in a
+      // shallow pre-clone (a PR head, a fork's branch, a tag). The fetch is forced, so re-running
+      // against a ref that has since moved updates rather than failing non-fast-forward.
+      fetch?: { remoteRef: string; depth?: number };
+    };
+
 export type WorktreeOptions = {
   // Path to an existing clone (holds the .git the worktree shares its object store with).
   repoPath: string;
   // Destination path for the new worktree checkout.
   worktreePath: string;
-  // Branch to put the worktree on. If it already exists, the worktree checks it out (preserving its
-  // commits); if not, it is created. Omit to let git name a branch after the worktree path.
-  branch?: string;
-  // Start point for a newly created branch; ignored when checking out an existing branch.
-  baseRef?: string;
-  // When set (e.g. "main"), fetch this branch from origin before cutting a NEW branch and start it
-  // from the freshly-fetched remote tip, so the worktree is up to date with the remote rather than
-  // the source clone's possibly-stale local checkout. Ignored when checking out an existing branch
-  // (its commits are preserved) or when an explicit baseRef is given (the caller pinned a start point).
-  remoteBase?: string;
+  // WHAT to check out there. See {@link GitCheckout}.
+  checkout: GitCheckout;
   // GitHub token to authenticate the origin fetch for a private https repo (injected in-process, as
   // in clone(); never persisted to the remote or a shell command line). Shorthand for
   // `auth: { kind: "pat", token }`; ignored when `auth` is set.
@@ -143,13 +175,19 @@ export class GitClient extends Context.Tag("GitClient")<
     /** Shallow-clone `url` into `dir` (relative to `cwd`), depth 1 unless overridden. */
     readonly clone: (opts: CloneOptions) => Effect.Effect<void, GitCloneError>;
     /**
-     * Add a git worktree of `repoPath` at `worktreePath`, returning the EFFECTIVE path. An
-     * existing branch is checked out as-is (not reset); a missing one is created — from the
-     * freshly-fetched `origin/<remoteBase>` tip when `remoteBase` is set and no explicit
-     * `baseRef` pins a start point. Reuse-by-branch (issue #76): a branch can only be checked
-     * out in ONE worktree, so if some worktree (any workspace) already holds it, that
-     * worktree's path is returned instead of failing — members that need a fresh base already
-     * fetch + reset against origin themselves.
+     * Add a git worktree of `repoPath` at `worktreePath`, per the caller's {@link GitCheckout}
+     * strategy, returning the EFFECTIVE path.
+     *
+     * `branch`: an existing branch is checked out as-is (not reset); a missing one is created —
+     * from the freshly-fetched `origin/<remoteBase>` tip when `remoteBase` is set and no explicit
+     * `baseRef` pins a start point. Reuse-by-branch (issue #76): a branch can only be checked out
+     * in ONE worktree, so if some worktree (any workspace) already holds it, that worktree's path
+     * is returned instead of failing — members that need a fresh base already fetch + reset
+     * against origin themselves.
+     *
+     * `detached`: the ref is fetched (when asked) and checked out with NO branch, so nothing is
+     * created that a concurrent run could contend for — reuse-by-branch does not apply and the
+     * requested path always comes back.
      */
     readonly addWorktree: (opts: WorktreeOptions) => Effect.Effect<string, GitWorktreeError>;
     /**
@@ -230,13 +268,41 @@ const worktreePathForBranch = (porcelain: string, branch: string): string | unde
 const addWorktreeEffect = (
   opts: WorktreeOptions,
 ): Effect.Effect<string, GitWorktreeError, CommandExecutor.CommandExecutor> => {
-  const { repoPath, worktreePath, branch, remoteBase } = opts;
+  const { repoPath, worktreePath, checkout } = opts;
   const auth = normalizeAuth(opts.auth, opts.token);
   const token = authToken(auth);
+  /** `git fetch <origin> +<src>:<dst>`, authenticated per the caller's strategy. Forced, so a ref
+   *  that has moved since a previous run updates instead of failing non-fast-forward. */
+  const fetchInto = (
+    remoteRef: string,
+    localRef: string,
+    depth?: number,
+  ): Effect.Effect<void, GitExitError | PlatformError, CommandExecutor.CommandExecutor> =>
+    Effect.gen(function* () {
+      const originUrl = (yield* runGit(["-C", repoPath, "remote", "get-url", "origin"])).trim();
+      const args = ["-C", repoPath, "fetch", "--quiet"];
+      if (depth !== undefined) args.push("--depth", String(depth));
+      args.push(resolveUrl(originUrl, auth), `+${remoteRef}:${localRef}`);
+      yield* runGit(args, undefined, authEnv(auth));
+    });
+
   return Effect.gen(function* () {
     // Drop admin entries for worktree dirs removed out of band, so re-adding at the same path does
     // not fail with "already registered".
     yield* runGit(["-C", repoPath, "worktree", "prune"]);
+
+    if (checkout.kind === "detached") {
+      // A detached checkout holds no branch, so there is nothing to reuse and nothing to contend
+      // for: fetch the target when asked (it need not exist in a shallow pre-clone), then check it
+      // out with --detach. No -b, no branch left behind in the shared clone.
+      if (checkout.fetch) {
+        yield* fetchInto(checkout.fetch.remoteRef, checkout.ref, checkout.fetch.depth);
+      }
+      yield* runGit(["-C", repoPath, "worktree", "add", "--detach", worktreePath, checkout.ref]);
+      return worktreePath;
+    }
+
+    const { branch, remoteBase } = checkout;
 
     // Reuse-by-branch (issue #76): a branch is checked out in at most one worktree; if one holds
     // it already (a finished chain's leftover, another workspace's checkout), return ITS path
@@ -252,22 +318,10 @@ const addWorktreeEffect = (
     // Refresh from the remote before cutting a NEW branch so it starts from the latest
     // origin/<remoteBase> rather than the source clone's stale local checkout. Skipped when reusing
     // an existing branch (keep its work) or when the caller pinned an explicit baseRef.
-    let baseRef = opts.baseRef;
+    let baseRef = checkout.baseRef;
     if (!reuseExisting && remoteBase && !baseRef) {
-      const originUrl = (yield* runGit(["-C", repoPath, "remote", "get-url", "origin"])).trim();
       const trackingRef = `refs/remotes/origin/${remoteBase}`;
-      yield* runGit(
-        [
-          "-C",
-          repoPath,
-          "fetch",
-          "--quiet",
-          resolveUrl(originUrl, auth),
-          `${remoteBase}:${trackingRef}`,
-        ],
-        undefined,
-        authEnv(auth),
-      );
+      yield* fetchInto(remoteBase, trackingRef);
       baseRef = trackingRef;
     }
 

@@ -16,10 +16,17 @@ h runtime steering into the agent's user-global ~/.claude. $H_SKILLS_DIR and $AG
 are agent-side shell env vars, expanded where the setup cmd runs — inert text to both helm
 and the workflow engine (this is exactly the class of token that made envsubst need an
 allowlist; here it needs nothing).
+
+BOTH steps are ADDITIVE, and that is load-bearing rather than tidy. h's steering is the runtime
+the agent is inside, NOT the rules of the repository it is working on — h-runtime.md's own first
+paragraph says exactly that — so it has no business replacing either. The old form `cp`'d over
+~/.claude/CLAUDE.md and clobbered whatever was there; on the local substrate that file is the
+OPERATOR's own memory, destroyed on every --with-setup run. install-steering.sh writes only
+between its markers, and `cp -n` lets a same-named skill already present win.
 */}}
 {{- define "h.setupSteps" -}}
-- cmd: "mkdir -p ~/.claude/skills && cp -r \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
-- cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then cp $AGENT_APP_DIR/steering/h-runtime.md ~/.claude/CLAUDE.md; fi"
+- cmd: "mkdir -p ~/.claude/skills && cp -rn \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
+- cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then bash \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/install-steering.sh $AGENT_APP_DIR/steering/h-runtime.md; fi"
 {{- end }}
 
 {{/*

@@ -99,11 +99,14 @@ steps:
     activity: create-worktree
     input:
       agentId: {{ $agentIdRef | quote }}
-      branch: {{ printf "feature/%s" $slug | quote }}
       clonePath: {{ include "h.token" "params.clonePath" | quote }}
-      {{- with $p.remoteBase }}
-      remoteBase: {{ . | quote }}
-      {{- end }}
+      {{- /* The WRITE checkout strategy: the plan lands as a commit on the feature branch. */}}
+      checkout:
+        kind: branch
+        branch: {{ printf "feature/%s" $slug | quote }}
+        {{- with $p.remoteBase }}
+        remoteBase: {{ . | quote }}
+        {{- end }}
       {{- with $p.gitAuth }}
       auth: {{ . | quote }}
       {{- end }}

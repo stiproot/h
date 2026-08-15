@@ -1,8 +1,14 @@
 {{- /*
-pr-review workflow — setup → review (read PR, post GitHub review comments).
+pr-review workflow — setup → worktree → review (read PR, post GitHub review comments).
 
 Reads an existing PR on the target repo and posts a submitted PR review with line-anchored
-comments via the GitHub MCP. Publish-native: per-run inputs are always emitted as
+comments via the GitHub MCP, FROM a detached checkout of the PR — the diff comes from the MCP,
+the checkout is what makes the repository's own steering (root and nested CLAUDE.md/AGENTS.md,
+.claude/, .cursor/rules, its gate commands) discoverable at all. Without one, nothing enters the
+reviewer's context unless this prose named an exact path, and a review that cannot see the rules
+a repo states about itself cannot enforce them.
+
+Publish-native: per-run inputs are always emitted as
 {{params.*}} engine tokens — this template only makes sense saved and fired with
 run_saved_workflow (by the CLI, an agent, or a pub/sub trigger), never rendered as a one-off.
 
@@ -23,10 +29,16 @@ Fire-time params:
           satisfies THE SPEC, not merely the PR's self-description (empty = diff-only
           review). Always an open runtime slot (the focus pattern); chains thread it
           from chain data automatically.
+  prRef   Which GitHub ref the review checks out: "head" (default — the PR's own tip) or
+          "merge" (the PR as already merged into its base, which surfaces semantic conflicts
+          with main that head cannot show). Both exist for every PR, forks included, so
+          -p prRef=merge is the whole cost of trying the other one.
+  clonePath  Local path of the pre-cloned target repo the worktree is cut from; empty = the
+          agent's own <sharedRoot>/repo.
 
 Template config (values, baked at publish time): reviewPr.repo (owner/name — the stored default
 for the repo param), reviewPr.spec (the stored default for the spec param, empty = diff-only),
-models.review.
+reviewPr.clonePath, reviewPr.prRef, reviewPr.gitAuth, models.review.
 
 Review comment shape consumed by the revise flow: concrete defect, fix direction, acceptance
 check. The review is always submitted as a COMMENT (never APPROVE or REQUEST_CHANGES — human
@@ -76,6 +88,12 @@ params:
   param referenced in steps MUST appear in this block or chains naming this workflow are
   refused for it. */}}
   focus: ""
+  clonePath: {{ $p.clonePath | default "" | quote }}
+  {{- /* WHAT the review looks at: `head` is the PR's own tip; `merge` is GitHub's ref for the PR
+  already merged into the base, which catches semantic conflicts with main that `head` cannot see.
+  Both refs are maintained by GitHub for every PR, forks included, so this is a fire-time -p —
+  exploring the other one costs nothing. */}}
+  prRef: {{ $p.prRef | default "head" | quote }}
   {{- with $p.models.review }}
   modelReview: {{ . | quote }}
   {{- end }}
@@ -86,9 +104,33 @@ steps:
       agentId: "claude-agent"
       setup:
         {{- include "h.setupSteps" . | nindent 8 }}
+  {{- /* The reviewer gets a CHECKOUT so the target repo's own steering — root and nested CLAUDE.md,
+  AGENTS.md, .claude/skills, .cursor/rules, whatever it ships — is discoverable at all. Read through
+  the GitHub API alone it is not: nothing enters context unless prose named an exact path.
+
+  DETACHED, not a branch, for three reasons that each bite on their own: a PR head branch is not a
+  local ref in the shallow pre-clone (the branch strategy would silently cut a NEW branch from
+  origin/main's tip and review main), a fork PR has no branch on origin at all, and in the
+  h-builds-h loop this runs on the same clone as the implementer — where reuse-by-branch would hand
+  the reviewer the implementer's dirty worktree. refs/pull/N/<ref> resolves all three. */}}
+  - id: worktree
+    activity: create-worktree
+    input:
+      agentId: "claude-agent"
+      clonePath: {{ include "h.token" "params.clonePath" | quote }}
+      checkout:
+        kind: detached
+        ref: {{ printf "refs/remotes/origin/pr/%s/%s" (include "h.token" "params.pr") (include "h.token" "params.prRef") | quote }}
+        fetch:
+          remoteRef: {{ printf "refs/pull/%s/%s" (include "h.token" "params.pr") (include "h.token" "params.prRef") | quote }}
+          depth: 1
+      {{- with $p.gitAuth }}
+      auth: {{ . | quote }}
+      {{- end }}
   - id: review
     activity: run-claude
     input:
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
       outputContract: {{ $contract | toJson }}
       {{- with $p.models.review }}
       model: {{ include "h.token" "params.modelReview" | quote }}
@@ -103,18 +145,42 @@ steps:
 
         1. READ. Use the github MCP to read the PR:
            - pull_request_read to get the PR body, title, linked issue, branch, and diff.
-           - For each changed file, get_file_contents to read the surrounding context where
-             needed to understand the change fully.
            - If the PR body mentions a linked issue, issue_read to understand the stated intent.
 
-        2. REVIEW. Check the diff against the repository's conventions (CLAUDE.md, README.md,
-           ARCHITECTURE.md if present) and against correctness, scope, and docs accuracy:
+           Your working directory is a checkout of this PR — read the surrounding context of each
+           changed file from there rather than fetching it, and grep it freely. The DIFF comes from
+           the MCP (the checkout is shallow, so `git diff` against the base will not work); the
+           checkout is for CONTEXT.
+
+        2. STEERING. Before judging anything, find out what this repository says about itself, and
+           read what you find. Look for, at least:
+           - CLAUDE.md / AGENTS.md at the root AND in the subdirectories the diff touches — a
+             nested one governs its own directory and is where the specific rules usually live.
+           - Files those import or point at (`@path` imports, "see X.md" pointers).
+           - README.md and any architecture or design doc it names.
+           - Agent/editor rule directories: `.claude/` (skills, rules, settings), `.cursor/rules`,
+             or whatever equivalent this repo ships.
+           - The commands that gate a change here: `Makefile`, `scripts/`, CI workflow files.
+           This is DISCOVERY, not a checklist — the list above is where repositories usually put
+           these things, not the set that exists. If you find none, say so explicitly in your
+           summary; "this repo states no conventions" is a finding-free result, but silently not
+           looking is not the same thing and must not read like it.
+
+        3. REVIEW. Check the diff against what you found in step 2, and against correctness, scope,
+           and docs accuracy:
+           - Steering conformance: does the diff violate a rule this repository states about
+             itself? QUOTE the rule and name the file it came from, so a revise run can act on the
+             finding without re-deriving it. A rule the repo states is not a matter of taste —
+             a violation is a FINDING, not a style note.
+           - Rules changed by the diff: if the PR itself edits a steering file, review that edit
+             as a change in its own right, and judge the rest of the diff against the rule as the
+             PR leaves it.
            - Correctness: does the code do what the PR claims? Are there logic errors, missing
              edge cases, or broken invariants?
            - Scope: does the PR include only what the linked issue (or PR description) asks for?
              Flag unrequested refactors, missing required changes, or changes to unrelated files.
-           - Docs accuracy: if CLAUDE.md or README.md describe something the PR changes, are
-             the docs updated to match?
+           - Docs accuracy: if any doc you read in step 2 describes something the PR changes,
+             is it updated to match?
            - Convention: does the code follow patterns already in the repo (naming, structure,
              no unnecessary comments, no emojis unless asked, no backwards-compat hacks for
              things that can just be changed)?
@@ -148,7 +214,7 @@ steps:
            ===ORIGINAL SPEC===
            {{ include "h.token" "params.spec" }}
 
-        3. POST. Use the GitHub MCP review workflow:
+        4. POST. Use the GitHub MCP review workflow:
            a. pull_request_review_write with method "create" to open a pending review on PR
               #{{ include "h.token" "params.pr" }} in {{ include "h.token" "params.repo" }}.
            b. For each finding, add_comment_to_pending_review with:

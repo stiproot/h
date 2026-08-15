@@ -6,7 +6,13 @@ import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-c
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
-import type { JournalRecord, WorkflowEnvelope, WorkflowJob, WorkflowRunRef } from "./models.ts";
+import type {
+  CheckoutSpec,
+  JournalRecord,
+  WorkflowEnvelope,
+  WorkflowJob,
+  WorkflowRunRef,
+} from "./models.ts";
 import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /** A step did not produce a result. Carries the step id so the envelope can name the failure. */
@@ -29,6 +35,43 @@ const str = (value: unknown): string | undefined => {
 };
 
 const stepId = (step: StepDefinition): string => step.id ?? step.activity;
+
+/**
+ * A `create-worktree` step's `checkout` input → the strategy to cut with. The in-process mirror of
+ * the agent service's `/worktree` defaulting, so a definition means the same thing on both
+ * substrates: absent = the bare branch strategy, and a branch strategy with no pinned `baseRef`
+ * refreshes from `origin/main` (an explicit "" opts out and branches from local HEAD).
+ */
+const checkoutFromInput = (input: Record<string, unknown>): CheckoutSpec => {
+  const raw = (input.checkout ?? {}) as Record<string, unknown>;
+  if (raw.kind === "detached") {
+    const fetch = raw.fetch as { remoteRef?: unknown; depth?: unknown } | undefined;
+    const remoteRef = str(fetch?.remoteRef);
+    return {
+      kind: "detached",
+      ref: str(raw.ref) ?? "HEAD",
+      ...(remoteRef
+        ? {
+            fetch: {
+              remoteRef,
+              ...(typeof fetch?.depth === "number" ? { depth: fetch.depth } : {}),
+            },
+          }
+        : {}),
+    };
+  }
+  const baseRef = str(raw.baseRef);
+  return {
+    kind: "branch",
+    branch: str(raw.branch),
+    baseRef,
+    remoteBase: baseRef
+      ? undefined
+      : typeof raw.remoteBase === "string"
+        ? str(raw.remoteBase)
+        : "main",
+  };
+};
 
 /**
  * Execute a workflow definition in-process.
@@ -271,22 +314,13 @@ const runStep = (
       const workspace = yield* WorkspacePort;
       if (classified.name === "create-worktree") {
         const key = str(input.workspaceId) ?? str(input.workflowInstanceId) ?? job.group;
-        const baseRef = str(input.baseRef);
         const worktreePath = yield* workspace
           .prepare({
             // A step's own clonePath wins (the multi-repo knob); otherwise the checkout the
             // operator invoked from — local execution has no pre-cloned shared workspace.
             repoPath: str(input.clonePath) ?? job.repoPath,
             worktreePath: join(job.worktreeRoot, key),
-            branch: str(input.branch),
-            baseRef,
-            // Refresh from origin/main by default so the worktree starts at the remote tip; a
-            // pinned baseRef wins, and an explicit "" opts out (branch from local HEAD).
-            remoteBase: baseRef
-              ? undefined
-              : typeof input.remoteBase === "string"
-                ? str(input.remoteBase)
-                : "main",
+            checkout: checkoutFromInput(input),
           })
           .pipe(Effect.mapError((err) => new StepError(id, err.message)));
         yield* progress.emit(`⎇ ${id}: ${worktreePath}`);

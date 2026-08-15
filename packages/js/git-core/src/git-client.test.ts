@@ -133,7 +133,11 @@ describe("GitClient (ExecGitClient layer)", () => {
     await run(
       Effect.gen(function* () {
         const git = yield* GitClient;
-        yield* git.addWorktree({ repoPath: repo, worktreePath: worktree, branch: "triage/EFF-1" });
+        yield* git.addWorktree({
+          repoPath: repo,
+          worktreePath: worktree,
+          checkout: { kind: "branch", branch: "triage/EFF-1" },
+        });
       }),
     );
 
@@ -172,8 +176,7 @@ describe("GitClient (ExecGitClient layer)", () => {
         yield* gitClient.addWorktree({
           repoPath: clone,
           worktreePath: worktree,
-          branch: "groom/EFF",
-          remoteBase: "main",
+          checkout: { kind: "branch", branch: "groom/EFF", remoteBase: "main" },
         });
       }),
     );
@@ -191,7 +194,7 @@ describe("GitClient (ExecGitClient layer)", () => {
         return yield* git.addWorktree({
           repoPath: repo,
           worktreePath: first,
-          branch: "feature/x",
+          checkout: { kind: "branch", branch: "feature/x" },
         });
       }),
     );
@@ -204,7 +207,7 @@ describe("GitClient (ExecGitClient layer)", () => {
         return yield* git.addWorktree({
           repoPath: repo,
           worktreePath: second,
-          branch: "feature/x",
+          checkout: { kind: "branch", branch: "feature/x" },
         });
       }),
     );
@@ -247,8 +250,7 @@ describe("GitClient (ExecGitClient layer)", () => {
             return yield* gitClient.addWorktree({
               repoPath: clone,
               worktreePath: wt1,
-              branch: "feat/A",
-              remoteBase: "main",
+              checkout: { kind: "branch", branch: "feat/A", remoteBase: "main" },
             });
           }),
           Effect.gen(function* () {
@@ -256,8 +258,7 @@ describe("GitClient (ExecGitClient layer)", () => {
             return yield* gitClient.addWorktree({
               repoPath: clone,
               worktreePath: wt2,
-              branch: "feat/B",
-              remoteBase: "main",
+              checkout: { kind: "branch", branch: "feat/B", remoteBase: "main" },
             });
           }),
           Effect.gen(function* () {
@@ -265,8 +266,7 @@ describe("GitClient (ExecGitClient layer)", () => {
             return yield* gitClient.addWorktree({
               repoPath: clone,
               worktreePath: wt3,
-              branch: "feat/C",
-              remoteBase: "main",
+              checkout: { kind: "branch", branch: "feat/C", remoteBase: "main" },
             });
           }),
         ],
@@ -284,6 +284,150 @@ describe("GitClient (ExecGitClient layer)", () => {
     expect(readFileSync(join(wt3, "file.txt"), "utf8")).toBe("v2\n");
   });
 
+  // The `detached` strategy is the READ checkout: a reviewer needs the code AT a ref, holding no
+  // branch. These cover the three things it exists for.
+  it("checks out a ref detached, fetching it first so it need not exist locally", async () => {
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, stdio: "pipe" });
+    const remote = join(root, "remote");
+    git(root, "init", "-q", "-b", "main", "remote");
+    git(remote, "config", "user.email", "test@example.com");
+    git(remote, "config", "user.name", "test");
+    writeFileSync(join(remote, "file.txt"), "base\n");
+    git(remote, "add", "file.txt");
+    git(remote, "commit", "-qm", "base");
+
+    // A ref OUTSIDE refs/heads — exactly the shape of GitHub's refs/pull/N/head, which no clone
+    // fetches by default and which a shallow pre-clone therefore never has.
+    git(remote, "checkout", "-q", "-b", "contrib");
+    writeFileSync(join(remote, "file.txt"), "proposed\n");
+    git(remote, "commit", "-aqm", "proposal");
+    git(remote, "update-ref", "refs/pull/7/head", "refs/heads/contrib");
+    git(remote, "checkout", "-q", "main");
+    git(remote, "branch", "-qD", "contrib");
+
+    const clone = join(root, "clone");
+    git(root, "clone", "-q", "--depth", "1", remote, "clone");
+
+    const worktree = join(root, "worktrees", "review-7");
+    const path = await run(
+      Effect.gen(function* () {
+        const gitClient = yield* GitClient;
+        return yield* gitClient.addWorktree({
+          repoPath: clone,
+          worktreePath: worktree,
+          checkout: {
+            kind: "detached",
+            ref: "refs/remotes/origin/pr/7/head",
+            fetch: { remoteRef: "refs/pull/7/head", depth: 1 },
+          },
+        });
+      }),
+    );
+
+    expect(path).toBe(worktree);
+    // The PR's content, NOT main's — the trap the branch strategy falls into, since a name that
+    // does not resolve locally makes it cut a new branch from origin/main's tip instead.
+    expect(readFileSync(join(worktree, "file.txt"), "utf8")).toBe("proposed\n");
+    // Detached: no branch was created in the shared clone for another run to collide with.
+    expect(
+      execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: worktree, stdio: "pipe" })
+        .toString()
+        .trim(),
+    ).toBe("HEAD");
+  });
+
+  it("checks out detached at a ref another worktree already holds as a branch", async () => {
+    // The h-builds-h case: review runs on the same clone the implementer is working in, where
+    // feature/x IS checked out. A branch checkout would be handed the implementer's worktree by
+    // reuse-by-branch; a detached one gets its own.
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, stdio: "pipe" });
+    const held = join(root, "worktrees", "implementer");
+    await run(
+      Effect.gen(function* () {
+        const gitClient = yield* GitClient;
+        return yield* gitClient.addWorktree({
+          repoPath: repo,
+          worktreePath: held,
+          checkout: { kind: "branch", branch: "feature/x" },
+        });
+      }),
+    );
+
+    const reviewer = join(root, "worktrees", "reviewer");
+    const path = await run(
+      Effect.gen(function* () {
+        const gitClient = yield* GitClient;
+        return yield* gitClient.addWorktree({
+          repoPath: repo,
+          worktreePath: reviewer,
+          checkout: { kind: "detached", ref: "refs/heads/feature/x" },
+        });
+      }),
+    );
+
+    expect(path).toBe(reviewer);
+    expect(readFileSync(join(reviewer, "README.md"), "utf8")).toBe("hello\n");
+  });
+
+  it("re-fetches a detached ref that has since moved (forced, not non-fast-forward)", async () => {
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, stdio: "pipe" });
+    const remote = join(root, "remote");
+    git(root, "init", "-q", "-b", "main", "remote");
+    git(remote, "config", "user.email", "test@example.com");
+    git(remote, "config", "user.name", "test");
+    writeFileSync(join(remote, "file.txt"), "v1\n");
+    git(remote, "add", "file.txt");
+    git(remote, "commit", "-qm", "v1");
+    git(remote, "update-ref", "refs/pull/3/head", "refs/heads/main");
+
+    const clone = join(root, "clone");
+    git(root, "clone", "-q", remote, "clone");
+
+    await run(
+      Effect.gen(function* () {
+        const gitClient = yield* GitClient;
+        return yield* gitClient.addWorktree({
+          repoPath: clone,
+          worktreePath: join(root, "worktrees", "first"),
+          checkout: {
+            kind: "detached",
+            ref: "refs/remotes/origin/pr/3/head",
+            fetch: { remoteRef: "refs/pull/3/head" },
+          },
+        });
+      }),
+    );
+
+    // The PR is force-pushed: its head ref now points at an unrelated history, so an unforced
+    // fetch into the same local ref would fail non-fast-forward.
+    git(remote, "checkout", "-q", "--orphan", "rewritten");
+    writeFileSync(join(remote, "file.txt"), "v2\n");
+    git(remote, "add", "file.txt");
+    git(remote, "commit", "-qm", "v2");
+    git(remote, "update-ref", "refs/pull/3/head", "refs/heads/rewritten");
+
+    const second = join(root, "worktrees", "second");
+    await run(
+      Effect.gen(function* () {
+        const gitClient = yield* GitClient;
+        return yield* gitClient.addWorktree({
+          repoPath: clone,
+          worktreePath: second,
+          checkout: {
+            kind: "detached",
+            ref: "refs/remotes/origin/pr/3/head",
+            fetch: { remoteRef: "refs/pull/3/head" },
+          },
+        });
+      }),
+    );
+
+    expect(readFileSync(join(second, "file.txt"), "utf8")).toBe("v2\n");
+  });
+
   it("fails a worktree add with GitWorktreeError carrying git's stderr", async () => {
     // The branch checked out in the source repo cannot also be checked out in a worktree.
     const git = (cwd: string, ...args: string[]) =>
@@ -295,7 +439,11 @@ describe("GitClient (ExecGitClient layer)", () => {
       Effect.gen(function* () {
         const gitClient = yield* GitClient;
         return yield* Effect.flip(
-          gitClient.addWorktree({ repoPath: repo, worktreePath: worktree, branch: "held" }),
+          gitClient.addWorktree({
+            repoPath: repo,
+            worktreePath: worktree,
+            checkout: { kind: "branch", branch: "held" },
+          }),
         );
       }),
     );
