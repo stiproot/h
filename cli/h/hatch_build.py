@@ -1,0 +1,84 @@
+"""Wheel build hook — the FAT WHEEL: bundle the local substrate into the package.
+
+A packaged `h` must be self-contained (the h-packaged plan's Phase 2, operator call
+2026-08-15): the wheel ships the stock charts and a single-file bundle of the JS runner under
+`h_cli/_bundled/`, so `uv tool install` from the GitHub source yields a working local substrate
+with no h checkout at runtime. The costs, stated plainly:
+
+- Building the wheel requires the FULL h repo around this directory (uv's git installs clone it)
+  plus `bun` — consistent with bun's existing build-time-only role. An sdist of cli/h alone
+  cannot build the bundle and refuses loud.
+- Editable installs (the uv workspace dev mode) skip all of this: checkout mode resolves charts
+  and runner from the repo directly, and `IS_CHECKOUT` keeps `_bundled/` out of the picture.
+"""
+
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+from hatchling.builders.hooks.plugin.interface import BuildHookInterface
+
+
+class BundleSubstrate(BuildHookInterface):
+    PLUGIN_NAME = "custom"
+
+    def initialize(self, version: str, build_data: dict[str, Any]) -> None:
+        # Editable installs run from the checkout; only real wheels carry the bundle.
+        if self.target_name != "wheel" or version == "editable":
+            return
+        cli_dir = Path(self.root)
+        repo = cli_dir.parents[1]
+        charts_src = repo / "cli" / "charts"
+        runner_src = repo / "packages" / "js" / "local-runtime"
+        if not charts_src.is_dir() or not runner_src.is_dir():
+            raise RuntimeError(
+                "the h-cli wheel bundles the stock charts and the JS runner, so it must be "
+                "built from the FULL h repo (e.g. `uv tool install 'h-cli @ "
+                "git+https://github.com/stiproot/h#subdirectory=cli/h'`) — an sdist of cli/h "
+                "alone cannot provide them."
+            )
+        bundled = cli_dir / "src" / "h_cli" / "_bundled"
+        shutil.rmtree(bundled, ignore_errors=True)
+        bundled.mkdir(parents=True)
+
+        # Stock charts: copied verbatim minus the operator's gitignored local overrides — a
+        # wheel must render hermetically from defaults, exactly like the golden tests.
+        shutil.copytree(
+            charts_src,
+            bundled / "charts",
+            ignore=shutil.ignore_patterns("values.local.yaml"),
+        )
+
+        # The runner: build the workspace graph, then bundle the built entrypoint into one
+        # self-contained .mjs (nats.js and the Effect stack are pure JS — bundleable).
+        bun = shutil.which("bun")
+        if bun is None:
+            raise RuntimeError(
+                "building the h-cli wheel needs `bun` on PATH (it bundles the JS runner; "
+                "bun stays build-time-only, exactly as in the h repo itself)."
+            )
+        run = lambda *cmd: subprocess.run(  # noqa: E731
+            cmd, cwd=repo, check=True, capture_output=True, text=True
+        )
+        try:
+            run(bun, "install", "--frozen-lockfile")
+            run("bunx", "turbo", "build", "--filter=local-runtime...")
+            run(
+                bun,
+                "build",
+                str(runner_src / "dist" / "bin.js"),
+                "--target=node",
+                "--outfile",
+                str(bundled / "h-local.mjs"),
+            )
+        except subprocess.CalledProcessError as err:
+            raise RuntimeError(
+                f"bundling the runner failed: {' '.join(err.cmd)}\n{err.stderr[-2000:]}"
+            ) from err
+
+        # Belt-and-braces: a wheel whose bundle is hollow must never ship.
+        runner_out = bundled / "h-local.mjs"
+        if not runner_out.is_file() or runner_out.stat().st_size == 0:
+            raise RuntimeError("bundled runner is missing or empty — refusing to build the wheel")
+        build_data.setdefault("artifacts", []).append("src/h_cli/_bundled/**")

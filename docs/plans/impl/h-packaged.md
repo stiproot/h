@@ -1,6 +1,7 @@
 # h packaged — the local substrate + CLI as tooling other repos install
 
-Status: Active — Phases 0+1+1b built 2026-08-13 (POC ran end-to-end; .h/config.toml discovery, charts search path, h doctor, --local boundary; the `h` consumer plugin published from the repo-root marketplace and installed into trxy); Phase 2 (install story) next
+Status: Complete — Phases 0+1+1b (2026-08-13) + Phase 2 the fat wheel (2026-08-15) all built and validated live from the trxy consumer clone; Phase 3 (registry publishing) carried with its trigger
+Lifted to: docs/installing-h.md (the install runbook), cli/README.md (packaged-mode + consumer surface), CLAUDE.md (CLI line + h plugin paragraph), plugins/h use-h (0.1.3), docs/cookbook.md (consumer-repo entry), carried-followups (Phase 3 + surviving open questions)
 Established: 2026-08-12
 
 ## The idea
@@ -52,7 +53,7 @@ flowchart LR
 ```
 
 The load-bearing property (established by the archived
-[direct-execution-runtime](impl/direct-execution-runtime.md) plan and re-verified today): the
+[direct-execution-runtime](direct-execution-runtime.md) plan and re-verified today): the
 **JS runner is already repo-agnostic** — every path it touches (`repoPath`, `worktreeRoot`,
 `runsDir`, timeouts) arrives on the stdin job; it never reaches back into h's checkout. And D5
 (MCP config left alone on the local substrate) means an agent running in the consumer's cwd
@@ -102,7 +103,7 @@ A consumer repo *can* point `H_CHARTS_DIR` at its own chart today, but:
 - h's template guards (`scripts/check-templates.mjs`, the syrupy goldens) hard-code
   `cli/charts/workflows/templates` — a consumer chart gets no gate.
 
-Adjacent parked item: [carried-followups](carried-followups.md) §10 (compose-to-disk — authoring
+Adjacent parked item: [carried-followups](../carried-followups.md) §10 (compose-to-disk — authoring
 a durable new template *file*) is the closest prior thinking; its trigger ("an AGENT needs to
 author a durable new template") has not fired, and this plan does not build it — a consumer
 authoring its own chart by hand is the ordinary path. §27 (a stdio MCP for the local substrate)
@@ -337,12 +338,43 @@ means, and it ships the way this ecosystem ships steering: a Claude Code plugin.
 - **Docs**: CLAUDE.md (h skills section — the marketplace-in-the-other-direction paragraph),
   cli/README consumer surface (install-the-plugin paragraph).
 
-### Phase 2 — the install story
+### Phase 2 — the install story: the FAT WHEEL — BUILT + validated live 2026-08-15
 
-`uv tool install` of `h-cli` from GitHub actually works (wheel contents, path resolution, a
-consumer-facing "installing h" runbook written in nats-install terms); `h-local` reachable via
-its declared bin name; version handshake across the CLI ↔ runner JSON boundary once the two
-can be installed at different times.
+Operator call ("implement the long-term best practice now"): not the minimal
+point-the-CLI-at-a-checkout shape, but a SELF-CONTAINED wheel — still GitHub-source, no
+registry (that stays Phase 3):
+
+- **The wheel ships the substrate**: `cli/h/hatch_build.py` (wheel-build hook; skipped for
+  editable installs, so `uv sync` stays instant) copies the stock chart (minus
+  `values.local.yaml` — hermetic like the goldens) and bundles the built runner into ONE
+  1.9MB `h-local.mjs` (`bun build --target=node`; nats.js + the Effect stack are pure JS)
+  under `h_cli/_bundled/`. Building the wheel therefore needs the full repo + `bun` —
+  consistent with bun's build-time-only role; an sdist of cli/h alone refuses loud.
+- **Mode detection, not configuration**: `IS_CHECKOUT` in config.py (the checkout's chart
+  tree present at `parents[3]`). Checkout mode is unchanged; packaged mode resolves charts +
+  runner from the bundle and moves the workspace defaults under `~/.h/` (workspace,
+  worktrees, runs, fabric store, `.env` as the credentials-gap file). `managed_roots()`
+  drops the third (own-repo) root when packaged. `~` now expands in env + config values, so
+  a consumer config can portably reuse an existing workspace.
+- **Version handshake**: the CLI stamps `protocolVersion` on every job;
+  the runner refuses a mismatch BEFORE schema decode (decode ignores unknown fields — the
+  precise mechanism that would otherwise make skew silent, e.g. an old runner quietly
+  dropping `journal`). Constants mirrored across both stacks, pinned by
+  `test_local_protocol_sync`. The bundled pair cannot skew; the `H_LOCAL_BIN` override can,
+  loudly.
+- **Runbook**: [docs/installing-h.md] — one `uv tool install` command + the
+  operator-provisioned binary list, in nats-install terms.
+- **Validated live from the trxy consumer clone**: `uv tool install` of the built wheel →
+  `h doctor` (packaged runner + 17 bundled stock templates + trxy's domain chart primary +
+  consumer config in effect) → `h workflow run answer --local` through the BUNDLED runner
+  (journal auto-ensure, boundary, ledger in the shared workspace) — first attempt failed on
+  credentials (packaged dotenv default is `~/.h/.env`), fixed by the consumer config's
+  `dotenv` key, and the retry RESUMED the failed run's journal (`--resume packaged-poc-1`,
+  0 steps replayed, contract validated) — packaged-mode resume validated in the same
+  stroke. `h runs watch` replayed to `■ completed`. trxy's `.h/config.toml` now declares
+  workspace/worktrees/runs/dotenv, making packaged and checkout installs resolve
+  identically there. One UX finding: `h runs watch` on a FAILED run waits (no terminal
+  record — coherent, since the run may yet be resumed; Ctrl-C is the exit).
 
 ### Phase 3 — registry publishing (deferred)
 
@@ -352,11 +384,12 @@ plugin-marketplace distribution of template packs).
 
 ## Open questions
 
-- **Overlay vs replace for `H_CHARTS_DIR`** — search path, chart merge, or starter-chart
-  vendoring? Phase 0 decides with evidence.
-- **Where consumer domain plans live** — trxy has its own `docs/plans/`; h has gitignored
-  `docs/plans/domain/`. Once templates live in the consumer repo, its plans likely should too,
-  and h's `domain/` reverts to h-side scratch. Decide when the POC plan needs a home.
+- **Overlay vs replace for `H_CHARTS_DIR`** — RESOLVED (Phase 1): a SEARCH PATH — consumer
+  primary, stock fallback, shadowing on collision; packaged mode's stock root is the wheel's
+  bundle.
+- **Where consumer domain plans live** — RESOLVED de facto: the consumer repo owns its domain
+  chart AND its plans (trxy's `docs/plans/`); h's gitignored `docs/plans/domain/` reverts to
+  h-side scratch.
 - **Guards for consumer charts** — `check-templates`/goldens don't reach a consumer chart. Ship
   a checkable contract (values.schema.json + a tiny validator) or accept unguarded consumer
   templates? *(Phase 1b's answer, for now: accepted unguarded — the `author-h-template` skill
@@ -393,3 +426,11 @@ plugin-marketplace distribution of template packs).
   `scripts/check-plugins.mjs` in lint; installed into trxy (`h@h-marketplace` in settings +
   a CLAUDE.md "h — agentic workflow tooling" section). The consumer-charts open question
   answered for now: unguarded, render-is-the-check, starter chart as the drift anchor.
+- **2026-08-15** — Phase 2 BUILT as the fat wheel (operator call — see the phase section):
+  hatch build hook bundling charts + a single-file runner, IS_CHECKOUT mode detection with
+  `~/.h` packaged defaults, `~` expansion in settings, protocol handshake across the CLI ↔
+  runner boundary, docs/installing-h.md. Validated live: `uv tool install` of the wheel, then
+  from the trxy clone `h doctor` / `h template list` (bundled stock + domain primary) / a
+  journaled `answer` run through the BUNDLED runner, including a packaged-mode `--resume` of
+  the first (credential-failed) attempt. Plan COMPLETE; Phase 3 + surviving opens carried to
+  carried-followups.

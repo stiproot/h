@@ -194,3 +194,31 @@ def test_unprovisionable_workspace_is_a_terminal_not_a_crash(runner, monkeypatch
     assert next_descriptor is None
     assert terminal["status"] == "failed"
     assert "could not provision a workspace" in terminal["error"]
+
+
+def test_relay_step_journals_per_step_and_resumes_on_redelivery(monkeypatch) -> None:
+    """Each step journals under its own key (the loop group is shared; the definitions are not),
+    and a redelivered step RESUMES that journal instead of restarting."""
+    from h_cli.infrastructure import events_fabric as fabric
+
+    jobs: list[dict] = []
+
+    def fake_run_job(job, bin_path=None):
+        jobs.append(job)
+        return {
+            "ok": True,
+            "group": job["group"],
+            "results": {"answer": {"output": "x", "structured": {"answer": "done"}}},
+        }
+
+    monkeypatch.setattr(events, "_render", lambda template: DEFINITION)
+    monkeypatch.setattr(events.local_runtime, "run_job", fake_run_job)
+    monkeypatch.setattr(events, "group_workspace", lambda repo, group, in_place: "/ws")
+    monkeypatch.setattr(events, "repo_root", lambda cwd: "/repo")
+
+    events.relay_step(_descriptor(step=2))
+    assert jobs[0]["journal"] == {"url": fabric.EVENTS_URL, "group": f"{jobs[0]['group']}-s2"}
+
+    events.relay_step(_descriptor(step=2), redelivered=True)
+    assert jobs[1]["journal"]["resume"] is True
+    assert jobs[1]["journal"]["group"] == f"{jobs[1]['group']}-s2"

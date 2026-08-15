@@ -165,6 +165,18 @@ and Python paths, and `h feature render` is verified to produce output structura
 identical to `_render.sh`. The YAML-canonical / JSON-at-the-wire layering carries over
 verbatim (`infrastructure/helm.py: render_workflow` vs `to_wire_json`).
 
+### Installing h (packaged mode)
+
+h installs as a self-contained tool — the wheel bundles the CLI, the stock chart, and a
+single-file build of the runner, so no checkout exists at runtime and state lives under
+`~/.h/` (all overridable): `uv tool install 'h-cli @
+git+https://github.com/stiproot/h#subdirectory=cli/h'` (needs `bun` at install time — the
+build hook in `cli/h/hatch_build.py` bundles the runner). The full consumer-facing runbook,
+in nats-install terms, is [docs/installing-h.md](../docs/installing-h.md). Mode detection is
+automatic (`IS_CHECKOUT` in `config.py`); the CLI↔runner JSON boundary carries a protocol
+version, and the runner refuses a mismatch loudly — the pair can be installed at different
+times, so skew must be loud, not silent.
+
 ### The consumer surface — using h from ANOTHER repo
 
 A repo that consumes h (composes its own domain workflow templates and fires them `--local`)

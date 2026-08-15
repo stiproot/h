@@ -20,7 +20,7 @@ that failure actually started with.)
 
 from pathlib import Path
 
-from h_cli.config import _REPO_DIR, H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR
+from h_cli.config import _REPO_DIR, H_WORKSPACE_DIR, IS_CHECKOUT, LOCAL_WORKTREES_DIR
 
 
 class ExternalWorkspaceError(RuntimeError):
@@ -28,8 +28,12 @@ class ExternalWorkspaceError(RuntimeError):
 
 
 def managed_roots() -> tuple[Path, ...]:
-    """The roots a local run may work in: h's clones, the worktrees cut from them, and h itself."""
-    return (H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR, _REPO_DIR.resolve())
+    """The roots a local run may work in: h's clones, the worktrees cut from them, and — in
+    checkout mode only — h's own repo. A packaged (wheel) install has no checkout, so its
+    third root would be site-packages nonsense; it simply isn't one."""
+    if IS_CHECKOUT:
+        return (H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR, _REPO_DIR.resolve())
+    return (H_WORKSPACE_DIR, LOCAL_WORKTREES_DIR)
 
 
 def assert_managed(path: Path, *, allow_external: bool = False, flag: str = "--cwd") -> Path:

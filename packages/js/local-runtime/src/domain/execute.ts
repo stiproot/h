@@ -62,6 +62,7 @@ export const runWorkflow = (
     const runs: WorkflowRunRef[] = [];
     const jc = job.journal;
     const hash = jc ? definitionHash(job) : "";
+    const journalKey = jc?.group ?? job.group;
     /** Journaled results by step id, restored on resume; consulted before every step/branch. */
     const done = new Map<string, unknown>();
     let alreadyTerminal = false;
@@ -76,7 +77,7 @@ export const runWorkflow = (
         ? Effect.void
         : appendLock.withPermits(1)(
             Effect.gen(function* () {
-              yield* journal.append(jc.url, job.group, {
+              yield* journal.append(jc.url, journalKey, {
                 seq,
                 type: "step",
                 stepId: id,
@@ -107,7 +108,7 @@ export const runWorkflow = (
     const run = Effect.gen(function* () {
       if (jc?.resume) {
         const records = yield* journal
-          .replay(jc.url, job.group)
+          .replay(jc.url, journalKey)
           .pipe(Effect.mapError((err) => new StepError("journal", err.message)));
         const meta = records.find((record) => record.type === "meta");
         if (!meta) {
@@ -143,7 +144,7 @@ export const runWorkflow = (
         );
       } else if (jc) {
         yield* journal
-          .append(jc.url, job.group, {
+          .append(jc.url, journalKey, {
             seq: 0,
             type: "meta",
             kind: "workflow",
@@ -212,7 +213,7 @@ export const runWorkflow = (
     if (jc && envelope.ok && !alreadyTerminal) {
       yield* appendLock.withPermits(1)(
         journal
-          .append(jc.url, job.group, {
+          .append(jc.url, journalKey, {
             seq,
             type: "terminal",
             status: "completed",

@@ -52,3 +52,4 @@ docs/plans/domain/
 
 # diagram communication layer — sources are the truth; renders are local
 docs/diagrams/rendered/
+cli/h/src/h_cli/_bundled/

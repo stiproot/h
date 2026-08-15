@@ -65,7 +65,14 @@ def test_the_job_reaches_the_runner_on_stdin(tmp_path: Path) -> None:
         "process.stdin.on('end',()=>console.log(JSON.stringify({ok:true,echo:JSON.parse(d)})));\n"
     )
     job = {"kind": "delegate", "task": "t", "agents": ["claude"]}
-    assert run_job(job, bin_path=fake)["echo"] == job
+    # The driver stamps the wire-contract version on the way out — the runner's half of the
+    # handshake refuses a mismatch, so the stamp must always be present.
+    from h_cli.infrastructure.local_runtime import LOCAL_PROTOCOL_VERSION
+
+    assert run_job(job, bin_path=fake)["echo"] == {
+        **job,
+        "protocolVersion": LOCAL_PROTOCOL_VERSION,
+    }
 
 
 def test_a_runner_that_says_nothing_is_a_loud_failure(tmp_path: Path) -> None:

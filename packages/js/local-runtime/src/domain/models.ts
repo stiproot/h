@@ -11,6 +11,16 @@
 import { Schema } from "effect";
 import { CHAIN_MEMBER_KINDS, WorkflowParams, WorkflowStep } from "workflow-core";
 
+/**
+ * The CLI ↔ runner wire-contract version. The pair can now be installed at different times (a
+ * packaged h-cli carries its own bundled runner, but H_LOCAL_BIN can point anywhere), and the
+ * job schemas IGNORE unknown fields — so skew would otherwise be silent (an old runner would,
+ * e.g., quietly drop `journal` and a run you believe resumable would not be). The runner
+ * refuses a mismatch loudly, naming both versions. Bump on any breaking job/envelope change;
+ * mirrored in h_cli/infrastructure/local_runtime.py (test_local_protocol_sync pins the pair).
+ */
+export const LOCAL_PROTOCOL_VERSION = 1;
+
 /** The agent CLIs this substrate can drive — the closed vocabulary behind `--agent`. */
 export const LOCAL_AGENT_TYPES = ["claude", "codex", "openhands", "pi"] as const;
 
@@ -129,6 +139,12 @@ export const JournalConfig = Schema.Struct({
   url: Schema.String,
   /** Replay `h.journal.<group>` and continue after the last journaled stage. */
   resume: Schema.optional(Schema.Boolean),
+  /**
+   * Journal-subject override: journal under THIS key instead of the job's group. The fabric
+   * relay uses it — every step of a loop shares the loop's group (ledger/workspace join key)
+   * but is a DIFFERENT definition, so each step journals under `<group>-s<step>`.
+   */
+  group: Schema.optional(Schema.String),
 });
 export type JournalConfig = Schema.Schema.Type<typeof JournalConfig>;
 

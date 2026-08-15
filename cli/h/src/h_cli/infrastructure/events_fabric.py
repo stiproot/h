@@ -221,7 +221,9 @@ def ensure_journal_ready() -> dict[str, Any]:
     return report
 
 
-RelayHandler = Callable[[dict[str, Any]], tuple[dict[str, Any] | None, dict[str, Any] | None]]
+# (descriptor, redelivered) → (next descriptor, terminal event). `redelivered` is the crash
+# signal: a step delivered more than once resumes its journal instead of restarting.
+RelayHandler = Callable[[dict[str, Any], bool], tuple[dict[str, Any] | None, dict[str, Any] | None]]
 
 
 async def relay(queue: str, handler: RelayHandler, emit: Callable[[str], None]) -> None:
@@ -276,7 +278,9 @@ async def relay(queue: str, handler: RelayHandler, emit: Callable[[str], None]) 
 
             beat = asyncio.create_task(heartbeat(msg))
             try:
-                next_descriptor, result = await asyncio.to_thread(handler, descriptor)
+                next_descriptor, result = await asyncio.to_thread(
+                    handler, descriptor, delivered > 1
+                )
             finally:
                 beat.cancel()
 

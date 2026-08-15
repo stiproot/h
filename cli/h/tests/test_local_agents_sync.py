@@ -94,3 +94,15 @@ def test_local_agent_types_match_agent_cli_strategies() -> None:
         "disagree. A new agent-cli strategy must be added to both, plus AGENT_ALIASES and "
         "the INVOKERS map in infrastructure/agent-cli-agent.ts."
     )
+
+
+@_skip_no_ts
+def test_local_protocol_version_matches_the_runner() -> None:
+    """The CLI stamps LOCAL_PROTOCOL_VERSION on every job; the runner refuses a mismatch. The
+    two constants live in two languages, so this is the drift guard for the wire contract a
+    packaged CLI and an arbitrary H_LOCAL_BIN runner may otherwise disagree on silently."""
+    from h_cli.infrastructure.local_runtime import LOCAL_PROTOCOL_VERSION
+
+    match = re.search(r"export const LOCAL_PROTOCOL_VERSION = (\d+);", _MODELS_TS.read_text())
+    assert match, "LOCAL_PROTOCOL_VERSION missing from local-runtime models.ts"
+    assert int(match.group(1)) == LOCAL_PROTOCOL_VERSION

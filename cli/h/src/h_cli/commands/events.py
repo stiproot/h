@@ -69,6 +69,7 @@ def group_workspace(repo: Path, group: str, in_place: bool) -> str:
 
 def relay_step(
     descriptor: dict[str, Any],
+    redelivered: bool = False,
     repo: Path | None = None,
     in_place: bool = False,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -77,6 +78,12 @@ def relay_step(
     Returns (next descriptor, terminal event) — at most one is set. Every failure is a published
     terminal event rather than an exception: the loop's outcome must land on `h.result.<group>`
     whatever went wrong, because the seeder may be long gone.
+
+    Every step JOURNALS under its own key (`<group>-s<step>` — the loop's group is the
+    ledger/workspace join key shared by every step, but each step is a different definition), and
+    a REDELIVERED step resumes that journal instead of restarting: a relay that died after the
+    agent finished but before the ack replays the completed run for free, recomputes the same
+    hand-off, and the publish dedup makes the re-publish a no-op — redelivery + resume, composed.
     """
     try:
         definition = _render(descriptor["template"])
@@ -100,6 +107,12 @@ def relay_step(
                 "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
                 "worktreeRoot": str(LOCAL_WORKTREES_DIR),
                 "repoPath": workspace,
+                # The relay IS a fabric client, so the server is already up — no preflight.
+                "journal": {
+                    "url": fabric.EVENTS_URL,
+                    "group": f"{descriptor['group']}-s{descriptor['step']}",
+                    **({"resume": True} if redelivered else {}),
+                },
             }
         )
     except LocalRunError as err:

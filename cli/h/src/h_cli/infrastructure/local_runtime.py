@@ -23,6 +23,14 @@ class LocalRunError(RuntimeError):
     """Raised when the runner cannot start or did not answer; str(err) is user-presentable."""
 
 
+# The CLI ↔ runner wire-contract version, stamped on every job. The pair can be installed at
+# different times (a packaged h-cli bundles its own runner, but H_LOCAL_BIN can point anywhere),
+# and the runner's schemas ignore unknown fields — so skew would otherwise be silent. The runner
+# refuses a mismatch loudly, naming both versions. Mirrored in local-runtime's
+# domain/models.ts LOCAL_PROTOCOL_VERSION (test_local_protocol_sync pins the pair).
+LOCAL_PROTOCOL_VERSION = 1
+
+
 def group_id(base: str) -> str:
     """`<base>-<yymmdd>-<hhmmss>` — the readable derived-id convention h uses for instance ids.
 
@@ -106,12 +114,21 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
     """
     runner = bin_path or LOCAL_BIN
     if not runner.is_file():
+        from h_cli.config import IS_CHECKOUT
+
         raise LocalRunError(
             f"local runner not built: {runner}\n"
-            "Run `bun install && bun run build` at the repo root (its one prerequisite), "
-            "or point H_LOCAL_BIN at the built bin.js."
+            + (
+                "Run `bun install && bun run build` at the repo root (its one prerequisite), "
+                "or point H_LOCAL_BIN at the built bin.js."
+                if IS_CHECKOUT
+                else "This packaged install is missing its bundled runner — reinstall "
+                "(`uv tool install --reinstall h-cli`), or point H_LOCAL_BIN at a built "
+                "bin.js from an h checkout. See docs/installing-h.md in the h repo."
+            )
         )
 
+    job = {**job, "protocolVersion": LOCAL_PROTOCOL_VERSION}
     try:
         proc = subprocess.Popen(
             ["node", str(runner)],

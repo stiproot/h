@@ -690,3 +690,25 @@ the read path; the journal is resume state plus `h runs watch`.
 
 *Revisit when:* the journal proves to duplicate ledger content byte-for-byte and merging them
 would delete code.
+
+## From [h-packaged](./impl/h-packaged.md)
+
+**Phase 3 — registry publishing.** Scoped npm names (`@stiproot/*`), PyPI `h-cli`, release
+machinery. The fat wheel already gives a one-command self-contained install from GitHub
+source, so a registry adds distribution reach, not capability.
+
+*Revisit when:* a consumer appears that cannot work from the GitHub source — a second
+operator without repo access, CI in a repo h doesn't own, or a plugin-marketplace
+distribution of template packs.
+
+**Guards for consumer charts.** Accepted unguarded: the `author-h-template` skill names the
+render as the check; the starter-chart reference is the vendoring/drift anchor.
+
+*Revisit when:* a consumer chart breaks in a way a render wouldn't have caught.
+
+**trxy-side items surfaced by the skate POC** (for trxy issues, not h work): the MCP roster
+gap (no tool lists bot actors), the sim environment posture (what would justify a prod
+simulation beyond `confirm: true`), and the four gameplay findings recorded in the plan's
+Phase 0 section.
+
+*Revisit when:* the next trxy simulation arc starts — file them as trxy issues then.

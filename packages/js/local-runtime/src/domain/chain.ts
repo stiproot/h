@@ -65,6 +65,7 @@ export const runChain = (
 
     const jc = job.journal;
     const hash = jc ? definitionHash(job) : "";
+    const journalKey = jc?.group ?? job.group;
 
     // An ABSOLUTE deadline, stamped once, so a loop-until-clean chain is bounded as a whole rather
     // than per iteration. Clock rather than Date.now() so a test can drive it. A RESUMED run
@@ -76,7 +77,7 @@ export const runChain = (
       let cursor = 0;
 
       if (jc?.resume) {
-        const records = yield* journal.replay(jc.url, job.group);
+        const records = yield* journal.replay(jc.url, journalKey);
         const meta = records.find((record) => record.type === "meta");
         if (!meta) {
           return yield* Effect.fail(
@@ -128,7 +129,7 @@ export const runChain = (
             `stage ${cursor}${loop ? `, iteration ${iterations}` : ""}`,
         );
       } else if (jc) {
-        yield* journal.append(jc.url, job.group, {
+        yield* journal.append(jc.url, journalKey, {
           seq: 0,
           type: "meta",
           kind: "chain",
@@ -181,7 +182,7 @@ export const runChain = (
         // the complete post-capture data, and before the loop decisions so every continuation
         // path resumes from it. Death between capture and ack redoes exactly this stage.
         if (jc) {
-          yield* journal.append(jc.url, job.group, {
+          yield* journal.append(jc.url, journalKey, {
             seq,
             type: "stage",
             cursor,
@@ -233,7 +234,7 @@ export const runChain = (
     // the ones --resume exists for, so their journals stay open.
     if (jc && outcome.status === "completed" && !alreadyTerminal) {
       yield* journal
-        .append(jc.url, job.group, {
+        .append(jc.url, journalKey, {
           seq,
           type: "terminal",
           status: "completed",

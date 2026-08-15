@@ -16,7 +16,7 @@ import { ExecGitClient } from "git-core";
 import { runChain } from "./domain/chain.ts";
 import { runDelegate } from "./domain/delegate.ts";
 import { runWorkflow } from "./domain/execute.ts";
-import { LocalJob } from "./domain/models.ts";
+import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
@@ -76,6 +76,22 @@ const main = async (): Promise<void> => {
     parsed = JSON.parse(raw);
   } catch (cause) {
     emit({ ok: false, error: `stdin was not valid JSON: ${String(cause)}` }, 2);
+    return;
+  }
+
+  // The handshake runs BEFORE schema decode, because decode IGNORES unknown fields — the
+  // precise mechanism that would make version skew silent instead of loud.
+  const declared = (parsed as { protocolVersion?: unknown }).protocolVersion;
+  if (typeof declared === "number" && declared !== LOCAL_PROTOCOL_VERSION) {
+    emit(
+      {
+        ok: false,
+        error:
+          `protocol mismatch: the CLI speaks v${declared}, this runner v${LOCAL_PROTOCOL_VERSION}` +
+          " — rebuild the checkout (`bun run build`) or reinstall h-cli so the pair matches",
+      },
+      2,
+    );
     return;
   }
 

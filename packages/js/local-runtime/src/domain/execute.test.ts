@@ -463,6 +463,22 @@ describe("runWorkflow", () => {
       ).toHaveLength(1);
     });
 
+    it("journals under the override key when the config names one (the relay's seam)", async () => {
+      const { layer, recorder } = stubs({ t1: okOut, t2: okOut });
+      const envelope = await run(
+        twoSteps({ journal: { ...journaled, group: "loop-g-s3" } }),
+        layer,
+      );
+      expect(envelope.ok).toBe(true);
+      expect(recorder.journal.has(envelope.group)).toBe(false);
+      expect(recorder.journal.get("loop-g-s3")!.map((r) => r.type)).toEqual([
+        "meta",
+        "step",
+        "step",
+        "terminal",
+      ]);
+    });
+
     it("writes nothing when the job carries no journal", async () => {
       const { layer, recorder } = stubs({ t1: okOut, t2: okOut });
       await run(twoSteps({ journal: undefined }), layer);
