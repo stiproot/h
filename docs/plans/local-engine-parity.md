@@ -7,7 +7,8 @@ Established: 2026-08-16
 
 The local substrate's gap list reads like five missing features — watcher, cron, schedule,
 discover, chain-as-registration. It is not. **Every one of those engines is already a pure
-function**, and has been since it was written:
+function**, and has been since it was written. Where they lived when this plan was written (all
+five now in `packages/js/engine-core` — increment 0):
 
 ```
 apps/workflow-svc/src/domain/watch-engine.ts     decide(row, runtimeStatus, nowMs)
@@ -34,7 +35,7 @@ have full parity:
 | Concern | Where it lives | Parity today |
 | --- | --- | --- |
 | What a DEFINITION means (`{{token}}`/`$ref`, output contract, step shapes) | `packages/js/workflow-core` — **extracted**, imported by both | Full, and guarded by `scripts/check-runtime-parity.mjs` |
-| What an ENGINE decides (supervise / sequence / recur / discover / schedule) | `apps/workflow-svc/src/domain/` — **not extracted** | None |
+| What an ENGINE decides (supervise / sequence / recur / discover / schedule) | `packages/js/engine-core` — **extracted 2026-08-16** (was `apps/workflow-svc/src/domain/`) | Guarded; awaiting a second host |
 
 The difference in outcome is entirely a difference in filing. `engine-core` is `workflow-core` for
 the second half of the domain.
@@ -155,8 +156,8 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 
 | # | Increment | Status | Guard |
 | --- | --- | --- | --- |
-| 0 | `engine-core` — the extraction | **In progress** | parity guard owns engine symbols |
-| 1 | KV registries (`wf:`, saved store, `exec:`) | Not started *(preview owed)* | KV single-writer |
+| 0 | `engine-core` — the extraction | **Complete** | parity guard owns engine symbols ✓ |
+| 1 | KV registries (`wf:`, saved store, `exec:`) | **Next** *(preview owed)* | KV single-writer |
 | 2 | Cron + schedule | Not started *(preview owed)* | flag/capability agreement |
 | 3 | Chain as a durable registration | Not started *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
@@ -170,7 +171,7 @@ Increment 0 sub-steps (one commit each, each green on `make lint` + `make test`)
 - [x] 0b — the five `decide` functions move *(green: build, lint, tests)*
 - [x] 0c — the scans move, behind a new `IEventPublisher` port; depcruise blind spot fixed and
       **verified by planting a violation** *(green: build, lint, tests)*
-- [ ] 0d — parity guard extended to own the engine symbols
+- [x] 0d — parity guard extended to own the engine symbols, **verified firing**
 
 ## Increments
 

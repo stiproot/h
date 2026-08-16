@@ -49,8 +49,8 @@ export const owned = [
       "WorkflowStep",
       "WorkflowParams",
       // Chain threading and stage arithmetic — how members group into stages, and how state
-      // moves between them. (The chain ENGINE stays substrate-side: it is a per-tick state
-      // machine over a durable row, which only the service substrate has.)
+      // moves between them. (The chain ENGINE is not here but in engine-core below, which owns
+      // the whole row → decide → scan half of the domain.)
       "contractFor",
       "loopIsClean",
       "stepStructured",
@@ -61,6 +61,83 @@ export const owned = [
       "membersInStage",
       "lastStage",
       "validateStages",
+    ],
+  },
+  {
+    owner: "packages/js/engine-core/src",
+    concern: "engine semantics",
+    symbols: [
+      // The REGISTRY ROWS — what each engine decides over. A second definition of a row is a
+      // second answer to "what is persisted", which is how two hosts stop agreeing.
+      "WatchRow",
+      "ChainRow",
+      "ChainMember",
+      "CronRow",
+      "DiscoverRow",
+      "SchedRow",
+      "WfRow",
+      "ExecPolicy",
+      // The saved workflow — what a store hands back and what a fire projects from it.
+      //
+      // `Trigger` and `WorkflowRequest` are deliberately NOT owned, though engine-core defines
+      // both. Their same-named siblings are different artifacts serving different boundaries, and
+      // each says so where it lives: agent-server's `Trigger` is a plain interface mirrored by a
+      // PYTHON sibling as well (no guard can unify across languages, and the glossary records the
+      // mirror), while workflow-mcp's `WorkflowRequest` is an MCP tool-input schema carrying
+      // LLM-facing annotations and a deliberately loose watch policy. Claiming the names would
+      // demand a JS-only unification of a duplication that is neither accidental nor JS-only.
+      "StoredWorkflow",
+      "WorkflowSchedule",
+      "toRequest",
+      "deriveInstanceId",
+      // The DECISION types. `decide` itself is deliberately NOT owned: it is the right name inside
+      // each engine module and far too common a word to claim repo-wide, so the guard holds the
+      // types it returns instead — one per primitive, and unmistakable.
+      "WatchDecision",
+      "ChainDecision",
+      "CronDecision",
+      "DiscoverDecision",
+      "SchedDecision",
+      // The SCANS and their registration seams — when a row is written relative to the run it
+      // describes is part of each primitive's contract (a watch registers before, a cron arms
+      // after), so a host must not re-answer it.
+      "scanWatchesEffect",
+      "scanChainsEffect",
+      "scanCronsEffect",
+      "scanDiscoverEffect",
+      "scanSchedEffect",
+      "registerWatchForFire",
+      "registerChainForFire",
+      "registerCronForFire",
+      "registerDiscover",
+      "registerSchedForFire",
+      "invokeWithWatch",
+      // The PORTS. A host supplies adapters; a host that defines its own tag is not sharing the
+      // engines, it is running a copy of them.
+      "WatchStore",
+      "ChainStore",
+      "CronStore",
+      "WfStore",
+      "ExecPolicyStore",
+      "SourceReader",
+      "WorkflowStore",
+      "WorkflowInvoker",
+      "EventPublisher",
+      // The recurrence CLOCK and the identity/validation helpers the rows are keyed by.
+      "isDue",
+      "assertValidCron",
+      "parseDurationMs",
+      "resolveFireAt",
+      "validateChain",
+      "wfKey",
+      "cronId",
+      "discoverId",
+      "schedId",
+      // The executor policy's pure half — which agent is fenced right now, and why.
+      "isExecutorDenied",
+      "normalizeDenied",
+      "mergeAutoDeny",
+      "mergeBudgetDeny",
     ],
   },
   {
