@@ -65,7 +65,13 @@ class BundleSubstrate(BuildHookInterface):
             "committedAt": _git("show", "-s", "--format=%cI", "HEAD"),
             # A wheel built from a dirty tree is not reproducible from its commit; say so rather
             # than let a consumer's lock imply a fidelity it does not have.
-            "dirty": bool(_git("status", "--porcelain")),
+            #
+            # TRACKED changes only, which is also git's own definition (`git describe --dirty`
+            # ignores untracked files). Counting untracked ones made every uv-installed wheel
+            # report dirty: uv drops a `.ok` sentinel into its git checkout before building, so
+            # the tree is never pristine by that stricter measure. Verified live 2026-08-16 in
+            # ~/.cache/uv/git-v0/checkouts — one untracked file, `.ok`.
+            "dirty": bool(_git("status", "--porcelain", "--untracked-files=no")),
         }
 
         bundled = cli_dir / "src" / "h_cli" / "_bundled"

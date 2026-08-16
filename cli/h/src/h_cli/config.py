@@ -121,7 +121,9 @@ def build_info() -> dict[str, object]:
             "commit": commit,
             "shortCommit": commit[:7] if commit else None,
             "committedAt": _git("show", "-s", "--format=%cI", "HEAD"),
-            "dirty": bool(_git("status", "--porcelain") or ""),
+            # Tracked changes only — git's own definition (see hatch_build.py, where counting
+            # untracked files made every uv-built wheel report dirty).
+            "dirty": bool(_git("status", "--porcelain", "--untracked-files=no") or ""),
         }
         return info
     stamp = _BUNDLED_DIR / "build.json"
