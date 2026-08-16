@@ -246,11 +246,45 @@ Unlocks immediately:
 
 **Guard:** a single-writer check over KV bucket names, the sibling of `check-state-keys`.
 
-### 2. Cron + schedule — the cheapest parity **(preview)**
+### 2. Cron + schedule
 
-`schedule-engine.ts` is 26 lines of imports away from running as-is; `cron-engine.ts` needs only
-`isDue` and the `wf:` goal flag from increment 1. Together they un-refuse `--cron`, `--max-fires`,
-`--at`, `--in`, and `h workflow pause|resume`.
+Surface previewed and approved 2026-08-16. `cron-engine.decide` needs exactly two external facts —
+`resolved` (the `wf:` row) and the last-fired instance's `runtimeStatus` — and that determines the
+whole design:
+
+| piece | shape |
+| --- | --- |
+| Engine host | `h-local --engines`, resident, started detached by `h events up` beside nats-server |
+| Singleton | a KV lease it renews each tick; a second host sees a live lease and exits loud |
+| Tick | 60s, matching the Dapr binding, so `isDue` behaves identically on both substrates |
+| `IWorkflowInvoker` (local) | `invoke` = publish a descriptor to `h.task.>`; `getStatus` = read an instance row; `terminate` = REFUSED (pending — only the watcher needs it, increment 4) |
+| `instance:` registry | written ONLY by the relay (it executes, so it reports), read by the engine — the service split, mirrored |
+| `CronStore` KV adapter | recur + discover + sched rows, config/heartbeat/ledger |
+| The `wf:` bracket | 1c's deferred item, earning its place: the goal handshake is what reads it |
+
+It degrades safely by construction: an instance row the relay never wrote reads `UNKNOWN`, and
+`decide`'s existing unknown-streak escape re-fires the cadence after N ticks rather than pinning the
+cron in flight forever.
+
+**Deferred to increment 4: `h workflow pause|resume --local`.** Pause TERMINATES a running instance,
+and terminate is the watcher's capability. `--at`/`--in` (pure scheduled fire) land here.
+
+**Relay lifecycle (operator, 2026-08-16): `h events up --with-relay`.** A local cron fires by
+publishing a descriptor, so nothing runs it unless a relay is draining the queue — but decision 1's
+split (nats-server + engine host are infrastructure, the relay is work you watch) is worth keeping.
+So the relay becomes an OPT-IN supervised child rather than either always-on or always-foreground,
+and `h events status` reports all three. Arming a cron with no relay attached warns, naming
+`h events serve`: the descriptors do queue durably, but arming into a queue nobody drains is the
+quiet nothing this plan keeps eliminating.
+
+Sub-steps:
+
+- [x] 2a — the `CronStore` KV adapter (recur + discover + sched), tested against a real server
+- [ ] 2b — the local `IWorkflowInvoker` + the `instance:` registry the relay writes
+- [ ] 2c — the engine host: resident mode, KV lease, tick, cron + sched scans
+- [ ] 2d — `h events up [--with-relay]` supervises it; `h events status` reports it
+- [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
+- [ ] 2f — the `wf:` bracket in the local executor
 
 The value is operator-shaped: a nightly h-builds-h loop, or `--in 2h`, on a machine with no Dapr.
 

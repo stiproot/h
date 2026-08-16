@@ -3,13 +3,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ExecPolicyStore, WfStore, WorkflowStore } from "engine-core";
+import { CronStore, ExecPolicyStore, WfStore, WorkflowStore } from "engine-core";
 
 import { assertExecutorAllowed } from "../domain/policy.ts";
 import { Effect, Layer, Option } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { NatsKvLive } from "./nats-kv.ts";
+import { NatsCronStoreLive } from "./nats-cron-store.ts";
 import {
   NatsExecPolicyStoreLive,
   NatsWfStoreLive,
@@ -87,14 +88,19 @@ afterAll(async () => {
   if (storeDir) rmSync(storeDir, { recursive: true, force: true });
 });
 
-const run = <A>(effect: Effect.Effect<A, unknown, WfStore | WorkflowStore | ExecPolicyStore>) =>
+const run = <A>(
+  effect: Effect.Effect<A, unknown, WfStore | WorkflowStore | ExecPolicyStore | CronStore>,
+) =>
   Effect.runPromise(
     Effect.scoped(
       effect.pipe(
         Effect.provide(
-          Layer.mergeAll(NatsWfStoreLive, NatsWorkflowStoreLive, NatsExecPolicyStoreLive).pipe(
-            Layer.provideMerge(NatsKvLive(url)),
-          ),
+          Layer.mergeAll(
+            NatsWfStoreLive,
+            NatsWorkflowStoreLive,
+            NatsExecPolicyStoreLive,
+            NatsCronStoreLive,
+          ).pipe(Layer.provideMerge(NatsKvLive(url))),
         ),
       ),
     ) as Effect.Effect<A, unknown, never>,
@@ -240,5 +246,79 @@ describeKv("the executor fence, end to end", () => {
     expect(outcome.codex).toMatch(/^denied: /);
     expect(outcome.codex).toContain("codex");
     expect(outcome.claude).toBe("allowed");
+  });
+});
+
+describeKv("NatsCronStoreLive", () => {
+  const cronRow = (over: Record<string, unknown> = {}) => ({
+    repo: "acme/api",
+    slug: "dark-mode",
+    workflow: "implement-pr",
+    cadence: "0 3 * * *",
+    status: "active" as const,
+    source: { mode: "saved" as const, key: "implement-pr" },
+    budget: { maxFires: 5 },
+    fires: 0,
+    epoch: 1,
+    instanceId: "dark-mode",
+    createdAt: "2026-08-16T00:00:00.000Z",
+    updatedAt: "2026-08-16T00:00:00.000Z",
+    ...over,
+  });
+
+  it("derives the SAME key on save and get, for a slashed repo", async () => {
+    // The row does not carry its own key: both substrates derive `<repo>:<slug>:<workflow>`. If the
+    // two derivations ever disagree the row lands where no read looks — an empty registry, not an
+    // error. Saving by row and reading by cronId is what proves they agree.
+    const found = await run(
+      Effect.gen(function* () {
+        const store = yield* CronStore;
+        yield* store.saveRow(cronRow());
+        return yield* store.getRow("acme/api:dark-mode:implement-pr");
+      }),
+    );
+    expect(Option.isSome(found)).toBe(true);
+    expect(Option.getOrThrow(found).cadence).toBe("0 3 * * *");
+  });
+
+  it("lists recur rows without an index key, and keeps the three row kinds apart", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        const store = yield* CronStore;
+        yield* store.saveRow(cronRow({ slug: "other" }));
+        yield* store.saveSchedRow({
+          id: "sched-1",
+          status: "armed",
+          fireAt: "2026-08-16T03:00:00.000Z",
+          trigger: { key: "implement-pr", instanceId: "sched-1-run" },
+          epoch: 1,
+          createdAt: "2026-08-16T00:00:00.000Z",
+          updatedAt: "2026-08-16T00:00:00.000Z",
+        });
+        return {
+          crons: yield* store.listRows(),
+          scheds: yield* store.listSchedRows(),
+        };
+      }),
+    );
+    // `cron:sub:` and `cron:sched:` share a bucket; a prefix that leaked would show sched rows in
+    // the recur listing and the engine would try to fire one.
+    expect(result.crons.length).toBeGreaterThan(0);
+    expect(result.crons.every((row) => row.cadence !== undefined)).toBe(true);
+    expect(result.scheds.map((row) => row.id)).toContain("sched-1");
+  });
+
+  it("reads a day with no ledger as ZEROED, and adds numeric deltas", async () => {
+    const result = await run(
+      Effect.gen(function* () {
+        const store = yield* CronStore;
+        const before = yield* store.getLedger("2099-01-01");
+        yield* store.bumpLedger("2099-01-01", { firesTriggered: 2 });
+        yield* store.bumpLedger("2099-01-01", { firesTriggered: 3 });
+        return { before, after: yield* store.getLedger("2099-01-01") };
+      }),
+    );
+    expect(result.before.firesTriggered).toBe(0);
+    expect(result.after.firesTriggered).toBe(5);
   });
 });
