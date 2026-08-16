@@ -132,7 +132,7 @@ export const ChainStoreLive: Layer.Layer<ChainStore> = Layer.scoped(
       Effect.gen(function* () {
         const current = yield* getLedger(date);
         // Per-agent subtotals merge key-by-key, mirroring the watch ledger (cost-containment B3).
-        const costByAgent = { ...(current.costByAgent ?? {}) };
+        const costByAgent = { ...current.costByAgent };
         for (const [agent, usd] of Object.entries(delta.costByAgent ?? {})) {
           costByAgent[agent] = Math.round(((costByAgent[agent] ?? 0) + usd) * 10_000) / 10_000;
         }

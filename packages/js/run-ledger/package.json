@@ -1,7 +1,7 @@
 {
   "name": "run-ledger",
   "version": "0.1.0",
-  "description": "The run ledger — per-run summary/events/output artifacts plus the optional statestore mirror, shared by every agent host",
+  "description": "The run ledger \u2014 per-run summary/events/output artifacts plus the optional statestore mirror, shared by every agent host",
   "type": "module",
   "exports": {
     ".": {
@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "lint": "oxlint src && oxfmt --check src",
+    "lint": "tsc --noEmit && oxlint src && oxfmt --check src",
     "format": "oxfmt src",
     "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
   },

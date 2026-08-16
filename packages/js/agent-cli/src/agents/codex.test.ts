@@ -1,3 +1,4 @@
+import { FetchHttpClient } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -5,7 +6,9 @@ import { codexStrategy } from "./codex.ts";
 import type { AgentInvocationRequest, StreamEvent } from "./types.ts";
 
 const buildInvocation = (request: AgentInvocationRequest) =>
-  Effect.runPromise(codexStrategy.buildInvocation(request));
+  Effect.runPromise(
+    codexStrategy.buildInvocation(request).pipe(Effect.provide(FetchHttpClient.layer)),
+  );
 
 function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvocationRequest {
   return {
@@ -118,19 +121,19 @@ describe("codexStrategy.extractMetrics", () => {
     const events: StreamEvent[] = [
       { type: "result", usage: { input_tokens: 100, output_tokens: 50, cached_input_tokens: 20 } },
     ];
-    const metrics = codexStrategy.extractMetrics(events);
+    const metrics = codexStrategy.extractMetrics(events, baseRequest());
     expect(metrics.tokenUsage).toEqual({ input: 120, output: 50 });
   });
 
   it("returns empty when no result event is present", () => {
-    expect(codexStrategy.extractMetrics([])).toEqual({});
+    expect(codexStrategy.extractMetrics([], baseRequest())).toEqual({});
   });
 
   it("never includes costUsd (Codex does not report it)", () => {
     const events: StreamEvent[] = [
       { type: "result", usage: { input_tokens: 10, output_tokens: 5 } },
     ];
-    const metrics = codexStrategy.extractMetrics(events);
+    const metrics = codexStrategy.extractMetrics(events, baseRequest());
     expect(metrics.costUsd).toBeUndefined();
   });
 });

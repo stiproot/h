@@ -1,7 +1,7 @@
 {
   "name": "local-runtime",
   "version": "0.1.0",
-  "description": "Local execution substrate for h — runs agent CLIs as local child processes, with no Dapr, services or registries",
+  "description": "Local execution substrate for h \u2014 runs agent CLIs as local child processes, with no Dapr, services or registries",
   "type": "module",
   "exports": {
     ".": {
@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "lint": "oxlint src && oxfmt --check src && depcruise --config ../../../.dependency-cruiser.cjs src",
+    "lint": "tsc --noEmit && oxlint src && oxfmt --check src && depcruise --config ../../../.dependency-cruiser.cjs src",
     "format": "oxfmt src",
     "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
   },

@@ -1,7 +1,7 @@
 {
   "name": "workflow-core",
   "version": "0.1.0",
-  "description": "Substrate-independent workflow execution semantics — definition shapes, cross-step reference resolution, and the structured-output contract",
+  "description": "Substrate-independent workflow execution semantics \u2014 definition shapes, cross-step reference resolution, and the structured-output contract",
   "type": "module",
   "exports": {
     ".": {
@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "lint": "oxlint src && oxfmt --check src",
+    "lint": "tsc --noEmit && oxlint src && oxfmt --check src",
     "format": "oxfmt src",
     "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
   },

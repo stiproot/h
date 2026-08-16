@@ -54,7 +54,7 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
     bumpLedger: (date, delta) =>
       Effect.sync(() => {
         const current = ledgers.get(date) ?? emptyLedger;
-        const costByAgent = { ...(current.costByAgent ?? {}) };
+        const costByAgent = { ...current.costByAgent };
         for (const [agent, usd] of Object.entries(delta.costByAgent ?? {})) {
           costByAgent[agent] = (costByAgent[agent] ?? 0) + usd;
         }

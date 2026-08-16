@@ -7,7 +7,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc --project tsconfig.build.json",
     "start": "node --enable-source-maps ./dist/index.js",
-    "lint": "tsc --noEmit && oxfmt --check src && depcruise --config ../../.dependency-cruiser.cjs src",
+    "lint": "tsc --noEmit && oxlint src && oxfmt --check src && depcruise --config ../../.dependency-cruiser.cjs src",
     "format": "oxfmt src",
     "test": "node ../../scripts/check-workspace-built.mjs && vitest run"
   },

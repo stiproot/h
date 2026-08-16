@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type WatchRow, emptyLedger } from "engine-core";
 import type { StoredWorkflow, WorkflowRequest } from "engine-core";
 import { emptyChainLedger } from "engine-core";
-import { type CronRow, emptyCronLedger } from "engine-core";
+import { emptyCronLedger } from "engine-core";
 import type { SchedRow } from "engine-core";
 import { ChainStore, type ChainStoreService } from "engine-core";
 import { CronStore, type CronStoreService } from "engine-core";

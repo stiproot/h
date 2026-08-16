@@ -341,8 +341,6 @@ describe("GitClient (ExecGitClient layer)", () => {
     // The h-builds-h case: review runs on the same clone the implementer is working in, where
     // feature/x IS checked out. A branch checkout would be handed the implementer's worktree by
     // reuse-by-branch; a detached one gets its own.
-    const git = (cwd: string, ...args: string[]) =>
-      execFileSync("git", args, { cwd, stdio: "pipe" });
     const held = join(root, "worktrees", "implementer");
     await run(
       Effect.gen(function* () {

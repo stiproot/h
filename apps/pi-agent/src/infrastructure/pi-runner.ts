@@ -107,9 +107,7 @@ export const PiRunnerLive: Layer.Layer<
             systemPrompt: systemPrompt ?? "",
             taskPrompt: input,
             cwd,
-            env: {
-              ...(workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {}),
-            },
+            env: workflowInstanceId ? { WORKFLOW_INSTANCE_ID: workflowInstanceId } : {},
             timeout: cfg.runTimeoutMs,
             model,
             llmConfig: { apiKey: cfg.apiKey, baseUrl: cfg.baseUrl },

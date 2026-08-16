@@ -199,9 +199,9 @@ describe("scanSchedEffect", () => {
 
     expect(report.fired).toEqual(["sched-abc"]);
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("sched-abc");
-    expect(inv.invokes[0].fresh).toBe(true);
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-implement-pr" }]);
+    expect(inv.invokes[0]!.instanceId).toBe("sched-abc");
+    expect(inv.invokes[0]!.fresh).toBe(true);
+    expect(inv.invokes[0]!.steps).toEqual([{ activity: "run-implement-pr" }]);
     const row = cs.sched.get("sched-abc")!;
     expect(row.status).toBe("fired");
     expect(row.outcome).toBe("fired");
@@ -245,10 +245,10 @@ describe("scanSchedEffect", () => {
     );
     const inv = recordingInvoker();
     await scan(cs.service, inv.service);
-    expect(inv.invokes[0].steps).toEqual([
+    expect(inv.invokes[0]!.steps).toEqual([
       { activity: "run-openhands", input: { task: "continue" } },
     ]);
-    expect(inv.invokes[0].workspaceId).toBe("orig-workspace");
+    expect(inv.invokes[0]!.workspaceId).toBe("orig-workspace");
   });
 
   it("the descriptor's workspaceId overrides the saved definition's (pause reuse of a saved run)", async () => {
@@ -263,7 +263,7 @@ describe("scanSchedEffect", () => {
     const inv = recordingInvoker();
     await scan(cs.service, inv.service);
     // saved key → the resumed run reuses the paused instance's workspace, not the stored default.
-    expect(inv.invokes[0].workspaceId).toBe("wf-9");
+    expect(inv.invokes[0]!.workspaceId).toBe("wf-9");
   });
 
   it("skips non-armed rows entirely", async () => {

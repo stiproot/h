@@ -163,6 +163,7 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
 | — | Refusal re-classification | Not started | classification guard |
+| H | Hardening found in flight — lint parity + the dapr-mcp boundary | **Complete** | `check-lint-parity.mjs` |
 | — | `engine host` in the glossary | **Done** (0c) | vocabulary guard |
 
 Increment 0 sub-steps (one commit each, each green on `make lint` + `make test`):
@@ -299,6 +300,68 @@ Appetite confirmed as strong; each of these ships with its increment, not after.
    workflow-svc *is* the service substrate's engine host; `h-local --engines` is the local one.
    Naming it neutrally is what makes the parity legible rather than incidental.
 
+## Increment H — the hardening this work surfaced
+
+Standing instruction from the operator (2026-08-16): **fix what we find, in flight.** A finding
+parked is a finding that rots, and both of these were parked in the 0c log with revisit triggers.
+They were unparked the same day.
+
+### H1 — lint parity: two halves, each missing what the other had
+
+The repo had drifted into two lint dialects, and neither gap was visible from inside its own half:
+
+```
+apps/*         tsc --noEmit + oxfmt (+ depcruise)   → no oxlint at all
+packages/js/*  oxlint + oxfmt (+ depcruise)         → no tsc --noEmit
+```
+
+`tsc --noEmit` looks redundant in a package that already runs `tsc -p tsconfig.build.json` in its
+build — except **that config excludes `src/**/*.test.ts`**, and vitest transpiles without
+typechecking. So package test files were typechecked by NOTHING. Verified by planting
+`const x: number = "nope"` in a package test: build passed, lint passed, tests passed.
+
+The gap had accumulated real errors — 47 across four packages, every one invisible:
+
+| package | what was hiding |
+| --- | --- |
+| `agent-cli` | 6 — three strategy tests never provided `HttpClient` (the house pattern exists in `claude.test.ts`), and three `extractMetrics(events)` calls missing an argument the interface has required for as long as it has had two parameters |
+| `agent-server` | 1 — a `GitClient` stub whose `addWorktree` returned `void` where the port returns the effective path |
+| `local-runtime` | 1 — a `WorkspacePort` stub missing `provision` entirely |
+| `engine-core` | 39 — `noUncheckedIndexedAccess` narrowings in the test files that arrived with 0a/0b/0c |
+
+All fixed, not suppressed. The two incomplete stubs are the ones worth noting: a test double that
+does not satisfy its port is not testing the thing it appears to test, and both were silently
+incomplete. `local-runtime`'s now `Effect.die`s on `provision` rather than no-opping — a stub that
+must never be called should say so.
+
+Every TS package now runs the same three checks (plus depcruise where it applies), enforced by
+`scripts/check-lint-parity.mjs` and verified firing. Turning oxlint on across the apps surfaced 11
+warnings, all cleared: three genuinely dead symbols, seven redundant `...(x ?? {})` spreads, and one
+the linter got WRONG — `reaper.ts`'s `[...liveRuns]` snapshot is deliberate because the loop deletes
+from the set it walks, so that one is suppressed with the reason rather than obeyed.
+
+This is the same failure mode `check-tsc.mjs` guards from the other direction: **a missing check and
+a hollow check are indistinguishable from the outside.**
+
+### H2 — the dapr-mcp boundary violation, decided rather than parked
+
+0c named an exception for `dapr-mcp`'s `IActorStore`/`IPubSub`, which type-import core-dapr's
+service interfaces, on the grounds that restating ~10 methods and an error tag was a design call
+about another service. Interrogating it properly reversed that in one observation: **`IStateStore`
+sits in the same directory, in the same service, fully self-contained with its own
+`DaprStateError`.** Restating IS this service's convention — the other two were the outliers, so
+fixing them imposes nothing from outside.
+
+The objection to restating was drift: two definitions of one interface. It does not apply here,
+because both adapters delegate by IDENTITY (`Layer.effect(Port, CoreDaprTag)`). TypeScript is
+structural, so the delegation still compiles — and if core-dapr's surface ever diverges, **that
+assignment stops compiling.** The coupling was never removed; it was converted from a hidden import
+into a compile-time check, which is strictly better than either the import or a hand-written mapping
+layer.
+
+The exception is deleted from the rule. Verified by planting the import back and watching
+`domain-no-io-libs` fire.
+
 ## Open questions
 
 - **`--fresh` on the local substrate** — see the table above.
@@ -382,15 +445,16 @@ Appetite confirmed as strong; each of these ships with its increment, not after.
     and documented in place (the port's shape is the adapter's, stated once rather than restating
     ~10 methods and an error tag). Whether to restate them locally is a design call about dapr-mcp
     and was NOT made as a side effect of this refactor: the exception is named in the rule, where
-    it is visible, instead of the rule being weakened for everyone. *Revisit when:* dapr-mcp is
-    being worked on for its own reasons.
+    it is visible, instead of the rule being weakened for everyone. **REVERSED same day — see
+    increment H2:** the sibling port `IStateStore` already restates its interface locally, so
+    restating is this service's own convention rather than an imposition.
   - `engine-core` carries its own `.dependency-cruiser.cjs` (`engine-core-is-pure`) — it is
     imported by every host, so one I/O dependency would pin all of them to a substrate.
     Verified firing.
   - Also surfaced: **`workflow-svc`'s lint script has no `oxlint` at all** (`tsc --noEmit` +
     `oxfmt` + `depcruise` only), so the moved code met a linter for the first time and produced
     warnings including a genuinely unused import. Not fixed here — it is a repo-wide question about
-    which packages lint what. *Revisit when:* the next lint-surface change touches those scripts.
+    which packages lint what. **RESOLVED same day — see increment H1.**
   - `engine host` entered ARCHITECTURE.md's glossary as a substrate-NEUTRAL term, and the
     Boundaries section gained the shared-core rule (a package can be domain all the way down, and
     carries its own purity config) — both durable, both lifted now rather than at archive time.

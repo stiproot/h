@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "lint": "oxlint src && oxfmt --check src && depcruise --config .dependency-cruiser.cjs src",
+    "lint": "tsc --noEmit && oxlint src && oxfmt --check src && depcruise --config .dependency-cruiser.cjs src",
     "format": "oxfmt src",
     "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
   },

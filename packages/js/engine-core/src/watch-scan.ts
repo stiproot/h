@@ -680,7 +680,7 @@ const executeFallback = (
       // different agent while re-entering the SAME steps.
       trigger: {
         steps: (row.resubmit.steps ?? []) as readonly StepDefinition[],
-        params: { ...(row.resubmit.params ?? {}), ...fb.identity } as WorkflowParams,
+        params: { ...row.resubmit.params, ...fb.identity } as WorkflowParams,
         instanceId: schedRowId,
         ...(row.resubmit.workspaceId ? { workspaceId: row.resubmit.workspaceId } : {}),
         watch: childPolicy,

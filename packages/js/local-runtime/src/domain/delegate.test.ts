@@ -49,6 +49,10 @@ const stubs = (
           recorder.worktrees.push(spec);
           return spec.worktreePath;
         }),
+      // `h delegate` never provisions — setup steps belong to a workflow definition, not the atom.
+      // So the stub DIES rather than no-ops: a silent stub would let a future call through
+      // unnoticed, which is the failure mode a test double exists to prevent.
+      provision: () => Effect.die(new Error("delegate must not provision a workspace")),
     }),
     Layer.succeed(ProgressPort, {
       emit: (line: string) =>

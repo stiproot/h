@@ -1,3 +1,4 @@
+import { FetchHttpClient } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -5,7 +6,9 @@ import { extractPiText, piStrategy } from "./pi.ts";
 import type { AgentInvocationRequest } from "./types.ts";
 
 const buildInvocation = (request: AgentInvocationRequest) =>
-  Effect.runPromise(piStrategy.buildInvocation(request));
+  Effect.runPromise(
+    piStrategy.buildInvocation(request).pipe(Effect.provide(FetchHttpClient.layer)),
+  );
 
 function baseRequest(overrides: Partial<AgentInvocationRequest> = {}): AgentInvocationRequest {
   return {

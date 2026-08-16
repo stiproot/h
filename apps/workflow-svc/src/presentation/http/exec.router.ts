@@ -71,7 +71,7 @@ export function registerExecRoutes(fastify: FastifyInstance, runtime: WorkflowRo
         const store = yield* ExecPolicyStore;
         const now = new Date().toISOString();
         const policy = Option.getOrUndefined(yield* store.get());
-        const budgets = { ...(policy?.budgets ?? {}) };
+        const budgets = { ...policy?.budgets };
         if (body.dailyBudgetUsd === undefined || body.dailyBudgetUsd === null) {
           delete budgets[body.name];
         } else {

@@ -144,7 +144,7 @@ export const WatchStoreLive: Layer.Layer<WatchStore> = Layer.scoped(
         const current = yield* getLedger(date);
         // Per-agent subtotals merge key-by-key (cost-containment B3): a delta's agent adds to
         // the day's running subtotal for that agent.
-        const costByAgent = { ...(current.costByAgent ?? {}) };
+        const costByAgent = { ...current.costByAgent };
         for (const [agent, usd] of Object.entries(delta.costByAgent ?? {})) {
           costByAgent[agent] = Math.round(((costByAgent[agent] ?? 0) + usd) * 10_000) / 10_000;
         }

@@ -246,10 +246,10 @@ describe("scanCronsEffect", () => {
 
     expect(report.fired).toEqual(["stiproot/h:pi-agent:revise-pr"]);
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("revise-pi-agent");
-    expect(inv.invokes[0].fresh).toBe(true);
-    expect(inv.invokes[0].wf).toEqual(identity);
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-revise-pr" }]);
+    expect(inv.invokes[0]!.instanceId).toBe("revise-pi-agent");
+    expect(inv.invokes[0]!.fresh).toBe(true);
+    expect(inv.invokes[0]!.wf).toEqual(identity);
+    expect(inv.invokes[0]!.steps).toEqual([{ activity: "run-revise-pr" }]);
     // mark-before-fire bumped fires + epoch.
     const row = cs.rows.get("stiproot/h:pi-agent:revise-pr")!;
     expect(row.fires).toBe(2);
@@ -341,8 +341,8 @@ describe("scanCronsEffect", () => {
     );
     const inv = recordingInvoker();
     await scan(cs.service, inv.service);
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-claude", input: { task: "t" } }]);
-    expect(inv.invokes[0].wf).toEqual(identity);
+    expect(inv.invokes[0]!.steps).toEqual([{ activity: "run-claude", input: { task: "t" } }]);
+    expect(inv.invokes[0]!.wf).toEqual(identity);
   });
 });
 

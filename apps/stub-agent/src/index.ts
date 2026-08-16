@@ -2,7 +2,6 @@ import { join } from "path";
 
 import { NodeContext } from "@effect/platform-node";
 import {
-  AgentRunner,
   registerAgentRoutesEffect,
   registerWorkflowRoute,
   RunLedgerLive,

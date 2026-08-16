@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 
+import { FetchHttpClient } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -75,7 +76,9 @@ describe("openhandsStrategy.prepareEnvironment LLM_MODEL routing", () => {
 
 describe("openhandsStrategy.buildInvocation", () => {
   it("writes the task to a temp file and exposes a cleanup that removes it", async () => {
-    const invocation = await Effect.runPromise(openhandsStrategy.buildInvocation(baseRequest()));
+    const invocation = await Effect.runPromise(
+      openhandsStrategy.buildInvocation(baseRequest()).pipe(Effect.provide(FetchHttpClient.layer)),
+    );
     const taskFile = invocation.args[invocation.args.indexOf("--file") + 1]!;
 
     expect(existsSync(taskFile)).toBe(true);

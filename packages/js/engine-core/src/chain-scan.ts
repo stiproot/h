@@ -181,7 +181,7 @@ const fireWorkflow = (
     // WRONG repo). Identity stays safe: no kind contract emits identity keys — disjoint.
     const params = yield* Effect.try({
       try: () => ({
-        ...(member.params ?? {}),
+        ...member.params,
         ...contractFor(member).buildParams(row.data),
       }),
       catch: (cause) => new WorkflowError({ cause, instanceId: row.chainId }),

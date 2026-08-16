@@ -223,13 +223,13 @@ describe("registerChainForFire", () => {
     expect(row?.currentInstanceId).toBe("feature-x");
     // workflow 0 fired: implement-pr resolved, under feature-x, with the spec threaded in.
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("feature-x");
+    expect(inv.invokes[0]!.instanceId).toBe("feature-x");
     // Every member shares a workspaceId = chainId, so all resolve ONE worktree (implement-pr creates
     // it, revise-pr reuses it). Without this, members cut the same branch at per-instanceId paths and
     // collide ("'feature/<slug>' is already used by worktree at …").
-    expect(inv.invokes[0].workspaceId).toBe("x");
-    expect(inv.invokes[0].steps).toEqual([{ activity: "run-implement-pr" }]);
-    expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "do it" });
+    expect(inv.invokes[0]!.workspaceId).toBe("x");
+    expect(inv.invokes[0]!.steps).toEqual([{ activity: "run-implement-pr" }]);
+    expect(inv.invokes[0]!.params).toMatchObject({ slug: "x", spec: "do it" });
     expect(mem.ledgers.get(new Date().toISOString().slice(0, 10))).toMatchObject({
       chainsRegistered: 1,
       workflowsFired: 1,
@@ -302,7 +302,7 @@ describe("registerChainForFire", () => {
         Effect.provide(env(mem.service, inv.service)),
       ),
     );
-    expect(inv.invokes[0].workspaceId).toBe("own-ws");
+    expect(inv.invokes[0]!.workspaceId).toBe("own-ws");
   });
 
   it("stamps the wf-registry identity on the fired workflow when the chain data carries a repo", async () => {
@@ -322,9 +322,9 @@ describe("registerChainForFire", () => {
       ),
     );
     // wf leaf = the fired member's kind; slug = the chain slug; repo = the chain data target.
-    expect(inv.invokes[0].wf).toEqual({ repo: "o/r", slug: "x", workflow: "implement-pr" });
+    expect(inv.invokes[0]!.wf).toEqual({ repo: "o/r", slug: "x", workflow: "implement-pr" });
     // the threaded repo also rides the member's params (feature reads none, review-pr's target).
-    expect(inv.invokes[0].params).toMatchObject({ repo: "o/r" });
+    expect(inv.invokes[0]!.params).toMatchObject({ repo: "o/r" });
   });
 
   it("omits the wf identity when the chain data carries no repo (opt-in)", async () => {
@@ -339,7 +339,7 @@ describe("registerChainForFire", () => {
         Effect.provide(env(mem.service, inv.service)),
       ),
     );
-    expect(inv.invokes[0].wf).toBeUndefined();
+    expect(inv.invokes[0]!.wf).toBeUndefined();
   });
 
   it("carries the member's identity params alongside the contract's threading params (disjoint)", async () => {
@@ -365,7 +365,7 @@ describe("registerChainForFire", () => {
         Effect.provide(env(mem.service, inv.service)),
       ),
     );
-    expect(inv.invokes[0].params).toMatchObject({
+    expect(inv.invokes[0]!.params).toMatchObject({
       slug: "x",
       spec: "do it",
       runActivity: "run-openhands",
@@ -441,8 +441,8 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
     expect(row?.cursor).toBe(1);
     expect(row?.data.prNumber).toBe("42");
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("review-pr-x");
-    expect(inv.invokes[0].params).toMatchObject({ pr: "42" });
+    expect(inv.invokes[0]!.instanceId).toBe("review-pr-x");
+    expect(inv.invokes[0]!.params).toMatchObject({ pr: "42" });
   });
 
   it("advances to revise-pr, threading only the PR ref + slug (revise-pr reads the review itself)", async () => {
@@ -460,9 +460,9 @@ describe("scanChainsEffect: advance threads state to the next workflow", () => {
     expect(row?.cursor).toBe(2);
     // revise-pr fires on the shared branch instance, fresh, with only the durable references —
     // NOT the review text (revise-pr reads the PR's unresolved threads from GitHub itself).
-    expect(inv.invokes[0].instanceId).toBe("feature-x");
-    expect(inv.invokes[0].fresh).toBe(true);
-    expect(inv.invokes[0].params).toEqual({ pr: "42", slug: "x" });
+    expect(inv.invokes[0]!.instanceId).toBe("feature-x");
+    expect(inv.invokes[0]!.fresh).toBe(true);
+    expect(inv.invokes[0]!.params).toEqual({ pr: "42", slug: "x" });
   });
 });
 
@@ -509,8 +509,8 @@ describe("scanChainsEffect: parallel stage namespacing (D5)", () => {
     expect(row?.data.b).toEqual({ val: "BB" });
     // Stage 1 fired once (member c), its spec resolved from the dotted a.val path.
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("x-w2");
-    expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "AA" });
+    expect(inv.invokes[0]!.instanceId).toBe("x-w2");
+    expect(inv.invokes[0]!.params).toMatchObject({ slug: "x", spec: "AA" });
   });
 });
 
@@ -567,7 +567,7 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
   it("fires the cron member ONCE with armCron + wf identity + embedded steps (self-arm via §10)", async () => {
     const { inv } = await register();
     expect(inv.invokes).toHaveLength(1);
-    const fire = inv.invokes[0];
+    const fire = inv.invokes[0]!;
     // Inline: the embedded steps fire verbatim (NOT resolved from the saved store).
     expect(fire.steps).toEqual([{ activity: "run-claude" }]);
     // The member arms its OWN recurrence — the chain never writes cron:sub.
@@ -612,8 +612,8 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
     expect(row?.data.gather).toEqual({ metrics: "42ms" });
     // Stage 1 fired, its spec resolved from the dotted gather.metrics.
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("x-w1");
-    expect(inv.invokes[0].params).toMatchObject({ slug: "x", spec: "42ms", repo: "o/r" });
+    expect(inv.invokes[0]!.instanceId).toBe("x-w1");
+    expect(inv.invokes[0]!.params).toMatchObject({ slug: "x", spec: "42ms", repo: "o/r" });
   });
 
   it("finalizes the chain failed when a cron member has no repo (can't observe wf:resolved)", async () => {
@@ -688,7 +688,7 @@ describe("scanChainsEffect: loop-until-clean", () => {
       scanChainsEffect(undefined).pipe(Effect.provide(env(mem.service, inv.service))),
     );
     expect(mem.rows.get("x")?.cursor).toBe(2);
-    expect(inv.invokes[0].instanceId).toBe("feature-x"); // revise-pr fired
+    expect(inv.invokes[0]!.instanceId).toBe("feature-x"); // revise-pr fired
   });
 
   it("loops back to re-review after revise-pr, fresh, bumping the iteration", async () => {
@@ -702,8 +702,8 @@ describe("scanChainsEffect: loop-until-clean", () => {
     const row = mem.rows.get("x");
     expect(row?.cursor).toBe(1); // back to review-pr
     expect(row?.loop?.iterations).toBe(1);
-    expect(inv.invokes[0].instanceId).toBe("review-pr-x");
-    expect(inv.invokes[0].fresh).toBe(true); // re-review must purge the terminal prior run
+    expect(inv.invokes[0]!.instanceId).toBe("review-pr-x");
+    expect(inv.invokes[0]!.fresh).toBe(true); // re-review must purge the terminal prior run
   });
 
   it("stops (finalizes completed) once max iterations is reached", async () => {
@@ -772,7 +772,7 @@ describe("scanChainsEffect: atomic-failure teardown (D6)", () => {
     // The cron member's cron is disarmed via pub/sub — the chain NEVER writes cron:sub itself.
     const disarms = pub.events.filter((e) => e.topic === "cron-disarm");
     expect(disarms).toHaveLength(1);
-    expect(disarms[0].data).toEqual({ repo: "o/r", slug: "x", workflow: "review-pr" });
+    expect(disarms[0]!.data).toEqual({ repo: "o/r", slug: "x", workflow: "review-pr" });
   });
 
   it("does NOT terminate or disarm on a clean completed finalize (nothing to reap)", async () => {
@@ -1093,7 +1093,7 @@ describe("threaded params beat rendered defaults (trxy trial finding, 2026-07-25
         Effect.provide(env(mem.service, inv.service)),
       ),
     );
-    expect(inv.invokes[0].params).toMatchObject({
+    expect(inv.invokes[0]!.params).toMatchObject({
       clonePath: "/workspace/other-repo", // threaded wins
       runActivity: "run-codex", // identity survives (disjoint from the contract)
     });
@@ -1375,8 +1375,8 @@ describe("--after unfulfilled activation (issue #91)", () => {
     expect(child?.outcome).toBeUndefined();
     // Stage 0 fired with prNumber threaded in.
     expect(inv.invokes).toHaveLength(1);
-    expect(inv.invokes[0].instanceId).toBe("review-w0");
-    expect(inv.invokes[0].params).toMatchObject({ pr: "42" });
+    expect(inv.invokes[0]!.instanceId).toBe("review-w0");
+    expect(inv.invokes[0]!.params).toMatchObject({ pr: "42" });
   });
 
   it("standalone chain (no --after) with missing stage 0 inputs → fires then fails (not unfulfilled)", async () => {

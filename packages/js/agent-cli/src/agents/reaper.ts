@@ -61,6 +61,9 @@ export function liveRunCount(): number {
 
 /** Kill every registered run's process group. Synchronous, never throws. */
 export function reapAll(signal: NodeJS.Signals): void {
+  // Snapshot deliberately: the loop DELETES from the set it is walking. oxlint reads the copy as
+  // a useless spread, which is true only for a loop that does not mutate its own source.
+  // oxlint-disable-next-line unicorn/no-useless-spread
   for (const run of [...liveRuns]) {
     killRunGroup(run, signal);
     liveRuns.delete(run);

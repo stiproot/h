@@ -34,6 +34,10 @@ describe("POST /worktree defaults", () => {
       addWorktree: (opts) =>
         Effect.sync(() => {
           calls.push(opts);
+          // The real client returns the EFFECTIVE path — which may differ from the requested one
+          // when a branch already lives in another worktree (reuse-by-branch). Nothing here
+          // exercises that, so echoing the request is the faithful stub.
+          return opts.worktreePath;
         }),
       gcWorktrees: () => Effect.succeed({ removed: [], kept: [] }),
     });
