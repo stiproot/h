@@ -157,7 +157,7 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | # | Increment | Status | Guard |
 | --- | --- | --- | --- |
 | 0 | `engine-core` — the extraction | **Complete** | parity guard owns engine symbols ✓ |
-| 1 | KV registries (`wf:`, saved store, `exec:`) | **Next** *(preview owed)* | KV single-writer |
+| 1 | KV registries (`wf:`, saved store, `exec:`) | **In progress** — surface previewed + approved | `check-kv-keys.mjs` ✓ |
 | 2 | Cron + schedule | Not started *(preview owed)* | flag/capability agreement |
 | 3 | Chain as a durable registration | Not started *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
@@ -212,7 +212,22 @@ domain folder should end up holding only what genuinely belongs to that host.
 the engine symbols as owned — defining any of them elsewhere becomes a lint failure, the same way
 `resolveRefs` already is.
 
-### 1. KV registries — the substrate **(preview)**
+### 1. KV registries — the substrate
+
+Surface previewed and approved 2026-08-16. **Registry READS select their substrate with `--local`**,
+matching the flag `h workflow run` / `h chain run` already use — `h workflow list --local`,
+`h cron list --local`, `h agents deny claude --local`. Rejected: a config-file default (a second
+concept to learn for a flag that already exists) and auto-detect-if-the-fabric-is-up (the source of
+an answer would depend on invisible machine state, so a stopped fabric silently changes what
+`h cron list` means).
+
+Sub-steps:
+
+- [x] 1a — the `kvKey`/`kvId` codec + `scripts/check-kv-keys.mjs`, both verified firing
+- [ ] 1b — the six KV store adapters over engine-core's ports
+- [ ] 1c — un-refuse `write-wf-row`; wire the saved store + `exec:` policy into the local executor
+- [ ] 1d — `--local` on the registry read commands
+
 
 A KV adapter for the ports above, plus the bucket layout and the single-writer rule carried over
 from the flat Redis keyspace (a prefix names the one component that writes it).
@@ -361,6 +376,36 @@ layer.
 
 The exception is deleted from the rule. Verified by planting the import back and watching
 `domain-no-io-libs` fire.
+
+### 1a log — the codec, and two bugs the discipline caught
+
+The KV key mapping is the increment's highest-risk piece, because **NATS validates KV keys as
+`/^[-/=.\w]+$/` and every h registry id is built from `:`** — `watch:sub:<id>`,
+`cron:sub:<repo>:<slug>:<workflow>`, `wf:<repo>:<slug>:<workflow>`, `exec:config`. `%` is not in the
+charset either, so percent-encoding (the Dapr fix) is unavailable.
+
+This is the SAME failure shape as the 2026-07-15 Dapr path-key bug: the store accepts the write and
+the read finds nothing, so the symptom is an empty registry rather than an error. Hence a codec plus
+a guard, not a convention.
+
+The mapping: `:` → `.` (h's segment separator becomes NATS's subject separator, so
+`kv.watch("wf.acme/api.>")` selects every row for one repo — something the flat Redis keyspace could
+never do), `A-Za-z0-9_-/` pass through (`/` is legal, and keeps `owner/name` readable), everything
+else → `=XX`. Decoding is unambiguous because a literal `.` escapes to `=2E`, so a bare `.` can only
+have come from a `:`.
+
+Two bugs, both found by planting rather than reading:
+
+- **The codec was character-wise and broke on the first non-BMP codepoint** — an emoji in a slug
+  encodes as `=1F642`, five hex digits, and the decoder reads two. Now encodes UTF-8 BYTES, so `=XX`
+  is always exactly two. Found by the totality test, which is why that test enumerates inputs no
+  registry uses today: the Dapr scar was itself an input nobody had tried.
+- **The guard's own regex matched nothing.** `[A-Za-z_$][\w$]*(?:[Kk]v)` cannot match the bare name
+  `kv` — the leading class eats the `k`, leaving one character for a two-character suffix — so
+  `check-kv-keys` reported success against a planted `kv.get("watch:sub:x")`. That is now four
+  guard-pattern bugs in this plan (three in the depcruise rules, one here), **every one of which
+  printed a green line**. A guard that matches nothing and a guard that finds nothing are
+  indistinguishable from their output; only planting a violation separates them.
 
 ## Open questions
 
