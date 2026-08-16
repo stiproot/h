@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { decide, nextUnknownStreak } from "./cron-engine.ts";
-import type { CronRow } from "engine-core";
-import { DEFAULT_UNKNOWN_STREAK_LIMIT } from "engine-core";
+import type { CronRow } from "./models/cron.model.ts";
+import { DEFAULT_UNKNOWN_STREAK_LIMIT } from "./models/watch.model.ts";
 
 // A cron that fires every 30 min, last fired at 00:00 — so due at 00:31, not due at 00:15.
 const base: CronRow = {

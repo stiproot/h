@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { WatchRow } from "engine-core";
+import type { WatchRow } from "./models/watch.model.ts";
 import { decide, retryApplies, settle } from "./watch-engine.ts";
 
 const T0 = Date.parse("2026-07-05T09:00:00Z");

@@ -46,3 +46,18 @@ export * from "./ports/IWorkflowInvoker.ts";
 // The clock every recurrence primitive reads: is this cadence due, is this expression valid, when
 // does this duration land.
 export { assertValidCron, isDue, parseDurationMs, resolveFireAt } from "./scheduling.ts";
+
+// The five ENGINES — one pure `decide` per primitive, each a per-tick state machine over its row:
+// supervise (watch) · sequence (chain) · recur (cron) · fan out (discover) · fire once (sched).
+// They are the reason this package exists. Each is named `decide` in its own module, so the barrel
+// qualifies them by primitive; a host importing several would otherwise have five identical names.
+export { decide as decideWatch, retryApplies, settle } from "./watch-engine.ts";
+export type { WatchDecision } from "./watch-engine.ts";
+export { decide as decideChain } from "./chain-engine.ts";
+export type { ChainDecision, MemberObservation } from "./chain-engine.ts";
+export { decide as decideCron, nextUnknownStreak } from "./cron-engine.ts";
+export type { CronDecision } from "./cron-engine.ts";
+export { decide as decideDiscover } from "./discover-engine.ts";
+export type { DiscoverDecision } from "./discover-engine.ts";
+export { decide as decideSchedule } from "./schedule-engine.ts";
+export type { SchedDecision } from "./schedule-engine.ts";

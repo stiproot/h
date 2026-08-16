@@ -403,18 +403,11 @@ apps/workflow-agent/src/                  # workflow-agent (thin wrapper over ag
 apps/workflow-svc/src/
 ├── index.ts                                          # registers workflow + activities + cron/watch/chain routes, wires the store/source-reader layers, starts Fastify
 ├── domain/
-│   ├── models/workflow.model.ts                      # WorkflowRequest (+ watch/watchMeta, wf identity, armCron closing-bracket cron), StoredWorkflow (+ outputs — the declared output schema), WorkflowParams, WorkflowSchedule, toRequest; AgentResult (+ structured — the validated output block)
-│   ├── models/watch.model.ts                         # the watcher primitive's shapes: WatchPolicy (maxDurationMs, retry, escalate), WatchRow (epoch-fenced), WatchConfig, WatchLedger
-│   ├── models/chain.model.ts                         # the chain primitive: ChainRow {workflows, cursor=STAGE index, data (two-level, D5), strategy}, ChainMember {kind, key? XOR steps? (inline), stage?, id? (namespace), cron?, captures/inputs/until}; stage helpers (stageOf/membersInStage/lastStage) + validateChain (contiguous stages, key/steps XOR, cron⟹inline); ChainStrategy (sequential | loop-until-clean); CRON_DISARM_TOPIC lives in cron.model
-│   ├── models/cron.model.ts                          # the recur cron: CronRow, CronSource (saved | embedded), CronBudget, cronId; config/heartbeat/ledger (shared with discovery)
-│   ├── models/discover.model.ts                      # the discovery/fan-out cron: DiscoverRow {repo,label,workflow,gates,source:github-issues,watch?}, discoverId, issueSlug/issueInstanceId
-│   ├── models/wf.model.ts                            # per-workflow status registry: WfRow (status + resolved goal flag), WfIdentity, wfKey, wfIdentityFrom
-│   ├── ports/{IWorkflowInvoker,IWorkflowStore}.ts    # outbound ports (invoker: invoke/getStatus/terminate)
-│   ├── ports/{IWatchStore,IChainStore,ICronStore,IWfStore}.ts  # the registry ports (cron store also serves discover rows: cron:discover:* + index, and one-shot sched rows: cron:sched:* + index)
-│   ├── ports/ISourceReader.ts                        # the discovery cron's enumeration seam (listOpenIssues, oldest-first) — keeps domain free of any GitHub type
-│   ├── {watch,chain,cron}-engine.ts                  # pure decide per primitive — supervise | sequence | recur; unit-tested policy surfaces
-│   ├── discover-engine.ts                            # pure decide(row, runtimeStatus, todayFires, now) → wait | discover (in-flight serialize → cadence → daily-cap)
-│   ├── schedule-engine.ts / schedule-scan.ts         # the one-shot cron:sched variant: pure decide(row, now) → wait | fire | expire; arm/disarm/advance + per-tick fire-once-then-deactivate (fires via invokeWithWatch). Spine for --at/--in, pause/resume, usage-limit fallback
+│   # The ROWS, the PORTS and the five `decide` functions are NOT here — they live in
+│   # packages/js/engine-core (see below). They are substrate-independent, and this service is one
+│   # HOST that supplies their adapters; what remains in this domain/ is the per-tick SCAN
+│   # orchestration and the registration seams that act on them.
+│   ├── schedule-scan.ts                              # the one-shot cron:sched variant: arm/disarm/advance + per-tick fire-once-then-deactivate (fires via invokeWithWatch). Spine for --at/--in, pause/resume, usage-limit fallback
 │   ├── watch-scan.ts                                 # registerWatchForFire + invokeWithWatch (the WATCH fire choke point) + scanWatchesEffect (terminate/retry/escalate/cost-tally/publish)
 │   ├── chain-scan.ts / chain-members.ts            # chain registration + per-tick STAGE progression (observe every current-stage member → join → capture all → fire next stage); inline(steps)/saved(key) fire + armCron for cron members; observeMember cron branch reads wf:resolved; atomic-failure teardown (terminate siblings + publish cron-disarm); STRUCTURED-ONLY threading (stepStructured/contractFor; declared captures namespace under member id (D5), inputs resolve dotted paths; no marker parsing — retired 2026-07-15) (no actor). Kinds (`MEMBER_KINDS` / `ChainMemberKind`, closed literal — a novel kind is added on BOTH sides, engine + CLI): `implement-pr`, `review-pr`, `revise-pr`, and `answer` (the bare "answer this task" member — coded contract reads a `task`, captures the structured `answer`; identity is ordinary fire-time params, and an `--agent` roster panelizes it at fire time. Successor of the retired hand-built `agent-panel` kind — subsumed 2026-07-24 by panels-as-a-modifier)
 │   ├── structured-output.ts                          # the rung-2 seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract called by every run-* activity
@@ -528,10 +521,21 @@ packages/js/workflow-core/src/             # substrate-INDEPENDENT workflow exec
 
 packages/js/engine-core/src/               # substrate-INDEPENDENT ENGINE semantics — workflow-core's sibling: that one owns what a DEFINITION means, this one owns what an ENGINE acts on. Extracted from workflow-svc because the five engines are pure `decide` functions over these rows, and a second substrate could not reach them while they lived in one app (guarded by scripts/check-runtime-parity.mjs)
 ├── index.ts               # re-exports
-├── models/{watch,chain,cron,discover,schedule,wf,exec}.model.ts  # the REGISTRY ROWS, one module per registry prefix — the shape its owning engine decides over
-├── models/workflow.model.ts  # the fire descriptor (Trigger/TriggerFields), WorkflowRequest, SaveWorkflowRequest, StoredWorkflow/WorkflowSchedule, toRequest, deriveInstanceId. Here rather than beside an HTTP router because an engine's whole action vocabulary is "fire this" — a chain advance, a cron re-fire and a sched fire all produce a Trigger. Re-exports workflow-core's definition shapes
-├── ports/I{Watch,Chain,Cron,Wf,ExecPolicy}Store.ts, ISourceReader.ts, IWorkflowStore.ts, IWorkflowInvoker.ts  # what an engine needs FROM its host; each host supplies one adapter set and the engines never learn which substrate they are on
-└── scheduling.ts          # the recurrence clock — isDue / assertValidCron / parseDurationMs / resolveFireAt (pure, unit-tested)
+├── models/watch.model.ts     # the watcher primitive's shapes: WatchPolicy (maxDurationMs, retry, escalate), WatchRow (epoch-fenced), WatchConfig, WatchLedger
+├── models/chain.model.ts     # the chain primitive: ChainRow {workflows, cursor=STAGE index, data (two-level, D5), strategy}, ChainMember {kind, key? XOR steps? (inline), stage?, id? (namespace), cron?, captures/inputs/until}; validateChain (contiguous stages, key/steps XOR, cron⟹inline); ChainStrategy (sequential | loop-until-clean); re-exports workflow-core's stage helpers (stageOf/membersInStage/lastStage); CRON_DISARM_TOPIC lives in cron.model
+├── models/cron.model.ts      # the recur cron: CronRow, CronSource (saved | embedded), CronBudget, cronId; config/heartbeat/ledger (shared with discovery)
+├── models/discover.model.ts  # the discovery/fan-out cron: DiscoverRow {repo,label,workflow,gates,source:github-issues,watch?}, discoverId, issueSlug/issueInstanceId
+├── models/schedule.model.ts  # the one-shot scheduled fire: SchedRow, SchedTrigger, schedId
+├── models/wf.model.ts        # per-workflow status registry: WfRow (status + resolved goal flag), WfIdentity, wfKey, wfIdentityFrom
+├── models/exec.model.ts      # the executor policy: DeniedEntry, ExecPolicy, EXEC_POLICY_KEY
+├── models/workflow.model.ts  # the fire descriptor (Trigger/TriggerFields), WorkflowRequest (+ watch/watchMeta, wf identity, armCron closing-bracket cron), SaveWorkflowRequest, StoredWorkflow (+ outputs) / WorkflowSchedule, toRequest, deriveInstanceId. Here rather than beside an HTTP router because an engine's whole action vocabulary is "fire this" — a chain advance, a cron re-fire and a sched fire all produce a Trigger. Re-exports workflow-core's definition shapes
+├── ports/I{Watch,Chain,Cron,Wf,ExecPolicy}Store.ts, ISourceReader.ts, IWorkflowStore.ts, IWorkflowInvoker.ts  # what an engine needs FROM its host; each host supplies one adapter set and the engines never learn which substrate they are on. (invoker: invoke/getStatus/terminate; cron store also serves discover rows cron:discover:* and one-shot sched rows cron:sched:*; ISourceReader is the discovery cron's enumeration seam — listOpenIssues, oldest-first — keeping the core free of any GitHub type)
+├── {watch,chain,cron}-engine.ts  # pure decide per primitive — supervise | sequence | recur; unit-tested policy surfaces
+├── discover-engine.ts        # pure decide(row, runtimeStatus, todayFires, now) → wait | discover (in-flight serialize → cadence → daily-cap)
+├── schedule-engine.ts        # pure decide(row, now) → wait | fire | expire
+└── scheduling.ts             # the recurrence clock — isDue / assertValidCron / parseDurationMs / resolveFireAt (pure, unit-tested)
+                              # NOTE: every engine names its function `decide`, so the barrel qualifies them —
+                              # decideWatch / decideChain / decideCron / decideDiscover / decideSchedule
 
 packages/js/run-ledger/src/                # the run ledger, extracted from agent-server so a non-HTTP agent host (the local runtime) gets it without fastify
 ├── index.ts               # re-exports (agent-server re-exports these too, so agent services import unchanged)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { decide } from "./schedule-engine.ts";
-import type { SchedRow } from "engine-core";
+import type { SchedRow } from "./models/schedule.model.ts";
 
 // A one-shot armed to fire at 01:00.
 const base: SchedRow = {

@@ -1,7 +1,7 @@
 import { WorkflowError } from "core";
 import { Effect, Option } from "effect";
 
-import { decide } from "./discover-engine.ts";
+import { decideDiscover as decide } from "engine-core";
 import { cronLedgerDate } from "engine-core";
 import {
   type DiscoverGates,

@@ -1,4 +1,8 @@
-import { DEFAULT_UNKNOWN_STREAK_LIMIT, type WatchOutcome, type WatchRow } from "engine-core";
+import {
+  DEFAULT_UNKNOWN_STREAK_LIMIT,
+  type WatchOutcome,
+  type WatchRow,
+} from "./models/watch.model.ts";
 
 /**
  * The pure half of the watch engine: given one row, the subject's observed runtime status,

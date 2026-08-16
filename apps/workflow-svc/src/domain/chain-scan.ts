@@ -2,7 +2,7 @@ import { WorkflowError } from "core";
 import { DaprPublisherTag } from "core-dapr";
 import { Effect, Option } from "effect";
 
-import { decide, type MemberObservation } from "./chain-engine.ts";
+import { decideChain as decide, type MemberObservation } from "engine-core";
 import { type ChainData, ChainThreadError, contractFor, loopIsClean } from "workflow-core";
 import {
   type ChainMember,

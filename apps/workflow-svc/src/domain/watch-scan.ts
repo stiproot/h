@@ -24,7 +24,7 @@ import { ExecPolicyStore } from "engine-core";
 import { WatchStore } from "engine-core";
 import { WorkflowInvoker } from "engine-core";
 import { WorkflowStore } from "engine-core";
-import { decide, settle } from "./watch-engine.ts";
+import { decideWatch as decide, settle } from "engine-core";
 
 /**
  * The effectful half of the watch engine: registration on

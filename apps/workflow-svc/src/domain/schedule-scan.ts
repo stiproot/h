@@ -1,7 +1,7 @@
 import { WorkflowError } from "core";
 import { Effect, Option } from "effect";
 
-import { decide } from "./schedule-engine.ts";
+import { decideSchedule as decide } from "engine-core";
 import { cronLedgerDate } from "engine-core";
 import { type SchedOutcome, type SchedRow, schedId } from "engine-core";
 import type { WfIdentity } from "engine-core";

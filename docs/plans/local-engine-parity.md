@@ -167,7 +167,7 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 Increment 0 sub-steps (one commit each, each green on `make lint` + `make test`):
 
 - [x] 0a — package skeleton, row models + ports move *(green: build, lint, 286 + 41 tests)*
-- [ ] 0b — the five `decide` functions move
+- [x] 0b — the five `decide` functions move *(green: build, lint, tests)*
 - [ ] 0c — the scans move, behind a new `IEventPublisher` port — **also fixes the depcruise blind
       spot found in 0a** (see Log)
 - [ ] 0d — parity guard extended to own the engine symbols
@@ -345,3 +345,12 @@ Appetite confirmed as strong; each of these ships with its increment, not after.
   - Steering/diagram guards caught the package's absence from CLAUDE.md + README.md and the
     `workflow-svc-class` manifest's now-dangling file paths; all three updated in this change set,
     and the diagram's prose now says which half of it lives in `engine-core`.
+- 2026-08-16 — **0b done.** The five engines and their 10 test files moved; the package now holds
+  the whole `row → decide` half of the domain. One naming consequence worth knowing: every engine
+  names its function `decide` (correct in a module, ambiguous in a barrel), so `index.ts` qualifies
+  them — `decideWatch` / `decideChain` / `decideCron` / `decideDiscover` / `decideSchedule`. The
+  five scans import them aliased back to `decide`, so no call site inside a scan changed; when 0c
+  moves the scans INTO this package they return to bare relative imports and the aliases serve only
+  external hosts. Steering + the `workflow-svc-class` diagram updated again: workflow-svc's
+  `domain/` block now states what it no longer holds, and the detail it used to carry moved to the
+  `engine-core` block rather than being duplicated.

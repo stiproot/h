@@ -1,7 +1,7 @@
 import { WorkflowError } from "core";
 import { Effect, Option, Schema } from "effect";
 
-import { decide, nextUnknownStreak } from "./cron-engine.ts";
+import { decideCron as decide, nextUnknownStreak } from "engine-core";
 import {
   type CronBudget,
   type CronOutcome,
