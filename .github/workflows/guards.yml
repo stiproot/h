@@ -37,6 +37,20 @@ jobs:
       - name: Install JS dependencies
         run: bun install --frozen-lockfile
 
+      # nats-server is a HARD dependency of the local substrate (local-engine-parity, decision 3),
+      # and the JetStream KV registry adapters are tested against a REAL server rather than a fake:
+      # the failure they exist to prevent is a key the server accepts on write and loses on read,
+      # which no fake reproduces. Without this step those suites skip — loudly, but skipped coverage
+      # on the one substrate a laptop runs is not coverage.
+      - name: Install nats-server (local-substrate fabric)
+        run: |
+          set -euo pipefail
+          version=v2.14.4
+          curl -fsSL "https://github.com/nats-io/nats-server/releases/download/${version}/nats-server-${version}-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp
+          sudo install "/tmp/nats-server-${version}-linux-amd64/nats-server" /usr/local/bin/nats-server
+          nats-server --version
+
       - name: Lint (13 content guards + turbo lint)
         run: bun run lint
 

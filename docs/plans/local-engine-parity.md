@@ -224,7 +224,9 @@ an answer would depend on invisible machine state, so a stopped fabric silently 
 Sub-steps:
 
 - [x] 1a — the `kvKey`/`kvId` codec + `scripts/check-kv-keys.mjs`, both verified firing
-- [ ] 1b — the six KV store adapters over engine-core's ports
+- [x] 1b — the shared KV layer + the THREE stores increment 1 uses (`wf:`, saved store, `exec:`),
+      tested against a real nats-server. Watch/chain/cron stores land with the engines that read
+      them (increments 2–4) rather than as dead code ahead of them
 - [ ] 1c — un-refuse `write-wf-row`; wire the saved store + `exec:` policy into the local executor
 - [ ] 1d — `--local` on the registry read commands
 
@@ -406,6 +408,46 @@ Two bugs, both found by planting rather than reading:
   guard-pattern bugs in this plan (three in the depcruise rules, one here), **every one of which
   printed a green line**. A guard that matches nothing and a guard that finds nothing are
   indistinguishable from their output; only planting a violation separates them.
+
+### 1b log — the KV layer, and a guard that fired on its own abstraction
+
+Scope narrowed deliberately: 1b builds the shared KV layer plus the THREE stores increment 1 puts
+to work (`wf:`, the saved-workflow store, `exec:`). The watch/chain/cron stores need the CAS fence
+and are read only by engines that do not exist yet, so they land with those engines rather than as
+dead code ahead of them.
+
+Three things are genuinely simpler here than on Redis, and none is a shortcut:
+
+- **Every index key disappears.** `__workflow_index__`, `watch:index`, `cron:discover-index` exist
+  because Redis cannot enumerate a prefix. KV lists natively, so `list` reads the bucket — and
+  index/row drift stops being a thing that can happen.
+- **The epoch fence becomes a real CAS.** Rows keep `epoch` (a domain field both substrates
+  compare); Redis enforces it read-then-write with a race in the middle, KV's `update(key, value,
+  revision)` rejects a stale write outright.
+- **No `run:` mirrors.** They exist so workflow-svc can see the run ledger over Dapr. Locally the
+  ledger is on disk and the cost tally reads it directly.
+
+**Tested against a REAL nats-server**, spawned per suite, not a fake. The bug this adapter exists to
+prevent — a key the server accepts on write and loses on read — is precisely the one a fake cannot
+reproduce. The first fixtures failed decode because they omitted required fields, which is the
+adapter validating through each row's Schema rather than casting: a row from an older build fails
+here rather than surfacing half-populated three layers away.
+
+Two findings:
+
+- **A skipped suite is a silent-green suite.** The first version skipped when `nats-server` was
+  absent and explained itself with `console.warn` — which vitest SUPPRESSES when every test in a
+  file is skipped. The run printed "6 skipped" and nothing else: the exact shape this plan keeps
+  finding in guards, reproduced inside a test file. Now a missing binary FAILS with the install
+  hint, `H_SKIP_NATS_TESTS=1` is an explicit greppable waiver (the spirit of `run-itest`'s
+  skip/skipReason break-glass), and **CI installs nats-server** so the waiver never fires there.
+- **`check-kv-keys` fired on `NatsKv` — the abstraction built to enforce it.** The port's first
+  argument is a BUCKET, not a key, so "any `kv.<op>(` must wrap `kvKey`" was measuring the wrong
+  thing. Restated as a CHOKEPOINT and it became both correct and stronger: exactly one module may
+  hold a raw KV handle (`nats-kv.ts`), and inside it every operation encodes. A guard that fires on
+  the abstraction built to satisfy it is a sign the invariant is stated at the wrong level. Both
+  rules verified firing, plus a third check that fails if the chokepoint file is renamed away —
+  otherwise rule 2 would silently stop applying while rule 1 kept passing.
 
 ## Open questions
 

@@ -1,21 +1,23 @@
 #!/usr/bin/env node
-// JetStream KV key guard — fail LOUDLY when a KV operation does not encode its key with kvKey(...).
+// JetStream KV key guard — the NATS sibling of check-state-keys, enforcing a CHOKEPOINT.
 //
-// The NATS sibling of check-state-keys, and it exists because the same bug is available here.
 // NATS validates KV keys as /^[-/=.\w]+$/ (nats 2.29, jetstream/kv.js), while every h registry id
-// is built from `:` — `watch:sub:<id>`, `cron:sub:<repo>:<slug>:<workflow>`, `exec:config`. A raw
-// id is therefore REJECTED or, once wrapped in a bucket that tolerates it, saved under a key no
-// read will reconstruct.
+// is built from `:` — `watch:sub:<id>`, `cron:sub:<repo>:<slug>:<workflow>`, `exec:config`. An
+// unencoded key is rejected or stored where no read reconstructs it, and the symptom is an EMPTY
+// registry rather than an error. That is exactly how the Dapr path-position bug hid on 2026-07-15,
+// where no `cron:sub:*` row had ever landed for a slashed repo and nothing said so.
 //
-// That is precisely how the Dapr path-position bug hid (2026-07-15): writes looked fine, reads
-// returned nothing, and no `cron:sub:*` row had ever landed for a slashed repo. The symptom of a
-// key-encoding bug is ABSENCE, which nobody reads as an error — so the encoding cannot be left to
-// convention. Every `kv.get/put/create/update/delete/purge/history` call in scanned production
-// TypeScript must pass a key that came through local-runtime's `kvKey`.
+// The invariant is therefore stated as a chokepoint rather than as "encode everywhere":
 //
-// Like its sibling, the match is deliberately broad: any `.get(...)`-shaped call on an identifier
-// whose name marks it as a KV handle counts. An unrelated API must avoid that shape or live
-// outside the scanned trees, so the guard cannot silently miss a real KV call.
+//   1. Exactly ONE module may hold a raw JetStream KV handle — local-runtime's `nats-kv.ts`.
+//      Anywhere else, `views.kv(...)` / `kvm.kv(...)` is a violation: a second holder is a second
+//      place the encoding can be forgotten.
+//   2. Inside that module, every KV operation passes its key through `kvKey(...)`.
+//
+// Stating it this way is what removes the guard's own false-positive class. An earlier version
+// checked "any kv.<op>(" repo-wide and flagged `NatsKv` — h's own port over the raw client, whose
+// first argument is a BUCKET, not a key. A guard that fires on the abstraction built to enforce it
+// is measuring the wrong thing; the chokepoint is the thing worth defending.
 //
 // Wired into `bun run lint`. No skip flag by design.
 
@@ -25,28 +27,17 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const scanRoots = [
-  ...["apps", "packages/js"].flatMap((parent) => {
-    const parentPath = resolve(root, parent);
-    if (!existsSync(parentPath)) return [];
-    return readdirSync(parentPath, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => resolve(root, parent, entry.name, "src"));
-  }),
-];
+/** The one module allowed to hold a raw KV handle, and required to encode every key it passes. */
+const CHOKEPOINT = "packages/js/local-runtime/src/infrastructure/nats-kv.ts";
 
 /** KV operations that carry a key as their first argument. */
 const KV_METHODS = ["get", "put", "create", "update", "delete", "purge", "history"];
 
-/**
- * An identifier is treated as a KV handle when its name says so — `kv`, `bucket`, `rowsKv`, …
- *
- * The optional prefix is load-bearing and was wrong once: written as `[A-Za-z_$][\w$]*(?:[Kk]v)`
- * it cannot match the bare name `kv` at all (the leading class eats the `k`, leaving one char for a
- * two-char suffix), so the guard reported success against a planted `kv.get("watch:sub:x")`. A
- * guard that matches nothing and a guard that finds nothing print the same line.
- */
-const KV_HANDLE = /\b([\w$]*(?:[Kk]v|[Bb]ucket))\s*\.\s*(\w+)\s*\(/g;
+/** Obtaining a raw bucket handle: `js.views.kv(...)`, `kvm.kv(...)`, `new Kvm(...).open(...)`. */
+const ACQUIRE_HANDLE = /\b(?:views|kvm|Kvm)\s*\.\s*(?:kv|open|create)\s*\(/g;
+
+/** A call on a local handle whose name marks it as a raw KV bucket. */
+const KV_CALL = /\b([\w$]*(?:[Kk]v|[Bb]ucket))\s*\.\s*(\w+)\s*\(/g;
 
 function sourceFiles(dir, out = []) {
   if (!existsSync(dir)) return out;
@@ -59,44 +50,71 @@ function sourceFiles(dir, out = []) {
   return out;
 }
 
-/** The codec itself, and its tests, are where raw keys legitimately appear. */
-const isCodec = (file) => /local-runtime\/src\/infrastructure\/kv-key\.ts$/.test(file);
+const scanRoots = ["apps", "packages/js"].flatMap((parent) => {
+  const parentPath = resolve(root, parent);
+  if (!existsSync(parentPath)) return [];
+  return readdirSync(parentPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => resolve(root, parent, entry.name, "src"));
+});
 
 const violations = [];
+let chokepointSeen = false;
 
 for (const dir of scanRoots) {
   for (const file of sourceFiles(dir)) {
-    if (isCodec(file)) continue;
+    const rel = relative(root, file);
     const text = readFileSync(file, "utf8");
-    for (const match of text.matchAll(KV_HANDLE)) {
-      const [, handle, method] = match;
-      if (!KV_METHODS.includes(method)) continue;
-      // The argument list starts after the `(`; only its head matters — the key is first.
-      const argsStart = match.index + match[0].length;
-      const head = text.slice(argsStart, argsStart + 120);
-      if (/^\s*kvKey\s*\(/.test(head)) continue;
-      // A key already held in a variable the codec produced is fine when it says so by name.
-      if (/^\s*\w*[Kk]ey\b/.test(head) && !/^\s*['"`]/.test(head)) continue;
+    const lineOf = (index) => text.slice(0, index).split("\n").length;
+
+    if (rel === CHOKEPOINT) {
+      chokepointSeen = true;
+      // Rule 2: inside the chokepoint, every KV operation encodes its key.
+      for (const match of text.matchAll(KV_CALL)) {
+        const [, , method] = match;
+        if (!KV_METHODS.includes(method)) continue;
+        const head = text.slice(match.index + match[0].length, match.index + match[0].length + 80);
+        if (/^\s*kvKey\s*\(/.test(head)) continue;
+        violations.push({
+          file: rel,
+          line: lineOf(match.index),
+          detail: `${match[0]}…) does not encode its key — wrap it in kvKey(...)`,
+        });
+      }
+      continue;
+    }
+
+    // Rule 1: nobody else acquires a raw handle.
+    for (const match of text.matchAll(ACQUIRE_HANDLE)) {
       violations.push({
-        file: relative(root, file),
-        line: text.slice(0, match.index).split("\n").length,
-        call: `${handle}.${method}(`,
+        file: rel,
+        line: lineOf(match.index),
+        detail:
+          `${match[0]}…) acquires a raw JetStream KV handle outside ${CHOKEPOINT}. ` +
+          "Go through the NatsKv port, which owns key encoding.",
       });
     }
   }
 }
 
+// The chokepoint's own absence must not read as success — a renamed or deleted file would other-
+// wise silently disable rule 2 while rule 1 kept passing, which is the failure mode this guard is
+// about in the first place.
+if (!chokepointSeen) {
+  console.error(`✗ check-kv-keys: the chokepoint ${CHOKEPOINT} was not found.`);
+  console.error("  It was moved or renamed; update CHOKEPOINT here so the rule keeps applying.\n");
+  process.exit(1);
+}
+
 if (violations.length > 0) {
-  console.error("✗ check-kv-keys: JetStream KV operation with an unencoded key.\n");
-  for (const { file, line, call } of violations) {
-    console.error(`  ${file}:${line}: ${call}…) — wrap the key in kvKey(...)`);
-  }
+  console.error("✗ check-kv-keys: JetStream KV access outside its chokepoint.\n");
+  for (const { file, line, detail } of violations) console.error(`  ${file}:${line}: ${detail}`);
   console.error(
     "\n  NATS accepts /^[-/=.\\w]+$/ and every h registry id contains `:`. An unencoded key is\n" +
       "  rejected or stored where no read finds it, and the symptom is an EMPTY registry rather\n" +
-      "  than an error — the exact shape of the 2026-07-15 Dapr key bug.\n",
+      "  than an error — the shape of the 2026-07-15 Dapr key bug.\n",
   );
   process.exit(1);
 }
 
-console.log("✓ check-kv-keys: every JetStream KV key is encoded with kvKey");
+console.log("✓ check-kv-keys: raw KV access is confined to its chokepoint, and encodes every key");
