@@ -95,12 +95,22 @@ export const NatsKvLive = (url: string): Layer.Layer<NatsKv> =>
   Layer.scoped(
     NatsKv,
     Effect.gen(function* () {
-      const nc = yield* Effect.acquireRelease(
-        Effect.promise(() => connect({ servers: url, timeout: 3000, maxReconnectAttempts: 2 })),
-        (connection: NatsConnection) =>
-          Effect.promise(() => connection.drain()).pipe(Effect.ignore),
+      // LAZY on purpose. Building this layer must not open a socket, because it is built for every
+      // local job — including an `h delegate` that reads no registry at all. Connecting eagerly
+      // would turn a stopped fabric into a failure for work that never needed it, and would do it
+      // with a raw transport error instead of the CLI's preflight message. So: nothing happens
+      // until the first registry read, and the finalizer only drains a connection that was made.
+      let connection: Promise<NatsConnection> | undefined;
+      yield* Effect.addFinalizer(() =>
+        connection === undefined
+          ? Effect.void
+          : Effect.promise(() => connection!.then((nc) => nc.drain())).pipe(Effect.ignore),
       );
-      const kvm = nc.jetstream().views;
+      const connectOnce = (): Promise<NatsConnection> => {
+        connection ??= connect({ servers: url, timeout: 3000, maxReconnectAttempts: 2 });
+        return connection;
+      };
+
       const handles = new Map<BucketName, KV>();
 
       const bucketOf = (bucket: BucketName): Effect.Effect<KV, WorkflowError> => {
@@ -108,7 +118,8 @@ export const NatsKvLive = (url: string): Layer.Layer<NatsKv> =>
         if (held) return Effect.succeed(held);
         return Effect.tryPromise({
           try: async () => {
-            const kv = await kvm.kv(bucket, { history: 1 });
+            const nc = await connectOnce();
+            const kv = await nc.jetstream().views.kv(bucket, { history: 1 });
             handles.set(bucket, kv);
             return kv;
           },

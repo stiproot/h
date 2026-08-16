@@ -3,6 +3,7 @@ import type { WorkflowStep } from "workflow-core";
 import { describe, expect, it } from "vitest";
 
 import { runWorkflow } from "./execute.ts";
+import { AllowAllExecPolicy } from "./policy.test-layer.ts";
 import type {
   AgentRunReport,
   AgentRunRequest,
@@ -93,7 +94,7 @@ const stubs = (
 };
 
 const run = (j: WorkflowJob, layer: Layer.Layer<Ports>) =>
-  Effect.runPromise(runWorkflow(j).pipe(Effect.provide(layer)));
+  Effect.runPromise(runWorkflow(j).pipe(Effect.provide(layer), Effect.provide(AllowAllExecPolicy)));
 
 describe("runWorkflow", () => {
   it("runs steps in order and lands each result under its id", async () => {

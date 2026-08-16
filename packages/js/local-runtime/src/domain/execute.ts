@@ -6,6 +6,8 @@ import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-c
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
+import { assertExecutorAllowed } from "./policy.ts";
+import type { ExecPolicyStore } from "engine-core";
 import type {
   CheckoutSpec,
   JournalRecord,
@@ -95,7 +97,11 @@ const checkoutFromInput = (input: Record<string, unknown>): CheckoutSpec => {
  */
 export const runWorkflow = (
   job: WorkflowJob,
-): Effect.Effect<WorkflowEnvelope, never, AgentPort | WorkspacePort | ProgressPort | JournalPort> =>
+): Effect.Effect<
+  WorkflowEnvelope,
+  never,
+  AgentPort | WorkspacePort | ProgressPort | JournalPort | ExecPolicyStore
+> =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
     const journal = yield* JournalPort;
@@ -135,8 +141,8 @@ export const runWorkflow = (
     // the append's ACK is the completion barrier, so its failure fails the step.
     const journaled = (
       step: StepDefinition,
-      execute: Effect.Effect<unknown, StepError, AgentPort | WorkspacePort>,
-    ): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort> => {
+      execute: Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore>,
+    ): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore> => {
       const id = stepId(step);
       if (done.has(id)) {
         return progress.emit(`↟ ${id}: from journal`).pipe(Effect.map(() => done.get(id)));
@@ -288,7 +294,7 @@ const runStep = (
   job: WorkflowJob,
   progress: { readonly emit: (line: string) => Effect.Effect<void> },
   runs: WorkflowRunRef[],
-): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort> =>
+): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore> =>
   Effect.gen(function* () {
     const id = stepId(step);
     // The activity NAME may itself be a token (`{{params.runActivity}}` — fire-time identity).
@@ -306,7 +312,10 @@ const runStep = (
 
     if (classified.kind === "refused") {
       return yield* Effect.fail(
-        new StepError(id, new RefusedActivityError(activity, classified.reason).message),
+        new StepError(
+          id,
+          new RefusedActivityError(activity, classified.reason, classified.why).message,
+        ),
       );
     }
 
@@ -345,6 +354,12 @@ const runStep = (
       yield* progress.emit(`⚙ ${id}: ran ${commands.length} setup command(s)`);
       return { provisioned: commands.length };
     }
+
+    // The executor-policy fence, before anything is spent. Same decision function as the service
+    // substrate's activity gate, so `h agents deny` means one thing on both.
+    yield* assertExecutorAllowed(classified.agent, new Date().toISOString()).pipe(
+      Effect.mapError((err) => new StepError(id, err.message)),
+    );
 
     const agent = yield* AgentPort;
     const cwd = str(input.cwd) ?? job.repoPath;

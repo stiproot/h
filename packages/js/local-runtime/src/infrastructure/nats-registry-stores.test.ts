@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ExecPolicyStore, WfStore, WorkflowStore } from "engine-core";
+
+import { assertExecutorAllowed } from "../domain/policy.ts";
 import { Effect, Layer, Option } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -203,5 +205,40 @@ describeKv("NatsExecPolicyStoreLive", () => {
     );
 
     expect(Option.getOrThrow(found).denied?.[0]).toMatchObject({ name: "claude" });
+  });
+});
+
+describeKv("the executor fence, end to end", () => {
+  /**
+   * The JOIN the unit tests cannot show: `h agents deny` writes through ExecPolicyStore, and the
+   * executor reads through `assertExecutorAllowed`. Both halves are tested in isolation against
+   * stubs; this asserts they meet on the SAME key in a real bucket. A key-encoding mistake would
+   * pass both unit suites and fence nothing here.
+   */
+  it("denies the executor the policy names, and only that one", async () => {
+    const now = "2026-08-16T12:00:00.000Z";
+
+    const outcome = await run(
+      Effect.gen(function* () {
+        const store = yield* ExecPolicyStore;
+        yield* store.save({
+          denied: [{ name: "codex", reason: "operator" as const, deniedAt: now }],
+          updatedAt: now,
+        });
+        const codex = yield* assertExecutorAllowed("codex", now).pipe(
+          Effect.map(() => "allowed"),
+          Effect.catchAll((error: Error) => Effect.succeed(`denied: ${error.message}`)),
+        );
+        const claude = yield* assertExecutorAllowed("claude", now).pipe(
+          Effect.map(() => "allowed"),
+          Effect.catchAll((error: Error) => Effect.succeed(`denied: ${error.message}`)),
+        );
+        return { codex, claude };
+      }),
+    );
+
+    expect(outcome.codex).toMatch(/^denied: /);
+    expect(outcome.codex).toContain("codex");
+    expect(outcome.claude).toBe("allowed");
   });
 });

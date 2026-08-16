@@ -13,6 +13,7 @@ import type {
   LocalChainMember,
 } from "./models.ts";
 import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import type { ExecPolicyStore } from "engine-core";
 
 /**
  * Run a chain in-process: ordered members, grouped into stages, threading state between them.
@@ -51,7 +52,11 @@ import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts"
  */
 export const runChain = (
   job: ChainJob,
-): Effect.Effect<ChainEnvelope, never, AgentPort | WorkspacePort | ProgressPort | JournalPort> =>
+): Effect.Effect<
+  ChainEnvelope,
+  never,
+  AgentPort | WorkspacePort | ProgressPort | JournalPort | ExecPolicyStore
+> =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
     const journal = yield* JournalPort;
@@ -290,7 +295,7 @@ const runMember = (
 ): Effect.Effect<
   { group: string; output: string },
   Error,
-  AgentPort | WorkspacePort | ProgressPort | JournalPort
+  AgentPort | WorkspacePort | ProgressPort | JournalPort | ExecPolicyStore
 > =>
   Effect.gen(function* () {
     const member = job.members[index]!;

@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from h_cli.config import DOTENV_PATH, LOCAL_BIN
+from h_cli.config import DOTENV_PATH, EVENTS_URL, LOCAL_BIN
 
 
 class LocalRunError(RuntimeError):
@@ -139,7 +139,11 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
             # communicate drains stderr itself, so a reader thread and it split the lines between
             # them and the completion line silently vanished.
             text=True,
-            env=child_env(),
+            # NATS_URL is stamped rather than left to the shell so ONE value is authoritative:
+            # the CLI's EVENTS_URL. The runner reads it for the registry adapters and falls back
+            # to the same literal default; test_local_fabric_url_sync pins the pair, the way
+            # test_local_protocol_sync pins the protocol version.
+            env={**child_env(), "NATS_URL": EVENTS_URL},
         )
     except OSError as err:  # node missing, not executable, …
         raise LocalRunError(f"could not start the local runner ({runner}): {err}") from err

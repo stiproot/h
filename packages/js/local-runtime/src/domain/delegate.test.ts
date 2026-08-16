@@ -1,7 +1,9 @@
-import { Effect, Exit, Layer } from "effect";
+import { Effect, Exit, Layer, Option } from "effect";
+import { ExecPolicyStore } from "engine-core";
 import { describe, expect, it } from "vitest";
 
 import { UnknownAgentError } from "./agents.ts";
+import { AllowAllExecPolicy } from "./policy.test-layer.ts";
 import { branchNames, EmptyRosterError, failureDetail, runDelegate } from "./delegate.ts";
 import type { AgentRunReport, AgentRunRequest, DelegateJob, WorktreeSpec } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
@@ -65,7 +67,9 @@ const stubs = (
 };
 
 const run = (j: DelegateJob, layer: Layer.Layer<AgentPort | WorkspacePort | ProgressPort>) =>
-  Effect.runPromiseExit(runDelegate(j).pipe(Effect.provide(layer)));
+  Effect.runPromiseExit(
+    runDelegate(j).pipe(Effect.provide(layer), Effect.provide(AllowAllExecPolicy)),
+  );
 
 describe("branchNames", () => {
   it("uses the bare prefix for a single agent", () => {
@@ -202,5 +206,52 @@ describe("runDelegate", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
     expect(exit.cause.toString()).toContain(new EmptyRosterError().message);
+  });
+});
+
+describe("runDelegate — the executor-policy fence", () => {
+  /** A policy denying one executor, in the shape `h agents deny` writes. */
+  const denying = (name: string) =>
+    Layer.succeed(ExecPolicyStore, {
+      get: () =>
+        Effect.succeed(
+          Option.some({
+            denied: [{ name, reason: "operator" as const, deniedAt: "2026-08-16T00:00:00.000Z" }],
+            updatedAt: "2026-08-16T00:00:00.000Z",
+          }),
+        ),
+      save: () => Effect.void,
+    });
+
+  it("fences a denied agent WITHOUT costing its siblings their answers", async () => {
+    const { layer, recorder } = stubs();
+    const exit = await Effect.runPromiseExit(
+      runDelegate(job({ agents: ["claude", "codex"] })).pipe(
+        Effect.provide(layer),
+        Effect.provide(denying("codex")),
+      ),
+    );
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    // The denial is THIS agent's failed report — the same shape a dead CLI produces — so the
+    // roster's whole point (one agent's failure never cancels the others) survives the fence.
+    expect(exit.value.runs.find((r) => r.agent === "codex")?.status).toBe("failed");
+    expect(exit.value.runs.find((r) => r.agent === "claude")?.output).toBe("claude says hi");
+    expect(exit.value.ok).toBe(false);
+    // And it never ran: a fence that spends the run it was meant to prevent is not a fence.
+    expect(recorder.requests.map((r) => r.agent)).toEqual(["claude"]);
+  });
+
+  it("names the denied executor rather than silently re-routing", async () => {
+    const { layer } = stubs();
+    const exit = await Effect.runPromiseExit(
+      runDelegate(job({ agents: ["codex"] })).pipe(
+        Effect.provide(layer),
+        Effect.provide(denying("codex")),
+      ),
+    );
+    if (!Exit.isSuccess(exit)) throw new Error("expected success");
+    expect(exit.value.runs[0]?.error).toContain("codex");
   });
 });

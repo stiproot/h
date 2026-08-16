@@ -162,7 +162,7 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | 3 | Chain as a durable registration | Not started *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
-| — | Refusal re-classification | Not started | classification guard |
+| — | Refusal re-classification | **Done** (1c) | `check-refusal-classification.mjs` ✓ |
 | H | Hardening found in flight — lint parity + the dapr-mcp boundary | **Complete** | `check-lint-parity.mjs` |
 | — | `engine host` in the glossary | **Done** (0c) | vocabulary guard |
 
@@ -227,7 +227,9 @@ Sub-steps:
 - [x] 1b — the shared KV layer + the THREE stores increment 1 uses (`wf:`, saved store, `exec:`),
       tested against a real nats-server. Watch/chain/cron stores land with the engines that read
       them (increments 2–4) rather than as dead code ahead of them
-- [ ] 1c — un-refuse `write-wf-row`; wire the saved store + `exec:` policy into the local executor
+- [x] 1c — the `exec:` policy fence on every local agent run (executor + delegate), and the refusal
+      list re-classified into pending/permanent with its guard. **`write-wf-row` deliberately NOT
+      un-refused** — see the 1c log
 - [ ] 1d — `--local` on the registry read commands
 
 
@@ -448,6 +450,49 @@ Two findings:
   the abstraction built to satisfy it is a sign the invariant is stated at the wrong level. Both
   rules verified firing, plus a third check that fails if the chokepoint file is renamed away —
   otherwise rule 2 would silently stop applying while rule 1 kept passing.
+
+### 1c log — the fence, and an item interrogated out of scope
+
+**`write-wf-row` stays refused, deliberately.** The increment was scoped to un-refuse it, and
+checking first showed that would build nothing: `write-wf-row` is **never a step in any template**.
+`generic.workflow.ts` adds it as a BRACKET around a wf-identified run — "engine-driven, invisible to
+the definition". So the local work is not un-refusing an activity, it is teaching the local executor
+to bracket, and that is only useful once something READS those rows: the cron engine's `goal:
+RESOLVED` handshake, increment 2. Un-refusing now would have produced an activity nothing calls and
+a registry nobody reads — the same dead-code-ahead-of-need that 1b avoided. Its refusal reason now
+names the bracket it waits for, so the deferral is legible rather than a gap.
+
+**The refusal list is re-classified.** `pending` (waiting on machinery this substrate is growing —
+`write-wf-row`, `register-cron`, `register-discover`) vs `permanent` (needs a cluster, a service, or
+a workspace that is not this substrate's — `run-itest`, `gc-worktrees`, the service-only agents).
+`RefusedActivityError` puts the class in its message, because the two call for different responses:
+a pending refusal may be worth running on the service substrate today, a permanent one means compose
+differently. `scripts/check-refusal-classification.mjs` enforces both that every entry declares a
+class AND that a `pending` reason NAMES what lifts it — "not supported here" is exactly the
+non-answer the split exists to eliminate. Both rules verified firing.
+
+**The `exec:` fence is live on both local paths.** Same `activeDenial` decision function and the
+same `exec:config` row shape as workflow-svc's `gatedExecutor`, so `h agents deny codex` means one
+thing on both substrates. Two design points:
+
+- In `delegate`, a denial becomes THAT agent's failed REPORT rather than a failure of the roster —
+  the same shape a dead CLI produces. A fence that cost the siblings their answers would break the
+  one property a roster exists for.
+- The fabric URL is ENV (`NATS_URL`), not job data: it is one endpoint for the machine, so carrying
+  it per job would put an environment fact in the wire protocol and make changing it a protocol
+  bump. `local_runtime.py` stamps it from `EVENTS_URL` so one value is authoritative, and
+  `test_local_fabric_url_sync.py` pins the runner's fallback to it — the sibling of the protocol and
+  agent-name sync tests.
+
+**The KV connection is LAZY**, and that is load-bearing rather than an optimisation: the layer is
+built for every local job including an `h delegate` that reads no registry, so connecting eagerly
+would turn a stopped fabric into a failure for work that never needed it — and would report it as a
+raw transport error instead of the CLI's preflight message.
+
+Verified end to end against a real nats-server, as a permanent test rather than a scratch script:
+a policy written through `ExecPolicyStore` denies `codex` by name through `assertExecutorAllowed`
+and leaves `claude` untouched. That join is what neither unit suite can show — a key-encoding
+mistake would pass both and fence nothing.
 
 ## Open questions
 

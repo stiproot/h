@@ -20,6 +20,8 @@ import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
+import { NatsKvLive } from "./infrastructure/nats-kv.ts";
+import { NatsExecPolicyStoreLive } from "./infrastructure/nats-registry-stores.ts";
 import { StderrProgressLive } from "./infrastructure/stderr-progress.ts";
 
 // NodeContext supplies FileSystem + CommandExecutor (spawning the agent CLIs, git and setup
@@ -28,6 +30,15 @@ const platform = Layer.merge(NodeContext.layer, FetchHttpClient.layer);
 const ledger = RunLedgerLive.pipe(Layer.provide(NodeContext.layer));
 const git = ExecGitClient.pipe(Layer.provide(NodeContext.layer));
 
+/**
+ * Where the local fabric answers. An ENV value, not job data: it is one configured endpoint for the
+ * whole machine (the CLI's `EVENTS_URL`, stamped into the child env by local_runtime.py), so
+ * carrying it per job would put an environment fact in the wire protocol and require a version
+ * bump to change it. The literal fallback mirrors `cli/h/src/h_cli/config.py`'s default and is
+ * held to it by `cli/h/tests/test_local_fabric_url_sync.py`.
+ */
+const FABRIC_URL = process.env.NATS_URL ?? "nats://127.0.0.1:4222";
+
 const AppLive = Layer.mergeAll(
   AgentCliAgentLive.pipe(Layer.provide(Layer.merge(ledger, platform))),
   GitWorkspaceLive.pipe(Layer.provide(Layer.merge(git, NodeContext.layer))),
@@ -35,6 +46,9 @@ const AppLive = Layer.mergeAll(
   // Connects nothing until a journaled chain actually appends/replays — an unjournaled run
   // never touches the fabric.
   NatsJournalLive,
+  // The executor-policy registry. Connects on FIRST READ, so a job that reads no registry never
+  // opens a socket — see NatsKvLive.
+  NatsExecPolicyStoreLive.pipe(Layer.provide(NatsKvLive(FABRIC_URL))),
 );
 
 const readStdin = (): Promise<string> =>
