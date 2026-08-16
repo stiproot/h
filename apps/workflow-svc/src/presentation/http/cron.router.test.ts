@@ -1,5 +1,6 @@
+import { EventPublisher, type EventPublisherService } from "engine-core";
 import { WorkflowError } from "core";
-import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
+
 import { Deferred, Effect, Fiber, Layer, ManagedRuntime, Option, Ref } from "effect";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -80,7 +81,7 @@ function memoryWatchStore(): { service: WatchStoreService; rows: Map<string, Wat
   };
 }
 
-const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
+const stubPublisher: EventPublisherService = { publish: () => Effect.void };
 const stubSourceReader: SourceReaderService = { listOpenIssues: () => Effect.succeed([]) };
 
 // An empty chain store: the cron tests exercise the schedule-fire + watch scan; the chain scan
@@ -139,7 +140,7 @@ const envLayer = (
     Layer.succeed(CronStore, cron),
     Layer.succeed(WfStore, emptyWfStore),
     Layer.succeed(ExecPolicyStore, stubExecPolicyStore),
-    Layer.succeed(DaprPublisherTag, stubPublisher),
+    Layer.succeed(EventPublisher, stubPublisher),
     Layer.succeed(SourceReader, stubSourceReader),
   );
 

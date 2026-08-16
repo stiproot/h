@@ -1,5 +1,6 @@
+import { EventPublisher, type EventPublisherService } from "engine-core";
 import { WorkflowError } from "core";
-import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
+
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
@@ -78,7 +79,7 @@ const stubWfStore = (): WfStoreService => ({
   saveRow: () => Effect.void,
 });
 
-const stubPublisher: DaprPublisherService = { publish: () => Effect.void };
+const stubPublisher: EventPublisherService = { publish: () => Effect.void };
 const stubSourceReader: SourceReaderService = { listOpenIssues: () => Effect.succeed([]) };
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
@@ -117,7 +118,7 @@ async function makeApp(
       Layer.succeed(CronStore, stubCronStore()),
       Layer.succeed(WfStore, stubWfStore()),
       Layer.succeed(ExecPolicyStore, stubExecPolicyStore),
-      Layer.succeed(DaprPublisherTag, stubPublisher),
+      Layer.succeed(EventPublisher, stubPublisher),
       Layer.succeed(SourceReader, stubSourceReader),
     ),
   );

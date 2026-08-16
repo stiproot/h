@@ -5,7 +5,7 @@ every cron-tick stage advance, the loop-until-clean body, to terminal finalizati
 (expression parsing → one `POST /chain/run`) is modeled separately in
 [h-cli-chain-run-sequence](./h-cli-chain-run-sequence.md) — this diagram begins where that one ends.
 
-Source files: `apps/workflow-svc/src/domain/chain-scan.ts`,
+Source files: `packages/js/engine-core/src/chain-scan.ts`,
 `chain-engine.ts`, `chain-members.ts`.
 
 ```mermaid

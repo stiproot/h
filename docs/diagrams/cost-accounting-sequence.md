@@ -5,8 +5,8 @@ the agent-cli metrics extraction, the run-ledger statestore mirror, the watch-sc
 the two containment actions (usage-limited auto-deny and the daily-budget fence).
 
 Source files: `packages/js/agent-cli/src/agents/claude.ts`, `packages/js/agent-cli/src/agents/classify-stop.ts`,
-`packages/js/agent-server/src/run-ledger.ts`, `apps/workflow-svc/src/domain/watch-scan.ts`,
-`apps/workflow-svc/src/domain/exec-policy.ts`.
+`packages/js/agent-server/src/run-ledger.ts`, `packages/js/engine-core/src/watch-scan.ts`,
+`packages/js/engine-core/src/exec-policy.ts`.
 
 ```mermaid
 sequenceDiagram

@@ -1,30 +1,30 @@
 import { WorkflowError } from "core";
-import { DaprPublisherTag } from "core-dapr";
+import { EventPublisher } from "./internal.ts";
 import { Effect, Option } from "effect";
 
-import type { StepDefinition } from "engine-core";
-import type { SchedRow } from "engine-core";
+import type { StepDefinition } from "./internal.ts";
+import type { SchedRow } from "./internal.ts";
 import {
   type WatchOutcome,
   type WatchPolicy,
   type WatchResubmit,
   type WatchRow,
   ledgerDate,
-} from "engine-core";
+} from "./internal.ts";
 import {
   type WorkflowStep,
   type WorkflowParams,
   type WorkflowRequest,
   deriveInstanceId,
   toRequest,
-} from "engine-core";
+} from "./internal.ts";
 import { executorFromAgentId, mergeAutoDeny, mergeBudgetDeny } from "./exec-policy.ts";
-import { CronStore } from "engine-core";
-import { ExecPolicyStore } from "engine-core";
-import { WatchStore } from "engine-core";
-import { WorkflowInvoker } from "engine-core";
-import { WorkflowStore } from "engine-core";
-import { decideWatch as decide, settle } from "engine-core";
+import { CronStore } from "./internal.ts";
+import { ExecPolicyStore } from "./internal.ts";
+import { WatchStore } from "./internal.ts";
+import { WorkflowInvoker } from "./internal.ts";
+import { WorkflowStore } from "./internal.ts";
+import { decideWatch as decide, settle } from "./internal.ts";
 
 /**
  * The effectful half of the watch engine: registration on
@@ -37,7 +37,6 @@ import { decideWatch as decide, settle } from "engine-core";
  * the epoch moved — a re-fire created a new incarnation and this decision is stale.
  */
 
-const PUBSUB = "pubsub";
 const EVENTS_TOPIC = "workflow-events";
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
@@ -51,7 +50,7 @@ export type WatchScanEnv =
   | WorkflowStore
   | CronStore
   | ExecPolicyStore
-  | DaprPublisherTag;
+  | EventPublisher;
 
 export type WatchScanReport = {
   scanned: number;
@@ -424,7 +423,7 @@ const executeFinalize = (
 ): Effect.Effect<void, WorkflowError, WatchScanEnv> =>
   Effect.gen(function* () {
     const ws = yield* WatchStore;
-    const publisher = yield* DaprPublisherTag;
+    const publisher = yield* EventPublisher;
     // The outcome inversion: upgrade completed/failed → usage-limited off the run: ledger before
     // recording, so the row/event/escalate/fallback all see the refined outcome.
     const outcome = yield* refineUsageLimited(row.instanceId, observedOutcome);
@@ -452,7 +451,7 @@ const executeFinalize = (
     });
     // Terminal event: best-effort observability, never fails the scan (the babysitter's policy).
     yield* publisher
-      .publish(PUBSUB, EVENTS_TOPIC, {
+      .publish(EVENTS_TOPIC, {
         instanceId: row.instanceId,
         outcome,
         runtimeStatus: final.lastStatus,

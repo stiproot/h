@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 
-import { executorFromAgentId, normalizeDenied } from "../../domain/exec-policy.ts";
+import { executorFromAgentId, normalizeDenied } from "engine-core";
 import { DeniedEntry } from "engine-core";
 import { ledgerDate } from "engine-core";
 import { ExecPolicyStore } from "engine-core";

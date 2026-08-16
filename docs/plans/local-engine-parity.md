@@ -162,14 +162,14 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
 | — | Refusal re-classification | Not started | classification guard |
-| — | `engine host` in the glossary | Not started | vocabulary guard |
+| — | `engine host` in the glossary | **Done** (0c) | vocabulary guard |
 
 Increment 0 sub-steps (one commit each, each green on `make lint` + `make test`):
 
 - [x] 0a — package skeleton, row models + ports move *(green: build, lint, 286 + 41 tests)*
 - [x] 0b — the five `decide` functions move *(green: build, lint, tests)*
-- [ ] 0c — the scans move, behind a new `IEventPublisher` port — **also fixes the depcruise blind
-      spot found in 0a** (see Log)
+- [x] 0c — the scans move, behind a new `IEventPublisher` port; depcruise blind spot fixed and
+      **verified by planting a violation** *(green: build, lint, tests)*
 - [ ] 0d — parity guard extended to own the engine symbols
 
 ## Increments
@@ -354,3 +354,42 @@ Appetite confirmed as strong; each of these ships with its increment, not after.
   external hosts. Steering + the `workflow-svc-class` diagram updated again: workflow-svc's
   `domain/` block now states what it no longer holds, and the detail it used to carry moved to the
   `engine-core` block rather than being duplicated.
+- 2026-08-16 — **0c done, and it was the increment that paid.** The five scans + `exec-policy`
+  moved, `IEventPublisher` landed, and **`apps/workflow-svc/src/domain/` no longer exists** — the
+  service is now adapters, routers and a composition root, with `engine-core` as its domain. That
+  is the thesis stated structurally rather than argued.
+  - **The publisher port.** Narrower than the Dapr publisher it replaces: no `pubsubName`. A
+    component name is a Dapr deployment detail, so the host closes over `"pubsub"` and the engines
+    name only a topic. Both call sites already `Effect.ignore`d the result; the error channel stays
+    typed anyway, so an adapter can report and a future consumer can choose to care.
+  - **The barrel had to split.** The scans live in the package they used to import, so `index.ts`
+    (which exports them) could not also be their source — that is a cycle, and exactly what
+    `no-circular` forbids. `internal.ts` is the primitives half; `index.ts` re-exports both.
+  - **THE FINDING: three guard bugs, all of which produced a green run.** The `domain-no-io-libs`
+    rule matched `node_modules/…`; a workspace package resolves *through* its symlink, and to a
+    DIFFERENT path depending on where depcruise ran (`../../packages/js/core-dapr/…` from an app,
+    `../core-dapr/…` from a sibling package, or a bare `core-dapr` when undeclared). The first fix
+    matched only the app form. The second attempt scoped `from` to `packages/js/engine-core/src/`,
+    which matches nothing at all because depcruise runs from the package dir and sources are
+    package-relative — it cruised every file and reported success. Only planting a deliberate
+    violation and watching it NOT fail revealed each one. Patterns now live in
+    `scripts/dep-io-patterns.cjs` (matching the package name as a path segment, prefix-agnostic,
+    plus the bare form), and the lesson is recorded there: **plant a violation before trusting a
+    rule.**
+  - **The fixed rule immediately caught two real pre-existing violations** — `dapr-mcp`'s
+    `IActorStore`/`IPubSub` ports type-import `core-dapr` service interfaces. Both are DELIBERATE
+    and documented in place (the port's shape is the adapter's, stated once rather than restating
+    ~10 methods and an error tag). Whether to restate them locally is a design call about dapr-mcp
+    and was NOT made as a side effect of this refactor: the exception is named in the rule, where
+    it is visible, instead of the rule being weakened for everyone. *Revisit when:* dapr-mcp is
+    being worked on for its own reasons.
+  - `engine-core` carries its own `.dependency-cruiser.cjs` (`engine-core-is-pure`) — it is
+    imported by every host, so one I/O dependency would pin all of them to a substrate.
+    Verified firing.
+  - Also surfaced: **`workflow-svc`'s lint script has no `oxlint` at all** (`tsc --noEmit` +
+    `oxfmt` + `depcruise` only), so the moved code met a linter for the first time and produced
+    warnings including a genuinely unused import. Not fixed here — it is a repo-wide question about
+    which packages lint what. *Revisit when:* the next lint-surface change touches those scripts.
+  - `engine host` entered ARCHITECTURE.md's glossary as a substrate-NEUTRAL term, and the
+    Boundaries section gained the shared-core rule (a package can be domain all the way down, and
+    carries its own purity config) — both durable, both lifted now rather than at archive time.

@@ -13,14 +13,14 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { activeTraceparent, withAmbientParent, withServerSpan } from "telemetry";
 
 import type { WorkflowError } from "core";
-import type { DaprPublisherTag } from "core-dapr";
 
+import { EventPublisher } from "engine-core";
 import { WatchPolicy } from "engine-core";
 import { SaveWorkflowRequest, WorkflowParams, WorkflowRequest, toRequest } from "engine-core";
 import { CRON_DISARM_TOPIC, CronPolicy } from "engine-core";
 import { wfIdentityFrom } from "engine-core";
 import { assertValidCron, resolveFireAt } from "engine-core";
-import { advanceSched, registerSchedForFire } from "../../domain/schedule-scan.ts";
+import { advanceSched, registerSchedForFire } from "engine-core";
 import { ChainStore } from "engine-core";
 import { CronStore } from "engine-core";
 import type { ExecPolicyStore } from "engine-core";
@@ -29,7 +29,7 @@ import { WatchStore } from "engine-core";
 import { WfStore } from "engine-core";
 import { WorkflowInvoker } from "engine-core";
 import { WorkflowStore } from "engine-core";
-import { invokeWithWatch } from "../../domain/watch-scan.ts";
+import { invokeWithWatch } from "engine-core";
 
 /** Everything the workflow routes (and the cron tick's chain/watch scans) yield from the runtime. */
 export type WorkflowRoutesEnv =
@@ -41,7 +41,7 @@ export type WorkflowRoutesEnv =
   | ExecPolicyStore
   | WfStore
   | SourceReader
-  | DaprPublisherTag;
+  | EventPublisher;
 
 export type WorkflowRoutesRuntime = ManagedRuntime.ManagedRuntime<WorkflowRoutesEnv, never>;
 

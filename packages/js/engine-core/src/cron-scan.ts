@@ -1,7 +1,7 @@
 import { WorkflowError } from "core";
 import { Effect, Option, Schema } from "effect";
 
-import { decideCron as decide, nextUnknownStreak } from "engine-core";
+import { decideCron as decide, nextUnknownStreak } from "./internal.ts";
 import {
   type CronBudget,
   type CronOutcome,
@@ -9,13 +9,13 @@ import {
   type CronSource,
   cronId,
   cronLedgerDate,
-} from "engine-core";
-import type { WfIdentity } from "engine-core";
-import { type WorkflowRequest, toRequest } from "engine-core";
-import { CronStore } from "engine-core";
-import { WfStore } from "engine-core";
-import { WorkflowInvoker } from "engine-core";
-import { WorkflowStore } from "engine-core";
+} from "./internal.ts";
+import type { WfIdentity } from "./internal.ts";
+import { type WorkflowRequest, toRequest } from "./internal.ts";
+import { CronStore } from "./internal.ts";
+import { WfStore } from "./internal.ts";
+import { WorkflowInvoker } from "./internal.ts";
+import { WorkflowStore } from "./internal.ts";
 
 export type DisarmCronError = { readonly _tag: "NotFound" } | WorkflowError;
 

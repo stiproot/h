@@ -1,6 +1,6 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
-import { type CronRegistration, registerCronForFire } from "../../domain/cron-scan.ts";
+import { type CronRegistration, registerCronForFire } from "engine-core";
 import type { WorkflowStep } from "engine-core";
 import { lastFencedJson } from "workflow-core";
 import { runActivity } from "../activity-runtime.ts";

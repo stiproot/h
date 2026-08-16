@@ -1,8 +1,8 @@
 import { WorkflowError } from "core";
-import { DaprPublisherTag } from "core-dapr";
+import { EventPublisher } from "./internal.ts";
 import { Effect, Option } from "effect";
 
-import { decideChain as decide, type MemberObservation } from "engine-core";
+import { decideChain as decide, type MemberObservation } from "./internal.ts";
 import { type ChainData, ChainThreadError, contractFor, loopIsClean } from "workflow-core";
 import {
   type ChainMember,
@@ -14,15 +14,15 @@ import {
   membersInStage,
   stageOf,
   validateChain,
-} from "engine-core";
-import { CRON_DISARM_TOPIC } from "engine-core";
-import { wfIdentityFrom } from "engine-core";
-import { toRequest, type WorkflowRequest } from "engine-core";
-import { ChainStore } from "engine-core";
-import { WatchStore } from "engine-core";
-import { WfStore } from "engine-core";
-import { WorkflowInvoker } from "engine-core";
-import { WorkflowStore } from "engine-core";
+} from "./internal.ts";
+import { CRON_DISARM_TOPIC } from "./internal.ts";
+import { wfIdentityFrom } from "./internal.ts";
+import { toRequest, type WorkflowRequest } from "./internal.ts";
+import { ChainStore } from "./internal.ts";
+import { WatchStore } from "./internal.ts";
+import { WfStore } from "./internal.ts";
+import { WorkflowInvoker } from "./internal.ts";
+import { WorkflowStore } from "./internal.ts";
 import { invokeWithWatch } from "./watch-scan.ts";
 
 /**
@@ -38,7 +38,6 @@ import { invokeWithWatch } from "./watch-scan.ts";
  * (a re-registration created a new incarnation and this decision is stale).
  */
 
-const PUBSUB = "pubsub";
 const EVENTS_TOPIC = "workflow-events";
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
@@ -50,7 +49,7 @@ export type ChainScanEnv =
   | WorkflowStore
   | WatchStore
   | WfStore
-  | DaprPublisherTag;
+  | EventPublisher;
 
 export type ChainScanReport = {
   scanned: number;
@@ -360,11 +359,19 @@ const observeMember = (
     };
   });
 
+/**
+ * A member by an index that came from `membersInStage` (or from iterating the members themselves) —
+ * in range by construction. Asserting that ONCE here keeps the call sites reading as lookups
+ * instead of scattering non-null assertions through the stage logic, and gives the invariant a
+ * single place to be wrong if `membersInStage` ever stops guaranteeing it.
+ */
+const memberAt = (row: ChainRow, index: number): ChainMember => row.members[index]!;
+
 /** Capture every DONE member's validated output into a fresh chain data (issue #77: run on
  *  advance AND on the terminal stage, so the finalized row carries the last stage's captures). */
 const captureCompleted = (row: ChainRow, reads: readonly MemberRead[]): ChainData => {
   const data: ChainData = { ...row.data };
-  for (const r of reads) if (r.done) contractFor(row.members[r.index]).capture(r.output, data);
+  for (const r of reads) if (r.done) contractFor(memberAt(row, r.index)).capture(r.output, data);
   return data;
 };
 
@@ -485,7 +492,9 @@ const processRow = (
               Effect.tap(() =>
                 Effect.sync(() => {
                   for (const i of membersInStage(seeded.members, seeded.cursor))
-                    report.advanced.push(`${seeded.chainId}:w${i}:${seeded.members[i].kind}:fired`);
+                    report.advanced.push(
+                      `${seeded.chainId}:w${i}:${memberAt(seeded, i).kind}:fired`,
+                    );
                 }),
               ),
               Effect.asVoid,
@@ -519,7 +528,7 @@ const processRow = (
         // The just-completed stage IS the loop-start (review) stage here; its declared `until`
         // (structured) or the kind's coded reviewIsClean verdict check decides whether the loop stops.
         if (loop && row.cursor === loop.startCursor) {
-          const loopMember = row.members[members[0]];
+          const loopMember = memberAt(row, members[0]!);
           if (loopMember && loopIsClean(loopMember, reads[0]?.output)) {
             const note = `clean after ${loop.iterations} revise iteration(s)`;
             // Issue #77: the terminal (review) stage's captures land on the finalized row too.
@@ -643,7 +652,7 @@ const executeAdvance = (
     // instances are terminal from the prior pass).
     const loop =
       loopBack && row.loop ? { ...row.loop, iterations: row.loop.iterations + 1 } : row.loop;
-    const kinds = nextMembers.map((i) => row.members[i].kind).join(", ");
+    const kinds = nextMembers.map((i) => memberAt(row, i).kind).join(", ");
     const next: ChainRow = {
       ...row,
       epoch: row.epoch + 1,
@@ -669,7 +678,7 @@ const executeAdvance = (
       Effect.tap(() =>
         Effect.sync(() => {
           for (const i of nextMembers)
-            report.advanced.push(`${row.chainId}:w${i}:${row.members[i].kind}`);
+            report.advanced.push(`${row.chainId}:w${i}:${memberAt(row, i).kind}`);
         }),
       ),
       // A failed advance finalizes the chain failed (fenced on the NEW epoch) — never loop.
@@ -700,16 +709,16 @@ const executeAdvance = (
 const disarmStageCrons = (
   row: ChainRow,
   stage: number,
-): Effect.Effect<void, never, DaprPublisherTag> =>
+): Effect.Effect<void, never, EventPublisher> =>
   Effect.gen(function* () {
-    const publisher = yield* DaprPublisherTag;
+    const publisher = yield* EventPublisher;
     const repo = typeof row.data.repo === "string" ? row.data.repo : undefined;
     if (!repo) return;
     for (const i of membersInStage(row.members, stage)) {
-      const w = row.members[i];
+      const w = memberAt(row, i);
       if (!w.cron) continue;
       yield* publisher
-        .publish(PUBSUB, CRON_DISARM_TOPIC, { repo, slug: row.slug, workflow: w.kind })
+        .publish(CRON_DISARM_TOPIC, { repo, slug: row.slug, workflow: w.kind })
         .pipe(Effect.ignore);
     }
   });
@@ -783,7 +792,7 @@ const executeFinalize = (
 ): Effect.Effect<void, WorkflowError, ChainScanEnv> =>
   Effect.gen(function* () {
     const cs = yield* ChainStore;
-    const publisher = yield* DaprPublisherTag;
+    const publisher = yield* EventPublisher;
     const { costUsd, costGap, gapRuns, costByAgent } = yield* tallyChainCost(row);
     const endedAt = new Date().toISOString();
     const final: ChainRow = {
@@ -804,7 +813,7 @@ const executeFinalize = (
       costGapRuns: gapRuns,
     });
     yield* publisher
-      .publish(PUBSUB, EVENTS_TOPIC, {
+      .publish(EVENTS_TOPIC, {
         instanceId: row.chainId,
         chain: true,
         outcome,
@@ -826,7 +835,7 @@ const executeFinalize = (
 const finalizeFailed = (
   row: ChainRow,
   note: string,
-): Effect.Effect<void, WorkflowError, ChainStore | DaprPublisherTag> =>
+): Effect.Effect<void, WorkflowError, ChainStore | EventPublisher> =>
   Effect.gen(function* () {
     const saved = yield* saveFenced(row.epoch, {
       ...row,

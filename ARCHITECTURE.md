@@ -72,13 +72,18 @@ The same authored-slot/target pattern appears at two levels:
 - **Fire descriptor / trigger payload** — the data a trigger carries: `{key|steps, params,
   instanceId (required-or-derived), workspaceId?, watch?}` — the core embedded by the run request
   and the chain member, projected per fire by the discover/sched rows (the `Trigger` type,
-  workflow-svc's workflow.model.ts, mirrored in both agent-server packages). Carriers add their own
+  `engine-core`'s workflow.model.ts, mirrored in both agent-server packages). Carriers add their own
   decorations: sequencing on a member (`kind`, `stage`, `id`, `captures`/`inputs`/`until`, `cron`),
   fire-time mechanics on a request (`fresh`, `at`/`in`, `armCron`, wf identity, `watchMeta`).
 - **Fire / run / invoke** — *fire* starts a workflow (including fire-and-forget registration);
   *run* is reserved for agent runs and the literal `h workflow run` command; *invoke* is Dapr
   transport only. **Agent run** is one activity's agent invocation (run ledger, `run:` mirrors,
   cost tally).
+- **Engine host** — the process that holds the tick and runs the engines' `decide` against durable
+  rows, supplying their adapters. Substrate-NEUTRAL by design: workflow-svc is the service
+  substrate's engine host (Dapr cron tick, Redis rows). The engines themselves — rows, ports,
+  `decide`, and the per-tick scans — live in `packages/js/engine-core`, imported by every host, so
+  a host chooses adapters and a clock, never semantics.
 - **Substrate** — what EXECUTES a composed definition: the **service** substrate (Dapr engine +
   containerised fleet, durable and supervised) or the **local** substrate (the `h` CLI's own
   process driving agent CLIs as children, no infrastructure). Orthogonal to *deployment mode*
@@ -198,6 +203,14 @@ wires concrete adapters behind ports. These arrows are machine-checked, not just
 - **Adapters are independent** — `presentation/` and `infrastructure/` never import each other; they
   meet only at the composition root, behind ports.
 - **No cycles** — a dependency cycle crosses a boundary that should be one-directional.
+- **A shared core is a package, and it is pure by the same rule.** When domain logic is needed by
+  more than one host it moves to `packages/js/*` and the hosts import it — `workflow-core` (what a
+  definition MEANS) and `engine-core` (rows, ports, `decide`, the per-tick scans). Such a package
+  has no `domain/` directory because it is domain all the way down, so it carries its own
+  dependency-cruiser config asserting the same purity. The corollary is the useful one:
+  **workflow-svc has no `domain/` at all** — its domain is `engine-core`, and what remains is
+  adapters, routers and a composition root. Domain logic sitting in one app's `domain/` that a
+  second host needs is a boundary problem that has not surfaced yet.
 
 The dependency arrow always points *into* the domain. Enforcement is part of `make lint`:
 [`dependency-cruiser`](./.dependency-cruiser.cjs) for the TS services (`bun run lint` per package)

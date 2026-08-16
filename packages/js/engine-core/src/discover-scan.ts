@@ -1,8 +1,8 @@
 import { WorkflowError } from "core";
 import { Effect, Option } from "effect";
 
-import { decideDiscover as decide } from "engine-core";
-import { cronLedgerDate } from "engine-core";
+import { decideDiscover as decide } from "./internal.ts";
+import { cronLedgerDate } from "./internal.ts";
 import {
   type DiscoverGates,
   type DiscoverRow,
@@ -11,14 +11,14 @@ import {
   discoverId,
   discoverTrigger,
   issueSlug,
-} from "engine-core";
-import { toRequest } from "engine-core";
-import { CronStore } from "engine-core";
-import { SourceReader } from "engine-core";
-import { WatchStore } from "engine-core";
-import { WfStore } from "engine-core";
-import { WorkflowInvoker } from "engine-core";
-import { WorkflowStore } from "engine-core";
+} from "./internal.ts";
+import { toRequest } from "./internal.ts";
+import { CronStore } from "./internal.ts";
+import { SourceReader } from "./internal.ts";
+import { WatchStore } from "./internal.ts";
+import { WfStore } from "./internal.ts";
+import { WorkflowInvoker } from "./internal.ts";
+import { WorkflowStore } from "./internal.ts";
 import { invokeWithWatch } from "./watch-scan.ts";
 
 /**

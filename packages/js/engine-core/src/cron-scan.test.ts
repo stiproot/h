@@ -1,7 +1,7 @@
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_UNKNOWN_STREAK_LIMIT } from "engine-core";
+import { DEFAULT_UNKNOWN_STREAK_LIMIT } from "./internal.ts";
 
 import {
   disarmCron,
@@ -9,14 +9,14 @@ import {
   registerCronForFire,
   scanCronsEffect,
 } from "./cron-scan.ts";
-import { type CronLedger, type CronRow, emptyCronLedger } from "engine-core";
-import type { DiscoverRow } from "engine-core";
-import type { WfRow } from "engine-core";
-import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "engine-core";
-import { CronStore, type CronStoreService } from "engine-core";
-import { WfStore, type WfStoreService } from "engine-core";
-import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
-import { WorkflowStore, type WorkflowStoreService } from "engine-core";
+import { type CronLedger, type CronRow, emptyCronLedger } from "./internal.ts";
+import type { DiscoverRow } from "./internal.ts";
+import type { WfRow } from "./internal.ts";
+import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./internal.ts";
+import { CronStore, type CronStoreService } from "./internal.ts";
+import { WfStore, type WfStoreService } from "./internal.ts";
+import { WorkflowInvoker, type WorkflowInvokerService } from "./internal.ts";
+import { WorkflowStore, type WorkflowStoreService } from "./internal.ts";
 
 function memoryCronStore(): {
   service: CronStoreService;

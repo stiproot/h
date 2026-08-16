@@ -7,14 +7,14 @@ import {
   registerSchedForFire,
   scanSchedEffect,
 } from "./schedule-scan.ts";
-import { type CronLedger, emptyCronLedger } from "engine-core";
-import type { SchedRow } from "engine-core";
-import type { WatchLedger } from "engine-core";
-import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "engine-core";
-import { CronStore, type CronStoreService } from "engine-core";
-import { WatchStore, type WatchStoreService } from "engine-core";
-import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
-import { WorkflowStore, type WorkflowStoreService } from "engine-core";
+import { type CronLedger, emptyCronLedger } from "./internal.ts";
+import type { SchedRow } from "./internal.ts";
+import type { WatchLedger } from "./internal.ts";
+import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./internal.ts";
+import { CronStore, type CronStoreService } from "./internal.ts";
+import { WatchStore, type WatchStoreService } from "./internal.ts";
+import { WorkflowInvoker, type WorkflowInvokerService } from "./internal.ts";
+import { WorkflowStore, type WorkflowStoreService } from "./internal.ts";
 
 // A cron store with a map-backed sched-row group; the recur/discover surfaces are stubs (unused here).
 function memoryCronStore(): {

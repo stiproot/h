@@ -11,10 +11,7 @@
  * agents that have no `domain/` yet.
  */
 
-/** Workspace packages whose whole job is I/O — the domain must reach these only through a port. */
-const IO_PACKAGES = "core-dapr|core-vercel|git-core";
-/** External runtime/I-O libs the pure core must never import directly. */
-const IO_LIBS = "fastify|@dapr/dapr|ioredis|redis|undici|axios|node-fetch";
+const { IO_PATH } = require("./scripts/dep-io-patterns.cjs");
 
 module.exports = {
   forbidden: [
@@ -33,8 +30,21 @@ module.exports = {
         "domain/ must not import runtime/I-O dependencies. Model the boundary as a port; " +
         "the concrete driver lives in infrastructure/ and is wired at the composition root.",
       severity: "error",
-      from: { path: "(^|/)src/domain/" },
-      to: { path: `node_modules/(${IO_LIBS}|${IO_PACKAGES})(/|$)` },
+      from: {
+        path: "(^|/)src/domain/",
+        // KNOWN EXCEPTION, not an oversight. dapr-mcp's actor and pub/sub ports are Context.Tags
+        // whose service type IS core-dapr's (`GenericActorClientService`, `DaprPublisherService`) —
+        // a documented 1:1 reuse at each file's head, chosen so a ~10-method surface and its error
+        // tag are stated once rather than restated in the domain.
+        //
+        // They surfaced the day this rule's path pattern was fixed (2026-08-16): the rule had been
+        // matching `node_modules/…` only, so no workspace IO package had ever tripped it anywhere.
+        // Whether to restate those interfaces locally is a design call about dapr-mcp, deliberately
+        // not made as a side effect of an unrelated refactor — so the exception is NAMED here, where
+        // it is visible, rather than the rule being weakened for everyone.
+        pathNot: "(^|/)src/domain/ports/(IActorStore|IPubSub)\\.ts$",
+      },
+      to: { path: IO_PATH },
     },
     {
       name: "presentation-not-infrastructure",

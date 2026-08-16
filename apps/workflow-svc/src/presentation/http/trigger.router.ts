@@ -5,7 +5,7 @@ import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { WorkflowParams, toRequest } from "engine-core";
 import { WorkflowStore } from "engine-core";
-import { invokeWithWatch } from "../../domain/watch-scan.ts";
+import { invokeWithWatch } from "engine-core";
 import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
 /**

@@ -8,7 +8,11 @@
     },
     "lint": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.dependency-cruiser.cjs"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.dependency-cruiser.cjs",
+        "$TURBO_ROOT$/scripts/dep-io-patterns.cjs"
+      ]
     },
     "test": {
       "dependsOn": ["^build"],

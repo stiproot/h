@@ -1,20 +1,20 @@
-import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
+import { EventPublisher, type EventPublisherService } from "./internal.ts";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { disarmChain, registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
-import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "engine-core";
-import { emptyChainLedger } from "engine-core";
-import type { WatchRow } from "engine-core";
-import { emptyLedger } from "engine-core";
-import type { WfIdentity, WfRow } from "engine-core";
-import { wfKey } from "engine-core";
-import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "engine-core";
-import { ChainStore, type ChainStoreService } from "engine-core";
-import { WatchStore, type WatchStoreService } from "engine-core";
-import { WfStore, type WfStoreService } from "engine-core";
-import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
-import { WorkflowStore, type WorkflowStoreService } from "engine-core";
+import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "./internal.ts";
+import { emptyChainLedger } from "./internal.ts";
+import type { WatchRow } from "./internal.ts";
+import { emptyLedger } from "./internal.ts";
+import type { WfIdentity, WfRow } from "./internal.ts";
+import { wfKey } from "./internal.ts";
+import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./internal.ts";
+import { ChainStore, type ChainStoreService } from "./internal.ts";
+import { WatchStore, type WatchStoreService } from "./internal.ts";
+import { WfStore, type WfStoreService } from "./internal.ts";
+import { WorkflowInvoker, type WorkflowInvokerService } from "./internal.ts";
+import { WorkflowStore, type WorkflowStoreService } from "./internal.ts";
 
 // ---------------------------------------------------------------------------
 // In-memory fixtures (mirrors watch-scan.test.ts)
@@ -109,24 +109,24 @@ const stubWorkflowStore = (
   ...overrides,
 });
 
-function capturingPublisher(): { service: DaprPublisherService; events: unknown[] } {
+function capturingPublisher(): { service: EventPublisherService; events: unknown[] } {
   const events: unknown[] = [];
   return {
     events,
-    service: { publish: (_p, _t, data) => Effect.sync(() => void events.push(data)) },
+    service: { publish: (_topic, data) => Effect.sync(() => void events.push(data)) },
   };
 }
 
 // Records the topic too — the D6 teardown asserts on cron-disarm publishes distinctly from the
 // workflow-events finalize publish.
 function recordingPublisher(): {
-  service: DaprPublisherService;
+  service: EventPublisherService;
   events: { topic: string; data: unknown }[];
 } {
   const events: { topic: string; data: unknown }[] = [];
   return {
     events,
-    service: { publish: (_p, topic, data) => Effect.sync(() => void events.push({ topic, data })) },
+    service: { publish: (topic, data) => Effect.sync(() => void events.push({ topic, data })) },
   };
 }
 
@@ -165,7 +165,7 @@ function env(
   cs: ChainStoreService,
   invoker: WorkflowInvokerService,
   wfStore: WorkflowStoreService = stubWorkflowStore(),
-  publisher: DaprPublisherService = capturingPublisher().service,
+  publisher: EventPublisherService = capturingPublisher().service,
   wfRegistry: WfStoreService = memoryWfStore(),
   watchRegistry: WatchStoreService = memoryWatchRegistry().service,
 ) {
@@ -174,7 +174,7 @@ function env(
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, wfStore),
     Layer.succeed(WfStore, wfRegistry),
-    Layer.succeed(DaprPublisherTag, publisher),
+    Layer.succeed(EventPublisher, publisher),
     Layer.succeed(WatchStore, watchRegistry),
   );
 }

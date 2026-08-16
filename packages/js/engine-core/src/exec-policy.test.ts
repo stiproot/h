@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_AUTO_DENY_MS,
-  activeDenial,
   deniedMessage,
   endOfUtcDayIso,
   executorFromActivity,
@@ -12,7 +11,7 @@ import {
   mergeBudgetDeny,
   normalizeDenied,
 } from "./exec-policy.ts";
-import type { ExecPolicy } from "engine-core";
+import type { ExecPolicy } from "./internal.ts";
 
 const NOW = "2026-07-29T12:00:00.000Z";
 

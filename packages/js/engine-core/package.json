@@ -1,7 +1,7 @@
 {
   "name": "engine-core",
   "version": "0.1.0",
-  "description": "Substrate-independent engine semantics — the registry row models, the ports an engine acts through, and the recurrence clock",
+  "description": "Substrate-independent engine semantics \u2014 the registry row models, the ports an engine acts through, and the recurrence clock",
   "type": "module",
   "exports": {
     ".": {
@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.build.json",
-    "lint": "oxlint src && oxfmt --check src",
+    "lint": "oxlint src && oxfmt --check src && depcruise --config .dependency-cruiser.cjs src",
     "format": "oxfmt src",
     "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
   },

@@ -1,4 +1,4 @@
-import type { DeniedEntry, ExecPolicy } from "engine-core";
+import type { DeniedEntry, ExecPolicy } from "./internal.ts";
 
 /**
  * The executor-policy decision (provenance + expiry per the usage-limit auto-deny; see the

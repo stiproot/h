@@ -1,7 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect, Option } from "effect";
 
-import { activeDenial, deniedMessage, executorFromActivity } from "../domain/exec-policy.ts";
+import { activeDenial, deniedMessage, executorFromActivity } from "engine-core";
 import { ExecPolicyStore } from "engine-core";
 import { runActivity } from "./activity-runtime.ts";
 import { cloneRepoActivity } from "./activities/clone-repo.activity.ts";

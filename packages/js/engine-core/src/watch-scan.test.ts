@@ -1,19 +1,19 @@
 import { WorkflowError } from "core";
-import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
+import { EventPublisher, type EventPublisherService } from "./internal.ts";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { emptyCronLedger } from "engine-core";
-import type { SchedRow } from "engine-core";
-import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "engine-core";
-import { emptyLedger } from "engine-core";
-import type { StoredWorkflow, WorkflowRequest } from "engine-core";
-import { CronStore, type CronStoreService } from "engine-core";
-import { ExecPolicyStore, type ExecPolicyStoreService } from "engine-core";
-import type { ExecPolicy } from "engine-core";
-import { WatchStore, type WatchStoreService } from "engine-core";
-import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
-import { WorkflowStore, type WorkflowStoreService } from "engine-core";
+import { emptyCronLedger } from "./internal.ts";
+import type { SchedRow } from "./internal.ts";
+import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "./internal.ts";
+import { emptyLedger } from "./internal.ts";
+import type { StoredWorkflow, WorkflowRequest } from "./internal.ts";
+import { CronStore, type CronStoreService } from "./internal.ts";
+import { ExecPolicyStore, type ExecPolicyStoreService } from "./internal.ts";
+import type { ExecPolicy } from "./internal.ts";
+import { WatchStore, type WatchStoreService } from "./internal.ts";
+import { WorkflowInvoker, type WorkflowInvokerService } from "./internal.ts";
+import { WorkflowStore, type WorkflowStoreService } from "./internal.ts";
 import {
   invokeWithWatch,
   registerWatchForFire,
@@ -104,12 +104,12 @@ const stubWorkflowStore = (
   ...overrides,
 });
 
-function capturingPublisher(): { service: DaprPublisherService; events: unknown[] } {
+function capturingPublisher(): { service: EventPublisherService; events: unknown[] } {
   const events: unknown[] = [];
   return {
     events,
     service: {
-      publish: (_pubsub, _topic, data) => Effect.sync(() => void events.push(data)),
+      publish: (_topic, data) => Effect.sync(() => void events.push(data)),
     },
   };
 }
@@ -163,7 +163,7 @@ function env(
   ws: WatchStoreService,
   invoker: WorkflowInvokerService,
   wfStore: WorkflowStoreService = stubWorkflowStore(),
-  publisher: DaprPublisherService = capturingPublisher().service,
+  publisher: EventPublisherService = capturingPublisher().service,
   cron: CronStoreService = memorySchedStore().service,
   execPolicy: ExecPolicyStoreService = memoryExecPolicyStore().service,
 ) {
@@ -171,7 +171,7 @@ function env(
     Layer.succeed(WatchStore, ws),
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, wfStore),
-    Layer.succeed(DaprPublisherTag, publisher),
+    Layer.succeed(EventPublisher, publisher),
     Layer.succeed(CronStore, cron),
     Layer.succeed(ExecPolicyStore, execPolicy),
   );
@@ -694,7 +694,7 @@ describe("scanWatchesEffect", () => {
     expect(mem.ledgers.get(today())).toMatchObject({ runsFired: 1, engineFires: 1 });
   });
 
-  const usageLimitedFallbackRow = (overrides: Partial<import("engine-core").WatchPolicy> = {}) =>
+  const usageLimitedFallbackRow = (overrides: Partial<import("./internal.ts").WatchPolicy> = {}) =>
     activeRow({
       instanceId: "wf-1",
       policy: {

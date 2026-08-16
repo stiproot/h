@@ -3,7 +3,7 @@ import { Effect, Option, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
-import { disarmChain, registerChainForFire } from "../../domain/chain-scan.ts";
+import { disarmChain, registerChainForFire } from "engine-core";
 import { ChainMember, ChainStrategy } from "engine-core";
 import { ChainStore } from "engine-core";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";

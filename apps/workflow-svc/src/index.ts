@@ -13,6 +13,7 @@ import { ExecPolicyStoreLive } from "./infrastructure/dapr-exec-policy-store.ts"
 import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WfStoreLive } from "./infrastructure/dapr-wf-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
+import { DaprEventPublisherLive } from "./infrastructure/dapr-event-publisher.ts";
 import { WorkflowStoreLive } from "./infrastructure/dapr-workflow-store.ts";
 import { GitHubSourceReaderLive } from "./infrastructure/github-source-reader.ts";
 import { genericWorkflow } from "./infrastructure/workflows/generic.workflow.ts";
@@ -45,6 +46,15 @@ const appLayer = Layer.mergeAll(
   GitHubSourceReaderLive,
   DaprInvokerLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
   DaprPublisherLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),
+  // The engines publish through engine-core's EventPublisher port; this binds it to the Dapr
+  // component. Provided the raw publisher so both the port and its backing tag are in the env.
+  DaprEventPublisherLive.pipe(
+    Layer.provide(
+      DaprPublisherLive(`http://localhost:${daprHttpPort}`).pipe(
+        Layer.provide(NodeHttpClient.layer),
+      ),
+    ),
+  ),
   NodeHttpClient.layer,
   NodeContext.layer,
 ).pipe(Layer.orDie);
