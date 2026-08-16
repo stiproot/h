@@ -12,6 +12,7 @@ with no h checkout at runtime. The costs, stated plainly:
   and runner from the repo directly, and `IS_CHECKOUT` keeps `_bundled/` out of the picture.
 """
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -81,4 +82,36 @@ class BundleSubstrate(BuildHookInterface):
         runner_out = bundled / "h-local.mjs"
         if not runner_out.is_file() or runner_out.stat().st_size == 0:
             raise RuntimeError("bundled runner is missing or empty — refusing to build the wheel")
+
+        # PROVENANCE. `version` is a release number, not a build identity: every wheel cut from
+        # main carries the same 0.1.0, so a consumer cannot tell one from another — and a
+        # consumer that pins h by commit needs exactly that. Stamp the source commit in, so
+        # `h --version` answers "which h is this?" rather than only "which release series?".
+        # Best-effort by design: a build from an exported tree has no git and still ships.
+        def _git(*args: str) -> str:
+            try:
+                return subprocess.run(
+                    ["git", "-C", str(repo), *args],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return ""
+
+        commit = _git("rev-parse", "HEAD")
+        (bundled / "build.json").write_text(
+            json.dumps(
+                {
+                    "commit": commit,
+                    "shortCommit": commit[:7],
+                    "committedAt": _git("show", "-s", "--format=%cI", "HEAD"),
+                    # A wheel built from a dirty tree is not reproducible from its commit; say so
+                    # rather than let a consumer's lock imply a fidelity it does not have.
+                    "dirty": bool(_git("status", "--porcelain")),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
         build_data.setdefault("artifacts", []).append("src/h_cli/_bundled/**")

@@ -12,8 +12,55 @@ h doctor
 ```
 
 The wheel builds from the repo source at install time, which needs **`bun` on PATH** (it
-bundles the JS runner; bun is build-time-only, exactly as in the h repo itself). Upgrade or
-repair with `uv tool install --reinstall …`; remove with `uv tool uninstall h-cli`.
+bundles the JS runner; bun is build-time-only, exactly as in the h repo itself). Remove with
+`uv tool uninstall h-cli`.
+
+### Knowing and changing which h you have
+
+`h --version` names the SOURCE COMMIT, not just the release number:
+
+```
+h-cli 0.1.0@cb97460 [packaged, 2026-08-15]
+```
+
+That matters because the version is a release series — every wheel cut from main is `0.1.0`, so
+the number alone cannot tell two builds apart. `h --version-json` is the machine-readable form a
+consumer's sync script compares against its pin.
+
+**To move to a newer h**, name the revision and force the reinstall:
+
+```sh
+uv tool install --reinstall --from 'git+https://github.com/stiproot/h@main#subdirectory=cli/h' h-cli
+h --version     # confirm it actually moved
+```
+
+Two traps worth knowing, both hit live on 2026-08-16:
+
+- **`--reinstall` alone re-installs whatever requirement was RECORDED, which may not be git.**
+  A tool first installed from a locally-built wheel (`uv tool install ./dist/*.whl`) has that
+  path in its receipt, so a bare `--reinstall` rebuilds the same stale artifact and reports
+  success. `--from` is what re-points it. Check `~/.local/share/uv/tools/h-cli/uv-receipt.toml`
+  if a sync looks like a no-op.
+- **`uv tool install` is ONE h per machine.** Every consumer repo shares `~/.local/bin/h`; only
+  the config and charts are per-repo. If two consumers need different h revisions, they cannot
+  both use the global tool — see below.
+
+### Per-repo isolation (when consumers must not move together)
+
+A consumer that needs its own pinned h installs into a **project-local venv** instead of the
+global tool, and records the revision it is on:
+
+```sh
+uv venv .h/venv
+uv pip install --python .h/venv 'h-cli @ git+https://github.com/stiproot/h@<sha>#subdirectory=cli/h'
+.h/venv/bin/h --version
+```
+
+Then `.h/venv/bin/h` (or a `.h/bin/h` wrapper on PATH) is that repo's h, pinned by a committed
+lock file, and upgrading one consumer cannot touch another. The trade is a venv per consumer
+(~40MB) and invoking h through the wrapper. `trxy-v2` is the reference implementation — its
+`scripts/h-sync.sh` does the whole cycle, including telling you when the pin and the install
+have drifted apart.
 
 ## 2. Provision what h drives (h never auto-installs)
 

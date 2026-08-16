@@ -13,8 +13,11 @@ TWO INSTALL MODES, detected rather than configured:
   loud at the point of use, never guesses.
 """
 
+import json
 import os
+import subprocess
 import tomllib
+from importlib.metadata import version
 from pathlib import Path
 
 _CLI_DIR = Path(__file__).resolve().parents[3]
@@ -87,6 +90,48 @@ def _setting(env: str, key: str, default: Path) -> Path:
         configured = Path(_CONSUMER_CONF[key]).expanduser()
         return (CONSUMER_CONFIG_ROOT / configured).resolve()
     return default
+
+
+def build_info() -> dict[str, object]:
+    """WHICH h this is — the release version plus the source commit it was built from.
+
+    The version alone cannot answer that: every wheel cut from main carries the same `0.1.0`, so
+    a consumer pinning h by commit (the isolation a packaged consumer actually wants) needs the
+    commit. A wheel carries it stamped at build time; a CHECKOUT reads it live, so `h --version`
+    means the same thing in both modes. Everything is best-effort — a build from an exported
+    tree has no git and reports `commit: None` rather than failing.
+    """
+    info: dict[str, object] = {
+        "version": version("h-cli"),
+        "mode": "checkout" if IS_CHECKOUT else "packaged",
+    }
+    if IS_CHECKOUT:
+
+        def _git(*args: str) -> str | None:
+            try:
+                out = subprocess.run(
+                    ["git", "-C", str(_REPO_DIR), *args], capture_output=True, text=True, check=True
+                )
+                return out.stdout.strip()
+            except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+                return None
+
+        commit = _git("rev-parse", "HEAD")
+        info |= {
+            "commit": commit,
+            "shortCommit": commit[:7] if commit else None,
+            "committedAt": _git("show", "-s", "--format=%cI", "HEAD"),
+            "dirty": bool(_git("status", "--porcelain") or ""),
+        }
+        return info
+    stamp = _BUNDLED_DIR / "build.json"
+    try:
+        info |= json.loads(stamp.read_text())
+    except (OSError, ValueError):
+        # A wheel built before provenance was stamped, or a corrupted bundle: say so plainly
+        # rather than report a commit we do not have.
+        info |= {"commit": None, "shortCommit": None, "committedAt": None, "dirty": False}
+    return info
 
 
 # Template source (strategy 2 — see cli/README.md). STOCK_CHARTS_DIR is h's own chart and the
