@@ -39,6 +39,35 @@ class BundleSubstrate(BuildHookInterface):
                 "git+https://github.com/stiproot/h#subdirectory=cli/h'`) — an sdist of cli/h "
                 "alone cannot provide them."
             )
+
+        # PROVENANCE, CAPTURED FIRST. `version` is a release number, not a build identity: every
+        # wheel cut from main carries the same 0.1.0, so a consumer cannot tell one from another
+        # — and a consumer that pins h by commit needs exactly that. This is read BEFORE the
+        # build touches anything, because the steps below (bun install, turbo build, the bundle
+        # itself) write into the tree, and a dirty flag sampled afterwards reports the build's
+        # own artifacts and is therefore always true. Best-effort by design: a build from an
+        # exported tree has no git and still ships.
+        def _git(*args: str) -> str:
+            try:
+                return subprocess.run(
+                    ["git", "-C", str(repo), *args],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return ""
+
+        commit = _git("rev-parse", "HEAD")
+        provenance = {
+            "commit": commit,
+            "shortCommit": commit[:7],
+            "committedAt": _git("show", "-s", "--format=%cI", "HEAD"),
+            # A wheel built from a dirty tree is not reproducible from its commit; say so rather
+            # than let a consumer's lock imply a fidelity it does not have.
+            "dirty": bool(_git("status", "--porcelain")),
+        }
+
         bundled = cli_dir / "src" / "h_cli" / "_bundled"
         shutil.rmtree(bundled, ignore_errors=True)
         bundled.mkdir(parents=True)
@@ -83,35 +112,5 @@ class BundleSubstrate(BuildHookInterface):
         if not runner_out.is_file() or runner_out.stat().st_size == 0:
             raise RuntimeError("bundled runner is missing or empty — refusing to build the wheel")
 
-        # PROVENANCE. `version` is a release number, not a build identity: every wheel cut from
-        # main carries the same 0.1.0, so a consumer cannot tell one from another — and a
-        # consumer that pins h by commit needs exactly that. Stamp the source commit in, so
-        # `h --version` answers "which h is this?" rather than only "which release series?".
-        # Best-effort by design: a build from an exported tree has no git and still ships.
-        def _git(*args: str) -> str:
-            try:
-                return subprocess.run(
-                    ["git", "-C", str(repo), *args],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout.strip()
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                return ""
-
-        commit = _git("rev-parse", "HEAD")
-        (bundled / "build.json").write_text(
-            json.dumps(
-                {
-                    "commit": commit,
-                    "shortCommit": commit[:7],
-                    "committedAt": _git("show", "-s", "--format=%cI", "HEAD"),
-                    # A wheel built from a dirty tree is not reproducible from its commit; say so
-                    # rather than let a consumer's lock imply a fidelity it does not have.
-                    "dirty": bool(_git("status", "--porcelain")),
-                },
-                indent=2,
-            )
-            + "\n"
-        )
+        (bundled / "build.json").write_text(json.dumps(provenance, indent=2) + "\n")
         build_data.setdefault("artifacts", []).append("src/h_cli/_bundled/**")
