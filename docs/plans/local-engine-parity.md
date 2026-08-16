@@ -157,8 +157,8 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | # | Increment | Status | Guard |
 | --- | --- | --- | --- |
 | 0 | `engine-core` — the extraction | **Complete** | parity guard owns engine symbols ✓ |
-| 1 | KV registries (`wf:`, saved store, `exec:`) | **In progress** — surface previewed + approved | `check-kv-keys.mjs` ✓ |
-| 2 | Cron + schedule | Not started *(preview owed)* | flag/capability agreement |
+| 1 | KV registries (saved store, `exec:`) | **Complete** | `check-kv-keys.mjs` ✓ · `check-refusal-classification.mjs` ✓ |
+| 2 | Cron + schedule | **Next** *(preview owed)* | flag/capability agreement |
 | 3 | Chain as a durable registration | Not started *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
@@ -230,7 +230,7 @@ Sub-steps:
 - [x] 1c — the `exec:` policy fence on every local agent run (executor + delegate), and the refusal
       list re-classified into pending/permanent with its guard. **`write-wf-row` deliberately NOT
       un-refused** — see the 1c log
-- [ ] 1d — `--local` on the registry read commands
+- [x] 1d — `--local` on the registry read commands, via a `registry` job kind (protocol v2)
 
 
 A KV adapter for the ports above, plus the bucket layout and the single-writer rule carried over
@@ -493,6 +493,52 @@ Verified end to end against a real nats-server, as a permanent test rather than 
 a policy written through `ExecPolicyStore` denies `codex` by name through `assertExecutorAllowed`
 and leaves `claude` untouched. That join is what neither unit suite can show — a key-encoding
 mistake would pass both and fence nothing.
+
+### 1d log — the CLI's window, and a bug only plain `node` could find
+
+The CLI does NOT speak to JetStream. Reads and writes go through the runner as a new `registry` job
+kind (protocol v1 → v2), because registry ids contain `:` and every access has to encode — a second
+copy of that codec in Python would drift, and its symptom would be an EMPTY listing rather than an
+error. One codec, one holder of a raw KV handle, one answer.
+
+What answers, and what refuses:
+
+| command | `--local` |
+| --- | --- |
+| `h workflow list` / `get KEY` | reads the local saved-workflow store |
+| `h agents list` / `deny` / `allow` | reads/writes the local `exec:` row — the fence local runs enforce |
+| `h cron\|chain\|watch list` | **refuses by name**, naming the engine that lifts it |
+| `h agents budget` | **refuses by name** — a budget is a WATCHER behaviour (its day tally writes the deny), not a stored number, so storing one with no watcher arms a fence nobody enforces |
+
+The refusals are the interesting half. An empty table would assert "none registered" when the truth
+is "no registry here", and those are different facts. `--local` is *accepted and then refused*
+rather than absent, because a missing flag reads as "wrong command" while a refusing one says which
+engine is missing and what to run meanwhile.
+
+Three findings, in ascending order of how long they would have hidden:
+
+- **The refusal helper shipped ungated.** First version had callers check `local` themselves; the
+  check was missing, so every `h watch list` refused — caught immediately by the existing suite.
+  The flag is now a PARAMETER (`refuse_pending_registry(name, local)`): a guard whose correctness
+  depends on remembering to guard it is not one.
+- **`cron-parser` v4 is CJS, and Node's ESM lexer cannot see its named exports.** `import {
+  parseExpression }` throws `does not provide an export named 'parseExpression'` under plain `node`
+  while passing under vitest and bun, whose interop is more permissive. It had been latent in
+  `engine-core/scheduling.ts` since 0a and only surfaced when `bin.ts` first pulled engine-core in —
+  because **the local runner is the only thing in this repo plain `node` executes.** Everything else
+  is bundled or runs under a test runner. Worth remembering: that binary is the repo's only ESM
+  conformance check.
+- **A failed connection died as a DEFECT, printing a NatsError stack.** The KV layer's finalizer is
+  a SECOND consumer of the connect promise, and `Effect.promise` has no error channel — so a
+  refused connection killed the runner with a stack trace instead of letting the CLI say "is the
+  local fabric up?". Fixed by catching on the promise, not just ignoring the effect. The envelope
+  now also surfaces the CAUSE, since `WorkflowError`'s own message is the tagged-error default
+  ("An error has occurred") and the user needs `CONNECTION_REFUSED`.
+
+Verified end to end against a real nats-server: `h agents deny codex --local` → `h agents list
+--local` shows DENIED → `h agents allow codex --local` clears it; `workflows.save` → `h workflow
+list --local` → `h workflow get demo --local`; and with the fabric stopped, `local registry:
+CONNECTION_REFUSED / Is the local fabric up? (h events up)`.
 
 ## Open questions
 

@@ -11,6 +11,7 @@ import httpx
 import typer
 import yaml
 from rich.console import Console
+from rich.markup import escape
 from rich.syntax import Syntax
 from rich.table import Table
 
@@ -51,10 +52,37 @@ def _guarded(fn: Any) -> Any:
         raise typer.Exit(1) from err
 
 
+def _local_guarded(fn: Any) -> Any:
+    """The `--local` sibling of _guarded: name the LOCAL failure, and point at the local fix.
+
+    Two substrates means two ways to be unreachable, and "is workflow-svc running?" is actively
+    misleading when the answer is that no nats-server is.
+    """
+    try:
+        return fn()
+    except local_runtime.LocalRunError as err:
+        err_console.print(f"[red]local registry:[/red] {escape(str(err))}")
+        err_console.print("Is the local fabric up? (h events up)")
+        raise typer.Exit(1) from err
+
+
+# `--local` selects the substrate on a READ, matching the flag `run` already uses. The local
+# saved-workflow store is a JetStream KV bucket read through the runner, which owns the key codec.
+# Note what is NOT here: the bucket IS the index, so unlike Redis there is no `__workflow_index__`
+# to drift from the rows it describes.
+LOCAL_READ = typer.Option(
+    False,
+    "--local",
+    help="Read the LOCAL substrate's saved-workflow store (JetStream KV) instead of workflow-svc.",
+)
+
+
 @app.command("list")
-def list_() -> None:
+def list_(local: bool = LOCAL_READ) -> None:
     """List saved workflow keys."""
-    keys = _guarded(workflow_svc.list_keys)
+    keys = _local_guarded(lambda: local_runtime.registry("workflows.list")) if local else _guarded(
+        workflow_svc.list_keys
+    )
     table = Table("key", title=f"saved workflows ({len(keys)})")
     for key in sorted(keys):
         table.add_row(key)
@@ -62,9 +90,18 @@ def list_() -> None:
 
 
 @app.command()
-def get(key: Annotated[str, typer.Argument(help="Saved workflow key.")]) -> None:
+def get(
+    key: Annotated[str, typer.Argument(help="Saved workflow key.")],
+    local: bool = LOCAL_READ,
+) -> None:
     """Show a saved workflow definition (canonical YAML view)."""
-    stored = _guarded(lambda: workflow_svc.get(key))
+    if local:
+        stored = _local_guarded(lambda: local_runtime.registry("workflows.get", key=key))
+        if stored is None:
+            err_console.print(f"[red]no saved workflow '{key}' in the local store[/red]")
+            raise typer.Exit(1)
+    else:
+        stored = _guarded(lambda: workflow_svc.get(key))
     rendered = yaml.safe_dump(stored, sort_keys=False)
     console.print(Syntax(rendered, "yaml", background_color="default"))
 

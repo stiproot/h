@@ -303,9 +303,13 @@ if (failed) {
 // ---------------------------------------------------------------------------
 
 // Command modules that are not a user-facing `h <name>` surface belong here, with a reason.
-// _local_journal: the journal preflight shared by `h chain run --local` and `h workflow run
-// --local` — a helper both commands import, never an `h _local_journal` surface of its own.
-const OMIT_COMMANDS = new Set(["__init__", "_local_journal"]);
+// Helpers that live under commands/ because that is who imports them, but which are not an `h
+// <name>` surface of their own:
+//   _local_journal  — the journal preflight shared by `h chain run --local` / `h workflow run --local`
+//   _local_registry — the refusal for `--local` reads whose registry does not exist yet
+// The leading underscore is the convention; it is spelled out here rather than pattern-matched so
+// adding one stays a deliberate act.
+const OMIT_COMMANDS = new Set(["__init__", "_local_journal", "_local_registry"]);
 
 const commandViolations = [];
 for (const file of readdirSync(resolve(root, "cli/h/src/h_cli/commands"))) {

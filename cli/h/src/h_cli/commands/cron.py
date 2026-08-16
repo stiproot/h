@@ -15,8 +15,18 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from h_cli.commands._local_registry import refuse_pending_registry
 from h_cli.infrastructure import workflow_svc
 from h_cli.params import parse_params
+
+# `--local` is ACCEPTED and then refused by name, rather than being absent: a flag that
+# does not exist reads as "wrong command", while one that refuses says which engine is
+# missing and what to run meanwhile. It becomes real when the cron: registry lands.
+LOCAL_LIST_OPT = typer.Option(
+    False,
+    "--local",
+    help="Read the LOCAL substrate's cron: registry (not available yet — refuses by name).",
+)
 
 app = typer.Typer(no_args_is_help=True, help="Durable cron registry (workflow-svc recur engine).")
 discover_app = typer.Typer(
@@ -76,9 +86,10 @@ def _print_heartbeat(heartbeat: dict[str, Any] | None) -> None:
 
 
 @app.command("list")
-def list_() -> None:
+def list_(local: bool = LOCAL_LIST_OPT) -> None:
     """List cron rows — recur registrations AND discovery/fan-out crons — with the scan
     heartbeat."""
+    refuse_pending_registry("cron", local)
     data = _guarded(workflow_svc.cron_list)
     _print_heartbeat(data.get("heartbeat"))
     crons = data.get("crons") or []

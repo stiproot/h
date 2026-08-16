@@ -73,7 +73,7 @@ classDiagram
     +KIND_CONTRACT_SUPPLIES dict~str~
     +WRITE_KINDS
     +run(ctx, slug, param, local, with_setup, resume, no_journal, strateg…
-    +list_() None
+    +list_(local) None
     +rm(chain_id) None
   }
 

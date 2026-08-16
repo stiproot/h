@@ -19,7 +19,7 @@ import { CHAIN_MEMBER_KINDS, WorkflowParams, WorkflowStep } from "workflow-core"
  * refuses a mismatch loudly, naming both versions. Bump on any breaking job/envelope change;
  * mirrored in h_cli/infrastructure/local_runtime.py (test_local_protocol_sync pins the pair).
  */
-export const LOCAL_PROTOCOL_VERSION = 1;
+export const LOCAL_PROTOCOL_VERSION = 2;
 
 /** The agent CLIs this substrate can drive — the closed vocabulary behind `--agent`. */
 export const LOCAL_AGENT_TYPES = ["claude", "codex", "openhands", "pi"] as const;
@@ -306,7 +306,50 @@ export type ChainEnvelope = {
 };
 
 /** Every job the runner accepts, discriminated on `kind`. */
-export const LocalJob = Schema.Union(DelegateJob, WorkflowJob, ChainJob);
+/**
+ * A REGISTRY query or write — the CLI's typed window onto the local substrate's KV registries.
+ *
+ * It goes through the runner rather than letting the Python CLI speak to JetStream directly, and
+ * the reason is the key codec: registry ids contain `:`, which NATS forbids, so every read and
+ * write has to encode and decode. A second implementation of that codec in Python would drift, and
+ * its symptom would be an EMPTY listing rather than an error — the failure mode this substrate is
+ * most exposed to. One codec, one holder of a raw KV handle (see check-kv-keys), one answer.
+ *
+ * Only the registries that EXIST are addressable here. `h cron list --local` and its siblings are
+ * refused by name in the CLI rather than answering with an empty list, because "no crons" and "no
+ * cron registry on this substrate" are different facts and only one of them is true.
+ */
+export const RegistryJob = Schema.Union(
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("workflows.list") }),
+  Schema.Struct({
+    kind: Schema.Literal("registry"),
+    op: Schema.Literal("workflows.get"),
+    key: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("registry"),
+    op: Schema.Literal("workflows.save"),
+    key: Schema.String,
+    workflow: Schema.Unknown,
+  }),
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("exec.get") }),
+  Schema.Struct({
+    kind: Schema.Literal("registry"),
+    op: Schema.Literal("exec.save"),
+    policy: Schema.Unknown,
+  }),
+);
+export type RegistryJob = Schema.Schema.Type<typeof RegistryJob>;
+
+/** What a registry job answers with: the requested value under `result`, or a loud failure. */
+export type RegistryEnvelope = {
+  ok: boolean;
+  op: string;
+  result?: unknown;
+  error?: string;
+};
+
+export const LocalJob = Schema.Union(DelegateJob, WorkflowJob, ChainJob, RegistryJob);
 export type LocalJob = Schema.Schema.Type<typeof LocalJob>;
 
 /** What a workflow job writes to stdout: the step results map, exactly as the engine returns it. */

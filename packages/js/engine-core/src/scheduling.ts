@@ -1,4 +1,13 @@
-import { parseExpression } from "cron-parser";
+// DEFAULT import, then destructure — not `import { parseExpression }`.
+//
+// cron-parser v4 is CommonJS, and Node's ESM loader discovers a CJS module's named exports by
+// static analysis (cjs-module-lexer), which cannot see this one's. The named form therefore throws
+// `does not provide an export named 'parseExpression'` under plain `node` — while passing happily
+// under vitest and bun, whose interop is more permissive. That gap is invisible until something
+// runs this file with node itself, which is exactly what the local runner (`h-local`) does.
+import cronParser from "cron-parser";
+
+const { parseExpression } = cronParser;
 
 import type { WorkflowSchedule } from "./models/workflow.model.ts";
 

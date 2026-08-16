@@ -28,7 +28,7 @@ class LocalRunError(RuntimeError):
 # and the runner's schemas ignore unknown fields — so skew would otherwise be silent. The runner
 # refuses a mismatch loudly, naming both versions. Mirrored in local-runtime's
 # domain/models.ts LOCAL_PROTOCOL_VERSION (test_local_protocol_sync pins the pair).
-LOCAL_PROTOCOL_VERSION = 1
+LOCAL_PROTOCOL_VERSION = 2
 
 
 def group_id(base: str) -> str:
@@ -166,3 +166,20 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
         return json.loads(line)
     except json.JSONDecodeError as err:
         raise LocalRunError(f"unreadable result from the local runner: {line[:200]}") from err
+
+
+def registry(op: str, **fields: Any) -> Any:
+    """Query or write a local KV registry through the runner, returning its `result`.
+
+    The CLI does NOT speak to JetStream directly, and that is the point: registry ids contain `:`,
+    which NATS forbids as a key, so every read and write has to encode and decode. A second copy of
+    that codec here would drift from the runner's, and the symptom would be an EMPTY listing rather
+    than an error — this substrate's most likely failure. One codec, one answer.
+
+    Raises LocalRunError with the runner's own message when the registry cannot answer (a stopped
+    fabric, most often), so callers render a sentence rather than a stack trace.
+    """
+    envelope = run_job({"kind": "registry", "op": op, **fields})
+    if not envelope.get("ok"):
+        raise LocalRunError(envelope.get("error") or f"registry {op} failed")
+    return envelope.get("result")

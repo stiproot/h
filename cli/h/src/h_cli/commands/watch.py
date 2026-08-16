@@ -13,7 +13,17 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from h_cli.commands._local_registry import refuse_pending_registry
 from h_cli.infrastructure import workflow_svc
+
+# `--local` is ACCEPTED and then refused by name, rather than being absent: a flag that
+# does not exist reads as "wrong command", while one that refuses says which engine is
+# missing and what to run meanwhile. It becomes real when the watch: registry lands.
+LOCAL_LIST_OPT = typer.Option(
+    False,
+    "--local",
+    help="Read the LOCAL substrate's watch: registry (not available yet — refuses by name).",
+)
 
 app = typer.Typer(no_args_is_help=True, help="Durable watch registry (workflow-svc watcher).")
 console = Console()
@@ -77,8 +87,9 @@ def _format_cost(row: dict[str, Any]) -> str:
 
 
 @app.command("list")
-def list_() -> None:
+def list_(local: bool = LOCAL_LIST_OPT) -> None:
     """List watch rows, with the scan heartbeat (the staleness signal) above the table."""
+    refuse_pending_registry("watch", local)
     data = _guarded(workflow_svc.watch_list)
     _print_heartbeat(data.get("heartbeat"))
     watches = data.get("watches") or []

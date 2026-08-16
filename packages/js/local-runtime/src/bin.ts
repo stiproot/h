@@ -14,6 +14,7 @@ import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schema } from "effec
 import { ExecGitClient } from "git-core";
 
 import { runChain } from "./domain/chain.ts";
+import { runRegistry } from "./domain/registry.ts";
 import { runDelegate } from "./domain/delegate.ts";
 import { runWorkflow } from "./domain/execute.ts";
 import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
@@ -21,7 +22,10 @@ import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
 import { NatsKvLive } from "./infrastructure/nats-kv.ts";
-import { NatsExecPolicyStoreLive } from "./infrastructure/nats-registry-stores.ts";
+import {
+  NatsExecPolicyStoreLive,
+  NatsWorkflowStoreLive,
+} from "./infrastructure/nats-registry-stores.ts";
 import { StderrProgressLive } from "./infrastructure/stderr-progress.ts";
 
 // NodeContext supplies FileSystem + CommandExecutor (spawning the agent CLIs, git and setup
@@ -48,7 +52,9 @@ const AppLive = Layer.mergeAll(
   NatsJournalLive,
   // The executor-policy registry. Connects on FIRST READ, so a job that reads no registry never
   // opens a socket — see NatsKvLive.
-  NatsExecPolicyStoreLive.pipe(Layer.provide(NatsKvLive(FABRIC_URL))),
+  Layer.mergeAll(NatsExecPolicyStoreLive, NatsWorkflowStoreLive).pipe(
+    Layer.provide(NatsKvLive(FABRIC_URL)),
+  ),
 );
 
 const readStdin = (): Promise<string> =>
@@ -120,6 +126,8 @@ const main = async (): Promise<void> => {
           return yield* runWorkflow(job);
         case "chain":
           return yield* runChain(job);
+        case "registry":
+          return yield* runRegistry(job);
       }
     }),
   );

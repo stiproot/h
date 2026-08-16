@@ -60,6 +60,7 @@ from h_cli.config import (
     baked_models_suit,
     chart_root_for,
 )
+from h_cli.commands._local_registry import refuse_pending_registry
 from h_cli.infrastructure import local_runtime, workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,
@@ -77,6 +78,15 @@ from h_cli.params import parse_params
 # `cron` (a recurrence with no engine here) — and is dropped rather than silently ignored.
 _LOCAL_MEMBER_FIELDS = frozenset(
     {"kind", "steps", "params", "stage", "id", "captures", "inputs", "until"}
+)
+
+# `--local` is ACCEPTED and then refused by name, rather than being absent: a flag that
+# does not exist reads as "wrong command", while one that refuses says which engine is
+# missing and what to run meanwhile. It becomes real when the chain: registry lands.
+LOCAL_LIST_OPT = typer.Option(
+    False,
+    "--local",
+    help="Read the LOCAL substrate's chain: registry (not available yet — refuses by name).",
 )
 
 app = typer.Typer(
@@ -966,8 +976,9 @@ def _run_local_chain(
 
 
 @app.command("list")
-def list_() -> None:
+def list_(local: bool = LOCAL_LIST_OPT) -> None:
     """List registered chains + the scan heartbeat (the durable chain registry)."""
+    refuse_pending_registry("chain", local)
     try:
         result = workflow_svc.chain_list()
     except httpx.HTTPError as err:

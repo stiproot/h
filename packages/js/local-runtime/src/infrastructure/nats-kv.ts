@@ -104,7 +104,13 @@ export const NatsKvLive = (url: string): Layer.Layer<NatsKv> =>
       yield* Effect.addFinalizer(() =>
         connection === undefined
           ? Effect.void
-          : Effect.promise(() => connection!.then((nc) => nc.drain())).pipe(Effect.ignore),
+          : // `.catch` on the PROMISE, not just Effect.ignore on the effect. If connecting failed,
+            // this finalizer is a SECOND consumer of the same rejected promise, and `Effect.promise`
+            // has no error channel — the rejection becomes a defect and the runner dies printing a
+            // NatsError stack instead of letting the CLI say "is the local fabric up?".
+            Effect.promise(() => connection!.then((nc) => nc.drain()).catch(() => undefined)).pipe(
+              Effect.ignore,
+            ),
       );
       const connectOnce = (): Promise<NatsConnection> => {
         connection ??= connect({ servers: url, timeout: 3000, maxReconnectAttempts: 2 });

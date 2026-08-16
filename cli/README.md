@@ -93,9 +93,11 @@ uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow
 uv run h feature run <spec> --agent claude-agent   # render to RUN on that agent + submit (babysat, non-blocking)
 uv run h template compose t1 t2 ... [--save key]   # overlay templates → ONE definition (spatial)
 uv run h template list|get <t>            # the chart templates (overlay atoms)
-uv run h agents list                      # the workflow-invokable agents + their {runActivity, agentId}
+uv run h agents list [--local]            # the workflow-invokable agents + their {runActivity, agentId}
+uv run h agents deny|allow NAME [--local] # the executor fence; --local writes the fence local runs read
                                           # identities — i.e. what `--agent <name>` accepts
-uv run h workflow list|get|status         # read-side views over workflow-svc
+uv run h workflow list|get [--local]      # read-side views; --local reads the local KV saved-workflow store
+uv run h workflow status                  # runtime status of one instance (service substrate)
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
 uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name] [--cron CADENCE] [--max-fires N]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing); --cron arms a recur cron on the RUN (§10 arm-* activity, not the handler)
 uv run h workflow run <template> --inline [-p k=v]...   # operands are chart TEMPLATES, not a saved key: render and fire, no publish
