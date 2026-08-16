@@ -251,8 +251,7 @@ export function validateChain(members: readonly ChainMember[]): string | null {
   // are about how a member is FIRED, so they stay with this carrier.
   const stageProblem = validateStages(members);
   if (stageProblem) return stageProblem;
-  for (let i = 0; i < members.length; i++) {
-    const w = members[i];
+  for (const [i, w] of members.entries()) {
     const hasKey = w.key !== undefined && w.key !== "";
     const hasSteps = w.steps !== undefined && w.steps.length > 0;
     if (hasKey === hasSteps) return `member ${i} (${w.kind}) must carry exactly one of key / steps`;

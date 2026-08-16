@@ -4,11 +4,11 @@ import type { DaprInvokerTag } from "core-dapr";
 import { Effect, type ManagedRuntime } from "effect";
 import { injectTraceContext, withTraceparentParent } from "telemetry";
 
-import type { CronStore } from "../domain/ports/ICronStore.ts";
-import type { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
-import type { WfStore } from "../domain/ports/IWfStore.ts";
-import type { WorkflowInvoker } from "../domain/ports/IWorkflowInvoker.ts";
-import type { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
+import type { CronStore } from "engine-core";
+import type { ExecPolicyStore } from "engine-core";
+import type { WfStore } from "engine-core";
+import type { WorkflowInvoker } from "engine-core";
+import type { WorkflowStore } from "engine-core";
 
 // ---------------------------------------------------------------------------
 // The activity-to-Effect bridge. The Dapr WorkflowRuntime invokes activities as bare

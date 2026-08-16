@@ -2,17 +2,17 @@ import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { registerDiscover, scanDiscoverEffect } from "./discover-scan.ts";
-import { type CronLedger, emptyCronLedger } from "./models/cron.model.ts";
-import { type DiscoverRow, discoverTrigger } from "./models/discover.model.ts";
-import type { WatchLedger } from "./models/watch.model.ts";
-import type { WfRow } from "./models/wf.model.ts";
-import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
-import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
-import { type SourceItem, SourceReader, type SourceReaderService } from "./ports/ISourceReader.ts";
-import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
-import { WfStore, type WfStoreService } from "./ports/IWfStore.ts";
-import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
-import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
+import { type CronLedger, emptyCronLedger } from "engine-core";
+import { type DiscoverRow, discoverTrigger } from "engine-core";
+import type { WatchLedger } from "engine-core";
+import type { WfRow } from "engine-core";
+import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "engine-core";
+import { CronStore, type CronStoreService } from "engine-core";
+import { type SourceItem, SourceReader, type SourceReaderService } from "engine-core";
+import { WatchStore, type WatchStoreService } from "engine-core";
+import { WfStore, type WfStoreService } from "engine-core";
+import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
+import { WorkflowStore, type WorkflowStoreService } from "engine-core";
 
 // --- in-memory cron store (discover rows + ledger) ---
 function memoryCronStore(): {

@@ -1,7 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect } from "effect";
 
-import type { AgentResult } from "../../domain/models/workflow.model.ts";
+import type { AgentResult } from "engine-core";
 import { applyOutputContract } from "workflow-core";
 import { invokeAgentMethod, runActivity } from "../activity-runtime.ts";
 

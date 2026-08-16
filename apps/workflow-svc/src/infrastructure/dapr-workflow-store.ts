@@ -3,8 +3,8 @@ import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
-import { StoredWorkflow } from "../domain/models/workflow.model.ts";
-import { WorkflowStore } from "../domain/ports/IWorkflowStore.ts";
+import { StoredWorkflow } from "engine-core";
+import { WorkflowStore } from "engine-core";
 
 const STORE = "statestore";
 // Redis exposes no key enumeration through Dapr, so saved workflow keys are tracked

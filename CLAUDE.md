@@ -522,9 +522,16 @@ packages/js/core-vercel/src/
 
 packages/js/workflow-core/src/             # substrate-INDEPENDENT workflow execution semantics: what a definition MEANS, owned once and imported by both executors (guarded by scripts/check-runtime-parity.mjs)
 ├── index.ts               # re-exports
-├── models.ts              # the DEFINITION shapes — WorkflowParams, StepDefinition, ParallelGroup, WorkflowStep, AgentResult. Re-exported by workflow-svc's workflow.model.ts and by workflow-mcp's wire shapes; the fire descriptor / run request / stored workflow / registry models stay substrate-side
+├── models.ts              # the DEFINITION shapes — WorkflowParams, StepDefinition, ParallelGroup, WorkflowStep, AgentResult. Re-exported by engine-core's workflow.model.ts and by workflow-mcp's wire shapes
 ├── resolve-refs.ts        # resolveRefs ({{stepId.field}} + {"$ref": …}, recursing into nested values) and resolveTokenString (the activity-name case — an unresolved token throws, never a silent "")
 └── structured-output.ts   # the output-contract seam: fail-closed JSON-Schema SUBSET validator + last-fenced-```json extraction; applyOutputContract attaches the validated block as `structured` or fails the step
+
+packages/js/engine-core/src/               # substrate-INDEPENDENT ENGINE semantics — workflow-core's sibling: that one owns what a DEFINITION means, this one owns what an ENGINE acts on. Extracted from workflow-svc because the five engines are pure `decide` functions over these rows, and a second substrate could not reach them while they lived in one app (guarded by scripts/check-runtime-parity.mjs)
+├── index.ts               # re-exports
+├── models/{watch,chain,cron,discover,schedule,wf,exec}.model.ts  # the REGISTRY ROWS, one module per registry prefix — the shape its owning engine decides over
+├── models/workflow.model.ts  # the fire descriptor (Trigger/TriggerFields), WorkflowRequest, SaveWorkflowRequest, StoredWorkflow/WorkflowSchedule, toRequest, deriveInstanceId. Here rather than beside an HTTP router because an engine's whole action vocabulary is "fire this" — a chain advance, a cron re-fire and a sched fire all produce a Trigger. Re-exports workflow-core's definition shapes
+├── ports/I{Watch,Chain,Cron,Wf,ExecPolicy}Store.ts, ISourceReader.ts, IWorkflowStore.ts, IWorkflowInvoker.ts  # what an engine needs FROM its host; each host supplies one adapter set and the engines never learn which substrate they are on
+└── scheduling.ts          # the recurrence clock — isDue / assertValidCron / parseDurationMs / resolveFireAt (pure, unit-tested)
 
 packages/js/run-ledger/src/                # the run ledger, extracted from agent-server so a non-HTTP agent host (the local runtime) gets it without fastify
 ├── index.ts               # re-exports (agent-server re-exports these too, so agent services import unchanged)

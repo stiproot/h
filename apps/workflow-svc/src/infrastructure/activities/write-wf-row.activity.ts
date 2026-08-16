@@ -1,8 +1,8 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect } from "effect";
 
-import type { WfIdentity, WfStatus } from "../../domain/models/wf.model.ts";
-import { WfStore } from "../../domain/ports/IWfStore.ts";
+import type { WfIdentity, WfStatus } from "engine-core";
+import { WfStore } from "engine-core";
 import { runActivity } from "../activity-runtime.ts";
 
 type Input = {

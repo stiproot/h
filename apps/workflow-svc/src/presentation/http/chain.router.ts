@@ -4,8 +4,8 @@ import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
 import { disarmChain, registerChainForFire } from "../../domain/chain-scan.ts";
-import { ChainMember, ChainStrategy } from "../../domain/models/chain.model.ts";
-import { ChainStore } from "../../domain/ports/IChainStore.ts";
+import { ChainMember, ChainStrategy } from "engine-core";
+import { ChainStore } from "engine-core";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
 // POST /chain/run body: the chain to register (the CLI builds the members + their instanceIds). The

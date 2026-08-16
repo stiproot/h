@@ -3,8 +3,8 @@ import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
-import { WfRow, type WfIdentity, wfKey } from "../domain/models/wf.model.ts";
-import { WfStore } from "../domain/ports/IWfStore.ts";
+import { WfRow, type WfIdentity, wfKey } from "engine-core";
+import { WfStore } from "engine-core";
 
 const STORE = "statestore";
 

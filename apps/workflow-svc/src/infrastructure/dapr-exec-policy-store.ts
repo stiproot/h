@@ -3,8 +3,8 @@ import { WorkflowError } from "core";
 import { pathStateKey } from "core-dapr";
 import { Effect, Layer, Option, Schema } from "effect";
 
-import { EXEC_POLICY_KEY, ExecPolicy } from "../domain/models/exec.model.ts";
-import { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
+import { EXEC_POLICY_KEY, ExecPolicy } from "engine-core";
+import { ExecPolicyStore } from "engine-core";
 
 const STORE = "statestore";
 

@@ -17,6 +17,7 @@ WORKDIR /app
 # Workspace manifests for layer caching
 COPY package.json bun.lock turbo.json ./
 COPY packages/js/core/package.json ./packages/js/core/
+COPY packages/js/engine-core/package.json ./packages/js/engine-core/
 COPY packages/js/core-dapr/package.json ./packages/js/core-dapr/
 COPY packages/js/core-vercel/package.json ./packages/js/core-vercel/
 COPY packages/js/agent-cli/package.json ./packages/js/agent-cli/

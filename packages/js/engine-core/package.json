@@ -1,0 +1,31 @@
+{
+  "name": "engine-core",
+  "version": "0.1.0",
+  "description": "Substrate-independent engine semantics — the registry row models, the ports an engine acts through, and the recurrence clock",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json",
+    "lint": "oxlint src && oxfmt --check src",
+    "format": "oxfmt src",
+    "test": "node ../../../scripts/check-workspace-built.mjs && vitest run"
+  },
+  "dependencies": {
+    "core": "workspace:*",
+    "cron-parser": "^4.9.0",
+    "effect": "^3.21.4",
+    "workflow-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "@effect/vitest": "^0.29.0"
+  }
+}

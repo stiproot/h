@@ -11,8 +11,8 @@ import {
   WatchRow,
   emptyLedger,
   runMirrorMetaFrom,
-} from "../domain/models/watch.model.ts";
-import { WatchStore } from "../domain/ports/IWatchStore.ts";
+} from "engine-core";
+import { WatchStore } from "engine-core";
 
 const STORE = "statestore";
 // The watch registry's claimed prefix in the flat keyspace (CLAUDE.md keyspace conventions):

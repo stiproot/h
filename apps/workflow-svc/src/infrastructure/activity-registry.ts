@@ -2,7 +2,7 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect, Option } from "effect";
 
 import { activeDenial, deniedMessage, executorFromActivity } from "../domain/exec-policy.ts";
-import { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
+import { ExecPolicyStore } from "engine-core";
 import { runActivity } from "./activity-runtime.ts";
 import { cloneRepoActivity } from "./activities/clone-repo.activity.ts";
 import { copySessionActivity } from "./activities/copy-session.activity.ts";

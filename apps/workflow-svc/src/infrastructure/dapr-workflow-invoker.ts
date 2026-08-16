@@ -3,8 +3,8 @@ import { HttpClient, HttpClientRequest } from "@effect/platform";
 import { WorkflowError } from "core";
 import { Config, Effect, Layer } from "effect";
 
-import type { WorkflowRequest, WorkflowStatus } from "../domain/models/workflow.model.ts";
-import { WorkflowInvoker } from "../domain/ports/IWorkflowInvoker.ts";
+import type { WorkflowRequest, WorkflowStatus } from "engine-core";
+import { WorkflowInvoker } from "engine-core";
 import { genericWorkflow } from "./workflows/generic.workflow.ts";
 
 /**

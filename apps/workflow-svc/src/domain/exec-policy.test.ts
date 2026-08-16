@@ -12,7 +12,7 @@ import {
   mergeBudgetDeny,
   normalizeDenied,
 } from "./exec-policy.ts";
-import type { ExecPolicy } from "./models/exec.model.ts";
+import type { ExecPolicy } from "engine-core";
 
 const NOW = "2026-07-29T12:00:00.000Z";
 

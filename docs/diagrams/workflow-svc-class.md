@@ -4,7 +4,12 @@ The engine spine of workflow-svc: the five cron-siblings — watch (supervise), 
 (sequence), cron (recur), discover (fan out), sched (fire once) — as five registry ROW
 models evaluated by five pure `decide` functions on the shared workflow-cron-tick, acting
 through the invoker port's closed vocabulary. One build-pattern, five instances; the
-`Trigger` fire descriptor is the one shape every fire carrier embeds or projects. GENERATED
+`Trigger` fire descriptor is the one shape every fire carrier embeds or projects.
+
+The rows and ports drawn here live in `packages/js/engine-core`, not in this service: they are
+substrate-independent by construction (rows are data, ports are interfaces), and workflow-svc is
+one HOST that supplies their adapters. What stays here is the Dapr/Redis adapter set, the HTTP
+routers and the activity registry. GENERATED
 from the TypeScript AST (members are code truth — the `schema` kind reads the Effect
 `Schema.Struct` consts; scope/topology/notes curated in the manifest below). The
 [tick sequence diagram](./workflow-svc-tick-sequence.md) shows one tick walking this spine.
@@ -13,20 +18,20 @@ from the TypeScript AST (members are code truth — the `schema` kind reads the 
   "direction": "LR",
   "classes": [
     {"id": "Tick", "kind": "external", "stereotype": "workflow-cron-tick", "note": "60s Dapr cron binding: fire due schedules, then the five scans; a scan failure never fails the tick"},
-    {"id": "Trigger", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/workflow.model.ts", "symbol": "Trigger", "stereotype": "the fire descriptor"},
-    {"id": "WatchRow", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/watch.model.ts", "symbol": "WatchRow"},
+    {"id": "Trigger", "kind": "schema", "file": "packages/js/engine-core/src/models/workflow.model.ts", "symbol": "Trigger", "stereotype": "the fire descriptor"},
+    {"id": "WatchRow", "kind": "schema", "file": "packages/js/engine-core/src/models/watch.model.ts", "symbol": "WatchRow"},
     {"id": "WatchEngine", "kind": "module", "file": "apps/workflow-svc/src/domain/watch-engine.ts", "functions": ["decide", "settle", "retryApplies"]},
-    {"id": "ChainRow", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/chain.model.ts", "symbol": "ChainRow"},
-    {"id": "ChainMember", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/chain.model.ts", "symbol": "ChainMember"},
+    {"id": "ChainRow", "kind": "schema", "file": "packages/js/engine-core/src/models/chain.model.ts", "symbol": "ChainRow"},
+    {"id": "ChainMember", "kind": "schema", "file": "packages/js/engine-core/src/models/chain.model.ts", "symbol": "ChainMember"},
     {"id": "ChainEngine", "kind": "module", "file": "apps/workflow-svc/src/domain/chain-engine.ts", "functions": ["decide"]},
-    {"id": "CronRow", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/cron.model.ts", "symbol": "CronRow"},
+    {"id": "CronRow", "kind": "schema", "file": "packages/js/engine-core/src/models/cron.model.ts", "symbol": "CronRow"},
     {"id": "CronEngine", "kind": "module", "file": "apps/workflow-svc/src/domain/cron-engine.ts", "functions": ["decide"]},
-    {"id": "DiscoverRow", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/discover.model.ts", "symbol": "DiscoverRow"},
+    {"id": "DiscoverRow", "kind": "schema", "file": "packages/js/engine-core/src/models/discover.model.ts", "symbol": "DiscoverRow"},
     {"id": "DiscoverEngine", "kind": "module", "file": "apps/workflow-svc/src/domain/discover-engine.ts", "functions": ["decide"]},
-    {"id": "SchedRow", "kind": "schema", "file": "apps/workflow-svc/src/domain/models/schedule.model.ts", "symbol": "SchedRow"},
+    {"id": "SchedRow", "kind": "schema", "file": "packages/js/engine-core/src/models/schedule.model.ts", "symbol": "SchedRow"},
     {"id": "SchedEngine", "kind": "module", "file": "apps/workflow-svc/src/domain/schedule-engine.ts", "functions": ["decide"]},
-    {"id": "Invoker", "kind": "interface", "file": "apps/workflow-svc/src/domain/ports/IWorkflowInvoker.ts", "symbol": "WorkflowInvokerService", "stereotype": "port"},
-    {"id": "SourceReader", "kind": "interface", "file": "apps/workflow-svc/src/domain/ports/ISourceReader.ts", "symbol": "SourceReaderService", "stereotype": "port"},
+    {"id": "Invoker", "kind": "interface", "file": "packages/js/engine-core/src/ports/IWorkflowInvoker.ts", "symbol": "WorkflowInvokerService", "stereotype": "port"},
+    {"id": "SourceReader", "kind": "interface", "file": "packages/js/engine-core/src/ports/ISourceReader.ts", "symbol": "SourceReaderService", "stereotype": "port"},
     {"id": "Registry", "kind": "external", "stereotype": "Redis registry", "note": "watch: chain: cron: wf: rows + heartbeats, written ONLY by workflow-svc (single-writer, epoch-fenced)"}
   ],
   "relations": [

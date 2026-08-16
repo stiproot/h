@@ -3,18 +3,18 @@ import { Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { disarmChain, registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
-import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "./models/chain.model.ts";
-import { emptyChainLedger } from "./models/chain.model.ts";
-import type { WatchRow } from "./models/watch.model.ts";
-import { emptyLedger } from "./models/watch.model.ts";
-import type { WfIdentity, WfRow } from "./models/wf.model.ts";
-import { wfKey } from "./models/wf.model.ts";
-import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./models/workflow.model.ts";
-import { ChainStore, type ChainStoreService } from "./ports/IChainStore.ts";
-import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
-import { WfStore, type WfStoreService } from "./ports/IWfStore.ts";
-import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
-import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
+import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "engine-core";
+import { emptyChainLedger } from "engine-core";
+import type { WatchRow } from "engine-core";
+import { emptyLedger } from "engine-core";
+import type { WfIdentity, WfRow } from "engine-core";
+import { wfKey } from "engine-core";
+import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "engine-core";
+import { ChainStore, type ChainStoreService } from "engine-core";
+import { WatchStore, type WatchStoreService } from "engine-core";
+import { WfStore, type WfStoreService } from "engine-core";
+import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
+import { WorkflowStore, type WorkflowStoreService } from "engine-core";
 
 // ---------------------------------------------------------------------------
 // In-memory fixtures (mirrors watch-scan.test.ts)

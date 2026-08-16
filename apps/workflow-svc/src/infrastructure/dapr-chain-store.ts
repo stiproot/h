@@ -3,15 +3,9 @@ import { pathStateKey } from "core-dapr";
 import { WorkflowError } from "core";
 import { Effect, Layer, Option, Schema } from "effect";
 
-import {
-  ChainConfig,
-  ChainHeartbeat,
-  ChainLedger,
-  ChainRow,
-  emptyChainLedger,
-} from "../domain/models/chain.model.ts";
-import { type RunMirrorMeta, runMirrorMetaFrom } from "../domain/models/watch.model.ts";
-import { ChainStore } from "../domain/ports/IChainStore.ts";
+import { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow, emptyChainLedger } from "engine-core";
+import { type RunMirrorMeta, runMirrorMetaFrom } from "engine-core";
+import { ChainStore } from "engine-core";
 
 const STORE = "statestore";
 // The chain registry's claimed prefix in the flat keyspace, sibling of `watch:` — rows, index,

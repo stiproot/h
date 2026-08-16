@@ -99,6 +99,7 @@ h/
 │   │   ├── core/             # Shared types (AgentRequest, AgentResponse)
 │   │   ├── core-dapr/        # Dapr-specific shared types and helpers
 │   │   ├── core-vercel/      # Vercel AI SDK client wrapper (ILlmClient → LiteLLM)
+│   │   ├── engine-core/      # Substrate-independent engine semantics — the registry row models, the ports an engine acts through, the recurrence clock
 │   │   ├── local-runtime/   # Local execution substrate — agent CLIs as local child processes (`h delegate`), no Dapr/services
 │   │   ├── logger/           # Pino logger wrapper
 │   │   ├── run-ledger/       # The run ledger — per-run summary/events/output + statestore mirror; shared by every agent host

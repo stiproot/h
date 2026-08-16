@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect";
 import type { FastifyInstance } from "fastify";
 
-import { WatchStore } from "../../domain/ports/IWatchStore.ts";
+import { WatchStore } from "engine-core";
 import { NotFoundError, runRoute, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 
 /**

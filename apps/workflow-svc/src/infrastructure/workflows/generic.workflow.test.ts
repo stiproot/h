@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import type { WorkflowRequest } from "engine-core";
 import { getActivity } from "../activity-registry.ts";
 import { genericWorkflow } from "./generic.workflow.ts";
 

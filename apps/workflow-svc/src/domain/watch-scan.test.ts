@@ -3,17 +3,17 @@ import { DaprPublisherTag, type DaprPublisherService } from "core-dapr";
 import { Effect, Layer, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { emptyCronLedger } from "./models/cron.model.ts";
-import type { SchedRow } from "./models/schedule.model.ts";
-import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "./models/watch.model.ts";
-import { emptyLedger } from "./models/watch.model.ts";
-import type { StoredWorkflow, WorkflowRequest } from "./models/workflow.model.ts";
-import { CronStore, type CronStoreService } from "./ports/ICronStore.ts";
-import { ExecPolicyStore, type ExecPolicyStoreService } from "./ports/IExecPolicyStore.ts";
-import type { ExecPolicy } from "./models/exec.model.ts";
-import { WatchStore, type WatchStoreService } from "./ports/IWatchStore.ts";
-import { WorkflowInvoker, type WorkflowInvokerService } from "./ports/IWorkflowInvoker.ts";
-import { WorkflowStore, type WorkflowStoreService } from "./ports/IWorkflowStore.ts";
+import { emptyCronLedger } from "engine-core";
+import type { SchedRow } from "engine-core";
+import type { WatchConfig, WatchHeartbeat, WatchLedger, WatchRow } from "engine-core";
+import { emptyLedger } from "engine-core";
+import type { StoredWorkflow, WorkflowRequest } from "engine-core";
+import { CronStore, type CronStoreService } from "engine-core";
+import { ExecPolicyStore, type ExecPolicyStoreService } from "engine-core";
+import type { ExecPolicy } from "engine-core";
+import { WatchStore, type WatchStoreService } from "engine-core";
+import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
+import { WorkflowStore, type WorkflowStoreService } from "engine-core";
 import {
   invokeWithWatch,
   registerWatchForFire,
@@ -694,9 +694,7 @@ describe("scanWatchesEffect", () => {
     expect(mem.ledgers.get(today())).toMatchObject({ runsFired: 1, engineFires: 1 });
   });
 
-  const usageLimitedFallbackRow = (
-    overrides: Partial<import("./models/watch.model.ts").WatchPolicy> = {},
-  ) =>
+  const usageLimitedFallbackRow = (overrides: Partial<import("engine-core").WatchPolicy> = {}) =>
     activeRow({
       instanceId: "wf-1",
       policy: {

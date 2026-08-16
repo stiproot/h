@@ -2,7 +2,7 @@ import { WorkflowError } from "core";
 import { GitHubClient, HttpGitHubClient } from "git-core";
 import { Effect, Layer } from "effect";
 
-import { SourceReader, type SourceItem } from "../domain/ports/ISourceReader.ts";
+import { SourceReader, type SourceItem } from "engine-core";
 
 /**
  * The `ISourceReader` adapter: GitHub open-issue enumeration, backed by git-core's `GitHubClient`

@@ -1,7 +1,7 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
 import { registerDiscover } from "../../domain/discover-scan.ts";
-import type { WatchPolicy } from "../../domain/models/watch.model.ts";
+import type { WatchPolicy } from "engine-core";
 import { runActivity } from "../activity-runtime.ts";
 
 /**

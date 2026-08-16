@@ -1,4 +1,4 @@
-import { type SchedRow } from "./models/schedule.model.ts";
+import { type SchedRow } from "engine-core";
 
 /**
  * The pure half of the SCHEDULED-FIRE cron — the third variant

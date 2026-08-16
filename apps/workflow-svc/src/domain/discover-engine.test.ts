@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { decide } from "./discover-engine.ts";
-import type { DiscoverRow } from "./models/discover.model.ts";
+import type { DiscoverRow } from "engine-core";
 
 // A discovery cron scanning every 30 min, last scanned at 00:00 — due at 00:31, not at 00:15. It has
 // fired once (an instance is recorded), so the in-flight guard is exercised.

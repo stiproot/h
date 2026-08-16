@@ -151,6 +151,27 @@ resident engine host. So a chain has two hosts for one `decide`: the foreground 
 `local-runtime/domain/chain.ts`, journaled) and the engine host (KV row). Same semantics, imported
 from `engine-core` by both — which is exactly the drift risk the parity guard exists to catch.
 
+## Progress
+
+| # | Increment | Status | Guard |
+| --- | --- | --- | --- |
+| 0 | `engine-core` — the extraction | **In progress** | parity guard owns engine symbols |
+| 1 | KV registries (`wf:`, saved store, `exec:`) | Not started *(preview owed)* | KV single-writer |
+| 2 | Cron + schedule | Not started *(preview owed)* | flag/capability agreement |
+| 3 | Chain as a durable registration | Not started *(preview owed)* | — |
+| 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
+| 5 | Discover — fan-out | Not started | — |
+| — | Refusal re-classification | Not started | classification guard |
+| — | `engine host` in the glossary | Not started | vocabulary guard |
+
+Increment 0 sub-steps (one commit each, each green on `make lint` + `make test`):
+
+- [x] 0a — package skeleton, row models + ports move *(green: build, lint, 286 + 41 tests)*
+- [ ] 0b — the five `decide` functions move
+- [ ] 0c — the scans move, behind a new `IEventPublisher` port — **also fixes the depcruise blind
+      spot found in 0a** (see Log)
+- [ ] 0d — parity guard extended to own the engine symbols
+
 ## Increments
 
 Each increment lands its own guard. Increments marked **(preview)** need the CLI surface shown to
@@ -302,3 +323,25 @@ Appetite confirmed as strong; each of these ships with its increment, not after.
   scans are already port-driven, leaking to a concrete adapter in exactly two places
   (`DaprPublisherTag`). The extraction therefore moves the scans and adds one `IEventPublisher`
   port, rather than leaving sequencing to drift across two hosts.
+- 2026-08-16 — **0a done.** `packages/js/engine-core` created; 8 row models (+3 model test files),
+  8 registry ports and `scheduling.ts` moved by `git mv`, relative imports intact. 57 import sites
+  rewritten to `engine-core`; no re-export shims left behind (the models never belonged to that
+  host, and shims would preserve the fiction that they do — the same call the `workflow-core`
+  extraction made). Green on `bun run build`, `bun run lint`, and the suites: workflow-svc 286,
+  engine-core 41. Two findings, both from guards rather than review:
+  - **Apps are typechecked more loosely than packages.** The package tsconfig sets
+    `noUncheckedIndexedAccess`; `apps/workflow-svc` does not. Two accesses that compiled in the app
+    failed on arrival — `validateChain`'s index loop and `parseDurationMs`'s regex-group lookup
+    (which was carrying a `!`). Both were provably safe and are now narrowed structurally. Moving
+    code into a package tightens it; the latent question of whether apps should adopt the flag is
+    NOT part of this plan.
+  - **`domain-no-io-libs` has a workspace blind spot — verified, not suspected.** The rule forbids
+    `domain/` importing `core-dapr`, and `chain-scan.ts`/`watch-scan.ts` do exactly that, yet
+    depcruise reports no violation. Cause: the rule matches `node_modules/(…)`, while a workspace
+    package resolves to `../../packages/js/core-dapr/dist/index.d.ts`. So the one concrete-adapter
+    leak 0c was already going to remove was never actually being guarded. 0c fixes both halves —
+    the import (behind `IEventPublisher`) and the rule (match the workspace path too). Deliberately
+    NOT fixed in 0a: tightening the rule while the import still exists would just fail the build.
+  - Steering/diagram guards caught the package's absence from CLAUDE.md + README.md and the
+    `workflow-svc-class` manifest's now-dangling file paths; all three updated in this change set,
+    and the diagram's prose now says which half of it lives in `engine-core`.

@@ -19,6 +19,7 @@
     "core-dapr": "workspace:*",
     "cron-parser": "^4.9.0",
     "effect": "^3.21.4",
+    "engine-core": "workspace:*",
     "fastify": "^5.0.0",
     "git-core": "workspace:*",
     "telemetry": "workspace:*",

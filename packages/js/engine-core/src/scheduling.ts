@@ -36,9 +36,10 @@ export function parseDurationMs(duration: string): number {
   if (!match) {
     throw new Error(`invalid duration '${duration}' — expected e.g. 45s, 30m, 2h, 1d`);
   }
-  const value = Number(match[1]);
-  const unitMs = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match[2]]!;
-  return value * unitMs;
+  // The regex above guarantees both groups, and its unit alternation is exactly this table's keys —
+  // so the cast is the narrowing the pattern already performed, not an assumption about the input.
+  const [, value, unit] = match as unknown as [string, string, "s" | "m" | "h" | "d"];
+  return Number(value) * { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[unit];
 }
 
 /**

@@ -3,8 +3,8 @@ import { Effect, Option, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 import { activeTraceparent, withServerSpan } from "telemetry";
 
-import { WorkflowParams, toRequest } from "../../domain/models/workflow.model.ts";
-import { WorkflowStore } from "../../domain/ports/IWorkflowStore.ts";
+import { WorkflowParams, toRequest } from "engine-core";
+import { WorkflowStore } from "engine-core";
 import { invokeWithWatch } from "../../domain/watch-scan.ts";
 import { runRoute, type WorkflowRoutesEnv, type WorkflowRoutesRuntime } from "./workflow.router.ts";
 

@@ -2,7 +2,7 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 import { DaprInvokerTag } from "core-dapr";
 import { Effect } from "effect";
 
-import type { AgentResult } from "../../domain/models/workflow.model.ts";
+import type { AgentResult } from "engine-core";
 import { applyOutputContract } from "workflow-core";
 import { runActivity } from "../activity-runtime.ts";
 

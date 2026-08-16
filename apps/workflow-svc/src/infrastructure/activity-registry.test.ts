@@ -2,8 +2,8 @@ import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ExecPolicy } from "../domain/models/exec.model.ts";
-import { ExecPolicyStore } from "../domain/ports/IExecPolicyStore.ts";
+import type { ExecPolicy } from "engine-core";
+import { ExecPolicyStore } from "engine-core";
 import { gatedExecutor, getActivity } from "./activity-registry.ts";
 import { type ActivityRuntime, setActivityRuntime } from "./activity-runtime.ts";
 

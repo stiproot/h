@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChainRow, ChainMember } from "./models/chain.model.ts";
-import { DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT, validateChain } from "./models/chain.model.ts";
+import type { ChainRow, ChainMember } from "engine-core";
+import { DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT, validateChain } from "engine-core";
 import { decide, type MemberObservation } from "./chain-engine.ts";
 
 const T0 = Date.parse("2026-07-08T09:00:00Z");

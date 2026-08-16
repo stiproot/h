@@ -3,7 +3,7 @@ import {
   type ChainRow,
   DEFAULT_CHAIN_UNKNOWN_STREAK_LIMIT,
   lastStage,
-} from "./models/chain.model.ts";
+} from "engine-core";
 
 /**
  * The pure half of the chain engine: given one chain row, an observation of every member of the

@@ -1,5 +1,5 @@
-import { type DiscoverRow } from "./models/discover.model.ts";
-import { isDue } from "./scheduling.ts";
+import { type DiscoverRow } from "engine-core";
+import { isDue } from "engine-core";
 
 /**
  * The pure half of the DISCOVERY cron: given one

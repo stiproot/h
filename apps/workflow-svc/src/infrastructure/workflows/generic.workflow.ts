@@ -1,6 +1,6 @@
 import type { Task, WorkflowContext } from "@dapr/dapr";
 
-import type { WorkflowRequest } from "../../domain/models/workflow.model.ts";
+import type { WorkflowRequest } from "engine-core";
 import { getActivity } from "../activity-registry.ts";
 import { resolveRefs, resolveTokenString } from "workflow-core";
 
