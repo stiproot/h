@@ -86,14 +86,11 @@ function recordingInvoker(statuses: Record<string, WorkflowStatus> = {}): {
 
 // A wf store whose target row reports `resolved` (the goal handshake) — or none.
 const wfStore = (resolved?: boolean): WfStoreService => ({
-  getRow: (id) =>
+  getRun: () =>
     resolved === undefined
       ? Effect.succeed(Option.none())
       : Effect.succeed(
           Option.some({
-            repo: id.repo,
-            slug: id.slug,
-            workflow: id.workflow,
             status: "done",
             resolved,
             instanceId: "x",

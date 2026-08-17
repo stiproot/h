@@ -6,7 +6,7 @@ import {
   WfRow,
   WfStore,
   WorkflowStore,
-  wfKey,
+  wfRunKey,
 } from "engine-core";
 import { Effect, Layer, Option } from "effect";
 
@@ -29,14 +29,21 @@ import { BUCKETS, NatsKv } from "./nats-kv.ts";
  *    A usage-limited agent on a laptop is arguably more common than on a fleet.
  */
 
-/** `wf:` rows: exact-key reads, no index, one writer per key — plain last-write-wins is correct. */
+/**
+ * `wf:` rows — one per RUN since the 2026-08-17 re-key, keyed `wf:run:<instanceId>`.
+ *
+ * There is no index and no read-modify-write, and now no last-write-wins either: a re-run writes
+ * its OWN row rather than overwriting a predecessor's. That is what makes this registry usable as
+ * the local substrate's status source, where the artifact-keyed version could not be — several runs
+ * of one workflow on one slug shared a row.
+ */
 export const NatsWfStoreLive: Layer.Layer<WfStore, never, NatsKv> = Layer.effect(
   WfStore,
   Effect.gen(function* () {
     const kv = yield* NatsKv;
     return {
-      getRow: (id) => kv.get(BUCKETS.wf, wfKey(id), WfRow),
-      saveRow: (row) => kv.put(BUCKETS.wf, wfKey(row), row),
+      getRun: (instanceId) => kv.get(BUCKETS.wf, wfRunKey(instanceId), WfRow),
+      saveRow: (row) => kv.put(BUCKETS.wf, wfRunKey(row.instanceId), row),
     };
   }),
 );

@@ -229,10 +229,14 @@ const processRow = (
   Effect.gen(function* () {
     const invoker = yield* WorkflowInvoker;
     const wfStore = yield* WfStore;
-    // Goal handshake: read the target wf: row's `resolved` flag.
-    const targetRow = yield* wfStore
-      .getRow({ repo: row.repo, slug: row.slug, workflow: row.workflow })
-      .pipe(Effect.catchAll(() => Effect.succeed(Option.none())));
+    // Goal handshake: read the LAST FIRED RUN's row and take its `resolved` flag. Since the
+    // 2026-08-17 re-key the row is per-run (`wf:run:<instanceId>`), so this asks about the run this
+    // cron actually fired rather than about an artifact row several runs shared and overwrote.
+    const targetRow = row.currentInstanceId
+      ? yield* wfStore
+          .getRun(row.currentInstanceId)
+          .pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
+      : Option.none();
     const resolved = Option.isSome(targetRow) && targetRow.value.resolved === true;
     // In-flight guard: the last fired instance's live status (UNKNOWN on transport failure — the engine
     // treats that as still-live, never double-firing).

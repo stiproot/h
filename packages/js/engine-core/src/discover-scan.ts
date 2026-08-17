@@ -10,6 +10,7 @@ import {
   type DiscoverTemplate,
   discoverId,
   discoverTrigger,
+  issueInstanceId,
   issueSlug,
 } from "./internal.ts";
 import { toRequest } from "./internal.ts";
@@ -209,9 +210,14 @@ const executeDiscover = (
     const wfStore = yield* WfStore;
     const issues = yield* sr.listOpenIssues({ repo: row.repo, label: row.label });
     for (const issue of issues) {
-      const slug = issueSlug(issue.number);
+      // Dedup by the run's OWN key. This read looks like it needs an artifact key — "have I ever
+      // dispatched work for issue #123?" is asked with no instance id in hand — and it does not:
+      // `issueInstanceId` is a pure function of the issue number, and it is the very id
+      // `discoverTrigger` fires with. The asker's forgetting which run it was is irrelevant, because
+      // the id is derived rather than remembered. That is the observation the 2026-08-17 re-key
+      // turned on.
       const existing = yield* wfStore
-        .getRow({ repo: row.repo, slug, workflow: row.trigger.key })
+        .getRun(issueInstanceId(issue.number))
         .pipe(Effect.catchAll(() => Effect.succeed(Option.none())));
       if (Option.isSome(existing)) continue; // dedup — already dispatched (running or done)
       return yield* fireDiscovered(scanned, issue.number, nowMs, traceparent, report);

@@ -77,17 +77,16 @@ function recordingInvoker(statuses: Record<string, WorkflowStatus> = {}): {
   };
 }
 
-// A wf store where `dispatched` slugs already have a row (dedup should skip them).
+// A wf store where `dispatched` INSTANCE IDS already have a row (dedup should skip them). Since
+// the re-key the dedup key is `issueInstanceId(n)` = `feature-issue-<n>`, derived from the issue —
+// which is what let the artifact key go.
 const wfStoreWith = (dispatched: Set<string> = new Set()): WfStoreService => ({
-  getRow: (id) =>
+  getRun: (instanceId) =>
     Effect.succeed(
-      dispatched.has(id.slug)
+      dispatched.has(instanceId)
         ? Option.some({
-            repo: id.repo,
-            slug: id.slug,
-            workflow: id.workflow,
             status: "running",
-            instanceId: "x",
+            instanceId,
             updatedAt: "t",
           } as WfRow)
         : Option.none(),
@@ -238,11 +237,17 @@ describe("scanDiscoverEffect", () => {
     const cs = memoryCronStore();
     cs.discoverRows.set("stiproot/h:agent-approved", activeRow());
     const inv = recordingInvoker();
-    // issue-10 already dispatched → dedup skips it, fires issue-20.
+    // issue-10 already dispatched → dedup skips it, fires issue-20. Seeded by the DERIVED
+    // instance id (`issueInstanceId(10)`), which is the dedup key since the 2026-08-17 re-key.
     const report = await Effect.runPromise(
       scanDiscoverEffect(undefined).pipe(
         Effect.provide(
-          env(cs.service, inv.service, sourceReader(issues), wfStoreWith(new Set(["issue-10"]))),
+          env(
+            cs.service,
+            inv.service,
+            sourceReader(issues),
+            wfStoreWith(new Set(["feature-issue-10"])),
+          ),
         ),
       ),
     );
@@ -297,7 +302,7 @@ describe("scanDiscoverEffect", () => {
             cs.service,
             inv.service,
             sourceReader(issues),
-            wfStoreWith(new Set(["issue-10", "issue-20"])),
+            wfStoreWith(new Set(["feature-issue-10", "feature-issue-20"])),
           ),
         ),
       ),

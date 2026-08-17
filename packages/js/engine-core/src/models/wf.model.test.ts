@@ -1,19 +1,18 @@
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { WfRow, wfIdentityFrom, wfKey } from "./wf.model.ts";
+import { WfRow, wfIdentityFrom, wfRunKey } from "./wf.model.ts";
 
-describe("wfKey", () => {
-  it("composes wf:<repo>:<slug>:<workflow> — the workflow is the leaf (its sole writer)", () => {
-    expect(wfKey({ repo: "stiproot/h", slug: "pi-agent", workflow: "revise-pr" })).toBe(
-      "wf:stiproot/h:pi-agent:revise-pr",
-    );
+describe("wfRunKey", () => {
+  it("keys a row by the RUN, so a re-run never overwrites its predecessor", () => {
+    expect(wfRunKey("feature-x")).toBe("wf:run:feature-x");
+    expect(wfRunKey("feature-x-260817-030000")).toBe("wf:run:feature-x-260817-030000");
   });
 
-  it("keeps repo + slug as segments so targets never collide across repos", () => {
-    expect(wfKey({ repo: "acme/api", slug: "dark-mode", workflow: "implement-pr" })).toBe(
-      "wf:acme/api:dark-mode:implement-pr",
-    );
+  // The flaw the 2026-08-17 re-key removed: two members of one STAGE sharing a kind derived the
+  // same artifact key and silently clobbered each other. Distinct instance ids cannot collide.
+  it("gives two same-kind members of one stage distinct keys", () => {
+    expect(wfRunKey("chain-x-w0")).not.toBe(wfRunKey("chain-x-w1"));
   });
 });
 

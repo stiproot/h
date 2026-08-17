@@ -15,7 +15,7 @@ import {
   stageOf,
   validateChain,
 } from "./internal.ts";
-import { CRON_DISARM_TOPIC } from "./internal.ts";
+import { CRON_DISARM_TOPIC, CronStore, cronId } from "./internal.ts";
 import { wfIdentityFrom } from "./internal.ts";
 import { toRequest, type WorkflowRequest } from "./internal.ts";
 import { ChainStore } from "./internal.ts";
@@ -49,6 +49,7 @@ export type ChainScanEnv =
   | WorkflowStore
   | WatchStore
   | WfStore
+  | CronStore
   | EventPublisher;
 
 export type ChainScanReport = {
@@ -314,7 +315,7 @@ export const scanChainsEffect = (
 const observeMember = (
   row: ChainRow,
   index: number,
-): Effect.Effect<MemberRead, WorkflowError, WorkflowInvoker | WfStore> =>
+): Effect.Effect<MemberRead, WorkflowError, WorkflowInvoker | WfStore | CronStore> =>
   Effect.gen(function* () {
     const instanceId = instanceIdAt(row.chainId, row.members, index);
     const member = row.members[index];
@@ -326,9 +327,21 @@ const observeMember = (
     // fail the chain — that is why it is a cron, it retries on its own clock.
     if (member?.cron) {
       const wfStore = yield* WfStore;
+      const cronStore = yield* CronStore;
+      // Two hops since the 2026-08-17 re-key, and the first one is the honest part: the chain did
+      // not fire these runs (the member self-armed its recurrence), so it has no instance id of its
+      // own. It ARMED the cron, though, so it can derive that cron's id and read whose run to look
+      // at. The alternative — an artifact-keyed wf: row aggregating every fire — is what the re-key
+      // removed, because two same-kind members in one stage silently clobbered it.
       const identity = wfIdentityFrom({ repo: row.data.repo, slug: row.slug }, member.kind);
-      const wfRow = identity
-        ? yield* wfStore.getRow(identity).pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
+      const cronRow = identity
+        ? yield* cronStore
+            .getRow(cronId(identity))
+            .pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
+        : Option.none();
+      const fired = Option.isSome(cronRow) ? cronRow.value.currentInstanceId : undefined;
+      const wfRow = fired
+        ? yield* wfStore.getRun(fired).pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
         : Option.none();
       const resolved = Option.isSome(wfRow) && wfRow.value.resolved === true;
       return {

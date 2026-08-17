@@ -5,10 +5,11 @@ import { describe, expect, it } from "vitest";
 import { disarmChain, registerChainForFire, scanChainsEffect } from "./chain-scan.ts";
 import type { ChainConfig, ChainHeartbeat, ChainLedger, ChainRow } from "./internal.ts";
 import { emptyChainLedger } from "./internal.ts";
+import type { CronRow, CronStoreService } from "./internal.ts";
+import { CronStore, emptyCronLedger } from "./internal.ts";
 import type { WatchRow } from "./internal.ts";
 import { emptyLedger } from "./internal.ts";
-import type { WfIdentity, WfRow } from "./internal.ts";
-import { wfKey } from "./internal.ts";
+import type { WfRow } from "./internal.ts";
 import type { StoredWorkflow, WorkflowRequest, WorkflowStatus } from "./internal.ts";
 import { ChainStore, type ChainStoreService } from "./internal.ts";
 import { WatchStore, type WatchStoreService } from "./internal.ts";
@@ -130,14 +131,43 @@ function recordingPublisher(): {
   };
 }
 
-// The wf: registry the chain reads for a cron member's completion predicate (wf:<...>.resolved) and
-// its resolved-run output. Seeded per test by wfKey.
+// The wf: registry the chain reads for a cron member's completion predicate (`resolved`) and its
+// resolved-run output. Keyed by INSTANCE id since the 2026-08-17 re-key, so tests seed it by the
+// instance the cron row points at rather than by an artifact tuple.
 function memoryWfStore(rows: Record<string, WfRow> = {}): WfStoreService {
   const map = new Map<string, WfRow>(Object.entries(rows));
   return {
-    getRow: (id: WfIdentity) => Effect.succeed(Option.fromNullable(map.get(wfKey(id)))),
-    saveRow: (row) => Effect.sync(() => void map.set(wfKey(row), row)),
+    getRun: (instanceId: string) => Effect.succeed(Option.fromNullable(map.get(instanceId))),
+    saveRow: (row) => Effect.sync(() => void map.set(row.instanceId, row)),
   };
+}
+
+/**
+ * The cron registry the chain now hops through for a cron member: it never fired those runs, so it
+ * reads the cron row it armed to learn which instance to look at. Only `getRow` is exercised.
+ */
+function memoryCronStore(rows: Record<string, CronRow> = {}): CronStoreService {
+  const map = new Map<string, CronRow>(Object.entries(rows));
+  const none = () => Effect.succeed(Option.none());
+  return {
+    getRow: (id: string) => Effect.succeed(Option.fromNullable(map.get(id))),
+    listRows: () => Effect.succeed([...map.values()]),
+    saveRow: () => Effect.void,
+    deleteRow: () => Effect.void,
+    getDiscoverRow: none,
+    listDiscoverRows: () => Effect.succeed([]),
+    saveDiscoverRow: () => Effect.void,
+    deleteDiscoverRow: () => Effect.void,
+    getSchedRow: none,
+    listSchedRows: () => Effect.succeed([]),
+    saveSchedRow: () => Effect.void,
+    deleteSchedRow: () => Effect.void,
+    getConfig: none,
+    getHeartbeat: none,
+    heartbeat: () => Effect.void,
+    getLedger: () => Effect.succeed(emptyCronLedger),
+    bumpLedger: () => Effect.void,
+  } as CronStoreService;
 }
 
 // Minimal watch registry: member fires route through invokeWithWatch (the fire choke point),
@@ -168,6 +198,7 @@ function env(
   publisher: EventPublisherService = capturingPublisher().service,
   wfRegistry: WfStoreService = memoryWfStore(),
   watchRegistry: WatchStoreService = memoryWatchRegistry().service,
+  cronRegistry: CronStoreService = memoryCronStore(),
 ) {
   return Layer.mergeAll(
     Layer.succeed(ChainStore, cs),
@@ -176,6 +207,7 @@ function env(
     Layer.succeed(WfStore, wfRegistry),
     Layer.succeed(EventPublisher, publisher),
     Layer.succeed(WatchStore, watchRegistry),
+    Layer.succeed(CronStore, cronRegistry),
   );
 }
 
@@ -534,22 +566,46 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
     inputs: { slug: "slug", spec: "gather.metrics" },
   } as const;
   const data = { slug: "x", repo: "o/r", spec: "seed" };
-  const WF_KEY = "wf:o/r:x:implement-pr";
+  // Since the 2026-08-17 re-key the chain reads a cron member in TWO hops: it never fired those
+  // runs, so it reads the cron row it armed for `currentInstanceId`, then that run's own wf: row.
+  // The fixtures mirror that — a cron row pointing at the run, and the run keyed by its instance id.
+  const CRON_ID = "o/r:x:implement-pr";
+  const FIRED_INSTANCE = "x-w0";
   const resolvedWfRow = {
     repo: "o/r",
     slug: "x",
     workflow: "implement-pr",
     status: "done" as const,
     resolved: true,
-    instanceId: "x-w0",
+    instanceId: FIRED_INSTANCE,
     output: JSON.stringify({ s: { structured: { latest: "42ms" } } }),
     updatedAt: new Date().toISOString(),
   };
+  const firedCronRow = {
+    repo: "o/r",
+    slug: "x",
+    workflow: "implement-pr",
+    cadence: "*/30 * * * *",
+    status: "active" as const,
+    source: { mode: "saved" as const, key: "implement-pr" },
+    budget: { maxFires: 5 },
+    fires: 1,
+    epoch: 1,
+    instanceId: FIRED_INSTANCE,
+    currentInstanceId: FIRED_INSTANCE,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as unknown as CronRow;
 
   async function register(wfRows: Record<string, WfRow> = {}) {
     const mem = memoryChainStore();
     const inv = recordingInvoker();
     const wfReg = memoryWfStore(wfRows);
+    // The cron row exists only once the member has fired and armed it; seeding it whenever a wf row
+    // is seeded keeps the two halves of the hop consistent.
+    const cronReg = memoryCronStore(
+      Object.keys(wfRows).length > 0 ? { [CRON_ID]: firedCronRow } : {},
+    );
     await Effect.runPromise(
       registerChainForFire(
         { slug: "x", members: [cronMember, reportMember], data },
@@ -557,11 +613,19 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
       ).pipe(
         Effect.tap(() => scanChainsEffect(undefined)),
         Effect.provide(
-          env(mem.service, inv.service, stubWorkflowStore(), capturingPublisher().service, wfReg),
+          env(
+            mem.service,
+            inv.service,
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            wfReg,
+            memoryWatchRegistry().service,
+            cronReg,
+          ),
         ),
       ),
     );
-    return { mem, inv, wfReg };
+    return { mem, inv, wfReg, cronReg };
   }
 
   it("fires the cron member ONCE with armCron + wf identity + embedded steps (self-arm via §10)", async () => {
@@ -597,12 +661,20 @@ describe("scanChainsEffect: cron member (D2/D4 — chain observes, never re-fire
   });
 
   it("advances once wf:resolved, capturing off the RESOLVED run's wf.output (namespaced)", async () => {
-    const { mem, inv, wfReg } = await register({ [WF_KEY]: resolvedWfRow });
+    const { mem, inv, wfReg, cronReg } = await register({ [FIRED_INSTANCE]: resolvedWfRow });
     inv.invokes.length = 0;
     await Effect.runPromise(
       scanChainsEffect(undefined).pipe(
         Effect.provide(
-          env(mem.service, inv.service, stubWorkflowStore(), capturingPublisher().service, wfReg),
+          env(
+            mem.service,
+            inv.service,
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            wfReg,
+            memoryWatchRegistry().service,
+            cronReg,
+          ),
         ),
       ),
     );

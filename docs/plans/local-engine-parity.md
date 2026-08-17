@@ -246,8 +246,8 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | --- | --- | --- | --- |
 | 0 | `engine-core` — the extraction | **Complete** | parity guard owns engine symbols ✓ |
 | 1 | KV registries (saved store, `exec:`) | **Complete** | `check-kv-keys.mjs` ✓ · `check-refusal-classification.mjs` ✓ |
-| R | **`wf:` re-key to `wf:run:<instanceId>` + parent stamps** — shared, lands on BOTH substrates | **Next** | no-overwrite is structural |
-| 2 | Cron + schedule | Blocked on R | flag/capability agreement |
+| R | **`wf:` re-key to `wf:run:<instanceId>` + parent stamps** — shared, lands on BOTH substrates | **Complete** | parity guard owns `wfRunKey`/`WfParentage` ✓ |
+| 2 | Cron + schedule | **Next** | flag/capability agreement |
 | 3 | Chain as a durable registration | Not started *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
@@ -662,6 +662,38 @@ Verified end to end against a real nats-server: `h agents deny codex --local` �
 --local` shows DENIED → `h agents allow codex --local` clears it; `workflows.save` → `h workflow
 list --local` → `h workflow get demo --local`; and with the fabric stopped, `local registry:
 CONNECTION_REFUSED / Is the local fabric up? (h events up)`.
+
+### R log — done, and what it cost
+
+The re-key landed on both substrates in one change set, as designed. Green on `make lint`,
+`make test` (JS 32/32) and `make test-py` (477).
+
+What moved:
+
+- `WfRow` is keyed by `instanceId`; `wfKey(identity)` → `wfRunKey(instanceId)`; the port's
+  `getRow(WfIdentity)` → `getRun(instanceId)`. Subject (repo/slug/workflow) and the new
+  `WfParentageFields` (chainId/memberIndex, cronId/fireSeq, schedId, discoverId/issueNumber) ride as
+  optional FIELDS. `WfParentageFields` + `WfParentage` + the derived type follow the
+  `TriggerFields`/`Trigger` pattern already in `workflow.model.ts`.
+- The three readers, exactly as the diagrams predicted: cron reads `getRun(row.currentInstanceId)`
+  (collapsing its separate goal-handshake read into the same row it already needed); discover reads
+  `getRun(issueInstanceId(n))`; the chain takes the two-hop path through the cron row it armed —
+  which required adding `CronStore` to `ChainScanEnv`, the one new coupling this created.
+- Both store adapters (Dapr/Redis and JetStream KV) and `write-wf-row`, which now also stamps the
+  parent.
+
+Worth recording: **the tests that failed were the ones whose semantics genuinely changed** — the
+discover dedup fixture (seeded by slug, now by derived instance id) and the chain's cron-member
+fixture (seeded by artifact key, now needing both a cron row and a run row). Everything else
+compiled through, which is the shape you want from a re-key: the churn concentrated where the
+meaning moved.
+
+A new test asserts the property the whole change exists for — two runs of one workflow on one slug
+BOTH persist, where the artifact key silently kept only the second.
+
+Still open, deliberately: `wfIdentityFrom` remains opt-in on repo+slug, so a run with no subject
+writes no row. That was forced before (no repo ⇒ no key); now it is only tidiness, and increment 3
+is the first caller for which it costs something. The trigger is recorded on the function itself.
 
 ## Open questions
 

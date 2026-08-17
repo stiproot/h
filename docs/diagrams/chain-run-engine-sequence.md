@@ -51,7 +51,7 @@ sequenceDiagram
         end
       else status = "running" — observe stage
         CS->>+Inv: observeMember × each member of current stage
-        Note over Inv: cron member reads wf:<repo>:<slug>:<kind>.resolved (not runtime status)
+        Note over Inv: cron member hops cron:sub -> wf:run:<instanceId>.resolved (not runtime status)
         Inv-->>-CS: MemberRead[] {runtimeStatus done failed output}
         CS->>+Eng: decide(row observations nowMs)
         Eng-->>-CS: ChainDecision
@@ -116,7 +116,8 @@ sequenceDiagram
   `startedAt` is re-stamped at activation so the wall-clock budget counts work time, not wait time.
 - **Cron member observation path** (step 20 note): a cron member self-armed its own recurrence via
   the §10 `arm-*` pattern — the chain never fired it and never reads its flaky runtime instance
-  status. It reads `wf:<repo>:<slug>:<kind>.resolved` instead; `done` ↔ goal met on that row.
+  status. Since the 2026-08-17 re-key it takes two hops — the cron row it ARMED gives
+  `currentInstanceId`, then `wf:run:<instanceId>.resolved`; `done` ↔ goal met on that run's row.
   Transient run failures never fail the chain — the member retries on its own clock.
 - **Declarative captures / D5 namespace** (step 28): `captureCompleted` writes each completed
   member's structured output into the chain data. A member with an `id` writes under `data[id]` so

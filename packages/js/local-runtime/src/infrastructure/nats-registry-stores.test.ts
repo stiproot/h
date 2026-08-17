@@ -107,34 +107,68 @@ const run = <A>(
   );
 
 describeKv("NatsWfStoreLive", () => {
-  it("round-trips a row whose repo carries a slash — the shape that broke the Dapr sibling", async () => {
-    const identity = { repo: "acme/api", slug: "dark-mode", workflow: "implement-pr" };
+  it("round-trips a run row, subject and parent stamp intact", async () => {
     const row = {
-      ...identity,
+      instanceId: "feature-issue-42",
       status: "running" as const,
-      instanceId: "dark-mode",
-      updatedAt: "2026-08-16T00:00:00.000Z",
+      repo: "acme/api",
+      slug: "issue-42",
+      workflow: "implement-pr",
+      discoverId: "acme/api:bug",
+      issueNumber: 42,
+      updatedAt: "2026-08-17T00:00:00.000Z",
     };
 
     const found = await run(
       Effect.gen(function* () {
         const wf = yield* WfStore;
         yield* wf.saveRow(row);
-        return yield* wf.getRow(identity);
+        return yield* wf.getRun("feature-issue-42");
       }),
     );
 
-    // The whole point: a slashed repo saved AND read back. The Dapr version of this bug saved
-    // fine and returned nothing, so asserting the read is what makes the test meaningful.
     expect(Option.isSome(found)).toBe(true);
-    expect(Option.getOrThrow(found)).toMatchObject(identity);
+    // The stamp is the point: a run can be traced back to the discovery that caused it without
+    // an index, which is what makes the parent-id fields worth carrying.
+    expect(Option.getOrThrow(found)).toMatchObject({
+      repo: "acme/api",
+      discoverId: "acme/api:bug",
+      issueNumber: 42,
+    });
   });
 
-  it("reads a missing row as none rather than failing", async () => {
+  it("keeps BOTH runs of one workflow on one slug — the re-key's whole point", async () => {
+    // Under the artifact key these two shared `wf:acme/api:dark-mode:implement-pr` and the second
+    // silently clobbered the first. Two members of one stage sharing a kind hit exactly this.
+    const base = {
+      status: "done" as const,
+      repo: "acme/api",
+      slug: "dark-mode",
+      workflow: "implement-pr",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    };
+
+    const both = await run(
+      Effect.gen(function* () {
+        const wf = yield* WfStore;
+        yield* wf.saveRow({ ...base, instanceId: "chain-x-w0", output: "first" });
+        yield* wf.saveRow({ ...base, instanceId: "chain-x-w1", output: "second" });
+        return {
+          first: yield* wf.getRun("chain-x-w0"),
+          second: yield* wf.getRun("chain-x-w1"),
+        };
+      }),
+    );
+
+    expect(Option.getOrThrow(both.first).output).toBe("first");
+    expect(Option.getOrThrow(both.second).output).toBe("second");
+  });
+
+  it("reads a missing run as none rather than failing", async () => {
     const found = await run(
       Effect.gen(function* () {
         const wf = yield* WfStore;
-        return yield* wf.getRow({ repo: "o/r", slug: "never-written", workflow: "implement-pr" });
+        return yield* wf.getRun("never-written");
       }),
     );
     expect(Option.isNone(found)).toBe(true);

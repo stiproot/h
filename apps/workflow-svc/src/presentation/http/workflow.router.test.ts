@@ -100,7 +100,7 @@ const stubCronStore: CronStoreService = {
   bumpLedger: () => Effect.void,
 };
 const stubWfStore: WfStoreService = {
-  getRow: () => Effect.succeed(Option.none()),
+  getRun: () => Effect.succeed(Option.none()),
   saveRow: () => Effect.void,
 };
 
