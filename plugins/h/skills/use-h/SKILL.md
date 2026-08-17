@@ -59,11 +59,16 @@ parallel answers with no synthesis on `h delegate`.
 
 ## What `--local` refuses, and why
 
-Local execution declines anything that needs an engine, **by name**: `--cron`, `--watch`,
-`--budget` (per-member), `--retry`, `--at`, `--in`, `--fallback-*`, `--fresh`, `--via`.
-Supervision, recurrence and sequencing live in h's service engines precisely so a workflow
-never supervises itself; in-process, the driver is the supervisor. Do not work around a
-refusal — it means the work wants the service substrate. Likewise:
+Most engine flags work locally now: `--cron`/`--max-fires`, `--at`/`--in`, `--watch`/`--budget`
+and discovery fan-out all run against a local engine host. Start it with `h events up`, and add
+`--with-relay` on an unattended machine — a cron fires by publishing, so a queue nobody drains is
+a recurrence that never actually runs.
+
+Still refused **by name**, each for a real reason: `--retry` and `--fallback-*` on a foreground run
+(both RE-FIRE, and nothing outlives a shell), `--via` (routing through an agent service) and
+`--fresh` (purging a durable Dapr instance). `--budget` on a foreground run is enforced by the
+driver between steps — it declines to start more work past the deadline but cannot kill a running
+agent. Do not work around a refusal; each one names what it needs. Likewise:
 
 - **`setup` steps are skipped** unless `--with-setup` — they would provision the *operator's
   own* `~/.claude`, not a container's.

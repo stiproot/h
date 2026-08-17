@@ -70,8 +70,8 @@ credentials `h delegate` would need (e.g. `CODEX_AUTH_MODE=chatgpt` for codex).
 
 - Each agent run writes the standard **run ledger**, so `h runs` and the obs surfaces pick local
   runs up beside service ones. The per-run cost table `h delegate` prints is not decoration:
-  there is no watcher on this substrate, so **that table and `h runs` are the only cost
-  accounting**. A cost of `—` means the agent reported none (e.g. codex on a ChatGPT plan), never
+  nothing supervises a foreground run — the watcher tallies cost for runs the RELAY executes, not
+  for one in your shell — so **that table and `h runs` are the only cost accounting here**. A cost of `—` means the agent reported none (e.g. codex on a ChatGPT plan), never
   that the run was free.
 - A `--local` CHAIN additionally journals each completed stage (the fabric's `h-journal`
   stream; auto-ensured, `--no-journal` opts out), so a run that dies or fails mid-chain resumes
@@ -84,11 +84,28 @@ credentials `h delegate` would need (e.g. `CODEX_AUTH_MODE=chatgpt` for codex).
 
 ## What is refused, and why
 
-Local execution declines anything that needs an engine, and says which one: `--cron`, `--watch`,
-`--budget`, `--retry`, `--at`, `--in`, `--fallback-*`, `--fresh`, `--via`, and (on chains)
-`--after` plus cron members. Do not work around a refusal — it means the work wants the service
-substrate. Likewise the executor refuses `register-cron`, `write-wf-row`, `register-discover` and
-`run-itest` by name rather than skipping them: a silently-skipped gate is worse than a stopped run.
+Most engine flags WORK here now (2026-08-17): `--cron`/`--max-fires`, `--at`/`--in`,
+`--watch`/`--budget`, and discovery fan-out all run against a local engine host over JetStream.
+Bring it up with `h events up` — and `h events up --with-relay` if nothing will be watching the
+terminal, because a cron fires by publishing and a queue nobody drains is a recurrence that
+silently never runs.
+
+What is still refused, and each names something real rather than a gap waiting to be filled:
+
+- `--retry`, `--fallback-*` on a FOREGROUND run — both RE-FIRE, which needs something that outlives
+  the run, and nothing outlives a shell. (They work on relay-executed fires.)
+- `--via` and `--fresh` — routing through an agent service's babysitter, and purging a durable Dapr
+  instance. Neither exists here.
+- `run-itest` (an ephemeral k8s namespace), `gc-worktrees` (an agent SERVICE's workspace — use
+  `h worktrees sweep`), and the service-only agents (no agent-cli strategy drives them).
+- `write-wf-row` / `register-cron` AS STEPS — both happen here, but as engine BRACKETS around a run
+  on either substrate, so a template naming one is a composition error.
+- Chains: `--after` activation gates, and `h chain list --local` — local chains are driver-sequenced
+  and journaled rather than engine-hosted.
+
+`--budget` on a foreground run is enforced by the DRIVER between steps: it declines to start more
+work past the deadline but cannot kill a running agent, which the per-step timeout bounds. Do not
+work around a refusal — each one names what it needs.
 
 Rules worth knowing before you are surprised by them:
 
@@ -149,8 +166,9 @@ live 2026-08-10: a feature was re-implemented from scratch while its PR had been
 
 ## Long write work: checkpoint-first, driver-as-fallback
 
-On this substrate there is no watcher, no retry engine, no scheduled continuation — **the driver
-is the fallback engine**. A long delegate can die mid-run on a subscription/usage limit (the
+For a FOREGROUND run nothing supervises you: the watcher, the retry engine and scheduled
+continuations act on runs the relay executes, and a `h delegate` in your shell is reachable by
+none of them — **so the driver is its own fallback engine**. A long delegate can die mid-run on a subscription/usage limit (the
 report says `[usage-limited]` with the CLI's reset time — h#111/#112 made that legible), and a
 restarted run that begins from zero wastes everything the dead one did. Two conventions contain
 this:

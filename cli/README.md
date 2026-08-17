@@ -115,10 +115,10 @@ uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); value
                                           #   threading mappings --capture BB=FIELD / --input PARAM=BB / --until PATH=VALUE
                                           #   (validated against the workflow's declared outputs schema at registration)
 uv run h chain list                       # the durable chain registry + scan heartbeat
-uv run h watch list|get|delete            # the watcher registry
-uv run h cron list                        # the cron registry — recur crons + discovery/fan-out crons, with the scan heartbeat
+uv run h watch list [--local]|get|delete  # the watcher registry (--local reads the JetStream KV rows)
+uv run h cron list [--local]              # the cron registry — recur crons + discovery/fan-out crons, with the scan heartbeat
 uv run h cron rm <repo> <slug> <workflow>  # disarm a recur cron: set inactive+disabled, keep row for audit (idempotent; calls POST /cron/disarm — single-writer)
-uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
+uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v] [--local]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
 uv run h status [--json]                  # one-screen driver check-in: active chains, engine heartbeats (stale >5m flagged), verdict OK / ATTENTION
 uv run h worktrees list [--json] [--repo PATH]  # both substrates' leftovers: prune + list, status graded dirty (tracked edits) / scratch (untracked only) / unpushed
 uv run h worktrees rm BRANCH [--force] [--prune-untracked]    # remove one worktree + its branch; REFUSES while dirty or unpushed unless forced
@@ -152,7 +152,7 @@ uv run h runs watch GROUP [--json]        # replay a run's journal, then follow 
 
 # ---- the local substrate's EVENT FABRIC (POC): NATS JetStream + the relay ----
 # One nats-server -js child (operator-installed binary; JetStream store beside the run ledger).
-uv run h events up|down|status            # manage the fabric; status shows stream depths + relay consumers
+uv run h events up [--with-relay]|down|status  # the local substrate's three processes: nats-server, the ENGINE HOST (ticks the engines), and optionally a supervised relay. status reports all three plus stream depths
 uv run h events publish --max-steps N -p task=@t.md [--template answer] [--agent claude]  # seed a loop (budget MANDATORY)
 uv run h events serve                     # the relay: compose-on-fire -> local executor -> forward the agent's publish hand-off
 uv run h events tail 'h.result.>'         # watch loop terminals live (plain subscription, consumes nothing)

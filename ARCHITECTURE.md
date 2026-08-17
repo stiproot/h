@@ -85,10 +85,11 @@ The same authored-slot/target pattern appears at two levels:
   `decide`, and the per-tick scans — live in `packages/js/engine-core`, imported by every host, so
   a host chooses adapters and a clock, never semantics.
 - **Substrate** — what EXECUTES a composed definition: the **service** substrate (Dapr engine +
-  containerised fleet, durable and supervised) or the **local** substrate (the `h` CLI's own
-  process driving agent CLIs as children, no infrastructure). Orthogonal to *deployment mode*
-  (host / container / k8s), which is how the SERVICE substrate is hosted — local execution needs
-  none of them. See Execution substrates below.
+  containerised fleet) or the **local** substrate (the `h` CLI's own process driving agent CLIs as
+  children, plus a resident engine host over JetStream). BOTH are durable and supervised as of
+  2026-08-17 — the difference is what supplies the engines' adapters, not whether the engines run.
+  Orthogonal to *deployment mode* (host / container / k8s), which is how the SERVICE substrate is
+  hosted — local execution needs none of them. See Execution substrates below.
 - **Workspace** — an agent service's provisioned directory (`workspaceId ?? instanceId`).
   **Worktree** — a git worktree inside the shared repository checkout.
 - **Cron siblings** — recur, discovery/fan-out, and one-shot
