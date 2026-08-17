@@ -62,9 +62,12 @@ const AppLive = Layer.mergeAll(
   NatsJournalLive,
   // The executor-policy registry. Connects on FIRST READ, so a job that reads no registry never
   // opens a socket — see NatsKvLive.
-  Layer.mergeAll(NatsExecPolicyStoreLive, NatsWorkflowStoreLive, NatsWfStoreLive).pipe(
-    Layer.provide(NatsKvLive(FABRIC_URL)),
-  ),
+  Layer.mergeAll(
+    NatsExecPolicyStoreLive,
+    NatsWorkflowStoreLive,
+    NatsWfStoreLive,
+    NatsCronStoreLive,
+  ).pipe(Layer.provide(NatsKvLive(FABRIC_URL))),
 );
 
 /** Everything the engine host needs: the registries it decides over, and the fire path it acts through. */

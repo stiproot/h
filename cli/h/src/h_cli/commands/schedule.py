@@ -16,7 +16,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from h_cli.infrastructure import workflow_svc
+from h_cli.infrastructure import local_runtime, workflow_svc
 
 app = typer.Typer(no_args_is_help=True, help="One-shot scheduled fires (workflow-svc cron:sched).")
 console = Console()
@@ -71,12 +71,24 @@ def _print_heartbeat(heartbeat: dict[str, Any] | None) -> None:
         console.print(f"heartbeat: {_format_age(age)} ago ({state})")
 
 
+LOCAL_OPT = typer.Option(
+    False,
+    "--local",
+    help="Read the LOCAL substrate's cron:sched rows (JetStream KV) instead of workflow-svc.",
+)
+
+
 @app.command("list")
-def list_() -> None:
+def list_(local: bool = LOCAL_OPT) -> None:
     """List one-shot scheduled fires (cron:sched:* rows) with the scan heartbeat."""
-    data = _guarded(workflow_svc.cron_list)
-    _print_heartbeat(data.get("heartbeat"))
-    sched = data.get("sched") or []
+    if local:
+        # No heartbeat line: the local engine host's liveness is `h events status`, which reports
+        # the PROCESS rather than a row it last stamped. One truth, in the place that owns it.
+        sched = local_runtime.registry("scheds.list") or []
+    else:
+        data = _guarded(workflow_svc.cron_list)
+        _print_heartbeat(data.get("heartbeat"))
+        sched = data.get("sched") or []
     table = Table(
         "id",
         "status",
@@ -103,12 +115,17 @@ def list_() -> None:
 @app.command("rm")
 def rm(
     sched_id: str = typer.Argument(..., help="The scheduled-fire row id (from `h schedule list`)."),
+    local: bool = LOCAL_OPT,
 ) -> None:
     """Disarm a one-shot scheduled fire before it fires: set disarmed, keep the row for audit.
 
-    Calls workflow-svc's POST /cron/sched/disarm — only workflow-svc writes cron:* rows
-    (single-writer). Idempotent: an already-terminal schedule is a success, not an error."""
-    result = _guarded(lambda: workflow_svc.sched_disarm(sched_id))
+    On the service substrate this calls POST /cron/sched/disarm, because only workflow-svc writes
+    cron:* rows; with --local it goes through the runner, which owns the local registry's key
+    encoding. Idempotent either way: an already-terminal schedule is a success, not an error."""
+    if local:
+        result = local_runtime.registry("sched.disarm", key=sched_id)
+    else:
+        result = _guarded(lambda: workflow_svc.sched_disarm(sched_id))
     console.print(
         f"[green]disarmed[/green] cron:sched:{sched_id} → "
         f"{result['status']} / {result.get('outcome', '')}"

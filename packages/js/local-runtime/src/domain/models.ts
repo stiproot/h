@@ -348,6 +348,27 @@ export const RegistryJob = Schema.Union(
     workflow: Schema.Unknown,
   }),
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("exec.get") }),
+  // The recur + one-shot registries, read-side. `h cron list --local` / `h schedule list --local`.
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("crons.list") }),
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("scheds.list") }),
+  // Arming a ONE-SHOT is an edge action on both substrates (workflow-svc's run route does it), so
+  // the CLI arms it here too — through engine-core's own registration seam rather than by writing
+  // a row, so the local and service paths cannot diverge on what "armed" means.
+  Schema.Struct({
+    kind: Schema.Literal("registry"),
+    op: Schema.Literal("sched.arm"),
+    id: Schema.String,
+    /** Exactly one: an absolute ISO instant, or a relative duration ("45s", "2h", "1d"). */
+    at: Schema.optional(Schema.String),
+    in: Schema.optional(Schema.String),
+    trigger: Schema.Unknown,
+    wf: Schema.optional(Schema.Unknown),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("registry"),
+    op: Schema.Literal("sched.disarm"),
+    key: Schema.String,
+  }),
   Schema.Struct({
     kind: Schema.Literal("registry"),
     op: Schema.Literal("exec.save"),

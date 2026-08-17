@@ -17,13 +17,21 @@ def _output(result) -> str:
     return result.stdout + (result.stderr or "")
 
 
-def test_cron_list_local_refuses_and_names_the_engine() -> None:
+def test_cron_list_local_ANSWERS_now_that_the_engine_exists(monkeypatch) -> None:
+    """`h cron list --local` moved from refusing to answering when the cron engine landed.
+
+    The refusal it replaced named the engine it was waiting for. That naming is what makes this
+    transition checkable at all — a `pending` refusal whose machinery has arrived is a capability
+    nobody knows they have.
+    """
+    from h_cli.commands import cron as cron_cmd
+
+    monkeypatch.setattr(cron_cmd.local_runtime, "registry", lambda op, **_: [])
     result = runner.invoke(app, ["cron", "list", "--local"])
-    assert result.exit_code == 1
-    out = _output(result)
-    assert "cron engine" in out
-    # It must say what to do instead, not just decline.
-    assert "Drop --local" in out
+    assert result.exit_code == 0, _output(result)
+    # The DISCOVERY half is still service-only, and says so rather than showing an empty table —
+    # "none registered" and "not here yet" are different facts.
+    assert "service-substrate only" in _output(result)
 
 
 def test_chain_and_watch_list_local_refuse_too() -> None:

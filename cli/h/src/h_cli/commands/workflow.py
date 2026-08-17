@@ -577,8 +577,6 @@ def run(
                 "--fallback-model": fallback_model,
                 "--fallback-after": fallback_after,
                 "--fallback-max": fallback_max,
-                "--at": at,
-                "--in": in_,
                 "--fresh": fresh or None,
             }
         )
@@ -730,6 +728,9 @@ def run(
                 raise typer.Exit(1) from err
             console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
         merged = {**(definition.get("params") or {}), **params}
+        if scheduled:
+            _arm_local_schedule(template_name, definition, merged, instance_id, at, in_)
+            return
         _run_local(
             template_name,
             definition,
@@ -989,3 +990,65 @@ def resume(
     result = _guarded(lambda: workflow_svc.resume(sched_id))
     console.print_json(data=result)
     console.print(f"    resuming {sched_id} — fires within a tick; watch with h schedule list")
+
+
+def _fabric_preflight() -> None:
+    """Ensure the fabric answers before arming — the registry lives on it.
+
+    The sibling of `journal_preflight`, and the same posture: h manages the PROCESS (an idempotent
+    `h events up` spawn) but never the binary, which stays operator-provisioned and refused loud
+    by name.
+    """
+    from h_cli.infrastructure import events_fabric
+
+    try:
+        events_fabric.ensure_journal_ready()
+    except events_fabric.FabricError as err:
+        raise LocalRunError(str(err)) from err
+
+
+def _relay_attached() -> bool:
+    """Whether anything will DRAIN a fire. Arming into a queue nobody reads is a silent no-op."""
+    from h_cli.infrastructure import events_fabric
+
+    return bool(events_fabric.child_status("relay").get("running"))
+
+
+def _arm_local_schedule(
+    template_name: str,
+    definition: dict[str, Any],
+    params: dict[str, Any],
+    instance_id: str | None,
+    at: str | None,
+    in_: str | None,
+) -> None:
+    """Arm a one-shot `cron:sched` row on the local substrate instead of running now.
+
+    Arming a scheduled fire is an EDGE action on both substrates — workflow-svc's run route does it
+    too, unlike a recur cron, which the run arms for itself (§10). So the CLI arms it here, through
+    engine-core's own `registerSchedForFire` seam rather than by writing a row: that seam owns
+    idempotence and the row's shape, and `resolveFireAt` owns what "in 2h" means. Date math is
+    exactly the kind of thing two implementations quietly disagree about.
+
+    The trigger embeds STEPS rather than a saved key. The local substrate composes on the fly, so
+    the rendered definition IS the artifact — the same reason `--local` refuses `--inline` upstream.
+    """
+    sched_id = instance_id or group_id(template_name.split(" ")[0])
+    try:
+        _fabric_preflight()
+        armed = local_runtime.registry(
+            "sched.arm",
+            id=sched_id,
+            **({"at": at} if at else {"in": in_}),
+            trigger={"steps": definition["steps"], "params": params, "instanceId": sched_id},
+        )
+    except LocalRunError as err:
+        err_console.print(f"[red]schedule:[/red] {escape(str(err))}")
+        raise typer.Exit(1) from err
+    console.print(f"armed {armed.get('schedId')} — fires once, then deactivates")
+    console.print("    inspect: h schedule list --local    cancel: h schedule rm <id> --local")
+    if not _relay_attached():
+        console.print(
+            "    [yellow]no relay attached[/yellow] — the fire will QUEUE until one drains it "
+            "(`h events up --with-relay`)"
+        )

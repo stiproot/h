@@ -16,11 +16,14 @@ from rich.markup import escape
 err_console = Console(stderr=True)
 
 # registry name -> what has to exist before `--local` can answer for it.
+# An entry LEAVES this map the moment its registry lands — `cron` and `schedule` did on
+# 2026-08-17. A refusal that outlives its engine is worse than the original gap: it is a
+# capability nobody knows they have, hidden behind a message that says it does not exist.
+# `scripts/check-refusal-classification.mjs` cross-checks this map against the runner's registry
+# ops so a stale entry fails the build rather than waiting to be noticed.
 PENDING: dict[str, str] = {
-    "cron": "the cron engine and its cron: KV registry",
     "chain": "the chain engine and its chain: KV registry",
     "watch": "the watcher engine and its watch: KV registry",
-    "schedule": "the schedule engine and its cron:sched KV registry",
 }
 
 

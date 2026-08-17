@@ -88,6 +88,47 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// 3. The CLI's pending-registry map must not outlive the registries it names
+// ---------------------------------------------------------------------------
+//
+// The classification lives in two languages: the runner's REFUSED map (activities) and the CLI's
+// PENDING map (`--local` registry reads). Only the first was checked, so `cron` and `schedule` sat
+// in PENDING for a while after their engine landed — a refusal that outlives its engine is worse
+// than the original gap, because it is a capability nobody knows they have, hidden behind a
+// message saying it does not exist.
+//
+// The cross-check: a registry the runner can SERVE (`<name>s.list` is a registry op) must not
+// still be listed as pending.
+
+const PENDING_MAP = "cli/h/src/h_cli/commands/_local_registry.py";
+const REGISTRY_OPS = "packages/js/local-runtime/src/domain/models.ts";
+
+const pendingPath = resolve(root, PENDING_MAP);
+const opsPath = resolve(root, REGISTRY_OPS);
+
+if (existsSync(pendingPath) && existsSync(opsPath)) {
+  const pendingSrc = readFileSync(pendingPath, "utf8");
+  const opsSrc = readFileSync(opsPath, "utf8");
+  const block = pendingSrc.slice(pendingSrc.indexOf("PENDING: dict[str, str] = {"));
+  const pending = [...block.matchAll(/^\s*"([\w-]+)":/gm)].map((m) => m[1]);
+  const stale = pending.filter((name) => opsSrc.includes(`Literal("${name}s.list")`));
+
+  if (stale.length > 0) {
+    console.error("✗ check-refusal-classification: a refusal outlived its registry.\n");
+    for (const name of stale) {
+      console.error(
+        `  '${name}' is still listed as pending in ${PENDING_MAP}, but the runner serves ` +
+          `'${name}s.list' — the registry exists. Remove the entry and let \`--local\` answer.`,
+      );
+    }
+    console.error(
+      "\n  A refusal that outlives its engine is a capability nobody knows they have.\n",
+    );
+    process.exit(1);
+  }
+}
+
 console.log(
-  `✓ check-refusal-classification: ${seen.length} refusals each declare pending or permanent`,
+  `✓ check-refusal-classification: ${seen.length} refusals classified; no refusal outlives its registry`,
 );

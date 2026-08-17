@@ -133,8 +133,6 @@ def test_local_expands_an_agent_roster_into_a_panel(captured_job) -> None:
         ["--watch"],
         ["--budget", "10m"],
         ["--retry", "2"],
-        ["--at", "2026-08-07T09:00:00Z"],
-        ["--in", "30m"],
         ["--fallback-agent", "codex"],
         ["--fresh"],
         ["--via", "claude-agent"],
@@ -148,6 +146,57 @@ def test_local_refuses_flags_that_need_an_engine(flag, captured_job) -> None:
     assert flag[0] in output
     assert "engines" in output
     assert captured_job == [], "nothing may run when a flag was refused"
+
+
+def test_local_at_and_in_ARM_a_schedule_rather_than_being_refused(
+    monkeypatch, captured_job
+) -> None:
+    """--at/--in moved from refused to available when the local schedule engine landed.
+
+    They used to sit in the list above. The move is the point of the plan's refusal
+    re-classification: a `pending` refusal names the machinery it waits for, and when that
+    machinery arrives the refusal has to go — a flag still refused after its engine exists is a
+    capability nobody knows they have.
+    """
+    from h_cli.commands import workflow as workflow_cmd
+
+    armed: list[dict] = []
+    monkeypatch.setattr(workflow_cmd, "_fabric_preflight", lambda: None)
+    monkeypatch.setattr(workflow_cmd, "_relay_attached", lambda: True)
+    monkeypatch.setattr(
+        workflow_cmd.local_runtime,
+        "registry",
+        lambda op, **fields: (armed.append({"op": op, **fields}), {"schedId": fields.get("id")})[1],
+    )
+
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--in", "30m"]
+    )
+
+    assert result.exit_code == 0, _all_output(result)
+    assert armed and armed[0]["op"] == "sched.arm"
+    # The duration rides through UNRESOLVED: `resolveFireAt` in engine-core owns what "in 30m"
+    # means, so both substrates answer with the same instant.
+    assert armed[0]["in"] == "30m"
+    # A scheduled fire ARMS; it must not also run now.
+    assert captured_job == []
+
+
+def test_local_schedule_warns_when_no_relay_will_drain_it(monkeypatch, captured_job) -> None:
+    from h_cli.commands import workflow as workflow_cmd
+
+    monkeypatch.setattr(workflow_cmd, "_fabric_preflight", lambda: None)
+    monkeypatch.setattr(workflow_cmd, "_relay_attached", lambda: False)
+    monkeypatch.setattr(
+        workflow_cmd.local_runtime, "registry", lambda op, **fields: {"schedId": fields.get("id")}
+    )
+
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--in", "30m"]
+    )
+    # Arming into a queue nobody drains is a silent no-op — the one failure mode a scheduled fire
+    # has that an immediate run does not.
+    assert "no relay attached" in _all_output(result)
 
 
 def test_with_setup_without_local_is_refused(captured_job) -> None:

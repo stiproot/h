@@ -15,8 +15,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from h_cli.commands._local_registry import refuse_pending_registry
-from h_cli.infrastructure import workflow_svc
+from h_cli.infrastructure import local_runtime, workflow_svc
 from h_cli.params import parse_params
 
 # `--local` is ACCEPTED and then refused by name, rather than being absent: a flag that
@@ -89,10 +88,15 @@ def _print_heartbeat(heartbeat: dict[str, Any] | None) -> None:
 def list_(local: bool = LOCAL_LIST_OPT) -> None:
     """List cron rows — recur registrations AND discovery/fan-out crons — with the scan
     heartbeat."""
-    refuse_pending_registry("cron", local)
-    data = _guarded(workflow_svc.cron_list)
-    _print_heartbeat(data.get("heartbeat"))
-    crons = data.get("crons") or []
+    if local:
+        # The recur rows only. Discovery rows are a service-substrate primitive still (increment 5),
+        # and showing an empty section for them would read as "none registered" rather than "not
+        # here yet" — the distinction `refuse_pending_registry` exists to keep.
+        crons = local_runtime.registry("crons.list") or []
+    else:
+        data = _guarded(workflow_svc.cron_list)
+        _print_heartbeat(data.get("heartbeat"))
+        crons = data.get("crons") or []
     table = Table(
         "cron",
         "status",
@@ -116,6 +120,15 @@ def list_(local: bool = LOCAL_LIST_OPT) -> None:
             row.get("note") or "",
         )
     console.print(table)
+
+    if local:
+        # The DISCOVERY half has no local counterpart yet (increment 5). Saying so beats printing
+        # an empty table, which would read as "none registered" rather than "not here yet" — the
+        # same distinction every other `--local` refusal keeps.
+        console.print(
+            "[dim]discovery crons are service-substrate only — drop --local to list them[/dim]"
+        )
+        return
 
     discover = data.get("discover") or []
     dtable = Table(

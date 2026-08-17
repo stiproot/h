@@ -1,4 +1,14 @@
-import { ExecPolicy, ExecPolicyStore, StoredWorkflow, WorkflowStore } from "engine-core";
+import {
+  CronStore,
+  disarmSched,
+  ExecPolicy,
+  ExecPolicyStore,
+  registerSchedForFire,
+  resolveFireAt,
+  type SchedRegistration,
+  StoredWorkflow,
+  WorkflowStore,
+} from "engine-core";
 import { Effect, Option, Schema } from "effect";
 
 import type { RegistryEnvelope, RegistryJob } from "./models.ts";
@@ -17,7 +27,7 @@ import type { RegistryEnvelope, RegistryJob } from "./models.ts";
  */
 export const runRegistry = (
   job: RegistryJob,
-): Effect.Effect<RegistryEnvelope, never, WorkflowStore | ExecPolicyStore> =>
+): Effect.Effect<RegistryEnvelope, never, WorkflowStore | ExecPolicyStore | CronStore> =>
   Effect.gen(function* () {
     const result = yield* serve(job);
     return { ok: true, op: job.op, result } satisfies RegistryEnvelope;
@@ -31,7 +41,9 @@ export const runRegistry = (
     ),
   );
 
-const serve = (job: RegistryJob): Effect.Effect<unknown, Error, WorkflowStore | ExecPolicyStore> =>
+const serve = (
+  job: RegistryJob,
+): Effect.Effect<unknown, Error, WorkflowStore | ExecPolicyStore | CronStore> =>
   Effect.gen(function* () {
     switch (job.op) {
       case "workflows.list": {
@@ -52,6 +64,44 @@ const serve = (job: RegistryJob): Effect.Effect<unknown, Error, WorkflowStore | 
         })(job.workflow);
         yield* store.save(job.key, workflow);
         return { saved: job.key };
+      }
+      case "crons.list": {
+        const store = yield* CronStore;
+        return yield* store.listRows();
+      }
+      case "scheds.list": {
+        const store = yield* CronStore;
+        return yield* store.listSchedRows();
+      }
+      case "sched.arm": {
+        // engine-core's own seam, not a hand-written row: it owns idempotence (an already-armed id
+        // is left untouched) and the row's shape. `resolveFireAt` is here for the same reason —
+        // "in 2h" must mean the same instant on both substrates, and date math is exactly the kind
+        // of thing two implementations quietly disagree about.
+        const fireAt = yield* Effect.try({
+          try: () =>
+            resolveFireAt(
+              { ...(job.at ? { at: job.at } : {}), ...(job.in ? { in: job.in } : {}) },
+              Date.now(),
+            ),
+          catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+        });
+        return yield* registerSchedForFire({
+          id: job.id,
+          fireAt,
+          trigger: job.trigger as SchedRegistration["trigger"],
+          ...(job.wf ? { wf: job.wf as SchedRegistration["wf"] } : {}),
+          origin: "at",
+        });
+      }
+      case "sched.disarm": {
+        return yield* disarmSched(job.key).pipe(
+          Effect.mapError((error) =>
+            typeof error === "object" && error !== null && "_tag" in error
+              ? new Error(`no armed schedule '${job.key}'`)
+              : (error as Error),
+          ),
+        );
       }
       case "exec.get": {
         const store = yield* ExecPolicyStore;

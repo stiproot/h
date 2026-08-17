@@ -372,7 +372,8 @@ Sub-steps:
 - [x] 2b — the local `IWorkflowInvoker` (+ the `wf:run` bracket, and the descriptor's `steps` variant)
 - [x] 2c — the engine host: resident mode, KV lease singleton, 60s tick, cron + sched scans
 - [x] 2d — `h events up [--with-relay]` supervises it; `h events status` reports all three
-- [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
+- [x] 2e — `--at`/`--in` arm locally; `h cron|schedule list --local` and `h schedule rm --local`
+      answer. **`--cron` stays refused for now** — see the 2e log
 - [x] 2f — the `wf:` bracket in the local executor. **Done as part of 2b, not after it**: the
       invoker READS what the bracket WRITES, so split apart each half is inert. Landed with
       `goalResolved` lifted from `generic.workflow` into `engine-core` — a shared semantic that had
@@ -783,6 +784,34 @@ Two small decisions worth keeping:
 `runner_path` was extracted from `run_job` so the engine host's launch and every local job resolve
 the SAME runner through one refusal message — a packaged install carries its own and `H_LOCAL_BIN`
 can point anywhere, so two resolutions could disagree silently.
+
+### 2e log — the refusal re-classification paying off
+
+`--at`/`--in` moved from refused to armed, and `h cron list --local` / `h schedule list|rm --local`
+from refusing to answering. Verified live: `h workflow run answer --local --in 2h` → armed row →
+`h schedule list --local` → `h schedule rm --local` → disarmed, row kept for audit.
+
+Three things worth keeping:
+
+- **Arming a one-shot is an EDGE action on both substrates** (workflow-svc's run route does it too),
+  unlike a recur cron, which the run arms for itself via §10. So the CLI arms it — but through
+  `engine-core`'s own `registerSchedForFire` seam rather than by writing a row, and `resolveFireAt`
+  resolves `--in 2h`. Date math is exactly the kind of thing two implementations quietly disagree
+  about, and "in 2h" has to mean the same instant on both.
+- **`--cron` is deliberately still refused.** Arming a recurrence is the RUN's job (§10: a workflow
+  never recurs itself, and the edge does not write cron rows), so it needs `register-cron`
+  un-refused in the local executor plus an `armCron` closing bracket — which is executor work, not
+  CLI work. Its refusal reason already names what it waits for.
+- **THE TESTS CAUGHT THE TRANSITION, which is the point.** Two tests asserted `--at`/`--in` were
+  refused; they failed the moment the engine landed, and became tests that the flags now ARM. A
+  `pending` refusal naming its machinery is what makes that checkable.
+
+And the classification itself had a gap: it lives in TWO languages — the runner's `REFUSED` map and
+the CLI's `PENDING` map — and only the first was guarded. `cron` and `schedule` sat in `PENDING`
+after their engine landed. `check-refusal-classification` now cross-checks the two (a registry the
+runner can SERVE must not still be listed as pending), verified firing. **A refusal that outlives
+its engine is worse than the original gap: it is a capability nobody knows they have, hidden behind
+a message saying it does not exist.**
 
 ## Open questions
 
