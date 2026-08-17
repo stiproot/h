@@ -31,6 +31,8 @@ import { kvId, kvKey } from "./kv-key.ts";
 
 /** One bucket per registry, so single-writer ownership is a bucket-level fact. */
 export const BUCKETS = {
+  /** The engine host's own bucket — currently just its singleton lease. */
+  engines: "h-engines",
   watch: "h-watch",
   chain: "h-chain",
   cron: "h-cron",
@@ -231,3 +233,9 @@ const isWrongLastSequence = (cause: unknown): boolean =>
   typeof cause === "object" &&
   cause !== null &&
   /wrong last sequence|key exists/i.test(String((cause as { message?: unknown }).message ?? cause));
+
+// Helpers built on the NatsKv PORT — `listUnder`, `mergeCounters`, `natsLease` — deliberately live
+// in kv-helpers.ts rather than here. This module is the chokepoint for RAW handle access
+// (`check-kv-keys` rule 2 requires every call in it to encode its key), and a port-level helper
+// takes a bucket where a raw call takes a key. Keeping the two apart lets the guard stay an exact
+// rule instead of one with an exception, which is what it needed when they shared a file.

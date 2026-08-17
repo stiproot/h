@@ -21,7 +21,16 @@ import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
-import { NatsKvLive } from "./infrastructure/nats-kv.ts";
+import { natsLease } from "./infrastructure/kv-helpers.ts";
+import { NatsKv, NatsKvLive } from "./infrastructure/nats-kv.ts";
+import { NatsCronStoreLive } from "./infrastructure/nats-cron-store.ts";
+import { NatsWatchStoreLive } from "./infrastructure/nats-watch-store.ts";
+import {
+  natsFirePublisher,
+  NatsWorkflowInvokerLive,
+} from "./infrastructure/nats-workflow-invoker.ts";
+import { runEngineHost } from "./domain/engines.ts";
+import { hostname } from "node:os";
 import {
   NatsExecPolicyStoreLive,
   NatsWfStoreLive,
@@ -58,6 +67,22 @@ const AppLive = Layer.mergeAll(
   ),
 );
 
+/** Everything the engine host needs: the registries it decides over, and the fire path it acts through. */
+const EngineLive = (url: string) => {
+  const kv = NatsKvLive(url);
+  const stores = Layer.mergeAll(
+    NatsCronStoreLive,
+    NatsWfStoreLive,
+    NatsWorkflowStoreLive,
+    NatsWatchStoreLive,
+  ).pipe(Layer.provideMerge(kv));
+  return Layer.mergeAll(
+    stores,
+    StderrProgressLive,
+    NatsWorkflowInvokerLive(natsFirePublisher(url, "default")).pipe(Layer.provide(stores)),
+  );
+};
+
 const readStdin = (): Promise<string> =>
   new Promise((resolve, reject) => {
     let data = "";
@@ -88,6 +113,36 @@ for (const stream of [process.stdout, process.stderr]) {
 const emit = (envelope: Record<string, unknown>, code: number): void => {
   process.stdout.write(`${JSON.stringify(envelope)}\n`);
   process.exitCode = code;
+};
+
+/**
+ * The RESIDENT mode: `h-local --engines` ticks the engines instead of running one job.
+ *
+ * A flag rather than a job kind, because everything else here is "job on stdin → envelope on
+ * stdout → exit" and this never returns. It is the local counterpart of workflow-svc, and like
+ * workflow-svc it is brought up with the fabric rather than run per piece of work.
+ */
+const runEngines = async (): Promise<void> => {
+  const hostId = `${hostname()}-${process.pid}`;
+  const runtime = ManagedRuntime.make(EngineLive(FABRIC_URL));
+  const fiber = runtime.runFork(
+    Effect.gen(function* () {
+      const kv = yield* NatsKv;
+      return yield* runEngineHost(natsLease(kv, "engine:lease"), { hostId });
+    }),
+  );
+  const stop = (): void => void Effect.runPromise(Fiber.interrupt(fiber));
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
+  const exit = await Effect.runPromise(Fiber.await(fiber));
+  await runtime.dispose();
+  if (Exit.isFailure(exit) && !Exit.isInterrupted(exit)) {
+    // A conflicting lease is the expected refusal, and it must be legible: the operator started a
+    // second host, and the first is still ticking.
+    process.stderr.write(`${Cause.pretty(exit.cause)}\n`);
+    process.exitCode = 1;
+  }
 };
 
 const main = async (): Promise<void> => {
@@ -156,4 +211,5 @@ const main = async (): Promise<void> => {
   emit({ ok: false, error: String(Cause.squash(exit.cause)) }, 1);
 };
 
-void main();
+// The resident mode never reads stdin and never emits an envelope, so it branches before main().
+void (process.argv.includes("--engines") ? runEngines() : main());

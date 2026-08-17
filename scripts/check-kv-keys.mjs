@@ -14,6 +14,11 @@
 //      place the encoding can be forgotten.
 //   2. Inside that module, every KV operation passes its key through `kvKey(...)`.
 //
+// Rule 2 is exact only because the chokepoint holds RAW access alone: helpers built on the NatsKv
+// port take a bucket where a raw call takes a key, so they live in kv-helpers.ts. When they shared
+// a file the guard fired on the port itself, and the fix was to split the module rather than to
+// teach the rule an exception.
+//
 // Stating it this way is what removes the guard's own false-positive class. An earlier version
 // checked "any kv.<op>(" repo-wide and flagged `NatsKv` — h's own port over the raw client, whose
 // first argument is a BUCKET, not a key. A guard that fires on the abstraction built to enforce it

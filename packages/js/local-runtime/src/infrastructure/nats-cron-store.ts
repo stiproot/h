@@ -10,6 +10,7 @@ import {
 } from "engine-core";
 import { Effect, Layer, Option, Schema } from "effect";
 
+import { listUnder, mergeCounters } from "./kv-helpers.ts";
 import { BUCKETS, NatsKv } from "./nats-kv.ts";
 
 /**
@@ -40,23 +41,6 @@ const CONFIG_KEY = "cron:config";
 const TICK_KEY = "cron:__tick__";
 const ledgerKey = (date: string) => `cron:ledger:${date}`;
 
-/** Read every row under a prefix. Decoding is per row so one corrupt row cannot blank a listing. */
-const listUnder = <A, I>(
-  kv: NatsKv["Type"],
-  prefix: string,
-  schema: Schema.Schema<A, I>,
-): Effect.Effect<readonly A[], never> =>
-  kv.ids(BUCKETS.cron, prefix).pipe(
-    Effect.flatMap((ids) =>
-      Effect.forEach(ids, (id) => kv.get(BUCKETS.cron, id, schema), { concurrency: 8 }),
-    ),
-    Effect.map((rows) => rows.flatMap((row) => (Option.isSome(row) ? [row.value] : []))),
-    // A listing that FAILS stops a whole scan tick; a listing that is short by one unreadable row
-    // lets the other rows progress. The engines are already built for a row to be absent (that is
-    // what `unknownStreak` is for), so degrading is strictly safer than aborting here.
-    Effect.orElseSucceed(() => [] as readonly A[]),
-  );
-
 export const NatsCronStoreLive: Layer.Layer<CronStore, never, NatsKv> = Layer.effect(
   CronStore,
   Effect.gen(function* () {
@@ -64,7 +48,7 @@ export const NatsCronStoreLive: Layer.Layer<CronStore, never, NatsKv> = Layer.ef
 
     return {
       getRow: (cronId) => kv.get(BUCKETS.cron, rowKey(cronId), CronRow),
-      listRows: () => listUnder(kv, "cron:sub:", CronRow),
+      listRows: () => listUnder(kv, BUCKETS.cron, "cron:sub:", CronRow),
       // The id is DERIVED from the row's coords, mirroring the Dapr store's `idOf` — the row does
       // not carry its own key, so the two substrates must derive it identically or the same cron
       // lands under two keys.
@@ -73,12 +57,12 @@ export const NatsCronStoreLive: Layer.Layer<CronStore, never, NatsKv> = Layer.ef
       deleteRow: (cronId) => kv.delete(BUCKETS.cron, rowKey(cronId)),
 
       getDiscoverRow: (id) => kv.get(BUCKETS.cron, discoverKey(id), DiscoverRow),
-      listDiscoverRows: () => listUnder(kv, "cron:discover:", DiscoverRow),
+      listDiscoverRows: () => listUnder(kv, BUCKETS.cron, "cron:discover:", DiscoverRow),
       saveDiscoverRow: (row) => kv.put(BUCKETS.cron, discoverKey(`${row.repo}:${row.label}`), row),
       deleteDiscoverRow: (id) => kv.delete(BUCKETS.cron, discoverKey(id)),
 
       getSchedRow: (id) => kv.get(BUCKETS.cron, schedKey(id), SchedRow),
-      listSchedRows: () => listUnder(kv, "cron:sched:", SchedRow),
+      listSchedRows: () => listUnder(kv, BUCKETS.cron, "cron:sched:", SchedRow),
       saveSchedRow: (row) => kv.put(BUCKETS.cron, schedKey(row.id), row),
       deleteSchedRow: (id) => kv.delete(BUCKETS.cron, schedKey(id)),
 
@@ -95,22 +79,13 @@ export const NatsCronStoreLive: Layer.Layer<CronStore, never, NatsKv> = Layer.ef
       bumpLedger: (date, delta) =>
         kv.get(BUCKETS.cron, ledgerKey(date), CronLedger).pipe(
           Effect.map(Option.getOrElse(() => emptyCronLedger)),
-          Effect.flatMap((current) => kv.put(BUCKETS.cron, ledgerKey(date), merge(current, delta))),
+          Effect.flatMap((current) =>
+            kv.put(BUCKETS.cron, ledgerKey(date), mergeCounters(current, delta)),
+          ),
         ),
     };
   }),
 );
-
-/** Numeric fields add; everything else is replaced. The Dapr store's rule, restated over KV. */
-const merge = (current: CronLedger, delta: Partial<CronLedger>): CronLedger => {
-  const next: Record<string, unknown> = { ...current };
-  for (const [field, value] of Object.entries(delta)) {
-    const held = (current as Record<string, unknown>)[field];
-    next[field] =
-      typeof value === "number" && typeof held === "number" ? held + value : (value as unknown);
-  }
-  return next as CronLedger;
-};
 
 // The config and heartbeat rows are plain records on the wire; engine-core exposes them as types
 // rather than schemas, so decoding is structural here.

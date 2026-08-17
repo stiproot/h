@@ -370,7 +370,7 @@ Sub-steps:
 
 - [x] 2a — the `CronStore` KV adapter (recur + discover + sched), tested against a real server
 - [x] 2b — the local `IWorkflowInvoker` (+ the `wf:run` bracket, and the descriptor's `steps` variant)
-- [ ] 2c — the engine host: resident mode, KV lease, tick, cron + sched scans
+- [x] 2c — the engine host: resident mode, KV lease singleton, 60s tick, cron + sched scans
 - [ ] 2d — `h events up [--with-relay]` supervises it; `h events status` reports it
 - [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
 - [x] 2f — the `wf:` bracket in the local executor. **Done as part of 2b, not after it**: the
@@ -724,6 +724,44 @@ run as RUNNING would pin a cron permanently, and `running` is not `UNKNOWN`, so 
 unknown-streak escape would never fire. So a `running` row older than 30 minutes reads as UNKNOWN,
 handing it to exactly that escape. An unparseable timestamp is treated as stale for the same reason:
 fail toward the escape, because a duplicate run is recoverable and a permanently pinned cron is not.
+
+### 2c log — the engine host, and the CAS finally earning its keep
+
+`h-local --engines` is the local counterpart of workflow-svc, and the last genuinely new component
+this plan needs: increments 3–5 re-host engines that already exist. A FLAG rather than a job kind,
+because everything else in that binary is "job on stdin → envelope on stdout → exit" and this never
+returns.
+
+It holds the tick and nothing else. A fire is a descriptor published for the relay — the host does
+not compose and does not execute, mirroring workflow-svc firing at agent services. Collapsing that
+would undo the separation the whole extraction rests on.
+
+**The lease is where `putFenced` finally belongs.** 2a recorded the CAS as deliberately unused,
+because the epoch fence lives in the SHARED scan and fencing one substrate harder would be a
+behaviour difference dressed as an improvement. A lease is the opposite case: local-only machinery
+with no service counterpart, where a lost race MUST be observed rather than papered over — two
+hosts that both believe they won IS the double-firing it prevents. So `claimLease` writes against
+the revision it read, refuses on a lost CAS rather than retrying into the race, and reclaims a
+LAPSED lease (a SIGKILLed host cannot release its own, and requiring a human to clear one would
+make every crash need attention).
+
+Verified live against a real nats-server: host A takes the lease, host B refuses naming the holder.
+The reclaim, renew and lost-CAS paths are unit-tested against a controlled clock rather than by
+waiting out a 150s TTL.
+
+Two things fell out on the way:
+
+- **A `WatchStore` KV adapter landed early**, because `schedule-scan` fires through
+  `invokeWithWatch` — the shared choke point — so a host running the sched scan needs the port
+  whether or not a watcher scans the rows yet. Its `listRunKeys`/`getRunMeta` are deliberately
+  EMPTY: they read `run:` mirrors that exist so workflow-svc can see the ledger over Dapr, and here
+  the ledger is on local disk. Answering "no mirrors" is truthful, and the watcher's cost tally
+  already treats a miss as a cost GAP rather than as zero.
+- **`check-kv-keys` fired on the port again**, this time inside the chokepoint, because
+  `listUnder`/`natsLease` take a bucket where a raw call takes a key. The fix was structural rather
+  than an exception: port-level helpers moved to `kv-helpers.ts` so the chokepoint holds RAW access
+  alone and rule 2 stays exact. Second time this guard has been stated at the wrong level, and both
+  times the signal was the same — it fired on the abstraction built to satisfy it.
 
 ## Open questions
 
