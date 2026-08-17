@@ -53,7 +53,6 @@ const isBuiltin = (name: string): name is BuiltinActivity =>
 type Refusal = { readonly why: RefusalClass; readonly reason: string };
 
 const REFUSED: Readonly<Record<string, Refusal>> = {
-  // PENDING — waiting on machinery this substrate is growing.
   // The two ENGINE BRACKETS. Both are now implemented on this substrate — the executor writes its
   // own `wf:run` row and arms its own recurrence — yet both stay refused AS STEPS, and permanently,
   // for a reason unlike every other entry here: they are not steps on EITHER substrate. The Dapr
@@ -75,10 +74,6 @@ const REFUSED: Readonly<Record<string, Refusal>> = {
       "a recurrence is armed by the engine BRACKET (§10 — a workflow never recurs itself), never " +
       "by a step. Pass --cron and the run arms its own",
   },
-  // NOTE: `register-cron` is no longer here. The local executor arms a recurrence in its own
-  // closing bracket (`armCron`), the same §10 shape the Dapr engine uses — so there is no activity
-  // to refuse. It never was a chart activity on either substrate.
-
   // PERMANENT — needs a cluster, a service, or a workspace that is not this substrate's.
   "gc-worktrees": {
     why: "permanent",
