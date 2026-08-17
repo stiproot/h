@@ -102,12 +102,20 @@ def validate_descriptor(descriptor: Any) -> list[str]:
     problems: list[str] = []
     if descriptor.get("v") != PROTOCOL_VERSION:
         problems.append(f"unsupported protocol version {descriptor.get('v')!r}")
-    if not isinstance(descriptor.get("template"), str) or not descriptor.get("template"):
-        problems.append("missing template")
+    # WHAT to run: a TEMPLATE the relay composes on fire (a seeded loop), or resolved STEPS an
+    # engine already composed. Exactly one — a descriptor carrying both is ambiguous about which
+    # definition ran, which is the sort of thing that only surfaces in a ledger months later.
+    template, steps = descriptor.get("template"), descriptor.get("steps")
+    has_template = isinstance(template, str) and bool(template)
+    has_steps = isinstance(steps, list) and bool(steps)
+    if has_template == has_steps:
+        problems.append("carry exactly one of template (composed on fire) or steps (pre-composed)")
     if not isinstance(descriptor.get("params"), dict):
         problems.append("params must be an object")
+    # A pre-composed descriptor names its executor INSIDE its steps (`run-<agent>` activities), so
+    # a top-level agent would be a second, contradictable answer. Only a template needs one.
     agent = descriptor.get("agent")
-    if not isinstance(agent, str) or agent not in AGENT_IDENTITY:
+    if has_template and (not isinstance(agent, str) or agent not in AGENT_IDENTITY):
         problems.append(f"unknown agent {agent!r} (known: {', '.join(sorted(AGENT_IDENTITY))})")
     for field in ("group", "queue"):
         value = descriptor.get(field)

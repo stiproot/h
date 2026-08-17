@@ -369,7 +369,7 @@ quiet nothing this plan keeps eliminating.
 Sub-steps:
 
 - [x] 2a — the `CronStore` KV adapter (recur + discover + sched), tested against a real server
-- [ ] 2b — the local `IWorkflowInvoker`, backed by `wf:run:` (increment R), + the staleness→UNKNOWN rule
+- [x] 2b — the local `IWorkflowInvoker` (+ the `wf:run` bracket, and the descriptor's `steps` variant)
 - [ ] 2c — the engine host: resident mode, KV lease, tick, cron + sched scans
 - [ ] 2d — `h events up [--with-relay]` supervises it; `h events status` reports it
 - [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
@@ -697,6 +697,33 @@ BOTH persist, where the artifact key silently kept only the second.
 Still open, deliberately: `wfIdentityFrom` remains opt-in on repo+slug, so a run with no subject
 writes no row. That was forced before (no repo ⇒ no key); now it is only tidiness, and increment 3
 is the first caller for which it costs something. The trigger is recorded on the function itself.
+
+### 2b log — the invoker, and the one honest divergence
+
+`IWorkflowInvoker`'s three methods split three ways, and the split is what this substrate IS:
+
+- **invoke** publishes a PRE-COMPOSED descriptor (`steps`, not `template`) to `h.task.>`; the relay
+  executes it. The engine host never runs work, mirroring workflow-svc firing at agent services
+  rather than running agents in-process. Idempotent by instance id via `Nats-Msg-Id`, so a
+  re-decided tick cannot queue the same run twice.
+- **getStatus** reads `wf:run:<instanceId>` — the row the run wrote about itself.
+- **terminate** is REFUSED by name. A run executes inside the RELAY, so nothing here can stop it;
+  that is a genuinely different capability, and only the watcher needs it (increment 4).
+
+**The descriptor gained a second shape.** It carried `template` only — composed on fire, which is
+right for a seeded loop and wrong for an engine, which decides rather than composes. It now carries
+exactly one of `template` or `steps`, refused loud if both or neither: a descriptor ambiguous about
+which definition ran is the sort of thing that only surfaces in a ledger months later. A
+pre-composed descriptor also drops the top-level `agent`, because its steps already name their
+executors (`run-<agent>`) and a second answer could contradict the first.
+
+**The staleness rule is the one genuine divergence, and it earns its comment.** A `wf:` row is
+written BY THE RUN, so a run that is killed leaves `running` behind and cannot correct it. Dapr does
+not have this problem — it observes instances from outside and reports TERMINATED. Reporting a dead
+run as RUNNING would pin a cron permanently, and `running` is not `UNKNOWN`, so the engines'
+unknown-streak escape would never fire. So a `running` row older than 30 minutes reads as UNKNOWN,
+handing it to exactly that escape. An unparseable timestamp is treated as stale for the same reason:
+fail toward the escape, because a duplicate run is recoverable and a permanently pinned cron is not.
 
 ## Open questions
 

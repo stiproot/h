@@ -85,10 +85,17 @@ def relay_step(
     agent finished but before the ack replays the completed run for free, recomputes the same
     hand-off, and the publish dedup makes the re-publish a no-op — redelivery + resume, composed.
     """
-    try:
-        definition = _render(descriptor["template"])
-    except RelayStepError as err:
-        return None, protocol.terminal(descriptor, "failed", error=str(err))
+    # Two ways to get a definition, and the relay composes only the first. A SEEDED loop names a
+    # template and is composed on fire; an ENGINE-fired descriptor arrives pre-composed, because the
+    # engine host deliberately does no composition — it decides and emits descriptors, exactly as
+    # workflow-svc fires at agent services rather than rendering charts.
+    if descriptor.get("steps"):
+        definition = {"steps": descriptor["steps"], "params": {}}
+    else:
+        try:
+            definition = _render(descriptor["template"])
+        except RelayStepError as err:
+            return None, protocol.terminal(descriptor, "failed", error=str(err))
     params = protocol.merged_params(definition.get("params") or {}, descriptor)
     try:
         workspace = group_workspace(repo or repo_root(Path.cwd()), descriptor["group"], in_place)
@@ -103,6 +110,10 @@ def relay_step(
                 "steps": definition["steps"],
                 "params": params,
                 "group": descriptor["group"],
+                # An engine fire carries the identity + parentage the run must report under, so the
+                # engine can read back `wf:run:<instanceId>` for the run it fired.
+                **({"wf": descriptor["wf"]} if descriptor.get("wf") else {}),
+                **({"parent": descriptor["parent"]} if descriptor.get("parent") else {}),
                 "runsDir": str(AGENT_RUNS_DIR),
                 "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
                 "worktreeRoot": str(LOCAL_WORKTREES_DIR),
