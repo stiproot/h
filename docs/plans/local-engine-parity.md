@@ -95,7 +95,7 @@ workflow-svc already has, with NATS where Dapr was.
 
 | Engine needs | Service substrate | Local substrate |
 | --- | --- | --- |
-| Durable rows, single-writer, epoch-fenced | Redis `watch:` `chain:` `cron:` `wf:` `exec:` | **JetStream KV buckets** — CAS on revision is a *stronger* fence than the honour system Redis relies on |
+| Durable rows, single-writer, epoch-fenced | Redis `watch:` `chain:` `cron:` `wf:` `exec:` | **JetStream KV buckets**. KV *offers* a real CAS (`update(key, value, revision)`) where Redis has read-then-write, and `NatsKv.putFenced` exposes it — but it is deliberately UNUSED (found while building 2a): the epoch fence lives in the SHARED scan, so fencing one substrate harder would be a behaviour difference dressed as an improvement. It becomes available the day the shared scan grows a fenced-save port method |
 | A clock | Dapr cron binding → `POST /workflow-cron-tick` | A ticker in the resident engine host |
 | A fire path | Dapr invoke / `workflow-trigger` topic | `h.task.>` — **already built** (the relay's work queue) |
 | Terminating a running instance | Dapr terminate | Cancel a claim the relay owns (see increment 4's boundary) |
@@ -120,6 +120,94 @@ workflow-svc already has, with NATS where Dapr was.
    are counterparts of different service-side things — see [The journal question](#the-journal-question).
 5. **Architecture gets enforced by lint wherever it can be.** Every increment below ships its
    guard in the same change set, per the *Harden by encoding* principle.
+
+## The wf: re-key (operator, 2026-08-17)
+
+`cron-engine.decide` needs the last-fired instance's `runtimeStatus`, which Dapr answers on the
+service substrate and nothing answers locally. Chasing that turned into a design change to a SHARED
+registry, so it is recorded here rather than inside an increment.
+
+### The decision
+
+**`wf:` becomes instance-keyed: `wf:run:<instanceId>`.** Rows are never overwritten, every row is
+stamped with the id of the primitive that caused it, and the three existing readers derive the key
+they need.
+
+```
+wf:run:<instanceId>   { status, resolved?, subject (input), output,
+                        chainId? cronId? schedId? discoverId?, memberIndex? … }
+```
+
+### Why the artifact key turned out not to be load-bearing
+
+The claim that blocked this — that discovery dedup asks "have I ever dispatched for issue #123?"
+with no instance id, so it MUST be artifact-keyed — is wrong, and the code says so:
+
+```ts
+export const issueInstanceId = (issueNumber: number): string => `feature-issue-${issueNumber}`;
+```
+
+The id is a pure function of the issue number, and `discoverTrigger` already fires with it. The
+asker has forgotten which run dispatched the issue, which is true and irrelevant: the id does not
+need remembering, it needs DERIVING.
+
+That generalises, because h already guarantees it. Instance ids are **required-or-derived, never
+Dapr-minted** — `issueInstanceId(n)`, `instanceIdAt(chainId, i)` = `<chainId>-w<i>`, and a cron row
+carrying `currentInstanceId`. The system already pays for deterministic ids and simply was not
+spending them.
+
+The three readers, and what each does after the change:
+
+| reader | asks | after |
+| --- | --- | --- |
+| `cron-scan` goal handshake | "has my target resolved?" | `getRun(row.currentInstanceId)` — and it COLLAPSES two calls into one, since the row carries status + output as well |
+| `chain-scan` cron member | "has this cron's goal resolved?" | hop `cron:sub` (which the chain armed, so it can derive the id) → `getRun(currentInstanceId)` |
+| `discover-scan` dedup | "already dispatched for issue N?" | `getRun(issueInstanceId(n))` |
+
+### What it buys
+
+- **The same-kind collision dies.** Two members in one STAGE sharing a `kind` currently derive the
+  same `wf:` key and overwrite each other. Latent today (the chain reads Dapr, not `wf:`), and it
+  would have become load-bearing the moment `wf:` backed status. Instance keying removes the state
+  rather than guarding against it.
+- **One convention on BOTH substrates.** `wf:` is h's own registry in `engine-core`, not Dapr's, so
+  this lands on the service substrate too. That is the alignment goal served, not traded away.
+- **A path to retiring the unknown-streak escape.** Dapr's status API is what returns `UNKNOWN` and
+  forced that hatch into the engine. If `wf:run:` proves out, the service substrate can read it
+  instead and the hatch becomes vestigial.
+
+### Stamping
+
+Every row is stamped with its parent primitive's id — `chainId`, `cronId`, `schedId`,
+`discoverId`, plus `memberIndex`/`fireSeq` where they apply. Each is available at write time
+without a lookup, because the thing that fires already knows what it is.
+
+`invokeWithWatch` is the single seam this threads through — all seven fire paths funnel through it
+(HTTP run routes ×2, the cron tick, trigger events, chain-scan, discover-scan, schedule-scan), and
+`watchMeta` is already an ad-hoc version of exactly this passthrough. **The load-bearing case is the
+watcher's usage-limit fallback**, which writes into `cron:sched:` — a registry it does not own — so
+a continuation must INHERIT the original run's stamps or a retry silently detaches from its chain.
+
+### Rejected along the way
+
+- **Keep the artifact key, add `wf:run:` beside it** (two families under one prefix, the `cron:`
+  precedent). Coherent, and it was my recommendation until the discover case collapsed. Rejected
+  once the artifact key had no reader that needed it.
+- **A composite key `wf:run:<repo>:<slug>:<workflow>:<instanceId>`**, giving artifact prefix-scans
+  free via the codec's `:` → `.` subject hierarchy. Rejected: no caller needs artifact browsing
+  today, and it costs unbounded key growth per artifact.
+- **An alias/mapping registry** (deterministic friendly key → instance key). Rejected for two
+  reasons: the pointer already exists on the primitive rows (`CronRow`/`ChainRow.currentInstanceId`),
+  and a secondary index reintroduces exactly the drift class that deleting `__workflow_index__`
+  removed. *Revisit when:* artifact-scoped lookups become HOT (a polling `h status`, a viz
+  refreshing across many slugs) — at that point O(runs) per query stops being free.
+
+### Blast radius, stated plainly
+
+This is a change to a shared registry, so it touches the service substrate: three readers, the
+`write-wf-row` activity, and the row model. Live `wf:` rows are keyed the old way and are
+ORPHANED — per the repo's atomic-cutover convention that is a deliberate reset of operational
+state, not a migration. It lands as its own step before the local invoker is built on top.
 
 ## The journal question
 
@@ -158,7 +246,8 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | --- | --- | --- | --- |
 | 0 | `engine-core` — the extraction | **Complete** | parity guard owns engine symbols ✓ |
 | 1 | KV registries (saved store, `exec:`) | **Complete** | `check-kv-keys.mjs` ✓ · `check-refusal-classification.mjs` ✓ |
-| 2 | Cron + schedule | **Next** *(preview owed)* | flag/capability agreement |
+| R | **`wf:` re-key to `wf:run:<instanceId>` + parent stamps** — shared, lands on BOTH substrates | **Next** | no-overwrite is structural |
+| 2 | Cron + schedule | Blocked on R | flag/capability agreement |
 | 3 | Chain as a durable registration | Not started *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
@@ -280,7 +369,7 @@ quiet nothing this plan keeps eliminating.
 Sub-steps:
 
 - [x] 2a — the `CronStore` KV adapter (recur + discover + sched), tested against a real server
-- [ ] 2b — the local `IWorkflowInvoker` + the `instance:` registry the relay writes
+- [ ] 2b — the local `IWorkflowInvoker`, backed by `wf:run:` (increment R), + the staleness→UNKNOWN rule
 - [ ] 2c — the engine host: resident mode, KV lease, tick, cron + sched scans
 - [ ] 2d — `h events up [--with-relay]` supervises it; `h events status` reports it
 - [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
