@@ -3,8 +3,10 @@ import {
   EventPublisher,
   ExecPolicyStore,
   scanCronsEffect,
+  scanDiscoverEffect,
   scanSchedEffect,
   scanWatchesEffect,
+  SourceReader,
   WatchStore,
   WfStore,
   WorkflowInvoker,
@@ -96,6 +98,8 @@ export type TickReport = {
   readonly scheds: number;
   /** Runs the watcher FINALIZED this tick — budget-terminated, retried, or settled. */
   readonly watches: number;
+  /** Issues the discovery cron fanned out this tick (one workflow each, serialized). */
+  readonly discovered: number;
   readonly errors: readonly string[];
 };
 
@@ -120,6 +124,7 @@ export const tick = (
   | WatchStore
   | ExecPolicyStore
   | EventPublisher
+  | SourceReader
   | ProgressPort
 > =>
   Effect.gen(function* () {
@@ -146,6 +151,15 @@ export const tick = (
         }),
       ),
     );
+    const discovered = yield* scanDiscoverEffect(undefined).pipe(
+      Effect.map((report) => report.fired.length),
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          errors.push(`discover: ${error instanceof Error ? error.message : String(error)}`);
+          return 0;
+        }),
+      ),
+    );
     const scheds = yield* scanSchedEffect(undefined).pipe(
       Effect.map((report) => report.fired.length),
       Effect.catchAll((error) =>
@@ -155,7 +169,7 @@ export const tick = (
         }),
       ),
     );
-    return { crons, scheds, watches, errors };
+    return { crons, scheds, watches, discovered, errors };
   });
 
 /**
@@ -176,6 +190,7 @@ export const runEngineHost = (
   | WatchStore
   | ExecPolicyStore
   | EventPublisher
+  | SourceReader
   | ProgressPort
 > =>
   Effect.gen(function* () {
@@ -194,11 +209,12 @@ export const runEngineHost = (
           report.crons > 0 ||
           report.scheds > 0 ||
           report.watches > 0 ||
+          report.discovered > 0 ||
           report.errors.length > 0
         ) {
           yield* progress.emit(
             `tick: ${report.crons} cron fire(s), ${report.scheds} scheduled fire(s), ` +
-              `${report.watches} watch finalize(s)` +
+              `${report.watches} watch finalize(s), ${report.discovered} discovered` +
               (report.errors.length > 0 ? ` — ${report.errors.join("; ")}` : ""),
           );
         }

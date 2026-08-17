@@ -26,12 +26,14 @@ def test_cron_list_local_ANSWERS_now_that_the_engine_exists(monkeypatch) -> None
     """
     from h_cli.commands import cron as cron_cmd
 
-    monkeypatch.setattr(cron_cmd.local_runtime, "registry", lambda op, **_: [])
+    ops: list[str] = []
+    monkeypatch.setattr(cron_cmd.local_runtime, "registry", lambda op, **_: (ops.append(op), [])[1])
     result = runner.invoke(app, ["cron", "list", "--local"])
     assert result.exit_code == 0, _output(result)
-    # The DISCOVERY half is still service-only, and says so rather than showing an empty table —
-    # "none registered" and "not here yet" are different facts.
-    assert "service-substrate only" in _output(result)
+    # BOTH halves answer now: recur rows and the discovery/fan-out rows. The discovery half was
+    # service-only until increment 5 and said so; leaving that message would have been a refusal
+    # outliving its engine.
+    assert ops == ["crons.list", "discovers.list"]
 
 
 def test_chain_list_local_still_refuses() -> None:

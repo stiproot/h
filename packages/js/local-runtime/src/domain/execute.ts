@@ -7,12 +7,14 @@ import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
 import { assertExecutorAllowed } from "./policy.ts";
-import type { ExecPolicyStore, WfStatus } from "engine-core";
+import type { DiscoverArmInput, ExecPolicyStore, WfStatus } from "engine-core";
 import {
   CronStore,
   goalResolved,
   planCron,
   registerCronForFire,
+  discoverRegistrationFrom,
+  registerDiscover,
   WfStore,
   WorkflowStore,
 } from "engine-core";
@@ -156,8 +158,16 @@ export const runWorkflow = (
     // the append's ACK is the completion barrier, so its failure fails the step.
     const journaled = (
       step: StepDefinition,
-      execute: Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore>,
-    ): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore> => {
+      execute: Effect.Effect<
+        unknown,
+        StepError,
+        AgentPort | WorkspacePort | ExecPolicyStore | CronStore
+      >,
+    ): Effect.Effect<
+      unknown,
+      StepError,
+      AgentPort | WorkspacePort | ExecPolicyStore | CronStore
+    > => {
       const id = stepId(step);
       if (done.has(id)) {
         return progress.emit(`↟ ${id}: from journal`).pipe(Effect.map(() => done.get(id)));
@@ -359,7 +369,7 @@ const runStep = (
   job: WorkflowJob,
   progress: { readonly emit: (line: string) => Effect.Effect<void> },
   runs: WorkflowRunRef[],
-): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore> =>
+): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore | CronStore> =>
   Effect.gen(function* () {
     const id = stepId(step);
     // The activity NAME may itself be a token (`{{params.runActivity}}` — fire-time identity).
@@ -399,6 +409,17 @@ const runStep = (
           .pipe(Effect.mapError((err) => new StepError(id, err.message)));
         yield* progress.emit(`⎇ ${id}: ${worktreePath}`);
         return { worktreePath };
+      }
+
+      if (classified.name === "register-discover") {
+        // §10 kept intact: a discovery cron is armed by an ACTIVITY inside a provision workflow,
+        // not by the CLI edge — the same one-step ceremony the service substrate runs, and for the
+        // same reason (the provision run's own row audits the registration).
+        const result = yield* registerDiscover(
+          discoverRegistrationFrom(input as unknown as DiscoverArmInput),
+        ).pipe(Effect.mapError((err) => new StepError(id, err.message)));
+        yield* progress.emit(`⟳ discovery cron armed: ${result.discoverId}`);
+        return result;
       }
 
       // setup: skipped unless asked for. A template's setup installs h skills into ~/.claude,

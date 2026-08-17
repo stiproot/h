@@ -89,9 +89,6 @@ def list_(local: bool = LOCAL_LIST_OPT) -> None:
     """List cron rows — recur registrations AND discovery/fan-out crons — with the scan
     heartbeat."""
     if local:
-        # The recur rows only. Discovery rows are a service-substrate primitive still (increment 5),
-        # and showing an empty section for them would read as "none registered" rather than "not
-        # here yet" — the distinction `refuse_pending_registry` exists to keep.
         crons = local_runtime.registry("crons.list") or []
     else:
         data = _guarded(workflow_svc.cron_list)
@@ -121,16 +118,9 @@ def list_(local: bool = LOCAL_LIST_OPT) -> None:
         )
     console.print(table)
 
-    if local:
-        # The DISCOVERY half has no local counterpart yet (increment 5). Saying so beats printing
-        # an empty table, which would read as "none registered" rather than "not here yet" — the
-        # same distinction every other `--local` refusal keeps.
-        console.print(
-            "[dim]discovery crons are service-substrate only — drop --local to list them[/dim]"
-        )
-        return
-
-    discover = data.get("discover") or []
+    discover = (
+        local_runtime.registry("discovers.list") or [] if local else (data.get("discover") or [])
+    )
     dtable = Table(
         "discover",
         "status",
@@ -195,6 +185,12 @@ def discover_add(
     max_per_day: int | None = typer.Option(
         None, "--max-per-day", help="Daily fan-out cap (backstop; server default 5)."
     ),
+    local: bool = typer.Option(
+        False,
+        "--local",
+        help="Arm on the LOCAL substrate: run the provision workflow here, write the cron:discover "
+        "row to JetStream KV.",
+    ),
     run_budget_mins: int | None = typer.Option(
         None,
         "--run-budget-mins",
@@ -233,6 +229,32 @@ def discover_add(
         if run_retries is not None:
             watch["retry"] = {"maxAttempts": run_retries, "fresh": True}
     fire_params = parse_params(param) or None
+    if local:
+        # The SAME one-step provision workflow, executed here instead of fired at workflow-svc.
+        # §10 intact: the register-discover ACTIVITY writes the row, not this edge — the ceremony
+        # is what gives the registration its own audited run on either substrate.
+        slug = f"discover-{label}"
+        step_input: dict[str, Any] = {
+            "repo": repo,
+            "label": label,
+            "workflow": workflow,
+            "cadence": cadence,
+            **({"maxFiresPerDay": max_per_day} if max_per_day is not None else {}),
+            **({"fireParams": fire_params} if fire_params else {}),
+            **({"watch": watch} if watch else {}),
+        }
+        from h_cli.commands.workflow import run_local_definition
+
+        run_local_definition(
+            template=f"provision-{slug}",
+            definition={"steps": [{"activity": "register-discover", "input": step_input}]},
+            params={},
+            instance_id=f"provision-{slug}",
+            wf={"repo": repo, "slug": slug, "workflow": "provision-discover"},
+        )
+        console.print(f"discovery cron armed: {repo}:{label} → {workflow} ({cadence})")
+        console.print("    inspect: h cron list --local")
+        return
     data = _guarded(
         lambda: workflow_svc.provision_discover(
             repo, label, workflow, cadence, max_per_day, fire_params, watch

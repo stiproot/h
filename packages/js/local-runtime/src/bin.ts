@@ -21,6 +21,7 @@ import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
+import { GitHubSourceReaderLive } from "git-core";
 import { natsLease, NatsEventPublisherLive } from "./infrastructure/kv-helpers.ts";
 import { NatsKv, NatsKvLive } from "./infrastructure/nats-kv.ts";
 import { NatsCronStoreLive } from "./infrastructure/nats-cron-store.ts";
@@ -85,6 +86,8 @@ const EngineLive = (url: string) => {
     stores,
     StderrProgressLive,
     NatsEventPublisherLive(url),
+    // The discovery cron's GitHub read — the SAME adapter workflow-svc uses, from git-core.
+    GitHubSourceReaderLive,
     NatsWorkflowInvokerLive(natsFirePublisher(url, "default")).pipe(Layer.provide(stores)),
   );
 };

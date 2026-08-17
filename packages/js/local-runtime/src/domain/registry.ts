@@ -78,6 +78,10 @@ const serve = (
         const store = yield* CronStore;
         return yield* store.listSchedRows();
       }
+      case "discovers.list": {
+        const store = yield* CronStore;
+        return yield* store.listDiscoverRows();
+      }
       case "watches.list": {
         const store = yield* WatchStore;
         return yield* store.listRows();

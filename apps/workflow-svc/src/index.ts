@@ -15,7 +15,7 @@ import { WfStoreLive } from "./infrastructure/dapr-wf-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
 import { DaprEventPublisherLive } from "./infrastructure/dapr-event-publisher.ts";
 import { WorkflowStoreLive } from "./infrastructure/dapr-workflow-store.ts";
-import { GitHubSourceReaderLive } from "./infrastructure/github-source-reader.ts";
+import { GitHubSourceReaderLive } from "git-core";
 import { genericWorkflow } from "./infrastructure/workflows/generic.workflow.ts";
 import { registerChainRoutes } from "./presentation/http/chain.router.ts";
 import { registerCronRoutes } from "./presentation/http/cron.router.ts";

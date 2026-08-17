@@ -24,6 +24,8 @@
   },
   "dependencies": {
     "@effect/platform": "^0.96.2",
-    "effect": "^3.21.4"
+    "core": "workspace:*",
+    "effect": "^3.21.4",
+    "engine-core": "workspace:*"
   }
 }

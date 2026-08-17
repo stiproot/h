@@ -54,9 +54,11 @@ export {
   type DiscoverRegistration,
   type DiscoverScanEnv,
   type DiscoverScanReport,
+  discoverRegistrationFrom,
   registerDiscover,
   scanDiscoverEffect,
 } from "./discover-scan.ts";
+export type { DiscoverArmInput } from "./discover-scan.ts";
 export {
   advanceSched,
   disarmSched,

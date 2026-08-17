@@ -1,4 +1,5 @@
 import { WorkflowError } from "core";
+import type { WatchPolicy } from "./models/watch.model.ts";
 import { Effect, Option } from "effect";
 
 import { decideDiscover as decide } from "./internal.ts";
@@ -290,3 +291,39 @@ function messageOf(err: unknown): string {
   if (typeof cause === "string") return cause;
   return String(err);
 }
+
+/**
+ * The CLI wire (`h cron discover add`) → a `DiscoverRegistration`.
+ *
+ * Small, and shared for the same reason `planCron` is: both engine hosts arm discovery crons from
+ * the same operator command, and a row whose trigger template differed between them would fan out
+ * differently for identical input. Pure, so it is testable without a store.
+ */
+export type DiscoverArmInput = {
+  readonly repo: string;
+  readonly label: string;
+  /** The saved key fired per discovered issue. */
+  readonly workflow: string;
+  readonly cadence: string;
+  readonly maxFiresPerDay?: number;
+  /** Extra params merged into every fired run (e.g. fire-time identity). */
+  readonly fireParams?: Record<string, unknown>;
+  /** Watch policy attached to every fired run, so a hung one is terminated rather than stalling
+   *  the discovery cron's one-in-flight serialize. */
+  readonly watch?: WatchPolicy;
+};
+
+export const discoverRegistrationFrom = (input: DiscoverArmInput): DiscoverRegistration => ({
+  repo: input.repo,
+  label: input.label,
+  cadence: input.cadence,
+  ...(input.maxFiresPerDay !== undefined
+    ? { gates: { maxFiresPerDay: input.maxFiresPerDay } }
+    : {}),
+  // The row embeds the wire as its fire-descriptor TEMPLATE: workflow → key, fireParams → params.
+  trigger: {
+    key: input.workflow,
+    ...(input.fireParams ? { params: input.fireParams } : {}),
+    ...(input.watch ? { watch: input.watch } : {}),
+  },
+});

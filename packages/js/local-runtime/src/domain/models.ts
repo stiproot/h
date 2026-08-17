@@ -376,6 +376,7 @@ export const RegistryJob = Schema.Union(
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("crons.list") }),
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("scheds.list") }),
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("watches.list") }),
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("discovers.list") }),
   // Arming a ONE-SHOT is an edge action on both substrates (workflow-svc's run route does it), so
   // the CLI arms it here too — through engine-core's own registration seam rather than by writing
   // a row, so the local and service paths cannot diverge on what "armed" means.

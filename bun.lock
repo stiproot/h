@@ -298,7 +298,9 @@
       "version": "0.1.0",
       "dependencies": {
         "@effect/platform": "^0.96.2",
+        "core": "workspace:*",
         "effect": "^3.21.4",
+        "engine-core": "workspace:*",
       },
       "devDependencies": {
         "@effect/platform-node": "^0.107.0",

@@ -39,7 +39,7 @@ export type ActivityKind =
  */
 export type RefusalClass = "pending" | "permanent";
 
-export const BUILTIN_ACTIVITIES = ["setup", "create-worktree"] as const;
+export const BUILTIN_ACTIVITIES = ["setup", "create-worktree", "register-discover"] as const;
 export type BuiltinActivity = (typeof BUILTIN_ACTIVITIES)[number];
 
 const isBuiltin = (name: string): name is BuiltinActivity =>
@@ -78,7 +78,6 @@ const REFUSED: Readonly<Record<string, Refusal>> = {
   // NOTE: `register-cron` is no longer here. The local executor arms a recurrence in its own
   // closing bracket (`armCron`), the same §10 shape the Dapr engine uses — so there is no activity
   // to refuse. It never was a chart activity on either substrate.
-  "register-discover": { why: "pending", reason: "arming a discovery cron needs the cron engine" },
 
   // PERMANENT — needs a cluster, a service, or a workspace that is not this substrate's.
   "gc-worktrees": {

@@ -1,6 +1,6 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 
-import { registerDiscover } from "engine-core";
+import { discoverRegistrationFrom, registerDiscover } from "engine-core";
 import type { WatchPolicy } from "engine-core";
 import { runActivity } from "../activity-runtime.ts";
 
@@ -37,19 +37,20 @@ export async function registerDiscoverActivity(
   const { repo, label, workflow, cadence, maxFiresPerDay, fireParams, watch, traceparent } =
     input as Input;
   return runActivity(
-    registerDiscover({
-      repo,
-      label,
-      cadence,
-      ...(maxFiresPerDay !== undefined ? { gates: { maxFiresPerDay } } : {}),
-      // The activity input is the CLI wire (h cron discover add); the row embeds it as its
-      // fire-descriptor TEMPLATE: workflow → key, fireParams → params.
-      trigger: {
-        key: workflow,
-        ...(fireParams ? { params: fireParams } : {}),
+    registerDiscover(
+      // The wire → registration mapping lives in engine-core: both engine hosts arm from the same
+      // operator command, and a trigger template that differed between them would fan out
+      // differently for identical input.
+      discoverRegistrationFrom({
+        repo,
+        label,
+        workflow,
+        cadence,
+        ...(maxFiresPerDay !== undefined ? { maxFiresPerDay } : {}),
+        ...(fireParams ? { fireParams } : {}),
         ...(watch ? { watch } : {}),
-      },
-    }),
+      }),
+    ),
     traceparent,
   );
 }

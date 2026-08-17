@@ -248,9 +248,9 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | 1 | KV registries (saved store, `exec:`) | **Complete** | `check-kv-keys.mjs` ✓ · `check-refusal-classification.mjs` ✓ |
 | R | **`wf:` re-key to `wf:run:<instanceId>` + parent stamps** — shared, lands on BOTH substrates | **Complete** | parity guard owns `wfRunKey`/`WfParentage` ✓ |
 | 2 | Cron + schedule | **Complete** | refusal-classification cross-check ✓ |
-| 3 | Chain as a durable registration | **Next** *(preview owed)* | — |
+| 3 | Chain as a durable registration | Deferred — local chains already work driver-sequenced; this changes HOW they are hosted, not what they can do *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | **Complete** | — |
-| 5 | Discover — fan-out | **Next** | — |
+| 5 | Discover — fan-out | **Complete** | — |
 | — | Refusal re-classification | **Done** (1c) | `check-refusal-classification.mjs` ✓ |
 | H | Hardening found in flight — lint parity + the dapr-mcp boundary | **Complete** | `check-lint-parity.mjs` |
 | — | `engine host` in the glossary | **Done** (0c) | vocabulary guard |
@@ -872,6 +872,29 @@ A local `EventPublisher` landed too, on `h.event.<topic>` — a third namespace 
 (work) and `h.result.>` (a loop's terminals), so a subscriber wanting one need not filter the
 others. Core NATS deliberately: nothing consumes these yet, and a durable stream nobody reads
 accumulates forever. A consumer that needs replay is the moment to give it a stream.
+
+### Increment 5 log — nearly free, as predicted
+
+Discovery landed with almost no new machinery: `scanDiscoverEffect` joined the tick, and
+`h cron discover add --local` runs the SAME one-step provision workflow the service substrate fires.
+Verified live — the provision run armed `stiproot/h:agent-approved`, and `h cron list --local` shows
+both row families.
+
+Two things moved to shared homes on the way, and both are the plan's thesis repeating:
+
+- **`GitHubSourceReaderLive` moved to `git-core`.** Both engine hosts read the same GitHub issues
+  through the same port. It could not go in `engine-core` — that package is guarded pure and may not
+  touch an I/O package — and git-core already owns the GitHub client, so the adapter belongs beside
+  it. The dependency points inward (git-core → engine-core's port), which is what ports are for.
+- **`discoverRegistrationFrom` was lifted**, the fourth pure decision found in an app after
+  `goalResolved`, `planCron` and the engines. Small, but both hosts arm from the same operator
+  command, and a trigger template that differed between them would fan out differently for identical
+  input.
+
+**§10 held without special-casing.** `register-discover` became a real BUILTIN in the local
+executor rather than something the CLI does directly, so the activity still writes the row and the
+provision run still audits it. That is why `h cron discover add --local` executes a workflow at all
+rather than just writing a row: the ceremony IS the audit, on either substrate.
 
 ## Open questions
 

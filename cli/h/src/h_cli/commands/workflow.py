@@ -887,6 +887,7 @@ def _run_local(
     no_journal: bool = False,
     budget_ms: int | None = None,
     arm_cron: dict[str, Any] | None = None,
+    wf: dict[str, str] | None = None,
 ) -> None:
     """Execute a rendered definition on the local substrate and report what its steps produced.
 
@@ -917,7 +918,9 @@ def _run_local(
         # A cron-armed run must be readable by the engine that will re-fire it, so it writes a
         # wf:run row under the identity the cron is keyed by.
         **(
-            {"wf": {"repo": params["repo"], "slug": params["slug"], "workflow": template}}
+            {"wf": wf}
+            if wf
+            else {"wf": {"repo": params["repo"], "slug": params["slug"], "workflow": template}}
             if arm_cron
             else {}
         ),
@@ -1027,6 +1030,23 @@ def resume(
     result = _guarded(lambda: workflow_svc.resume(sched_id))
     console.print_json(data=result)
     console.print(f"    resuming {sched_id} — fires within a tick; watch with h schedule list")
+
+
+def run_local_definition(
+    *,
+    template: str,
+    definition: dict[str, Any],
+    params: dict[str, Any],
+    instance_id: str | None = None,
+    wf: dict[str, str] | None = None,
+) -> None:
+    """Execute a definition locally — the seam other commands compose a provision run through.
+
+    `h cron discover add --local` uses it to run the SAME one-step provision workflow the service
+    substrate fires, keeping §10 intact: the register-discover ACTIVITY writes the row, not the CLI
+    edge. The ceremony is what gives a registration its own audited run on either substrate.
+    """
+    _run_local(template, definition, params, instance_id, with_setup=False, wf=wf)
 
 
 def _fabric_preflight() -> None:
