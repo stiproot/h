@@ -80,8 +80,10 @@ LOCAL_READ = typer.Option(
 @app.command("list")
 def list_(local: bool = LOCAL_READ) -> None:
     """List saved workflow keys."""
-    keys = _local_guarded(lambda: local_runtime.registry("workflows.list")) if local else _guarded(
-        workflow_svc.list_keys
+    keys = (
+        _local_guarded(lambda: local_runtime.registry("workflows.list"))
+        if local
+        else _guarded(workflow_svc.list_keys)
     )
     table = Table("key", title=f"saved workflows ({len(keys)})")
     for key in sorted(keys):

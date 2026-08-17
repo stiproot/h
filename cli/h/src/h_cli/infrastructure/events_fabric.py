@@ -475,3 +475,90 @@ async def stream_report() -> list[dict[str, Any]]:
 
 def store_paths() -> dict[str, Path]:
     return {"store": EVENTS_STORE_DIR, "pid": _PID_FILE, "log": _LOG_FILE}
+
+
+# --- h-managed children beside the server -------------------------------------------------------
+#
+# Two more processes can live under `h events up`, and the split between them is decision 1 of the
+# local-engine-parity plan: nats-server and the ENGINE HOST are infrastructure and come up together,
+# while the RELAY is work — the thing you watch — so it stays foreground by default and becomes a
+# supervised child only on `--with-relay`.
+#
+# The engine host is additionally a SINGLETON: two of them ticking the same rows double-fire every
+# cron. That is enforced in the fabric by a KV lease rather than here by a pidfile, because a
+# pidfile only knows about processes this CLI started — a host launched from another shell, or from
+# another checkout, is exactly the case that matters.
+
+_CHILD_PIDS = {"engines": "engines.pid", "relay": "relay.pid"}
+_CHILD_LOGS = {"engines": "engines.log", "relay": "relay.log"}
+
+
+def _child_pid(name: str) -> int | None:
+    """The live pid for an h-managed child, or None. A stale pidfile reads as not-running."""
+    try:
+        pid = int((EVENTS_STORE_DIR / _CHILD_PIDS[name]).read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return None
+    return pid
+
+
+def child_log(name: str) -> Path:
+    return EVENTS_STORE_DIR / _CHILD_LOGS[name]
+
+
+def start_child(name: str, argv: list[str], env: dict[str, str] | None = None) -> dict[str, Any]:
+    """Spawn a detached, h-managed child. Idempotent: an already-live one is left alone.
+
+    Deliberately NOT a restart-on-exit supervisor. The engine host exits for exactly one reason
+    worth respecting — another host holds the lease — and relaunching into that would spin. The
+    operator sees the log and the status line instead.
+    """
+    live = _child_pid(name)
+    if live is not None:
+        return {"running": True, "pid": live, "started": False}
+    EVENTS_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    log = open(child_log(name), "ab")  # noqa: SIM115 — handed to the child, outlives this call
+    proc = subprocess.Popen(
+        argv,
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+        env={**os.environ, **(env or {})},
+    )
+    (EVENTS_STORE_DIR / _CHILD_PIDS[name]).write_text(str(proc.pid))
+    # A child that dies immediately (a missing runner, a held lease) must be reported as a failure
+    # here rather than as a silent "started" the operator only discovers is a lie later.
+    time.sleep(0.4)
+    if proc.poll() is not None:
+        raise FabricError(
+            f"{name} exited immediately (code {proc.returncode}) — see {child_log(name)}"
+        )
+    return {"running": True, "pid": proc.pid, "started": True}
+
+
+def stop_child(name: str) -> bool:
+    """SIGTERM by pidfile; True when a child was actually stopped."""
+    pid = _child_pid(name)
+    if pid is None:
+        return False
+    os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _child_pid(name) is None:
+            return True
+        time.sleep(0.1)
+    os.kill(pid, signal.SIGKILL)
+    return True
+
+
+def child_status(name: str) -> dict[str, Any]:
+    pid = _child_pid(name)
+    return {
+        "running": pid is not None,
+        **({"pid": pid} if pid else {}),
+        "log": str(child_log(name)),
+    }

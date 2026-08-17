@@ -371,7 +371,7 @@ Sub-steps:
 - [x] 2a — the `CronStore` KV adapter (recur + discover + sched), tested against a real server
 - [x] 2b — the local `IWorkflowInvoker` (+ the `wf:run` bracket, and the descriptor's `steps` variant)
 - [x] 2c — the engine host: resident mode, KV lease singleton, 60s tick, cron + sched scans
-- [ ] 2d — `h events up [--with-relay]` supervises it; `h events status` reports it
+- [x] 2d — `h events up [--with-relay]` supervises it; `h events status` reports all three
 - [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
 - [x] 2f — the `wf:` bracket in the local executor. **Done as part of 2b, not after it**: the
       invoker READS what the bracket WRITES, so split apart each half is inert. Landed with
@@ -762,6 +762,27 @@ Two things fell out on the way:
   than an exception: port-level helpers moved to `kv-helpers.ts` so the chokepoint holds RAW access
   alone and rule 2 stays exact. Second time this guard has been stated at the wrong level, and both
   times the signal was the same — it fired on the abstraction built to satisfy it.
+
+### 2d log — three processes, and what each absence costs
+
+`h events up` now brings up nats-server AND the engine host; `--with-relay` adds a supervised relay.
+Verified live end to end: up → status → `--with-relay` → status → down, with teardown stopping
+children before the server (a host outliving its fabric spends every tick failing to reach it, and
+its lease keeps a replacement out until the TTL lapses).
+
+Two small decisions worth keeping:
+
+- **`start_child` is NOT a restart-on-exit supervisor.** The engine host exits for exactly one
+  reason worth respecting — another host holds the lease — and relaunching into that would spin.
+  It also reports a child that dies within 400ms as a FAILURE rather than as a "started" the
+  operator only discovers was a lie later.
+- **`h events status` says what each absence COSTS** ("registered crons and schedules will not
+  fire") rather than only that a process is down. "down" alone does not tell an operator whether
+  the thing they just registered is going to happen, which is the question they actually have.
+
+`runner_path` was extracted from `run_job` so the engine host's launch and every local job resolve
+the SAME runner through one refusal message — a packaged install carries its own and `H_LOCAL_BIN`
+can point anywhere, so two resolutions could disagree silently.
 
 ## Open questions
 

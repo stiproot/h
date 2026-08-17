@@ -104,13 +104,11 @@ def child_env(dotenv_path: Path | None = None) -> dict[str, str]:
     return env
 
 
-def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]:
-    """Run one job on the local substrate and return its result envelope.
+def runner_path(bin_path: Path | None = None) -> Path:
+    """The local runner, or a refusal that names the fix.
 
-    Interruption is deliberate and load-bearing: Ctrl-C reaches the child as SIGINT, which
-    interrupts its fiber, closes the run scopes and lets agent-cli's reaper group-kill every
-    agent CLI. An orphaned CLI would keep working — and keep billing — with nothing recording it,
-    so the KeyboardInterrupt path waits for the child to actually finish dying.
+    Shared by `run_job` and the engine host's launch, so the two cannot disagree about WHICH runner
+    is in play — a packaged install carries its own, and H_LOCAL_BIN can point anywhere.
     """
     runner = bin_path or LOCAL_BIN
     if not runner.is_file():
@@ -127,6 +125,18 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
                 "bin.js from an h checkout. See docs/installing-h.md in the h repo."
             )
         )
+    return runner
+
+
+def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]:
+    """Run one job on the local substrate and return its result envelope.
+
+    Interruption is deliberate and load-bearing: Ctrl-C reaches the child as SIGINT, which
+    interrupts its fiber, closes the run scopes and lets agent-cli's reaper group-kill every
+    agent CLI. An orphaned CLI would keep working — and keep billing — with nothing recording it,
+    so the KeyboardInterrupt path waits for the child to actually finish dying.
+    """
+    runner = runner_path(bin_path)
 
     job = {**job, "protocolVersion": LOCAL_PROTOCOL_VERSION}
     try:

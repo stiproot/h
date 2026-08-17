@@ -8,7 +8,7 @@ Both substrates are addressable: without `--local` the row lives in workflow-svc
 in the local substrate's JetStream KV, where the local executor and `h delegate` read the same
 fence. The row SHAPE is engine-core's `ExecPolicy` either way, so only the transport differs."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import typer
@@ -69,7 +69,6 @@ def _print_denied(entries: list[dict]) -> None:
     console.print("denied: " + (", ".join(parts) or "(none)"))
 
 
-
 # --- substrate selection -------------------------------------------------------------------
 #
 # `--local` reads and writes the JetStream KV `exec:` bucket instead of workflow-svc's Redis row,
@@ -104,7 +103,7 @@ def _policy_set(local: bool, denied: list[Any], budgets: dict | None = None) -> 
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 LOCAL_OPT = typer.Option(

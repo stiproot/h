@@ -50,6 +50,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from h_cli.commands._local_journal import journal_preflight as _journal_preflight
+from h_cli.commands._local_registry import refuse_pending_registry
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
 from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
 from h_cli.config import (
@@ -60,7 +61,6 @@ from h_cli.config import (
     baked_models_suit,
     chart_root_for,
 )
-from h_cli.commands._local_registry import refuse_pending_registry
 from h_cli.infrastructure import local_runtime, workflow_svc
 from h_cli.infrastructure.chain_expr import (
     ExprError,

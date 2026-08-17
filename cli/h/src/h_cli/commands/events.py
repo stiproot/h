@@ -13,6 +13,7 @@ substrate.
 
 import asyncio
 import json
+import sys
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Any
@@ -20,6 +21,7 @@ from typing import Annotated, Any
 import typer
 import yaml
 from rich.console import Console
+from rich.markup import escape
 
 # One agent step per relay hand-off shares the local path's per-step wall-clock budget.
 from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
@@ -164,9 +166,38 @@ def relay_step(
     return next_descriptor, None
 
 
+def _h_bin() -> str:
+    """This very `h`, for launching a supervised relay.
+
+    `sys.argv[0]` rather than the name `h`: a uv-tool install, an editable checkout and a venv all
+    put a different executable on PATH, and supervising a DIFFERENT h than the one you typed would
+    be the sort of mismatch that only shows up as a version-skew error much later.
+    """
+    return sys.argv[0]
+
+
+def _engines_argv() -> list[str]:
+    """How to launch the engine host: the bundled runner every local job uses, resident."""
+    return ["node", str(local_runtime.runner_path()), "--engines"]
+
+
 @app.command()
-def up() -> None:
-    """Start the fabric (nats-server -js, detached) and ensure the h streams exist."""
+def up(
+    with_relay: Annotated[
+        bool,
+        typer.Option(
+            "--with-relay",
+            help="Also supervise a relay, so cron fires drain with nobody at the terminal.",
+        ),
+    ] = False,
+) -> None:
+    """Start the fabric + engine host (and optionally a relay), and ensure the h streams exist.
+
+    The split is deliberate: nats-server and the ENGINE HOST are infrastructure and come up
+    together, while the relay is WORK — the thing you watch — so it stays foreground by default.
+    `--with-relay` is for an unattended machine, where a cron firing into a queue nobody drains
+    would be a recurrence that silently never runs.
+    """
     try:
         state = fabric.start_server()
 
@@ -184,12 +215,41 @@ def up() -> None:
     verb = "started" if state.get("started") else "already up"
     console.print(f"fabric {verb}: {state['url']} (pid {state.get('pid')})")
     console.print(f"    store: {fabric.store_paths()['store']}")
-    console.print("    relay: h events serve    seed: h events publish    watch: h events tail")
+
+    # The engine host comes up WITH the fabric: it is what makes a registered cron or schedule
+    # actually fire, and a fabric without one accepts registrations that nothing ever acts on.
+    try:
+        engines = fabric.start_child("engines", _engines_argv())
+    except fabric.FabricError as err:
+        err_console.print(f"[red]engine host:[/red] {escape(str(err))}")
+        raise typer.Exit(1) from err
+    verb = "started" if engines.get("started") else "already up"
+    console.print(f"engines {verb} (pid {engines.get('pid')})")
+
+    if with_relay:
+        try:
+            relay = fabric.start_child("relay", [str(_h_bin()), "events", "serve"])
+        except fabric.FabricError as err:
+            err_console.print(f"[red]relay:[/red] {escape(str(err))}")
+            raise typer.Exit(1) from err
+        verb = "started" if relay.get("started") else "already up"
+        console.print(f"relay {verb} (pid {relay.get('pid')})")
+    else:
+        console.print("    relay: h events serve    seed: h events publish    watch: h events tail")
+        console.print(
+            "    [dim]no relay attached — cron fires QUEUE until one drains them "
+            "(`h events up --with-relay` supervises one)[/dim]"
+        )
 
 
 @app.command()
 def down() -> None:
-    """Stop the fabric. Streams and their messages survive on disk — `up` resumes them."""
+    """Stop the fabric and every h-managed child. Streams survive on disk — `up` resumes them."""
+    # Children first: an engine host that outlived its fabric would spend every tick failing to
+    # reach it, and its lease would keep a replacement out until the TTL lapsed.
+    for name in ("relay", "engines"):
+        if fabric.stop_child(name):
+            console.print(f"{name} stopped")
     if fabric.stop_server():
         console.print("fabric stopped (JetStream state kept on disk)")
     else:
@@ -206,6 +266,11 @@ def status(
         "running": fabric.fabric_running(),
         "url": fabric.EVENTS_URL,
         "store": str(paths["store"]),
+        # The three processes of the local substrate, and they answer different questions: the
+        # fabric is reachability, the engine host is whether registrations FIRE, the relay is
+        # whether fires get DRAINED. A stack missing the middle one accepts crons that never run.
+        "engines": fabric.child_status("engines"),
+        "relay": fabric.child_status("relay"),
     }
     if body["running"]:
         try:
@@ -216,7 +281,18 @@ def status(
         console.print_json(data=body)
         return
     state = "[green]up[/green]" if body["running"] else "[red]down[/red]"
-    console.print(f"fabric {state} — {body['url']}  (store: {body['store']})")
+    console.print(f"fabric  {state} — {body['url']}  (store: {body['store']})")
+    # Each line says what its ABSENCE costs, because "down" alone does not tell an operator
+    # whether the thing they registered will happen.
+    missing = {
+        "engines": "registered crons and schedules will not fire",
+        "relay": "fires will queue with nothing to run them",
+    }
+    for name, cost in missing.items():
+        child = body[name]
+        mark = "[green]up[/green]" if child["running"] else "[yellow]down[/yellow]"
+        detail = f"pid {child['pid']}" if child.get("pid") else cost
+        console.print(f"{name:<7} {mark} — {detail}")
     for row in body.get("streams", []):
         if not row.get("present"):
             console.print(f"  {row['stream']}: [dim]not created yet[/dim]")
