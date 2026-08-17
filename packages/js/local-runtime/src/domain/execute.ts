@@ -219,7 +219,21 @@ export const runWorkflow = (
           .pipe(Effect.mapError((err) => new StepError("journal", err.message)));
       }
 
+      // An ABSOLUTE deadline, stamped once before the first step. Clock rather than Date.now() so
+      // a test can drive it.
+      const deadline =
+        job.budgetMs === undefined ? undefined : (yield* Clock.currentTimeMillis) + job.budgetMs;
+
       for (const step of job.steps) {
+        // Checked BEFORE starting a step, never mid-step: the driver can decline to start more
+        // work, but it cannot stop an agent already running (the per-step timeout bounds that).
+        // So the note says which step it stopped SHORT OF rather than implying a kill.
+        if (deadline !== undefined && (yield* Clock.currentTimeMillis) >= deadline) {
+          const label = "parallel" in step ? (step.id ?? "parallel group") : stepId(step);
+          note = `run budget ${job.budgetMs}ms exceeded — stopped before step '${label}'`;
+          yield* progress.emit(`⏱ ${note}`);
+          break;
+        }
         if ("parallel" in step) {
           // Branches resolve against the results map as it stood BEFORE the group — which is what
           // makes them parallelizable — then all run at once. Any branch failing fails the group.

@@ -15,8 +15,9 @@ import { connect } from "nats";
  *  - **getStatus** READS `wf:run:<instanceId>` — the row the run wrote about itself. Dapr answers
  *    this on the service substrate; here the registry is the only thing that can, which is why it
  *    had to stop being artifact-keyed first.
- *  - **terminate** is REFUSED. Only the watcher needs it, and terminating a run this process does
- *    not own is a genuinely different capability — see the note on it below.
+ *  - **terminate** ASKS. The engine host owns no running process, so it publishes a control message
+ *    to whichever relay holds the child — a genuinely different capability from Dapr terminating an
+ *    instance it owns, and the asymmetry is documented on the method.
  */
 
 /**
@@ -49,6 +50,8 @@ const RUNTIME_STATUS = {
 
 export interface FirePublisher {
   readonly publish: (descriptor: Record<string, unknown>) => Promise<void>;
+  /** Fire-and-forget control: ask whichever relay owns this run to stop it. */
+  readonly control: (subject: string, data: Record<string, unknown>) => Promise<void>;
 }
 
 /** Publishes a fire descriptor onto the task queue the relay consumes. */
@@ -64,6 +67,18 @@ export const natsFirePublisher = (url: string, queue: string): FirePublisher => 
           // substrate gets this from mark-before-fire + instance reuse; here it is the stream's.
           msgID: String(descriptor.instanceId),
         });
+    } finally {
+      await nc.drain();
+    }
+  },
+  control: async (subject, data) => {
+    const nc = await connect({ servers: url, timeout: 3000, maxReconnectAttempts: 2 });
+    try {
+      // CORE nats, not JetStream: only a LIVE relay can act on a terminate, and a queued one for a
+      // run that already finished is noise. The engine's durable record of the decision is the
+      // watch row it just wrote, not this message.
+      nc.publish(subject, new TextEncoder().encode(JSON.stringify(data)));
+      await nc.flush();
     } finally {
       await nc.drain();
     }
@@ -125,16 +140,28 @@ export const NatsWorkflowInvokerLive = (
             Effect.catchAll(() => Effect.succeed({ instanceId, runtimeStatus: "UNKNOWN" })),
           ),
 
+        /**
+         * Ask the relay holding this run to kill it.
+         *
+         * Best-effort BY DESIGN, and the asymmetry with the service substrate is worth naming: Dapr
+         * terminates an instance it owns, while here the engine host owns nothing — it asks the
+         * process that does. A run executing in an operator's FOREGROUND shell is reachable by
+         * nobody, which is why `--budget` on a foreground `--local` run is enforced by the driver
+         * between steps instead (execute.ts) rather than by this.
+         *
+         * A publish that lands with no listener is therefore a valid outcome, not a failure: the
+         * watch row already records the decision, and the scan's next tick observes whatever
+         * actually happened rather than assuming this worked.
+         */
         terminate: (instanceId) =>
-          Effect.fail(
-            new WorkflowError({
-              cause:
-                "terminate is not available on the local substrate: a run executes inside the " +
-                "relay, so nothing here can stop it. It needs the watcher's cancellation seam " +
-                "(local-engine-parity increment 4).",
-              instanceId,
-            }),
-          ),
+          Effect.tryPromise({
+            try: () =>
+              publisher.control(`h.control.terminate.${instanceId}`, {
+                instanceId,
+                at: new Date().toISOString(),
+              }),
+            catch: (cause) => new WorkflowError({ cause, instanceId }),
+          }),
       };
     }),
   );

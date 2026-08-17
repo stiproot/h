@@ -17,9 +17,21 @@ const wfStore = (rows: Record<string, Partial<WfRow>> = {}) =>
     saveRow: () => Effect.void,
   });
 
-const recordingPublisher = (): { publisher: FirePublisher; sent: Record<string, unknown>[] } => {
+const recordingPublisher = (): {
+  publisher: FirePublisher;
+  sent: Record<string, unknown>[];
+  control: Array<{ subject: string; data: Record<string, unknown> }>;
+} => {
   const sent: Record<string, unknown>[] = [];
-  return { publisher: { publish: async (d) => void sent.push(d) }, sent };
+  const control: Array<{ subject: string; data: Record<string, unknown> }> = [];
+  return {
+    sent,
+    control,
+    publisher: {
+      publish: async (d) => void sent.push(d),
+      control: async (subject, data) => void control.push({ subject, data }),
+    },
+  };
 };
 
 const run = <A>(
@@ -125,17 +137,27 @@ describe("invoke", () => {
 });
 
 describe("terminate", () => {
-  it("refuses by name, pointing at the capability it needs", async () => {
-    // A run executes inside the RELAY, so nothing here can stop it — a genuinely different
-    // capability rather than a missing line of code.
-    const outcome = await Effect.runPromise(
-      Effect.flatMap(WorkflowInvoker, (i) => i.terminate("x")).pipe(
-        Effect.provide(
-          NatsWorkflowInvokerLive(recordingPublisher().publisher).pipe(Layer.provide(wfStore())),
-        ),
-        Effect.catchAll((error) => Effect.succeed(String(error.cause))),
-      ) as Effect.Effect<string, never, never>,
+  it("ASKS the relay holding the run, on a control subject keyed by the instance", async () => {
+    const recorder = recordingPublisher();
+    await run(
+      Effect.flatMap(WorkflowInvoker, (i) => i.terminate("feature-x")),
+      {},
+      recorder.publisher,
     );
-    expect(outcome).toContain("watcher");
+
+    // The engine host owns no running process — it asks whichever process does. Core NATS, so a
+    // terminate for a run that already finished simply lands nowhere.
+    expect(recorder.control[0]?.subject).toBe("h.control.terminate.feature-x");
+    expect(recorder.control[0]?.data).toMatchObject({ instanceId: "feature-x" });
+  });
+
+  it("does not fire a task descriptor — terminating is not a fire", async () => {
+    const recorder = recordingPublisher();
+    await run(
+      Effect.flatMap(WorkflowInvoker, (i) => i.terminate("feature-x")),
+      {},
+      recorder.publisher,
+    );
+    expect(recorder.sent).toHaveLength(0);
   });
 });

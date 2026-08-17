@@ -216,6 +216,16 @@ export const WorkflowJob = Schema.Struct({
   runsDir: Schema.String,
   /** Per-agent-step wall-clock budget. */
   timeoutMs: Schema.Number,
+  /**
+   * `--watch`/`--budget`: a WHOLE-RUN wall clock, checked BETWEEN STEPS.
+   *
+   * The foreground driver's half of supervision. A relay-executed run is watched by the engine,
+   * which can terminate it mid-step; a foreground run is in the operator's shell where nothing
+   * external can reach it, so the driver enforces the only thing it can — declining to START more
+   * work past the deadline. The guarantee is weaker by one step and says so, exactly like the
+   * chain-wide budget it mirrors (`chain.ts`), which is the same rule in the other place.
+   */
+  budgetMs: Schema.optional(Schema.Number),
   /** Directory `create-worktree` places this run's worktree under. */
   worktreeRoot: Schema.String,
   /**
@@ -365,6 +375,7 @@ export const RegistryJob = Schema.Union(
   // The recur + one-shot registries, read-side. `h cron list --local` / `h schedule list --local`.
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("crons.list") }),
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("scheds.list") }),
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("watches.list") }),
   // Arming a ONE-SHOT is an edge action on both substrates (workflow-svc's run route does it), so
   // the CLI arms it here too — through engine-core's own registration seam rather than by writing
   // a row, so the local and service paths cannot diverge on what "armed" means.

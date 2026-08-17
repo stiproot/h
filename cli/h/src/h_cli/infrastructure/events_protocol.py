@@ -28,6 +28,18 @@ PROTOCOL_VERSION = 1
 # envelope is still readable after the fact.
 TASK_STREAM = "h-tasks"
 TASK_SUBJECTS = "h.task.>"
+
+# Control is CORE NATS, not JetStream, and deliberately so: only a LIVE relay can act on a
+# terminate, and a queued one for a run that already finished is noise. Fire-and-forget matches the
+# semantics — the watcher decides a run must end, and a relay that is not listening has no run to
+# end. The engine's own record of the decision is the watch row, not this message.
+CONTROL_SUBJECTS = "h.control.>"
+
+
+def terminate_subject(instance_id: str) -> str:
+    return f"h.control.terminate.{instance_id}"
+
+
 RESULT_STREAM = "h-results"
 RESULT_SUBJECTS = "h.result.>"
 # The third stream is the RUN JOURNAL — resume state for journaled `--local` runs, one subject

@@ -7,6 +7,7 @@ import {
   resolveFireAt,
   type SchedRegistration,
   StoredWorkflow,
+  WatchStore,
   WorkflowStore,
 } from "engine-core";
 import { Effect, Option, Schema } from "effect";
@@ -27,7 +28,11 @@ import type { RegistryEnvelope, RegistryJob } from "./models.ts";
  */
 export const runRegistry = (
   job: RegistryJob,
-): Effect.Effect<RegistryEnvelope, never, WorkflowStore | ExecPolicyStore | CronStore> =>
+): Effect.Effect<
+  RegistryEnvelope,
+  never,
+  WorkflowStore | ExecPolicyStore | CronStore | WatchStore
+> =>
   Effect.gen(function* () {
     const result = yield* serve(job);
     return { ok: true, op: job.op, result } satisfies RegistryEnvelope;
@@ -43,7 +48,7 @@ export const runRegistry = (
 
 const serve = (
   job: RegistryJob,
-): Effect.Effect<unknown, Error, WorkflowStore | ExecPolicyStore | CronStore> =>
+): Effect.Effect<unknown, Error, WorkflowStore | ExecPolicyStore | CronStore | WatchStore> =>
   Effect.gen(function* () {
     switch (job.op) {
       case "workflows.list": {
@@ -72,6 +77,10 @@ const serve = (
       case "scheds.list": {
         const store = yield* CronStore;
         return yield* store.listSchedRows();
+      }
+      case "watches.list": {
+        const store = yield* WatchStore;
+        return yield* store.listRows();
       }
       case "sched.arm": {
         // engine-core's own seam, not a hand-written row: it owns idempotence (an already-armed id

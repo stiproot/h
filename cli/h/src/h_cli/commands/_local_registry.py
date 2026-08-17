@@ -23,7 +23,6 @@ err_console = Console(stderr=True)
 # ops so a stale entry fails the build rather than waiting to be noticed.
 PENDING: dict[str, str] = {
     "chain": "the chain engine and its chain: KV registry",
-    "watch": "the watcher engine and its watch: KV registry",
 }
 
 

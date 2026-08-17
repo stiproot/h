@@ -34,11 +34,20 @@ def test_cron_list_local_ANSWERS_now_that_the_engine_exists(monkeypatch) -> None
     assert "service-substrate only" in _output(result)
 
 
-def test_chain_and_watch_list_local_refuse_too() -> None:
-    for registry, engine in [("chain", "chain engine"), ("watch", "watcher engine")]:
-        result = runner.invoke(app, [registry, "list", "--local"])
-        assert result.exit_code == 1, f"{registry} --local should refuse"
-        assert engine in _output(result)
+def test_chain_list_local_still_refuses() -> None:
+    # The last pending registry: local chains are DRIVER-sequenced today (they work, journaled),
+    # so chain:sub has no local counterpart until increment 3 hosts them on the engine.
+    result = runner.invoke(app, ["chain", "list", "--local"])
+    assert result.exit_code == 1
+    assert "chain engine" in _output(result)
+
+
+def test_watch_list_local_ANSWERS_now_that_the_watcher_exists(monkeypatch) -> None:
+    from h_cli.commands import watch as watch_cmd
+
+    monkeypatch.setattr(watch_cmd.local_runtime, "registry", lambda op, **_: [])
+    result = runner.invoke(app, ["watch", "list", "--local"])
+    assert result.exit_code == 0, _output(result)
 
 
 def test_agents_budget_local_refuses_because_no_watcher_enforces_it() -> None:

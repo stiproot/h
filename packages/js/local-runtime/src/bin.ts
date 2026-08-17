@@ -21,7 +21,7 @@ import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
-import { natsLease } from "./infrastructure/kv-helpers.ts";
+import { natsLease, NatsEventPublisherLive } from "./infrastructure/kv-helpers.ts";
 import { NatsKv, NatsKvLive } from "./infrastructure/nats-kv.ts";
 import { NatsCronStoreLive } from "./infrastructure/nats-cron-store.ts";
 import { NatsWatchStoreLive } from "./infrastructure/nats-watch-store.ts";
@@ -67,6 +67,7 @@ const AppLive = Layer.mergeAll(
     NatsWorkflowStoreLive,
     NatsWfStoreLive,
     NatsCronStoreLive,
+    NatsWatchStoreLive,
   ).pipe(Layer.provide(NatsKvLive(FABRIC_URL))),
 );
 
@@ -78,10 +79,12 @@ const EngineLive = (url: string) => {
     NatsWfStoreLive,
     NatsWorkflowStoreLive,
     NatsWatchStoreLive,
+    NatsExecPolicyStoreLive,
   ).pipe(Layer.provideMerge(kv));
   return Layer.mergeAll(
     stores,
     StderrProgressLive,
+    NatsEventPublisherLive(url),
     NatsWorkflowInvokerLive(natsFirePublisher(url, "default")).pipe(Layer.provide(stores)),
   );
 };

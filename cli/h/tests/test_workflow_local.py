@@ -129,8 +129,6 @@ def test_local_expands_an_agent_roster_into_a_panel(captured_job) -> None:
 @pytest.mark.parametrize(
     "flag",
     [
-        ["--watch"],
-        ["--budget", "10m"],
         ["--retry", "2"],
         ["--fallback-agent", "codex"],
         ["--fresh"],
@@ -145,6 +143,31 @@ def test_local_refuses_flags_that_need_an_engine(flag, captured_job) -> None:
     assert flag[0] in output
     assert "engines" in output
     assert captured_job == [], "nothing may run when a flag was refused"
+
+
+def test_local_budget_is_enforced_by_the_DRIVER_not_refused(captured_job) -> None:
+    """--budget on a foreground --local run bounds it between steps rather than being refused.
+
+    The guarantee is weaker than the watcher's by one step and says so: the driver declines to
+    START more work past the deadline but cannot kill a running agent (the per-step timeout bounds
+    that). It is the same rule the chain-wide budget already applies between stages — one rule in
+    two places, rather than a flag that means different things depending on where you type it.
+    """
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--budget", "10m"]
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_job[0]["budgetMs"] == 600_000
+
+
+def test_local_still_refuses_retry_and_fallback(captured_job) -> None:
+    # Both RE-FIRE, which needs an engine that outlives the run. Nothing outlives a foreground
+    # shell, so these stay refused even though the watcher now exists.
+    for flag in (["--retry", "2"], ["--fallback-agent", "codex"]):
+        result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q", *flag])
+        assert result.exit_code == 1, flag
+        assert flag[0] in _all_output(result)
+    assert captured_job == []
 
 
 def test_local_cron_arms_via_the_RUN_not_the_edge(captured_job) -> None:

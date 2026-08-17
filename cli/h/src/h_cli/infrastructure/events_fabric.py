@@ -226,6 +226,36 @@ def ensure_journal_ready() -> dict[str, Any]:
 RelayHandler = Callable[[dict[str, Any], bool], tuple[dict[str, Any] | None, dict[str, Any] | None]]
 
 
+async def _serve_control(nc: Any, emit: Callable[[str], None]) -> Any:
+    """Subscribe to `h.control.>` and act on terminate requests for runs THIS relay owns.
+
+    Core NATS: a terminate is only meaningful to a live relay holding the child. The subscription
+    runs beside the consume loop rather than inside it, which is possible because each job executes
+    in a THREAD — the event loop stays free while an agent runs, which is exactly when a terminate
+    needs servicing.
+    """
+    from h_cli.infrastructure import local_runtime
+
+    async def _on_control(msg: Any) -> None:
+        instance = msg.subject.rsplit(".", 1)[-1]
+        if not msg.subject.startswith("h.control.terminate."):
+            return
+        if local_runtime.terminate_run(instance):
+            emit(f"⛔ terminated {instance} (watcher)")
+
+    return await nc.subscribe(protocol.CONTROL_SUBJECTS, cb=_on_control)
+
+
+async def publish_control(subject: str, data: dict[str, Any]) -> None:
+    """Fire-and-forget a control message. No JetStream, no ack — see CONTROL_SUBJECTS."""
+    nc = await connect()
+    try:
+        await nc.publish(subject, json.dumps(data).encode())
+        await nc.flush()
+    finally:
+        await nc.drain()
+
+
 async def relay(queue: str, handler: RelayHandler, emit: Callable[[str], None]) -> None:
     """The relay loop: consume `h.task.<queue>` durably, run each descriptor through `handler`
     (in a thread — it blocks on an agent CLI), then forward its hand-off and/or terminal event.
@@ -239,6 +269,7 @@ async def relay(queue: str, handler: RelayHandler, emit: Callable[[str], None]) 
     try:
         js = nc.jetstream()
         await ensure_streams(js)
+        await _serve_control(nc, emit)
         psub = await js.pull_subscribe(
             protocol.task_subject(queue),
             durable=f"relay-{queue}",

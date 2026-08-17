@@ -249,8 +249,8 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | R | **`wf:` re-key to `wf:run:<instanceId>` + parent stamps** — shared, lands on BOTH substrates | **Complete** | parity guard owns `wfRunKey`/`WfParentage` ✓ |
 | 2 | Cron + schedule | **Complete** | refusal-classification cross-check ✓ |
 | 3 | Chain as a durable registration | **Next** *(preview owed)* | — |
-| 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
-| 5 | Discover — fan-out | Not started | — |
+| 4 | Watcher + `exec:` fences | **Complete** | — |
+| 5 | Discover — fan-out | **Next** | — |
 | — | Refusal re-classification | **Done** (1c) | `check-refusal-classification.mjs` ✓ |
 | H | Hardening found in flight — lint parity + the dapr-mcp boundary | **Complete** | `check-lint-parity.mjs` |
 | — | `engine host` in the glossary | **Done** (0c) | vocabulary guard |
@@ -840,6 +840,38 @@ list keeps them with a reason that says which bracket owns them.
 
 That is the third distinct shape a refusal takes, and the classification held up: pending (machinery
 coming), permanent-because-cluster (`run-itest`), permanent-because-not-a-step (the brackets).
+
+### Increment 4 log — supervision, and who owns the process
+
+`scanWatchesEffect` joins the tick, `h watch list --local` answers, and `--budget` works on a
+foreground run. Three of the watcher's four actions needed nothing new — retry re-publishes,
+fallback arms a `cron:sched` row, escalate publishes — because their seams already existed.
+
+**Terminate was the one genuinely new capability, and it is the first that turns on WHO OWNS THE
+PROCESS.** Dapr terminates an instance it owns; the engine host owns nothing. So it publishes
+`h.control.terminate.<instanceId>` and the relay holding the child kills it. Core NATS, not
+JetStream: only a LIVE relay can act on a terminate, and a queued one for a run that already
+finished is noise — the durable record of the decision is the watch row, not the message.
+
+The relay can service that mid-run because each job already executes in a THREAD, leaving the event
+loop free. `local_runtime` grew a live-run registry (group → Popen) — the same shape agent-cli's
+reaper uses for its own CLIs, one level up — and kills the process GROUP, since an orphaned agent
+CLI keeps working and keeps billing.
+
+**The foreground boundary, decided by the operator:** a run in the operator's shell is reachable by
+nobody, so `--budget` there is enforced by the DRIVER between steps — the same rule the chain-wide
+budget already applies between stages. One rule in two places, and honestly weaker: it declines to
+START more work but cannot kill a running agent (the per-step timeout bounds that). Rejected:
+refusing the flag on foreground runs (draws the boundary sharply but offers nothing), and accepting
+it silently unenforced (the exact failure this plan keeps removing).
+
+**`--retry` and `--fallback-*` stay refused on a foreground run**, and the reason is sharper than
+"no engine": both RE-FIRE, which needs something that outlives the run. Nothing outlives a shell.
+
+A local `EventPublisher` landed too, on `h.event.<topic>` — a third namespace beside `h.task.>`
+(work) and `h.result.>` (a loop's terminals), so a subscriber wanting one need not filter the
+others. Core NATS deliberately: nothing consumes these yet, and a durable stream nobody reads
+accumulates forever. A consumer that needs replay is the moment to give it a stream.
 
 ## Open questions
 

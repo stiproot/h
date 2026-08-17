@@ -1,7 +1,10 @@
 import {
   CronStore,
+  EventPublisher,
+  ExecPolicyStore,
   scanCronsEffect,
   scanSchedEffect,
+  scanWatchesEffect,
   WatchStore,
   WfStore,
   WorkflowInvoker,
@@ -91,6 +94,8 @@ export const claimLease = (
 export type TickReport = {
   readonly crons: number;
   readonly scheds: number;
+  /** Runs the watcher FINALIZED this tick — budget-terminated, retried, or settled. */
+  readonly watches: number;
   readonly errors: readonly string[];
 };
 
@@ -108,7 +113,14 @@ export const tick = (
 ): Effect.Effect<
   TickReport,
   Error | EngineHostConflict,
-  CronStore | WorkflowInvoker | WorkflowStore | WfStore | WatchStore | ProgressPort
+  | CronStore
+  | WorkflowInvoker
+  | WorkflowStore
+  | WfStore
+  | WatchStore
+  | ExecPolicyStore
+  | EventPublisher
+  | ProgressPort
 > =>
   Effect.gen(function* () {
     // Renewed BEFORE the work, not after: a scan can take longer than the TTL, and a lease that
@@ -125,6 +137,15 @@ export const tick = (
         }),
       ),
     );
+    const watches = yield* scanWatchesEffect(undefined).pipe(
+      Effect.map((report) => report.finalized.length),
+      Effect.catchAll((error) =>
+        Effect.sync(() => {
+          errors.push(`watch: ${error instanceof Error ? error.message : String(error)}`);
+          return 0;
+        }),
+      ),
+    );
     const scheds = yield* scanSchedEffect(undefined).pipe(
       Effect.map((report) => report.fired.length),
       Effect.catchAll((error) =>
@@ -134,7 +155,7 @@ export const tick = (
         }),
       ),
     );
-    return { crons, scheds, errors };
+    return { crons, scheds, watches, errors };
   });
 
 /**
@@ -148,7 +169,14 @@ export const runEngineHost = (
 ): Effect.Effect<
   never,
   Error | EngineHostConflict,
-  CronStore | WorkflowInvoker | WorkflowStore | WfStore | WatchStore | ProgressPort
+  | CronStore
+  | WorkflowInvoker
+  | WorkflowStore
+  | WfStore
+  | WatchStore
+  | ExecPolicyStore
+  | EventPublisher
+  | ProgressPort
 > =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
@@ -162,9 +190,15 @@ export const runEngineHost = (
     return yield* Effect.repeat(
       Effect.gen(function* () {
         const report = yield* tick(lease, config);
-        if (report.crons > 0 || report.scheds > 0 || report.errors.length > 0) {
+        if (
+          report.crons > 0 ||
+          report.scheds > 0 ||
+          report.watches > 0 ||
+          report.errors.length > 0
+        ) {
           yield* progress.emit(
-            `tick: ${report.crons} cron fire(s), ${report.scheds} scheduled fire(s)` +
+            `tick: ${report.crons} cron fire(s), ${report.scheds} scheduled fire(s), ` +
+              `${report.watches} watch finalize(s)` +
               (report.errors.length > 0 ? ` — ${report.errors.join("; ")}` : ""),
           );
         }
@@ -173,6 +207,13 @@ export const runEngineHost = (
     ) as Effect.Effect<
       never,
       Error | EngineHostConflict,
-      CronStore | WorkflowInvoker | WorkflowStore | WfStore | WatchStore | ProgressPort
+      | CronStore
+      | WorkflowInvoker
+      | WorkflowStore
+      | WfStore
+      | WatchStore
+      | ExecPolicyStore
+      | EventPublisher
+      | ProgressPort
     >;
   });

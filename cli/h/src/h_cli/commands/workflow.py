@@ -568,8 +568,10 @@ def run(
         _refuse_engine_flags(
             {
                 "--via": via,
-                "--watch": watch or None,
-                "--budget": budget,
+                # --watch/--budget are NOT here: a foreground --local run enforces its own wall
+                # clock between steps (the driver's half of supervision — see the job's budgetMs).
+                # --retry and --fallback-* stay refused: both RE-FIRE, which needs an engine that
+                # outlives the run, and nothing outlives a foreground shell.
                 "--retry": retry,
                 "--fallback-agent": fallback_agent,
                 "--fallback-model": fallback_model,
@@ -746,6 +748,7 @@ def run(
             with_setup,
             resume=resume,
             no_journal=no_journal,
+            budget_ms=_parse_budget(budget) if budget else None,
             arm_cron=(
                 {
                     "cadence": cron_policy["cadence"],
@@ -882,6 +885,7 @@ def _run_local(
     with_setup: bool,
     resume: str | None = None,
     no_journal: bool = False,
+    budget_ms: int | None = None,
     arm_cron: dict[str, Any] | None = None,
 ) -> None:
     """Execute a rendered definition on the local substrate and report what its steps produced.
@@ -902,6 +906,10 @@ def _run_local(
         # template's own clonePath param still wins per step (the multi-repo knob).
         "repoPath": repo_root(Path.cwd()),
         **({"withSetup": True} if with_setup else {}),
+        # The driver's half of supervision: a foreground run is in the operator's shell, where no
+        # engine can reach it, so the deadline it CAN enforce is "start no more steps". One rule in
+        # two places — the chain-wide budget already works this way between stages.
+        **({"budgetMs": budget_ms} if budget_ms else {}),
         # §10: the RUN arms its own recurrence in its closing bracket. Passed through rather than
         # armed here, so "a workflow never recurs itself, and the edge does not write cron rows"
         # holds on this substrate too.

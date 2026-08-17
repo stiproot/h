@@ -12,6 +12,7 @@ import json
 import os
 import signal
 import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -104,6 +105,44 @@ def child_env(dotenv_path: Path | None = None) -> dict[str, str]:
     return env
 
 
+# --- the live-run registry (what makes local termination possible) --------------------------------
+#
+# A run executes as a CHILD of whichever process called run_job. The watcher engine lives in a
+# DIFFERENT process, so terminating a budget-overrunning run means asking the process that owns the
+# child to kill it — which it can only do if it remembers which child belongs to which run.
+#
+# The same shape agent-cli's reaper uses for its own CLIs (`liveRuns`), one level up: there the
+# registry exists so a dying CLI does not orphan agents, here so a live relay can stop a run the
+# engine has decided must end.
+
+_LIVE_RUNS: dict[str, subprocess.Popen[str]] = {}
+_LIVE_LOCK = threading.Lock()
+
+
+def terminate_run(group: str) -> bool:
+    """Kill the run executing under `group`. True when one was actually running.
+
+    Kills the process GROUP, not just the node process: the runner spawns agent CLIs, and an
+    orphaned CLI keeps working — and keeps billing — with nothing recording it. That is the same
+    reason `run_job`'s KeyboardInterrupt path waits for the child to finish dying.
+    """
+    with _LIVE_LOCK:
+        proc = _LIVE_RUNS.get(group)
+    if proc is None or proc.poll() is not None:
+        return False
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        return False
+    return True
+
+
+def live_runs() -> list[str]:
+    """The groups currently executing here — the introspection half of the registry."""
+    with _LIVE_LOCK:
+        return [g for g, p in _LIVE_RUNS.items() if p.poll() is None]
+
+
 def runner_path(bin_path: Path | None = None) -> Path:
     """The local runner, or a refusal that names the fix.
 
@@ -139,9 +178,13 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
     runner = runner_path(bin_path)
 
     job = {**job, "protocolVersion": LOCAL_PROTOCOL_VERSION}
+    group = str(job.get("group") or "")
     try:
         proc = subprocess.Popen(
             ["node", str(runner)],
+            # Its own process group, so terminate_run can kill the runner AND the agent CLIs it
+            # spawned in one signal rather than leaving them orphaned.
+            start_new_session=True,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             # stderr is INHERITED, not piped: the child's progress lines then stream straight to
@@ -158,16 +201,27 @@ def run_job(job: dict[str, Any], bin_path: Path | None = None) -> dict[str, Any]
     except OSError as err:  # node missing, not executable, …
         raise LocalRunError(f"could not start the local runner ({runner}): {err}") from err
 
+    if group:
+        with _LIVE_LOCK:
+            _LIVE_RUNS[group] = proc
+
     try:
-        stdout, _ = proc.communicate(json.dumps(job))
-    except KeyboardInterrupt:
-        proc.send_signal(signal.SIGINT)
         try:
-            stdout, _ = proc.communicate(timeout=30)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            raise LocalRunError("interrupted; the runner did not shut down in 30s") from None
-        raise LocalRunError("interrupted") from None
+            stdout, _ = proc.communicate(json.dumps(job))
+        except KeyboardInterrupt:
+            proc.send_signal(signal.SIGINT)
+            try:
+                stdout, _ = proc.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                raise LocalRunError("interrupted; the runner did not shut down in 30s") from None
+            raise LocalRunError("interrupted") from None
+    finally:
+        # Deregister on EVERY exit path, including the interrupt raises above: a stale entry would
+        # let a later terminate signal a pid that has since been reused.
+        if group:
+            with _LIVE_LOCK:
+                _LIVE_RUNS.pop(group, None)
 
     line = next((ln for ln in reversed(stdout.splitlines()) if ln.strip()), "")
     if not line:

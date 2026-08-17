@@ -1,6 +1,8 @@
-import { Effect, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
+import { connect } from "nats";
 
 import type { EngineLease, LeasePort } from "../domain/engines.ts";
+import { EventPublisher, EventPublishError } from "engine-core";
 import { BUCKETS, type BucketName, type NatsKvService } from "./nats-kv.ts";
 
 /**
@@ -82,3 +84,42 @@ const LeaseSchema = Schema.Struct({
   hostId: Schema.String,
   renewedAt: Schema.Number,
 }) as unknown as Schema.Schema<EngineLease, unknown>;
+
+/**
+ * `EventPublisher` over the fabric — the local half of the port `engine-core`'s scans announce
+ * through (the watcher's terminal `workflow-events`, a finalizing chain's `cron-disarm`).
+ *
+ * Subjects are `h.event.<topic>`, keeping engine announcements out of `h.task.>` (work) and
+ * `h.result.>` (a loop's own terminals): three namespaces because a subscriber wanting one of them
+ * should not have to filter the other two.
+ *
+ * JetStream would be the wrong choice here even though these are meaningful events — nothing
+ * currently consumes them, and a durable stream nobody reads accumulates forever. Core NATS keeps
+ * the announcement honest: it is an announcement, and the durable record is the row the scan just
+ * wrote. A consumer that needs replay is the moment to give it a stream.
+ */
+export const natsEventPublisher = (
+  url: string,
+): { readonly publish: (topic: string, data: unknown) => Promise<void> } => ({
+  publish: async (topic, data) => {
+    const nc = await connect({ servers: url, timeout: 3000, maxReconnectAttempts: 2 });
+    try {
+      nc.publish(`h.event.${topic}`, new TextEncoder().encode(JSON.stringify(data)));
+      await nc.flush();
+    } finally {
+      await nc.drain();
+    }
+  },
+});
+
+/** The port binding for the publisher above. */
+export const NatsEventPublisherLive = (url: string): Layer.Layer<EventPublisher> => {
+  const client = natsEventPublisher(url);
+  return Layer.succeed(EventPublisher, {
+    publish: (topic, data) =>
+      Effect.tryPromise({
+        try: () => client.publish(topic, data),
+        catch: (cause) => new EventPublishError({ topic, cause }),
+      }),
+  });
+};
