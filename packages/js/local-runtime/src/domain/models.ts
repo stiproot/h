@@ -232,6 +232,21 @@ export const WorkflowJob = Schema.Struct({
   /** Present ⇒ journal every completed step to the fabric (absent under `--no-journal`, and on
    * a chain MEMBER's inner job — the chain journals at stage granularity instead). */
   journal: Schema.optional(JournalConfig),
+  /**
+   * Present ⇒ BRACKET this run with a `wf:run:<group>` status row (running → done/failed), so an
+   * engine can read back what became of a run it fired. The counterpart of the service substrate's
+   * wf-identity on `WorkflowRequest`, and opt-in for the same reason: a run nobody is waiting on
+   * does not need a row.
+   */
+  wf: Schema.optional(
+    Schema.Struct({
+      repo: Schema.String,
+      slug: Schema.String,
+      workflow: Schema.String,
+    }),
+  ),
+  /** The primitive that caused this run — stamped onto the row so it traces back without an index. */
+  parent: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 });
 export type WorkflowJob = Schema.Schema.Type<typeof WorkflowJob>;
 

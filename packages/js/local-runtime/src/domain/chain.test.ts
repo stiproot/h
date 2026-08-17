@@ -2,7 +2,7 @@ import { Effect, Layer, TestClock, TestContext } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { runChain } from "./chain.ts";
-import { AllowAllExecPolicy } from "./policy.test-layer.ts";
+import { AllowAllExecPolicy, memoryWfStore } from "./policy.test-layer.ts";
 import type {
   AgentRunReport,
   AgentRunRequest,
@@ -108,7 +108,13 @@ const stubs = (
 };
 
 const run = (j: ChainJob, layer: Layer.Layer<Ports>) =>
-  Effect.runPromise(runChain(j).pipe(Effect.provide(layer), Effect.provide(AllowAllExecPolicy)));
+  Effect.runPromise(
+    runChain(j).pipe(
+      Effect.provide(layer),
+      Effect.provide(AllowAllExecPolicy),
+      Effect.provide(memoryWfStore().layer),
+    ),
+  );
 
 describe("runChain", () => {
   // The coded contracts: implement-pr reads slug+spec and captures the PR it opened; review-pr
@@ -374,6 +380,7 @@ describe("runChain", () => {
         ).pipe(
           Effect.provide(layer),
           Effect.provide(AllowAllExecPolicy),
+          Effect.provide(memoryWfStore().layer),
           Effect.provide(TestContext.TestContext),
         ),
       );

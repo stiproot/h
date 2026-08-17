@@ -131,6 +131,7 @@ export const owned = [
       "validateChain",
       "wfRunKey",
       "WfParentage",
+      "goalResolved",
       "cronId",
       "discoverId",
       "schedId",

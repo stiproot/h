@@ -3,7 +3,7 @@ import type { WorkflowStep } from "workflow-core";
 import { describe, expect, it } from "vitest";
 
 import { runWorkflow } from "./execute.ts";
-import { AllowAllExecPolicy } from "./policy.test-layer.ts";
+import { AllowAllExecPolicy, memoryWfStore } from "./policy.test-layer.ts";
 import type {
   AgentRunReport,
   AgentRunRequest,
@@ -94,7 +94,13 @@ const stubs = (
 };
 
 const run = (j: WorkflowJob, layer: Layer.Layer<Ports>) =>
-  Effect.runPromise(runWorkflow(j).pipe(Effect.provide(layer), Effect.provide(AllowAllExecPolicy)));
+  Effect.runPromise(
+    runWorkflow(j).pipe(
+      Effect.provide(layer),
+      Effect.provide(AllowAllExecPolicy),
+      Effect.provide(memoryWfStore().layer),
+    ),
+  );
 
 describe("runWorkflow", () => {
   it("runs steps in order and lands each result under its id", async () => {
@@ -531,5 +537,88 @@ describe("runWorkflow", () => {
       await run(twoSteps({ journal: undefined }), layer);
       expect(recorder.journal.size).toBe(0);
     });
+  });
+});
+
+describe("runWorkflow — the wf:run bracket", () => {
+  const wfIdentity = { repo: "o/r", slug: "x", workflow: "implement-pr" };
+
+  /** Runs with a real (in-memory) wf registry so the bracket's writes can be asserted. */
+  const runBracketed = async (j: WorkflowJob) => {
+    const { layer } = stubs();
+    const wf = memoryWfStore();
+    const envelope = await Effect.runPromise(
+      runWorkflow(j).pipe(
+        Effect.provide(layer),
+        Effect.provide(AllowAllExecPolicy),
+        Effect.provide(wf.layer),
+      ),
+    );
+    return { envelope, rows: wf.rows };
+  };
+
+  it("writes done + the results as output, keyed by the run's own instanceId", async () => {
+    const { envelope, rows } = await runBracketed(
+      job([{ id: "s", activity: "run-claude", input: { task: "go" } }], {
+        group: "feature-x",
+        wf: wfIdentity,
+      }),
+    );
+
+    expect(envelope.ok).toBe(true);
+    // The group IS the instanceId — the same key that names the workspace, the ledger entry and
+    // the worktree — so an engine that fired under a chosen id reads back with no mapping.
+    const row = rows.get("feature-x");
+    expect(row?.status).toBe("done");
+    expect(row?.repo).toBe("o/r");
+    // The output is what makes this a status SOURCE rather than an audit trail: a chain captures
+    // from it, and the invoker returns it alongside the status.
+    expect(row?.output).toContain("s");
+  });
+
+  it("writes failed when a step fails, so a dead run is not indistinguishable from a live one", async () => {
+    const { layer } = stubs({}, ["claude"]);
+    const wf = memoryWfStore();
+    await Effect.runPromise(
+      runWorkflow(
+        job([{ id: "s", activity: "run-claude", input: { task: "go" } }], {
+          group: "feature-y",
+          wf: wfIdentity,
+        }),
+      ).pipe(Effect.provide(layer), Effect.provide(AllowAllExecPolicy), Effect.provide(wf.layer)),
+    );
+    expect(wf.rows.get("feature-y")?.status).toBe("failed");
+  });
+
+  it("records the goal handshake from the structured output, not from run success", async () => {
+    // `done` (the steps finished) and `resolved` (the SUBJECT is finished) are different facts —
+    // the whole reason a cron keeps recurring after a successful run.
+    const { rows } = await runBracketed(
+      job([{ id: "s", activity: "run-claude", input: { task: "go" } }], {
+        group: "feature-z",
+        wf: wfIdentity,
+      }),
+    );
+    expect(rows.get("feature-z")?.resolved).toBeUndefined();
+  });
+
+  it("stamps the parent primitive so a run traces back without an index", async () => {
+    const { rows } = await runBracketed(
+      job([{ id: "s", activity: "run-claude", input: { task: "go" } }], {
+        group: "chain-x-w0",
+        wf: wfIdentity,
+        parent: { chainId: "chain-x", memberIndex: 0 },
+      }),
+    );
+    expect(rows.get("chain-x-w0")).toMatchObject({ chainId: "chain-x", memberIndex: 0 });
+  });
+
+  it("writes NO row when the job carries no wf block", async () => {
+    // A plain `h workflow run --local` has no engine waiting on it, and a row nobody reads is
+    // just growth.
+    const { rows } = await runBracketed(
+      job([{ id: "s", activity: "run-claude", input: { task: "go" } }], { group: "adhoc" }),
+    );
+    expect(rows.size).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import type { Task, WorkflowContext } from "@dapr/dapr";
 
 import type { WorkflowRequest } from "engine-core";
+import { goalResolved } from "engine-core";
 import { getActivity } from "../activity-registry.ts";
 import { resolveRefs, resolveTokenString } from "workflow-core";
 
@@ -118,21 +119,4 @@ export async function* genericWorkflow(
   const output = JSON.stringify(results);
   if (wf) yield writeRow("done", output, goalResolved(results));
   return output;
-}
-
-/**
- * The goal handshake: a wf-identified workflow may
- * report whether its SUBJECT is resolved (e.g. the PR merged) — distinct from run-status `done`
- * (the steps finished) — via a `goal: "RESOLVED"` field in its validated structured output
- *. We
- * scan the step envelopes for it so write-wf-row records `resolved`, the flag the cron engine
- * reads to stop recurring. Pure, replay-safe. Absent ⇒ false (not resolved; keep recurring).
- */
-function goalResolved(results: Record<string, unknown>): boolean {
-  for (const v of Object.values(results)) {
-    const structured = (v as { structured?: unknown } | null | undefined)?.structured;
-    if (typeof structured !== "object" || structured === null) continue;
-    if ((structured as { goal?: unknown }).goal === "RESOLVED") return true;
-  }
-  return false;
 }

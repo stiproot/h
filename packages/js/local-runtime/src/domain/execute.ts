@@ -7,7 +7,8 @@ import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
 import { assertExecutorAllowed } from "./policy.ts";
-import type { ExecPolicyStore } from "engine-core";
+import type { ExecPolicyStore, WfStatus } from "engine-core";
+import { goalResolved, WfStore } from "engine-core";
 import type {
   CheckoutSpec,
   JournalRecord,
@@ -100,7 +101,7 @@ export const runWorkflow = (
 ): Effect.Effect<
   WorkflowEnvelope,
   never,
-  AgentPort | WorkspacePort | ProgressPort | JournalPort | ExecPolicyStore
+  AgentPort | WorkspacePort | ProgressPort | JournalPort | ExecPolicyStore | WfStore
 > =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
@@ -230,6 +231,17 @@ export const runWorkflow = (
       }
     });
 
+    // The wf:run BRACKET — the local mirror of generic.workflow's. A run reports its own status,
+    // `running` before its steps and `done`/`failed` after, so an ENGINE can ask what became of a
+    // run it fired. On the service substrate that answer comes from Dapr; here the row IS the
+    // answer, which is why the registry had to stop being artifact-keyed first.
+    //
+    // Best-effort in both directions, exactly like the activity it mirrors: a registry hiccup must
+    // never fail a run that did its work. A missed write leaves the row stale, and staleness is a
+    // READ concern — the invoker ages a `running` row into UNKNOWN so the engines' existing escape
+    // owns it, rather than a lost write silently pinning a cron forever.
+    yield* writeWfRow(job, "running", undefined, false).pipe(Effect.ignore);
+
     const envelope = yield* run.pipe(
       Effect.map(
         () =>
@@ -255,6 +267,15 @@ export const runWorkflow = (
         } satisfies WorkflowEnvelope);
       }),
     );
+
+    yield* writeWfRow(
+      job,
+      envelope.ok ? "done" : "failed",
+      JSON.stringify(envelope.results),
+      // The goal handshake, from the SAME function the Dapr engine uses — a second copy would let
+      // one substrate keep recurring while the other stopped.
+      goalResolved(results),
+    ).pipe(Effect.ignore);
 
     // Terminal record ONLY on success (and only once): a failed run is exactly the one --resume
     // exists for, so its journal stays open. A lost terminal costs a future resume its no-op
@@ -410,3 +431,33 @@ const runStep = (
 
 /** Re-exported so `WorkflowStep` consumers do not need a second import of workflow-core. */
 export type { WorkflowStep };
+
+/**
+ * One end of the `wf:run:<instanceId>` bracket. The run's instanceId is its GROUP — the same key
+ * that names its workspace, its ledger entry and its worktree — so an engine that fired under a
+ * chosen id can read back what happened without any further mapping.
+ *
+ * Writes nothing when the job carries no `wf` block: a plain `h workflow run --local` has no engine
+ * waiting on it, and a row nobody reads is just growth.
+ */
+const writeWfRow = (
+  job: WorkflowJob,
+  status: WfStatus,
+  output: string | undefined,
+  resolved: boolean,
+): Effect.Effect<void, unknown, WfStore> =>
+  job.wf === undefined
+    ? Effect.void
+    : Effect.gen(function* () {
+        const store = yield* WfStore;
+        yield* store.saveRow({
+          instanceId: job.group,
+          status,
+          ...job.wf,
+          ...job.parent,
+          ...(job.params ? { subject: job.params } : {}),
+          ...(output === undefined ? {} : { output }),
+          ...(resolved ? { resolved } : {}),
+          updatedAt: new Date().toISOString(),
+        });
+      });

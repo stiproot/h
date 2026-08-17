@@ -24,6 +24,7 @@ import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
 import { NatsKvLive } from "./infrastructure/nats-kv.ts";
 import {
   NatsExecPolicyStoreLive,
+  NatsWfStoreLive,
   NatsWorkflowStoreLive,
 } from "./infrastructure/nats-registry-stores.ts";
 import { StderrProgressLive } from "./infrastructure/stderr-progress.ts";
@@ -52,7 +53,7 @@ const AppLive = Layer.mergeAll(
   NatsJournalLive,
   // The executor-policy registry. Connects on FIRST READ, so a job that reads no registry never
   // opens a socket — see NatsKvLive.
-  Layer.mergeAll(NatsExecPolicyStoreLive, NatsWorkflowStoreLive).pipe(
+  Layer.mergeAll(NatsExecPolicyStoreLive, NatsWorkflowStoreLive, NatsWfStoreLive).pipe(
     Layer.provide(NatsKvLive(FABRIC_URL)),
   ),
 );

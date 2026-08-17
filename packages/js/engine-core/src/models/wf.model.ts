@@ -121,3 +121,25 @@ export const wfIdentityFrom = (
   if (!repo || !slug || !workflow) return undefined;
   return { repo, slug, workflow };
 };
+
+/**
+ * The goal handshake: did this run report its SUBJECT resolved (e.g. the PR merged)?
+ *
+ * Distinct from run-status `done` (the steps finished) — a run can complete without the thing it
+ * was working on being finished, which is the whole reason a cron keeps recurring. A workflow says
+ * so with a `goal: "RESOLVED"` field in its validated structured output; this scans the step
+ * envelopes for it and `write-wf-row` records the answer as `resolved`.
+ *
+ * Lives here rather than beside either executor because BOTH have to answer it identically: the
+ * Dapr engine brackets its runs with this, and so does the local executor. A second copy would let
+ * one substrate keep recurring while the other stopped. Pure and replay-safe; absent ⇒ false
+ * (not resolved, keep recurring), never a guess.
+ */
+export function goalResolved(results: Record<string, unknown>): boolean {
+  for (const value of Object.values(results)) {
+    const structured = (value as { structured?: unknown } | null | undefined)?.structured;
+    if (typeof structured !== "object" || structured === null) continue;
+    if ((structured as { goal?: unknown }).goal === "RESOLVED") return true;
+  }
+  return false;
+}

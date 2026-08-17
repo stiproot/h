@@ -373,7 +373,10 @@ Sub-steps:
 - [ ] 2c — the engine host: resident mode, KV lease, tick, cron + sched scans
 - [ ] 2d — `h events up [--with-relay]` supervises it; `h events status` reports it
 - [ ] 2e — un-refuse `--cron`/`--max-fires`/`--at`/`--in`; `h cron|schedule list --local` answer
-- [ ] 2f — the `wf:` bracket in the local executor
+- [x] 2f — the `wf:` bracket in the local executor. **Done as part of 2b, not after it**: the
+      invoker READS what the bracket WRITES, so split apart each half is inert. Landed with
+      `goalResolved` lifted from `generic.workflow` into `engine-core` — a shared semantic that had
+      been sitting in an app, exactly the misfiling the plan's thesis warns about
 
 The value is operator-shaped: a nightly h-builds-h loop, or `--in 2h`, on a machine with no Dapr.
 
