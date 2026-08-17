@@ -247,8 +247,8 @@ from `engine-core` by both — which is exactly the drift risk the parity guard 
 | 0 | `engine-core` — the extraction | **Complete** | parity guard owns engine symbols ✓ |
 | 1 | KV registries (saved store, `exec:`) | **Complete** | `check-kv-keys.mjs` ✓ · `check-refusal-classification.mjs` ✓ |
 | R | **`wf:` re-key to `wf:run:<instanceId>` + parent stamps** — shared, lands on BOTH substrates | **Complete** | parity guard owns `wfRunKey`/`WfParentage` ✓ |
-| 2 | Cron + schedule | **Next** | flag/capability agreement |
-| 3 | Chain as a durable registration | Not started *(preview owed)* | — |
+| 2 | Cron + schedule | **Complete** | refusal-classification cross-check ✓ |
+| 3 | Chain as a durable registration | **Next** *(preview owed)* | — |
 | 4 | Watcher + `exec:` fences | Not started *(preview owed)* | — |
 | 5 | Discover — fan-out | Not started | — |
 | — | Refusal re-classification | **Done** (1c) | `check-refusal-classification.mjs` ✓ |
@@ -373,7 +373,9 @@ Sub-steps:
 - [x] 2c — the engine host: resident mode, KV lease singleton, 60s tick, cron + sched scans
 - [x] 2d — `h events up [--with-relay]` supervises it; `h events status` reports all three
 - [x] 2e — `--at`/`--in` arm locally; `h cron|schedule list --local` and `h schedule rm --local`
-      answer. **`--cron` stays refused for now** — see the 2e log
+      answer
+- [x] 2f — `--cron --local`: `planCron` lifted to `engine-core`, the executor's `armCron` closing
+      bracket, and a live end-to-end arm
 - [x] 2f — the `wf:` bracket in the local executor. **Done as part of 2b, not after it**: the
       invoker READS what the bracket WRITES, so split apart each half is inert. Landed with
       `goalResolved` lifted from `generic.workflow` into `engine-core` — a shared semantic that had
@@ -812,6 +814,32 @@ after their engine landed. `check-refusal-classification` now cross-checks the t
 runner can SERVE must not still be listed as pending), verified firing. **A refusal that outlives
 its engine is worse than the original gap: it is a capability nobody knows they have, hidden behind
 a message saying it does not exist.**
+
+### 2f log — increment 2 closed, live
+
+`h workflow run answer --local -p repo=o/r -p slug=demo --cron '*/30 * * * *'` runs the agent,
+writes its `wf:run` row, and arms `o/r:demo:answer` — verified end to end with a real agent run and
+read back through `h cron list --local`.
+
+**`planCron` was lifted to `engine-core`**, the third pure decision found sitting in an app after
+`goalResolved` and the engines themselves. It decides WHETHER and WITH WHAT to arm, including the
+arm-at-birth guard (do not arm a revise-pr loop for a PR that never opened), and both executors must
+decide identically or one substrate arms a loop the other declines.
+
+**`registerCronForFire`'s requirement was too wide.** It declared the whole `CronScanEnv` while
+using only `CronStore` — a type-level overstatement that kept the seam out of reach of any host with
+registries but no fire path, which is exactly what the local executor is at its closing bracket.
+Narrowed to what it actually uses.
+
+**The two engine brackets stay refused as STEPS, permanently, for a new reason.** `write-wf-row` and
+`register-cron` are now both implemented here — yet a template naming either is a composition error
+on BOTH substrates, because the engine adds them around a run ("engine-driven, invisible to the
+definition"). Deleting their entries would have made them merely UNKNOWN, and "unknown activity"
+tells an author nothing about why the thing they reasonably expected to name is unnameable. So the
+list keeps them with a reason that says which bracket owns them.
+
+That is the third distinct shape a refusal takes, and the classification held up: pending (machinery
+coming), permanent-because-cluster (`run-itest`), permanent-because-not-a-step (the brackets).
 
 ## Open questions
 

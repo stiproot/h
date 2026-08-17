@@ -54,16 +54,30 @@ type Refusal = { readonly why: RefusalClass; readonly reason: string };
 
 const REFUSED: Readonly<Record<string, Refusal>> = {
   // PENDING — waiting on machinery this substrate is growing.
+  // The two ENGINE BRACKETS. Both are now implemented on this substrate — the executor writes its
+  // own `wf:run` row and arms its own recurrence — yet both stay refused AS STEPS, and permanently,
+  // for a reason unlike every other entry here: they are not steps on EITHER substrate. The Dapr
+  // engine adds them around a run ("engine-driven, invisible to the definition"), so a template
+  // naming one is a composition error, not a capability gap.
+  //
+  // Keeping them listed is what preserves the useful message. Deleting the entries would make them
+  // merely UNKNOWN, and "unknown activity" tells an author nothing about why the thing they
+  // reasonably expected to name is unnameable.
   "write-wf-row": {
-    why: "pending",
+    why: "permanent",
     reason:
-      "writing a wf: status row needs the engine BRACKET that adds it (never a template step). " +
-      "The KV registry exists; the bracket lands with the cron engine that reads the goal flag",
+      "a run's wf: status row is written by the engine BRACKET around it, never by a step. This " +
+      "substrate writes one for any run carrying a wf identity — you do not compose it",
   },
   "register-cron": {
-    why: "pending",
-    reason: "arming a recurrence needs the cron engine (a workflow never recurs itself)",
+    why: "permanent",
+    reason:
+      "a recurrence is armed by the engine BRACKET (§10 — a workflow never recurs itself), never " +
+      "by a step. Pass --cron and the run arms its own",
   },
+  // NOTE: `register-cron` is no longer here. The local executor arms a recurrence in its own
+  // closing bracket (`armCron`), the same §10 shape the Dapr engine uses — so there is no activity
+  // to refuse. It never was a chart activity on either substrate.
   "register-discover": { why: "pending", reason: "arming a discovery cron needs the cron engine" },
 
   // PERMANENT — needs a cluster, a service, or a workspace that is not this substrate's.

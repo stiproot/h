@@ -568,8 +568,6 @@ def run(
         _refuse_engine_flags(
             {
                 "--via": via,
-                "--cron": cron,
-                "--max-fires": max_fires,
                 "--watch": watch or None,
                 "--budget": budget,
                 "--retry": retry,
@@ -728,6 +726,15 @@ def run(
                 raise typer.Exit(1) from err
             console.print(f"==> panelized '{key}' — roster: {', '.join(roster)} (judge: claude)")
         merged = {**(definition.get("params") or {}), **params}
+        if cron_policy and not (merged.get("repo") and merged.get("slug")):
+            # A cron is keyed by <repo>:<slug>:<workflow>, and the run arms it from its own params.
+            # Without both, there is no key to arm under — refuse before the work rather than run it
+            # and fail at the closing bracket.
+            err_console.print(
+                "[red]--cron --local needs repo and slug params[/red] — a recur cron is keyed "
+                "`<repo>:<slug>:<workflow>`. Pass -p repo=owner/name -p slug=<slug>."
+            )
+            raise typer.Exit(1)
         if scheduled:
             _arm_local_schedule(template_name, definition, merged, instance_id, at, in_)
             return
@@ -739,6 +746,16 @@ def run(
             with_setup,
             resume=resume,
             no_journal=no_journal,
+            arm_cron=(
+                {
+                    "cadence": cron_policy["cadence"],
+                    "workflow": template_names[0],
+                    **({"maxFires": max_fires} if max_fires is not None else {}),
+                    "inline": True,
+                }
+                if cron_policy
+                else None
+            ),
         )
         return
     if roster:
@@ -865,6 +882,7 @@ def _run_local(
     with_setup: bool,
     resume: str | None = None,
     no_journal: bool = False,
+    arm_cron: dict[str, Any] | None = None,
 ) -> None:
     """Execute a rendered definition on the local substrate and report what its steps produced.
 
@@ -884,6 +902,17 @@ def _run_local(
         # template's own clonePath param still wins per step (the multi-repo knob).
         "repoPath": repo_root(Path.cwd()),
         **({"withSetup": True} if with_setup else {}),
+        # §10: the RUN arms its own recurrence in its closing bracket. Passed through rather than
+        # armed here, so "a workflow never recurs itself, and the edge does not write cron rows"
+        # holds on this substrate too.
+        **({"armCron": arm_cron} if arm_cron else {}),
+        # A cron-armed run must be readable by the engine that will re-fire it, so it writes a
+        # wf:run row under the identity the cron is keyed by.
+        **(
+            {"wf": {"repo": params["repo"], "slug": params["slug"], "workflow": template}}
+            if arm_cron
+            else {}
+        ),
     }
     if not no_journal:
         job["journal"] = _journal_preflight(resume)

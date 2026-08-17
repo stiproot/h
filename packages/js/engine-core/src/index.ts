@@ -45,9 +45,11 @@ export {
   disarmCron,
   type DisarmCronError,
   disarmEventEffect,
+  planCron,
   registerCronForFire,
   scanCronsEffect,
 } from "./cron-scan.ts";
+export type { CronPlan, RegisterCronInput } from "./cron-scan.ts";
 export {
   type DiscoverRegistration,
   type DiscoverScanEnv,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type RegisterCronInput, planCron } from "./register-cron.activity.ts";
+import { type RegisterCronInput, planCron } from "engine-core";
 
 const base: RegisterCronInput = {
   workflow: "revise-pr",

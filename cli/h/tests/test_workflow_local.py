@@ -129,7 +129,6 @@ def test_local_expands_an_agent_roster_into_a_panel(captured_job) -> None:
 @pytest.mark.parametrize(
     "flag",
     [
-        ["--cron", "@daily"],
         ["--watch"],
         ["--budget", "10m"],
         ["--retry", "2"],
@@ -146,6 +145,48 @@ def test_local_refuses_flags_that_need_an_engine(flag, captured_job) -> None:
     assert flag[0] in output
     assert "engines" in output
     assert captured_job == [], "nothing may run when a flag was refused"
+
+
+def test_local_cron_arms_via_the_RUN_not_the_edge(captured_job) -> None:
+    """--cron --local passes armCron to the run rather than writing a cron row here.
+
+    §10 is the invariant under test: a workflow never recurs itself, and the EDGE does not write
+    cron rows — the run registers its own recurrence in its closing bracket. Arming from the CLI
+    would be the same shortcut the service substrate deliberately does not take.
+    """
+    result = runner.invoke(
+        app,
+        [
+            "workflow",
+            "run",
+            "answer",
+            "--local",
+            "-p",
+            "task=q",
+            "-p",
+            "repo=o/r",
+            "-p",
+            "slug=x",
+            "--cron",
+            "*/30 * * * *",
+        ],
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_job, "the run must still execute — the cron is armed by its closing bracket"
+    assert captured_job[0]["armCron"]["cadence"] == "*/30 * * * *"
+    # And it must write a wf:run row, or the engine re-firing it cannot observe the run it fired.
+    assert captured_job[0]["wf"] == {"repo": "o/r", "slug": "x", "workflow": "answer"}
+
+
+def test_local_cron_without_repo_slug_is_refused_before_any_work(captured_job) -> None:
+    # A recur cron is keyed <repo>:<slug>:<workflow>. Refusing up front beats running the work and
+    # failing at the closing bracket, having spent an agent run.
+    result = runner.invoke(
+        app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--cron", "*/30 * * * *"]
+    )
+    assert result.exit_code == 1
+    assert "needs repo and slug" in _all_output(result)
+    assert captured_job == []
 
 
 def test_local_at_and_in_ARM_a_schedule_rather_than_being_refused(

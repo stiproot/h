@@ -247,6 +247,20 @@ export const WorkflowJob = Schema.Struct({
   ),
   /** The primitive that caused this run — stamped onto the row so it traces back without an index. */
   parent: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  /**
+   * `--cron`: arm a recurrence in this run's CLOSING bracket (§10 — a workflow never recurs itself;
+   * it registers a row the cron engine acts on). The mirror of `WorkflowRequest.armCron`, and armed
+   * AFTER the work for the same reason: a recurrence recorded before its first run succeeded would
+   * claim a loop that never started.
+   */
+  armCron: Schema.optional(
+    Schema.Struct({
+      cadence: Schema.String,
+      workflow: Schema.String,
+      maxFires: Schema.optional(Schema.Number),
+      inline: Schema.optional(Schema.Boolean),
+    }),
+  ),
 });
 export type WorkflowJob = Schema.Schema.Type<typeof WorkflowJob>;
 

@@ -2,7 +2,7 @@ import { Effect, Layer, TestClock, TestContext } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { runChain } from "./chain.ts";
-import { AllowAllExecPolicy, memoryWfStore } from "./policy.test-layer.ts";
+import { AllowAllExecPolicy, memoryArmStores, memoryWfStore } from "./policy.test-layer.ts";
 import type {
   AgentRunReport,
   AgentRunRequest,
@@ -113,6 +113,7 @@ const run = (j: ChainJob, layer: Layer.Layer<Ports>) =>
       Effect.provide(layer),
       Effect.provide(AllowAllExecPolicy),
       Effect.provide(memoryWfStore().layer),
+      Effect.provide(memoryArmStores().layer),
     ),
   );
 
@@ -381,6 +382,7 @@ describe("runChain", () => {
           Effect.provide(layer),
           Effect.provide(AllowAllExecPolicy),
           Effect.provide(memoryWfStore().layer),
+          Effect.provide(memoryArmStores().layer),
           Effect.provide(TestContext.TestContext),
         ),
       );

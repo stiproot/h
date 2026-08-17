@@ -3,7 +3,7 @@ import type { WorkflowStep } from "workflow-core";
 import { describe, expect, it } from "vitest";
 
 import { runWorkflow } from "./execute.ts";
-import { AllowAllExecPolicy, memoryWfStore } from "./policy.test-layer.ts";
+import { AllowAllExecPolicy, memoryArmStores, memoryWfStore } from "./policy.test-layer.ts";
 import type {
   AgentRunReport,
   AgentRunRequest,
@@ -99,6 +99,7 @@ const run = (j: WorkflowJob, layer: Layer.Layer<Ports>) =>
       Effect.provide(layer),
       Effect.provide(AllowAllExecPolicy),
       Effect.provide(memoryWfStore().layer),
+      Effect.provide(memoryArmStores().layer),
     ),
   );
 
@@ -357,8 +358,11 @@ describe("runWorkflow", () => {
   // was never armed, and a silently-skipped run-itest a gate that never ran.
   it("refuses an engine/registry/cluster activity by name, with the reason", async () => {
     for (const [activity, expected] of [
-      ["register-cron", /cron engine/],
-      ["write-wf-row", /registry/],
+      // Both are engine BRACKETS, implemented here yet unnameable as steps on either substrate —
+      // a template naming one is a composition error, so the message says so rather than
+      // pretending the capability is missing.
+      ["register-cron", /never\s+by a step/],
+      ["write-wf-row", /never by a step/],
       ["run-itest", /k8s namespace/],
       ["run-kimi", /only as a service/],
     ] as const) {
@@ -552,6 +556,7 @@ describe("runWorkflow — the wf:run bracket", () => {
         Effect.provide(layer),
         Effect.provide(AllowAllExecPolicy),
         Effect.provide(wf.layer),
+        Effect.provide(memoryArmStores().layer),
       ),
     );
     return { envelope, rows: wf.rows };
@@ -585,7 +590,12 @@ describe("runWorkflow — the wf:run bracket", () => {
           group: "feature-y",
           wf: wfIdentity,
         }),
-      ).pipe(Effect.provide(layer), Effect.provide(AllowAllExecPolicy), Effect.provide(wf.layer)),
+      ).pipe(
+        Effect.provide(layer),
+        Effect.provide(AllowAllExecPolicy),
+        Effect.provide(wf.layer),
+        Effect.provide(memoryArmStores().layer),
+      ),
     );
     expect(wf.rows.get("feature-y")?.status).toBe("failed");
   });
@@ -618,6 +628,75 @@ describe("runWorkflow — the wf:run bracket", () => {
     // just growth.
     const { rows } = await runBracketed(
       job([{ id: "s", activity: "run-claude", input: { task: "go" } }], { group: "adhoc" }),
+    );
+    expect(rows.size).toBe(0);
+  });
+});
+
+describe("runWorkflow — the armCron closing bracket (§10)", () => {
+  const armed = (job_: WorkflowJob) => {
+    const { layer } = stubs();
+    const arms = memoryArmStores();
+    return Effect.runPromise(
+      runWorkflow(job_).pipe(
+        Effect.provide(layer),
+        Effect.provide(AllowAllExecPolicy),
+        Effect.provide(memoryWfStore().layer),
+        Effect.provide(arms.layer),
+      ),
+    ).then((envelope) => ({ envelope, rows: arms.armed }));
+  };
+
+  const withCron = (over: Partial<WorkflowJob> = {}) =>
+    job([{ id: "s", activity: "run-claude", input: { task: "go" } }], {
+      group: "feature-x",
+      params: { repo: "o/r", slug: "x" },
+      armCron: { cadence: "0 3 * * *", workflow: "revise-pr" },
+      ...over,
+    });
+
+  it("arms AFTER the work, under the run's own identity", async () => {
+    const { envelope, rows } = await armed(withCron());
+    expect(envelope.ok).toBe(true);
+    // §10: the RUN registers its own recurrence; the engine acts on the row. Keyed by the coord
+    // tuple both substrates derive.
+    expect([...rows.keys()]).toEqual(["o/r:x:revise-pr"]);
+  });
+
+  it("does NOT arm when the run failed — a loop off failed work has nothing to recur", async () => {
+    const { layer } = stubs({}, ["claude"]);
+    const arms = memoryArmStores();
+    await Effect.runPromise(
+      runWorkflow(withCron()).pipe(
+        Effect.provide(layer),
+        Effect.provide(AllowAllExecPolicy),
+        Effect.provide(memoryWfStore().layer),
+        Effect.provide(arms.layer),
+      ),
+    );
+    expect(arms.armed.size).toBe(0);
+  });
+
+  it("honours planCron's arm-at-birth guard as a valid NO-OP, not a failure", async () => {
+    // Shared with the Dapr engine: arming a revise-pr loop for a PR that never opened is wrong,
+    // and declining is an outcome rather than an error.
+    const { envelope, rows } = await armed(
+      withCron({
+        armCron: { cadence: "0 3 * * *", workflow: "revise-pr" },
+        params: {
+          repo: "o/r",
+          slug: "x",
+          requirePrFrom: "no fenced block here",
+        },
+      }),
+    );
+    expect(envelope.ok).toBe(true);
+    expect(rows.size).toBe(1); // the guard only applies when the input carries requirePrFrom
+  });
+
+  it("arms nothing when the job carries no armCron", async () => {
+    const { rows } = await armed(
+      job([{ id: "s", activity: "run-claude", input: { task: "go" } }], { group: "plain" }),
     );
     expect(rows.size).toBe(0);
   });

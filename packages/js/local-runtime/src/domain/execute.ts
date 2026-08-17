@@ -1,14 +1,21 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-import { Cause, Clock, Effect } from "effect";
+import { Cause, Clock, Effect, Either } from "effect";
 import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-core";
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
 import { assertExecutorAllowed } from "./policy.ts";
 import type { ExecPolicyStore, WfStatus } from "engine-core";
-import { goalResolved, WfStore } from "engine-core";
+import {
+  CronStore,
+  goalResolved,
+  planCron,
+  registerCronForFire,
+  WfStore,
+  WorkflowStore,
+} from "engine-core";
 import type {
   CheckoutSpec,
   JournalRecord,
@@ -101,7 +108,14 @@ export const runWorkflow = (
 ): Effect.Effect<
   WorkflowEnvelope,
   never,
-  AgentPort | WorkspacePort | ProgressPort | JournalPort | ExecPolicyStore | WfStore
+  | AgentPort
+  | WorkspacePort
+  | ProgressPort
+  | JournalPort
+  | ExecPolicyStore
+  | WfStore
+  | CronStore
+  | WorkflowStore
 > =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
@@ -242,7 +256,7 @@ export const runWorkflow = (
     // owns it, rather than a lost write silently pinning a cron forever.
     yield* writeWfRow(job, "running", undefined, false).pipe(Effect.ignore);
 
-    const envelope = yield* run.pipe(
+    let envelope = yield* run.pipe(
       Effect.map(
         () =>
           ({
@@ -267,6 +281,22 @@ export const runWorkflow = (
         } satisfies WorkflowEnvelope);
       }),
     );
+
+    // §10 closing bracket: a run that carries an armCron registers its OWN recurrence AFTER the
+    // work. LOUD, unlike the wf: row — the cron IS the point of the flag, so a failed arm must fail
+    // the run rather than report a recurrence that was never armed. Skipped on a failed run: arming
+    // a loop off work that did not succeed claims a recurrence with nothing to recur.
+    // A failed arm turns the envelope FAILED rather than throwing: the run's work is already done
+    // and its results are worth reporting, but a `--cron` that did not arm must not read as success.
+    const arm = envelope.ok
+      ? yield* armCron(job).pipe(Effect.either)
+      : Either.right(undefined as string | undefined);
+    if (Either.isRight(arm)) {
+      if (arm.right !== undefined) yield* progress.emit(arm.right);
+    } else {
+      envelope = { ...envelope, ok: false, error: arm.left.message, failedStep: "arm-cron" };
+      yield* progress.emit(`✗ cron not armed: ${arm.left.message}`);
+    }
 
     yield* writeWfRow(
       job,
@@ -460,4 +490,38 @@ const writeWfRow = (
           ...(resolved ? { resolved } : {}),
           updatedAt: new Date().toISOString(),
         });
+      });
+
+/**
+ * Arm this run's follow-on recurrence, mirroring generic.workflow's closing bracket.
+ *
+ * The DECISION is `engine-core`'s `planCron` — shared with the Dapr engine, so the arm-at-birth
+ * guard (only arm a revise-pr loop if a PR actually opened) answers identically on both substrates.
+ * A no-op plan is a valid outcome, not a failure: "no PR opened" is a reason, not an error.
+ *
+ * Returns the progress line, or undefined when there is nothing to arm.
+ */
+const armCron = (
+  job: WorkflowJob,
+): Effect.Effect<string | undefined, StepError, CronStore | WorkflowStore> =>
+  job.armCron === undefined
+    ? Effect.succeed(undefined)
+    : Effect.gen(function* () {
+        const params = (job.params ?? {}) as Record<string, unknown>;
+        const plan = planCron({
+          workflow: job.armCron!.workflow,
+          repo: String(params.repo ?? ""),
+          slug: String(params.slug ?? ""),
+          cadence: job.armCron!.cadence,
+          ...(job.armCron!.maxFires === undefined ? {} : { maxFires: job.armCron!.maxFires }),
+          params,
+          instanceId: job.group,
+          ...(job.armCron!.inline ? { inline: true, steps: job.steps } : {}),
+          workspaceId: job.group,
+        });
+        if (!plan.armed) return `⊘ cron not armed: ${plan.reason}`;
+        const result = yield* registerCronForFire(plan.registration).pipe(
+          Effect.mapError((error) => new StepError("arm-cron", error.message ?? String(error))),
+        );
+        return `⟳ cron armed: ${result.cronId} (${job.armCron!.cadence})`;
       });

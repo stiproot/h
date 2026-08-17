@@ -1,4 +1,4 @@
-import { ExecPolicyStore, WfStore } from "engine-core";
+import { CronStore, emptyCronLedger, ExecPolicyStore, WfStore, WorkflowStore } from "engine-core";
 import type { WfRow } from "engine-core";
 import { Effect, Layer, Option } from "effect";
 
@@ -27,3 +27,44 @@ export const memoryWfStore = (rows: Map<string, WfRow> = new Map()) => ({
     saveRow: (row: WfRow) => Effect.sync(() => void rows.set(row.instanceId, row)),
   }),
 });
+
+/**
+ * The registries a run's CLOSING BRACKET touches — the cron it may arm, and the store that arming
+ * reads. Inert unless a job carries `armCron`, but required by the type, so tests state it once
+ * here rather than each stubbing seventeen methods.
+ */
+export const memoryArmStores = (armed: Map<string, unknown> = new Map()) => {
+  const none = () => Effect.succeed(Option.none());
+  return {
+    armed,
+    layer: Layer.mergeAll(
+      Layer.succeed(CronStore, {
+        getRow: (id: string) => Effect.succeed(Option.fromNullable(armed.get(id) as never)),
+        listRows: () => Effect.succeed([]),
+        saveRow: (row: { repo: string; slug: string; workflow: string }) =>
+          Effect.sync(() => void armed.set(`${row.repo}:${row.slug}:${row.workflow}`, row)),
+        deleteRow: () => Effect.void,
+        getDiscoverRow: none,
+        listDiscoverRows: () => Effect.succeed([]),
+        saveDiscoverRow: () => Effect.void,
+        deleteDiscoverRow: () => Effect.void,
+        getSchedRow: none,
+        listSchedRows: () => Effect.succeed([]),
+        saveSchedRow: () => Effect.void,
+        deleteSchedRow: () => Effect.void,
+        getConfig: none,
+        getHeartbeat: none,
+        heartbeat: () => Effect.void,
+        getLedger: () => Effect.succeed(emptyCronLedger),
+        bumpLedger: () => Effect.void,
+      } as never),
+      Layer.succeed(WorkflowStore, {
+        save: () => Effect.void,
+        get: none,
+        list: () => Effect.succeed([]),
+        listScheduled: () => Effect.succeed([]),
+        markRun: () => Effect.void,
+      } as never),
+    ),
+  };
+};
