@@ -66,32 +66,32 @@ classDiagram
 
   class Trigger {
     <<the fire descriptor>>
-    +key? string
-    +steps? WorkflowStep[]
-    +params? WorkflowParams
-    +instanceId? string
-    +workspaceId? string
-    +watch? WatchPolicy
+    +key : string?
+    +steps : WorkflowStep[]?
+    +params : WorkflowParams?
+    +instanceId : string?
+    +workspaceId : string?
+    +watch : WatchPolicy?
   }
 
   class WatchRow {
     <<Effect Schema struct>>
-    +instanceId string
-    +epoch number
-    +attempts number
-    +startedAt string
-    +policy WatchPolicy
-    +resubmit? WatchResubmit
-    +status WatchStatus
-    +lastStatus string
-    +unknownStreak number
-    +outcome? WatchOutcome
-    +costUsd? number
-    +costGap? boolean
-    +note? string
-    +meta? Record
-    +updatedAt string
-    +endedAt? string
+    +instanceId : string
+    +epoch : number
+    +attempts : number
+    +startedAt : string
+    +policy : WatchPolicy
+    +resubmit : WatchResubmit?
+    +status : WatchStatus
+    +lastStatus : string
+    +unknownStreak : number
+    +outcome : WatchOutcome?
+    +costUsd : number?
+    +costGap : boolean?
+    +note : string?
+    +meta : Schema.Record key: Schema.String, value…?
+    +updatedAt : string
+    +endedAt : string?
   }
 
   class WatchEngine {
@@ -103,40 +103,40 @@ classDiagram
 
   class ChainRow {
     <<Effect Schema struct>>
-    +chainId string
-    +epoch number
-    +slug string
-    +members ChainMember[]
-    +strategy ChainStrategy
-    +loop? ChainLoop
-    +budgetMs? number
-    +cursor number
-    +currentInstanceId? string
-    +data Record
-    +defaultData? Record
-    +status ChainStatus
-    +lastStatus string
-    +unknownStreak number
-    +outcome? ChainOutcome
-    +note? string
-    +meta? Record
-    +after? string
-    +notBefore? string
-    +startedAt string
-    +updatedAt string
-    +endedAt? string
+    +chainId : string
+    +epoch : number
+    +slug : string
+    +members : ChainMember[]
+    +strategy : ChainStrategy
+    +loop : ChainLoop?
+    +budgetMs : number?
+    +cursor : number
+    +currentInstanceId : string?
+    +data : Schema.Record key: Schema.String, value…
+    +defaultData : Schema.Record key: Schema.String, value…?
+    +status : ChainStatus
+    +lastStatus : string
+    +unknownStreak : number
+    +outcome : ChainOutcome?
+    +note : string?
+    +meta : Schema.Record key: Schema.String, value…?
+    +after : string?
+    +notBefore : string?
+    +startedAt : string
+    +updatedAt : string
+    +endedAt : string?
   }
 
   class ChainMember {
     <<Effect Schema struct>>
-    +kind ChainMemberKind
-    +cron? object
-    +id? string
-    +stage? number
-    +fresh? boolean
-    +captures? Record
-    +inputs? Record
-    +until? object
+    +kind : ChainMemberKind
+    +cron : Schema.Struct cadence: Schema.String, m…?
+    +id : string?
+    +stage : number?
+    +fresh : boolean?
+    +captures : Schema.Record key: Schema.String, value…?
+    +inputs : Schema.Record key: Schema.String, value…?
+    +until : Schema.Struct path: Schema.String, equa…?
   }
 
   class ChainEngine {
@@ -146,25 +146,25 @@ classDiagram
 
   class CronRow {
     <<Effect Schema struct>>
-    +repo string
-    +slug string
-    +workflow string
-    +status CronStatus
-    +cadence string
-    +source CronSource
-    +budget CronBudget
-    +instanceId string
-    +epoch number
-    +fires number
-    +currentInstanceId? string
-    +lastRunAt? string
-    +lastStatus? string
-    +unknownStreak? number
-    +outcome? CronOutcome
-    +note? string
-    +createdAt string
-    +updatedAt string
-    +endedAt? string
+    +repo : string
+    +slug : string
+    +workflow : string
+    +status : CronStatus
+    +cadence : string
+    +source : CronSource
+    +budget : CronBudget
+    +instanceId : string
+    +epoch : number
+    +fires : number
+    +currentInstanceId : string?
+    +lastRunAt : string?
+    +lastStatus : string?
+    +unknownStreak : number?
+    +outcome : CronOutcome?
+    +note : string?
+    +createdAt : string
+    +updatedAt : string
+    +endedAt : string?
   }
 
   class CronEngine {
@@ -174,22 +174,22 @@ classDiagram
 
   class DiscoverRow {
     <<Effect Schema struct>>
-    +repo string
-    +label string
-    +status DiscoverStatus
-    +cadence string
-    +source DiscoverSource
-    +gates DiscoverGates
-    +trigger DiscoverTemplate
-    +epoch number
-    +fires number
-    +currentInstanceId? string
-    +lastFiredIssue? number
-    +lastRunAt? string
-    +note? string
-    +createdAt string
-    +updatedAt string
-    +endedAt? string
+    +repo : string
+    +label : string
+    +status : DiscoverStatus
+    +cadence : string
+    +source : DiscoverSource
+    +gates : DiscoverGates
+    +trigger : DiscoverTemplate
+    +epoch : number
+    +fires : number
+    +currentInstanceId : string?
+    +lastFiredIssue : number?
+    +lastRunAt : string?
+    +note : string?
+    +createdAt : string
+    +updatedAt : string
+    +endedAt : string?
   }
 
   class DiscoverEngine {
@@ -199,21 +199,21 @@ classDiagram
 
   class SchedRow {
     <<Effect Schema struct>>
-    +id string
-    +status SchedStatus
-    +fireAt string
-    +notAfter? string
-    +trigger SchedTrigger
-    +epoch number
-    +wf? WfIdentity
-    +origin? string
-    +handoffsRemaining? number
-    +firedInstanceId? string
-    +outcome? SchedOutcome
-    +note? string
-    +createdAt string
-    +updatedAt string
-    +firedAt? string
+    +id : string
+    +status : SchedStatus
+    +fireAt : string
+    +notAfter : string?
+    +trigger : SchedTrigger
+    +epoch : number
+    +wf : WfIdentity?
+    +origin : string?
+    +handoffsRemaining : number?
+    +firedInstanceId : string?
+    +outcome : SchedOutcome?
+    +note : string?
+    +createdAt : string
+    +updatedAt : string
+    +firedAt : string?
   }
 
   class SchedEngine {
@@ -223,14 +223,14 @@ classDiagram
 
   class Invoker {
     <<port>>
-    +invoke(input) Effect~object~
-    +getStatus(instanceId) Effect~WorkflowStatus~
-    +terminate(instanceId) Effect~void~
+    +invoke : input: WorkflowRequest => Effect.Effect…
+    +getStatus : instanceId: string => Effect.Effect~Wor…
+    +terminate : instanceId: string => Effect.Effect~voi…
   }
 
   class SourceReader {
     <<port>>
-    +listOpenIssues(opts) Effect~readonly SourceItem[]~
+    +listOpenIssues : opts: repo: string label: string => E…
   }
 
   class Registry {

@@ -2,9 +2,8 @@
 
 Zooming into the load-bearing seam of `packages/js/agent-cli`: the `AgentStrategy` contract
 and the types that flow through a run. GENERATED deterministically from the TypeScript AST by
-`gen-code-diagram --dir docs/diagrams` (the `@stiproot/code-comprehension` package / the
-`generated-diagrams` plugin skill; members are code truth; scope/topology/notes are curated in
-the manifest comment below) — only the symbols that tell the story (the [component diagram](./agent-cli-c4-component.md) is the level
+`uvx vizzle doc --dir docs/diagrams` (see the `generated-diagrams` plugin skill;
+members are code truth; scope/topology/notes are curated in the manifest comment below) — only the symbols that tell the story (the [component diagram](./agent-cli-c4-component.md) is the level
 above; this level exists because every agent integration is written against exactly these
 shapes — the `integrate-agent` skill's "CLI strategy" piece).
 
@@ -45,12 +44,12 @@ classDiagram
 
   class AgentInvoker {
     <<Effect service>>
-    +invoke(params) Effect~InvocationResult~
+    +invoke : params: AgentInvokeParams => Effect.Eff…
   }
 
   class RunProcess {
     <<module run-process.ts>>
-    +runAgentProcessEffect(strategy, request) Effect~InvocationResult~
+    +runAgentProcessEffect(strategy, request) Effect.Effect~ InvocationResult, AgentS…
   }
 
   class Reaper {
@@ -62,7 +61,7 @@ classDiagram
 
   class ParseStream {
     <<module parse-stream.ts>>
-    +buildInvocationResult(opts) InvocationResult
+    +buildInvocationResult( events, stderr, exitCode, signal, sessionId, metrics, timedOutAfterMs, ) InvocationResult
   }
 
   class ClassifyStop {
@@ -72,78 +71,85 @@ classDiagram
 
   class AgentStrategy {
     <<interface>>
-    +type AgentType
-    +name string
+    +type : AgentType
+    +name : string
     +validateEnvironment(effectiveEnv, processEnv) InvocationResult | null
-    +prepareEnvironment?(request) Record~string~
-    +buildInvocation(request) Effect~PreparedAgentInvocation~
+    +prepareEnvironment(request) Record~string, string~
+    +buildInvocation(request) Effect.Effect~PreparedAgentInvocation, …
     +extractSessionId(events) string | undefined
     +extractMetrics(events, request) Partial~InvocationResult~
-    +tallyToolCalls?(current, event) number
+    +tallyToolCalls(current, event) number
   }
 
   class claudeStrategy {
+    <<const>>
     stream-json; partial-usage fold on timeout
   }
 
   class codexStrategy {
+    <<const>>
     exec json stream; tokens only, never cost
   }
 
   class openhandsStrategy {
+    <<const>>
     file-fed JSONL; error-event vetoes success
   }
 
   class piStrategy {
+    <<const>>
     stdin task; no usage in stream
   }
 
   class AgentInvocationRequest {
     <<interface>>
-    +systemPrompt string
-    +taskPrompt string
-    +cwd string
-    +env Record~string~
-    +effectiveEnv AgentEnv
-    +timeout number
-    +model? string
-    +resumeSessionId? string
-    +onEvent? AgentEventCallback
-    +verbose? boolean
-    +llmConfig? LlmConfig
-    +permissionMode? "plan"
+    +systemPrompt : string
+    +taskPrompt : string
+    +cwd : string
+    +env : Record~string, string~
+    +effectiveEnv : AgentEnv
+    +timeout : number
+    +model : string
+    +resumeSessionId : string
+    +onEvent : AgentEventCallback
+    +verbose : boolean
+    +llmConfig : LlmConfig
+    +permissionMode : plan
   }
 
   class PreparedAgentInvocation {
     <<interface>>
-    +command string
-    +args string[]
-    +stdinInput? string
-    +shouldFilterEvent?(event) boolean
-    +streamParser? AgentStreamParser
-    +cleanup?() void | Promise<void>
+    +command : string
+    +args : string[]
+    +stdinInput : string
+    +shouldFilterEvent : event: StreamEvent => boolean
+    +streamParser : AgentStreamParser
+    +cleanup : => void | Promise~void~
   }
 
   class InvocationResult {
     <<interface>>
-    +success boolean
-    +stdout string
-    +stderr? string
-    +exitCode? number
-    +stopReason? StopReason
-    +resultEventText? string
-    +tokenUsage? object
-    +model? string
-    +modelUsage? Record~string~
-    +costUsd? number
-    +numTurns? number
-    +sessionId? string
-    +costPartial? boolean
+    +success : boolean
+    +stdout : string
+    +stderr : string
+    +exitCode : number
+    +stopReason : StopReason
+    +resultEventText : string
+    +tokenUsage : input: number output: number
+    +model : string
+    +modelUsage : Record~string, ModelUsage~
+    +costUsd : number
+    +numTurns : number
+    +sessionId : string
+    +costPartial : boolean
   }
 
   class StopReason {
     <<union>>
-    completed | usage-limited | timeout | failed
+    +completed
+    +usage-limited
+    +timeout
+    +failed
   }
 
   claudeStrategy ..|> AgentStrategy

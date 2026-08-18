@@ -817,9 +817,9 @@ Three obligations, in order of how often they are missed:
    new step, new participant, moved responsibility, a new BRANCH through an existing flow —
    updates that diagram in the same change set. A stale diagram is worse than none.
 3. **Render before committing.** The render IS the syntax check, and for C4 you must LOOK at the
-   image: mermaid will happily emit a valid-but-unreadable 5000px column. `render-diagram
-   docs/diagrams docs/diagrams/rendered` (bin from the `@stiproot/code-comprehension`
-   devDependency; `docs/diagrams/rendered/` is gitignored — render on demand, share the PNG).
+   image: mermaid will happily emit a valid-but-unreadable 5000px column. `uvx vizzle render
+   docs/diagrams docs/diagrams/rendered` (`docs/diagrams/rendered/` is gitignored — render on
+   demand, share the PNG).
    **`UpdateLayoutConfig($c4ShapeInRow=…)` is INERT in mermaid 11.16.0** — C4 lays out two shapes
    per row whatever you write, so a wide diagram is not available and that 5000px column is not
    something you can widen your way out of. Verified 2026-08-12 by rendering the same diagram at
@@ -829,23 +829,29 @@ Three obligations, in order of how often they are missed:
    `UpdateRelStyle($offsetX/$offsetY)` for label collisions, and splitting an over-full diagram
    into a second, narrower one — which is what `execution-substrates-c4-container` is.
 
-**Use the plugin's tooling; never re-implement it.** `@stiproot/code-comprehension` (a root
-devDependency) ships the two bins — `gen-code-diagram` (generate/drift-check managed `-class` docs
-from the AST) and `render-diagram` (mermaid → PNG, finds or provisions a Chrome) — and publishes
-its internals as `exports` subpaths precisely so consumers don't hand-roll them:
-`@stiproot/code-comprehension/managed-doc` (the `gen:c4-code` manifest parser),
-`/ts-extract`, `/py-extract`, `/mermaid-class`, `/sanitize`. h's own scripts compose those; the
-split is the same one the skills draw — **the plugin says HOW, h says WHERE AND WHEN**. If a
-diagram check needs to understand the managed-doc format or extract from an AST, import it.
+**Use the tooling; never re-implement it.** [vizzle](https://github.com/stiproot/vizzle)
+generates and drift-checks the managed `-class` docs (`uvx vizzle doc --dir docs/diagrams`,
+`--check` in lint) and renders fences to images (`uvx vizzle render`). Nothing is installed: `uvx`
+fetches it on demand, so vizzle is in no lockfile and is not a dependency of this repo —
+`git` is its only other requirement. lint pins the exact version, because a drift gate that
+a third party's release can turn red is not a gate; bumping it regenerates the diagrams in
+the same change. The `code-comprehension` plugin
+keeps the judgment — which diagram at which level, when a picture beats prose — and the split
+is the one the skills draw: **the tool says HOW, h says WHERE AND WHEN**.
 
-Enforcement is deliberately partial, so know exactly where the machine stops. `gen-code-diagram
+vizzle publishes no JS library, so `check-diagrams.mjs` recognises a managed doc by its
+`gen:c4-code` MARKER rather than importing a parser. That is the narrow exception, and the
+reason is written at the import site: the marker is the format's public contract, while
+re-deriving its JSON parser here would still be the duplication that guard exists to catch.
+
+Enforcement is deliberately partial, so know exactly where the machine stops. `vizzle doc
 --check` fails on drift for GENERATED `-class` docs — but only for docs it can SEE, i.e. ones
 carrying a manifest. `scripts/check-diagrams.mjs` covers the rest of the set's hygiene (registered
 in the index both ways, kind-suffixed name, exactly one mermaid fence, a `## Reading notes`
 section) plus that blind spot: a `-class` doc with no manifest, which the generator skips silently.
 **No guard can tell you a hand-authored sequence or C4 diagram has quietly gone wrong — obligation
-2 is yours alone**, and it is the one that gets missed. Class diagrams are GENERATED from the AST,
-never hand-drawn: `gen-code-diagram --dir docs/diagrams`.
+2 is yours alone**, and it is the one that gets missed. Class diagrams are GENERATED from source,
+never hand-drawn: `uvx vizzle doc --dir docs/diagrams`.
 
 ## Dev commands
 

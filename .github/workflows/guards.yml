@@ -51,6 +51,11 @@ jobs:
           sudo install "/tmp/nats-server-${version}-linux-amd64/nats-server" /usr/local/bin/nats-server
           nats-server --version
 
+      # Before lint, not after: the diagram drift guard inside `bun run lint` shells out to
+      # `uvx vizzle doc --check`. The Python steps below rely on this same setup.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Lint (13 content guards + turbo lint)
         run: bun run lint
 
@@ -59,9 +64,6 @@ jobs:
 
       - name: Test (JS vitest)
         run: bun run test
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
 
       - name: Sync Python dependencies
         run: uv sync --frozen

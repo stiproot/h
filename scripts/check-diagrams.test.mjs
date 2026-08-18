@@ -48,7 +48,7 @@ test("flags a doc with no reading notes", () => {
   assert.match(problems[0], /no '## Reading notes' section/);
 });
 
-// A hand-drawn -class doc is INVISIBLE to `gen-code-diagram --check` (it only walks managed
+// A hand-drawn -class doc is INVISIBLE to `vizzle doc --check` (it only walks managed
 // docs), so this is the gap that guard cannot cover, not a repeat of it.
 test("flags a -class doc with no generator manifest", () => {
   const problems = checkSet(["a-class.md"], "[x](./a-class.md)", read({ "a-class.md": wellFormed }));
@@ -56,8 +56,8 @@ test("flags a -class doc with no generator manifest", () => {
   assert.match(problems[0], /GENERATED from the AST/);
 });
 
-// Manifest detection uses the generator's OWN parser (@stiproot/code-comprehension/managed-doc),
-// so this asserts against the real marker format rather than a local approximation of it.
+// Manifest detection reads the managed-doc MARKER, which is the format's public contract;
+// these cases pin it against a decoy comment so the recognition cannot quietly loosen.
 test("accepts a -class doc carrying its manifest", () => {
   const generated = `<!-- gen:c4-code {"classes": []} -->\n${wellFormed}`;
   assert.deepEqual(

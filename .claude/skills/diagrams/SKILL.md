@@ -32,15 +32,18 @@ to model reality, and joins the index.
 contract, an interaction with a new step/participant/moved responsibility — regenerate or
 update that diagram IN THE SAME CHANGE.** Concretely:
 
-- Generated (`-class`) docs: `gen-code-diagram --dir docs/diagrams` regenerates;
-  `gen-code-diagram --check --dir docs/diagrams` is the drift gate and runs in
-  `bun run lint` (the bin ships in the `@stiproot/code-comprehension` devDependency), so a
-  refactor that changes a diagrammed contract FAILS THE BUILD until the diagram regenerates.
+- Generated (`-class`) docs: `uvx vizzle doc --dir docs/diagrams` regenerates;
+  `uvx vizzle doc --check --dir docs/diagrams` is the drift gate and runs in
+  `bun run lint`, so a refactor that changes a diagrammed contract FAILS THE BUILD until the
+  diagram regenerates. Nothing is installed — `uvx` fetches vizzle on demand; it is not a
+  dependency of this repo and appears in no lockfile. **lint pins the version**
+  (`uvx vizzle@X.Y.Z` in `package.json`) so a vizzle release cannot turn this gate red on its
+  own; bumping it is a deliberate edit, and the diagrams are regenerated in the same change.
 - Hand-authored docs (sequence/state/C4 framing): edit the doc, re-verify against the code.
-- Render to confirm: `render-diagram docs/diagrams docs/diagrams/rendered` — the second bin from
-  the same `@stiproot/code-comprehension` devDependency (or a single doc as the first arg).
-  It finds an existing Chrome for mermaid-cli's puppeteer and provisions one otherwise, so no
-  env var is needed. Last-resort fallback:
+- Render to confirm: `uvx vizzle render docs/diagrams docs/diagrams/rendered` (or a single doc
+  as the first arg). It finds an existing Chrome for mermaid-cli's puppeteer and provisions one
+  otherwise, so no env var is needed, and it raises mermaid's `maxTextSize` — past which a
+  large diagram renders a small ERROR GRAPHIC instead of failing. Last-resort fallback:
   `bunx -p @mermaid-js/mermaid-cli mmdc --quiet -i docs/diagrams/<name>.md -o docs/diagrams/rendered/<name>.png --scale 2 --backgroundColor white`.
   `docs/diagrams/rendered/` is gitignored — render on demand and share the PNG.
 
@@ -75,7 +78,7 @@ manifest format, extractor contract, and extend-the-toolkit rule live in the
 `generated-diagrams` plugin skill). h's parameters: the managed docs live in
 `docs/diagrams/` (`--dir docs/diagrams`), manifests resolve file paths against the repo root
 (invoke from the root — `--root` defaults to cwd), and drift is a LINT FAILURE
-(`gen-code-diagram --check --dir docs/diagrams` in `bun run lint`). Hand-authoring is only
+(`uvx vizzle doc --check --dir docs/diagrams` in `bun run lint`). Hand-authoring is only
 for the genres no AST holds: sequence/state diagrams (verify against code) and C4
 component/container framing.
 

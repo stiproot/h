@@ -3,7 +3,7 @@
 //
 // Diagrams are h's communication medium for design and architecture (CLAUDE.md, "Diagrams are the
 // medium…"; the `diagrams` skill has the full policy). Enforcement used to cover only the
-// GENERATED `-class` docs, via `gen-code-diagram --check` — which is precisely backwards for
+// GENERATED `-class` docs, via `vizzle doc --check` — which is precisely backwards for
 // communication: the machine guarded the diagrams a tool rewrites anyway and stayed silent on the
 // hand-authored sequence/C4 set, where the architecture actually gets explained. Result: the only
 // diagram work that reliably happened was the work lint forced.
@@ -28,12 +28,14 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// The generator's OWN manifest parser, imported rather than re-implemented. The
-// `@stiproot/code-comprehension` package publishes it (and its extractors) as explicit `exports`
-// subpaths precisely so consumers do not hand-roll them — and this guard's whole subject is
-// duplication drifting from its source, so re-deriving the marker regex here would be the exact
-// mistake it exists to catch. If the managed-doc format changes upstream, this guard follows.
-import { parseManifest } from "@stiproot/code-comprehension/managed-doc";
+// Generation moved to vizzle (`vizzle doc`), which ships no JS library to import, so this
+// guard reads the MARKER rather than importing a parser. That is a narrower thing than it
+// looks: the marker is the managed-doc format's public contract — it appears verbatim in
+// every managed document, in vizzle's `docs/curated-diagrams.md`, and is what vizzle itself
+// keys on. Re-deriving the JSON *parser* here would still be the mistake this guard exists
+// to catch; recognising a documented constant is not.
+const MANAGED_MARKER = "gen:c4-code";
+const isManaged = (contents) => contents.includes(`<!-- ${MANAGED_MARKER}`);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = "docs/diagrams";
@@ -96,14 +98,14 @@ export function checkSet(files, indexContents, read) {
           "picture cannot say by itself.",
       );
     }
-    // Complements `gen-code-diagram --check` rather than repeating it: the generator only sees
+    // Complements `vizzle doc --check` rather than repeating it: the generator only sees
     // MANAGED docs, so a hand-drawn `-class` diagram with no manifest is invisible to it — it is
     // skipped, not flagged. This closes exactly that gap.
-    if (kind === "class" && parseManifest(contents) === null) {
+    if (kind === "class" && !isManaged(contents)) {
       problems.push(
         `${DIR}/${name}: a -class diagram is GENERATED from the AST and must carry its ` +
           "`gen:c4-code` manifest — without one the generator skips it silently, so it can never " +
-          "drift-check. Produce it with `gen-code-diagram --dir docs/diagrams`, never by hand.",
+          "drift-check. Produce it with `uvx vizzle doc --dir docs/diagrams`, never by hand.",
       );
     }
   }

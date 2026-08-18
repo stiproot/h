@@ -4,8 +4,8 @@ The structure of `cli/h` (package `h-cli`), the `h` command: a Typer composition
 command groups over a small pure core (expression parser, overlay, panelize) and thin
 adapters (helm subprocess, httpx clients). The CLI *composes and registers*; it never
 executes — everything durable happens in workflow-svc. GENERATED deterministically from the
-Python AST by `gen-code-diagram --dir docs/diagrams` (the `@stiproot/code-comprehension`
-package / the `generated-diagrams` plugin skill; members are code truth via
+Python AST by `uvx vizzle doc --dir docs/diagrams` (see the `generated-diagrams` plugin
+skill; members are code truth via
 `py-extract`; scope/topology/notes are curated in the manifest comment below). The
 [chain-run sequence diagram](./h-cli-chain-run-sequence.md) shows these classes in motion.
 
@@ -68,11 +68,11 @@ classDiagram
 
   class ChainCmd {
     <<Typer app chain.py>>
-    +WELL_KNOWN dict~str~
-    +KIND_MODEL_PARAMS dict~str~
-    +KIND_CONTRACT_SUPPLIES dict~str~
+    +WELL_KNOWN : dict~str, tuple~str, str~~
+    +KIND_MODEL_PARAMS : dict~str, tuple~str, ...~~
+    +KIND_CONTRACT_SUPPLIES : dict~str, frozenset~str~~
     +WRITE_KINDS
-    +run(ctx, slug, param, local, with_setup, resume, no_journal, strateg…
+    +run(ctx, slug, param, local, with_setup, resume, no_journal, strategy, max_iterations, after, at, in_) None
     +list_(local) None
     +rm(chain_id) None
   }
@@ -80,7 +80,7 @@ classDiagram
   class WorkflowCmd {
     <<Typer app workflow.py>>
     +publish(template, key, schedule, workspace_id, disabled) None
-    +run(keys, param, inline, agent, model, instance_id, fresh, watch, bu…
+    +run(keys, param, inline, agent, model, instance_id, fresh, watch, budget, retry, cron, max_fires, fallback_agent, fallback_model, fallback_after, fallback_max, at, in_, via, local, with_setup, allow_external, resume, no_journal) None
     +pause(instance_id, key, at, in_, param, workspace_id) None
     +resume(sched_id) None
     +terminate(instance_id) None
@@ -89,7 +89,7 @@ classDiagram
   class TemplateCmd {
     <<Typer app template.py>>
     +compose(templates, save) None
-    +compose_templates(templates) dict~str~
+    +compose_templates(templates) dict~str, Any~
     +template_role(name) str
   }
 
@@ -100,14 +100,15 @@ classDiagram
 
   class Config {
     <<settings config.py>>
-    +AGENT_IDENTITY dict~str~
-    +MODEL_PARAM_SLOTS tuple~str~
-    +FROZEN_EXECUTOR_KEYS frozenset~str~
-    +agent_identity_params(agent) dict~str~ | None
+    +AGENT_IDENTITY : dict~str, tuple~str, str~~
+    +MODEL_PARAM_SLOTS : tuple~str, ...~
+    +FROZEN_EXECUTOR_KEYS : frozenset~str~
+    +agent_identity_params(agent) dict~str, str~ | None
     +baked_models_suit(agent) bool
     +resolve_agent_url(agent) str | None
-    +charts_roots() tuple~Path~
+    +charts_roots() tuple~Path, ...~
     +chart_root_for(template) Path | None
+    env > consumer .h/config.toml > h-checkout default; charts_roots/chart_root_for = the chart search path (consumer primary, stock fallback)
   }
 
   class ChainExprParser {
@@ -117,47 +118,47 @@ classDiagram
   }
 
   class ChainExpr {
-    <<frozen dataclass>>
-    +defaults WorkflowConfig
-    +stages tuple~tuple~MemberRef~~
-    +members tuple~MemberRef~
+    <<class>>
+    +defaults : WorkflowConfig
+    +stages : tuple~tuple~MemberRef, ...~, ...~
+    +members : tuple~MemberRef, ...~
   }
 
   class MemberRef {
-    <<frozen dataclass>>
-    +key str | None
-    +templates tuple~str~
-    +config WorkflowConfig
-    +label str
+    <<class>>
+    +key : str | None
+    +templates : tuple~str, ...~
+    +config : WorkflowConfig
+    +label : str
   }
 
   class WorkflowConfig {
-    <<frozen dataclass>>
-    +agents tuple~str~
-    +model str | None
-    +budget str | None
-    +fresh bool
-    +kind str | None
-    +stage str | None
-    +cron str | None
-    +max_fires str | None
-    +id str | None
-    +inline bool
-    +captures tuple~tuple~str~~
-    +inputs tuple~tuple~str~~
-    +until str | None
+    <<class>>
+    +agents : tuple~str, ...~
+    +model : str | None
+    +budget : str | None
+    +fresh : bool
+    +kind : str | None
+    +stage : str | None
+    +cron : str | None
+    +max_fires : str | None
+    +id : str | None
+    +inline : bool
+    +captures : tuple~tuple~str, str~, ...~
+    +inputs : tuple~tuple~str, str~, ...~
+    +until : str | None
   }
 
   class Overlay {
     <<module overlay.py>>
-    +overlay(*definitions) dict~str~
+    +overlay() dict~str, Any~
   }
 
   class Panelize {
     <<module panelize.py>>
-    +JUDGE_ACTIVITY (run-claude)
-    +roster_pairs(roster, identity) list~tuple~str~~
-    +panelize(definition, roster, model_override) dict~str~
+    +JUDGE_ACTIVITY
+    +roster_pairs(roster, identity) list~tuple~str, str~~
+    +panelize(definition, roster, model_override) dict~str, Any~
   }
 
   class Helm {
