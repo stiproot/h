@@ -57,6 +57,18 @@ Flags are the closed **machinery** vocabulary (`--agent` = executor, `--model`,
 flags) panelizes: parallel independent answers plus a pinned judge on `h workflow run`, plain
 parallel answers with no synthesis on `h delegate`.
 
+## Different agents for different tasks
+
+**The executor is a per-fire choice, never a property of the work.** Every surface takes
+`--agent claude|codex|openhands|pi` (the local roster — an agent must be a CLI the operator
+has authenticated). A domain template bakes a *default* (its values' `agentId`/`runActivity`),
+not a requirement: `--agent` at fire time swaps it, and on `h chain run` the flag is scoped
+per member, so each stage of one chain can run under a different agent. Match the agent to
+the task — e.g. an MCP-tool-driving capture on one agent, a mechanical refactor or a
+second-opinion review on another — and let a roster panelize when you want independent
+answers judged. The run ledger records which agent actually ran (`summary.json`'s `agentId`
+and the CLI's cost table), so "which agent did this" is always answerable after the fact.
+
 ## What `--local` refuses, and why
 
 Most engine flags work locally now: `--cron`/`--max-fires`, `--at`/`--in`, `--watch`/`--budget`
