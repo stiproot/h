@@ -99,11 +99,24 @@ export function declaredTemplateRole(content) {
     : null;
 }
 
+// The catalog line `h template list` shows beside the role. Same plain-top-level mechanic as
+// `role:` (column-0 line-scan, no render), required on every stock template so the listing
+// can't drift back to bare names; consumer charts without one degrade to "—" in the CLI.
+export function declaredTemplateSummary(content) {
+  const summaries = [...content.matchAll(/^summary:\s*(.+?)\s*$/gm)].map((match) => match[1]);
+  if (summaries.length !== 1 || summaries[0].length === 0) return null;
+  // The value must stay a plain YAML scalar: an inner `: ` starts a nested mapping and breaks
+  // EVERY render of the chart (helm parses the whole file). Use an em-dash instead of a colon.
+  if (summaries[0].includes(": ") || summaries[0].endsWith(":")) return null;
+  return summaries[0];
+}
+
 export function checkTemplates() {
   const violations = [];
   const suffixViolations = [];
   const gateViolations = [];
   const roleViolations = [];
+  const summaryViolations = [];
   for (const file of readdirSync(templatesDir).filter((f) => f !== "_helpers.tpl")) {
     if (!file.endsWith(".tmpl.yaml")) {
       suffixViolations.push(
@@ -132,17 +145,24 @@ export function checkTemplates() {
         `${relative(root, path)}: missing or invalid plain top-level role; expected exactly one of standalone|base|overlay.`,
       );
     }
+    if (!declaredTemplateSummary(content)) {
+      summaryViolations.push(
+        `${relative(root, path)}: missing or invalid plain top-level summary; expected exactly one non-empty \`summary: <one line>\` beside \`role:\` — the catalog line \`h template list\` shows.`,
+      );
+    }
   }
 
   if (
     violations.length > 0 ||
     suffixViolations.length > 0 ||
     gateViolations.length > 0 ||
-    roleViolations.length > 0
+    roleViolations.length > 0 ||
+    summaryViolations.length > 0
   ) {
     for (const violation of suffixViolations) console.error(violation);
     for (const violation of gateViolations) console.error(violation);
     for (const violation of roleViolations) console.error(violation);
+    for (const violation of summaryViolations) console.error(violation);
 
     if (violations.length === 0) return 1;
 
@@ -154,7 +174,7 @@ export function checkTemplates() {
     return 1;
   }
 
-  console.log("✓ check-templates: suffixes, gates, roles, and force-pushes are valid");
+  console.log("✓ check-templates: suffixes, gates, roles, summaries, and force-pushes are valid");
   return 0;
 }
 

@@ -22,6 +22,7 @@ properties:
 {{- $p := .Values.reviewSpec }}
 {{- $contract := include "h.contract.review-spec" . | fromYaml }}
 role: standalone
+summary: Review a specification PR for implementability.
 params:
   repo: {{ $p.repo | quote }}
   slug: ""

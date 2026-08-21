@@ -15,6 +15,7 @@ Render alone (for inspection):
 {{- /* Template gate — bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "run-itest" }}
 role: overlay
+summary: Overlay — append the k8s integration-test gate before the PR step.
 {{- $t := .Values.itest | default dict }}
 {{- $skip := $t.skip | default false }}
 {{- $skipReason := $t.skipReason | default "break-glass: itest.skip=true set in template values" }}

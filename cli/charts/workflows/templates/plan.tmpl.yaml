@@ -62,6 +62,7 @@ properties:
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "plan" }}
 role: standalone
+summary: Plan against a spec in a worktree, then stop — review before building.
 {{- $p := .Values.plan }}
 {{- $publish := .Values.publish | default false }}
 {{- $contract := include "h.contract.plan" . | fromYaml }}

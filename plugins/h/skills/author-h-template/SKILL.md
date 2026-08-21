@@ -43,6 +43,7 @@ when rendering one, so the body MUST be wrapped in the gate, and declare exactly
 ```yaml
 {{- if eq (.Values.template | default "") "<name>" }}
 role: standalone
+summary: One line saying what this workflow does — the `h template list` catalog line.
 ...
 {{- end }}
 ```
@@ -50,7 +51,8 @@ role: standalone
 Without the gate, this template's `required` values break every other template's render —
 including h's stock ones on the same search path. `role:` is `standalone` (complete, runs
 alone), `base` (complete, extensible by overlays), or `overlay` (a fragment; the CLI refuses
-to run it alone).
+to run it alone). `summary:` is the one-line catalog entry `h template list` shows beside
+the role — declare it the same plain top-level way (a template without one lists as "—").
 
 ## 3. Params are a contract, not just defaults
 

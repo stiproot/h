@@ -40,6 +40,7 @@ Arm it daily:
 {{- /* Template gate — bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "gc-worktrees" }}
 role: standalone
+summary: Collect the shared-workspace worktrees h has finished with.
 {{- $gc := .Values.gcWorktrees | default dict }}
 {{- $publish := .Values.publish | default false }}
 {{- if $publish }}

@@ -24,6 +24,7 @@ Render alone (for inspection):
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "verify" }}
 role: overlay
+summary: Overlay — add an acceptance-check gate to the implement step.
 {{- $v := .Values.verify }}
 {{- $cmd := required "verify.cmd is required (--set verify.cmd=<command>)" $v.cmd }}
 {{- /* The command is a fire-time param (multi-repo): values supply the default (required so a

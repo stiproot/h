@@ -18,7 +18,7 @@ written against the glossary passes the guard by construction. A template name i
 verb phrase in kebab-case (`implement`, `review-pr`, `improve-plugin`); its file is
 `<name>.tmpl.yaml`, while gates and CLI operands use the bare `<name>`.
 
-## 1. Name and role (mandatory)
+## 1. Name, role, and summary (mandatory)
 
 Declare exactly one plain top-level `role:` inside the template gate:
 
@@ -28,6 +28,11 @@ Declare exactly one plain top-level `role:` inside the template gate:
 
 The CLI refuses to publish or inline-run an overlay alone and rejects an all-overlay `-t` group.
 
+Beside `role:`, declare exactly one plain top-level `summary:` — ONE line saying what the
+workflow does, shown by `h template list` as the template's catalog line. It is required on
+every stock template (`scripts/check-templates.mjs` fails the lint without it). The rich
+documentation stays in the helm comment block; the summary is the catalog line, not the docs.
+
 ## 2. The template gate (mandatory)
 
 Helm evaluates EVERY template file even under `-s`, so your body must be wrapped:
@@ -35,6 +40,7 @@ Helm evaluates EVERY template file even under `-s`, so your body must be wrapped
 ```yaml
 {{- if eq (.Values.template | default "") "<name>" }}
 role: standalone
+summary: One line saying what this workflow does — the `h template list` catalog line.
 ...
 {{- end }}
 ```

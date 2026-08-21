@@ -46,6 +46,7 @@ properties:
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "revise-pr" }}
 role: standalone
+summary: Rebase a PR branch and fix what its unresolved review threads name.
 {{- $r := .Values.revisePr }}
 {{- $contract := include "h.contract.revise" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}

@@ -79,6 +79,7 @@ and slug (the wf-key branch segment; per-PR). repo carries the values default; b
 (claude-agent) as the loop's consistent reviewer — an operational default, no longer a security
 boundary under the trust model (see the header). */ -}}
 role: standalone
+summary: Review a PR's diff and post a submitted GitHub review.
 params:
   repo: {{ $p.repo | quote }}
   slug: ""

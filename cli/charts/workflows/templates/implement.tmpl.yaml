@@ -29,6 +29,7 @@ verifyCmd) still bakes in from values at publish time.
 its `required` calls) only runs when the renderer selects it via --set template=<name>. */ -}}
 {{- if eq (.Values.template | default "") "implement" }}
 role: base
+summary: Cut a worktree, plan read-only, then implement a spec (commits stay local).
 {{- $f := .Values.implement }}
 {{- $publish := .Values.publish | default false }}
 {{- /* Composable (overlay) mode: render feature as an overlay-able atom — implement commits locally

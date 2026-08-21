@@ -59,6 +59,25 @@ def template_role(name: str) -> str:
     return roles[0]
 
 
+def template_summary(name: str) -> str:
+    """Read a template's plain top-level summary line — the catalog line beside its role.
+
+    Same line-scan mechanic as template_role (no render), but GRACEFUL: h's stock templates
+    are required to carry one (check-templates.mjs enforces it), while a consumer chart's
+    template without one lists as "—" rather than failing the whole listing.
+    """
+    root = chart_root_for(name)
+    if root is None:
+        return "—"
+    path = root / "workflows" / "templates" / f"{name}{TEMPLATE_SUFFIX}"
+    summaries = [
+        line.removeprefix("summary:").strip()
+        for line in path.read_text().splitlines()
+        if line.startswith("summary:")
+    ]
+    return summaries[0] if len(summaries) == 1 and summaries[0] else "—"
+
+
 def refuse_overlay(name: str, action: str) -> None:
     """Refuse an overlay where a complete workflow is required."""
     if template_role(name) == "overlay":
@@ -153,10 +172,12 @@ def list_() -> None:
         )
         raise typer.Exit(1)
     multi = len(roots) > 1
-    columns = ("template", "role", "chart") if multi else ("template", "role")
+    columns = ("template", "role", "summary", "chart") if multi else ("template", "role", "summary")
     table = Table(*columns, title=f"chart templates ({len(owned)})")
     for name in sorted(owned):
-        row = (name, template_role(name)) + ((str(owned[name]),) if multi else ())
+        row = (name, template_role(name), template_summary(name)) + (
+            (str(owned[name]),) if multi else ()
+        )
         table.add_row(*row)
     console.print(table)
 

@@ -39,6 +39,7 @@ properties:
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "plan-poc" }}
 role: standalone
+summary: Turn scout findings into one implementable POC spec.
 {{- $p := .Values.planPoc }}
 {{- $contract := include "h.contract.planPoc" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}

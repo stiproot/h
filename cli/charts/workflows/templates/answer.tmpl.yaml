@@ -45,6 +45,7 @@ properties:
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "answer" }}
 role: standalone
+summary: Answer one task with a validated structured answer — the panelizable atom.
 {{- $a := .Values.answer }}
 {{- $contract := include "h.contract.answer" . | fromYaml }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}

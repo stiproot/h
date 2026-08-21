@@ -5,6 +5,7 @@ h.pluginSetupSteps. The real consumer lands with the bootstrap-repo template (se
 */ -}}
 {{- if eq (.Values.template | default "") "test-plugin-setup" }}
 role: standalone
+summary: Throwaway — exercise h.setupSteps + h.pluginSetupSteps provisioning.
 steps:
   - id: setup
     activity: setup
