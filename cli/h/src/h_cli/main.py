@@ -21,6 +21,7 @@ from h_cli.commands import (
     template,
     watch,
     workflow,
+    workspaces,
     worktrees,
 )
 from h_cli.commands.delegate import delegate
@@ -39,6 +40,7 @@ app.add_typer(watch.app, name="watch")
 app.add_typer(cron.app, name="cron")
 app.add_typer(schedule.app, name="schedule")
 app.add_typer(workflow.app, name="workflow")
+app.add_typer(workspaces.app, name="workspaces")
 app.add_typer(worktrees.app, name="worktrees")
 app.add_typer(runs.app, name="runs")
 app.command("status")(status)

@@ -143,6 +143,14 @@ exists only for the containerized fleet. So:
   did exactly that, found a second clone of the target repo, and branched and committed into the
   operator's in-flight work. Pass the workspace, do not describe it; the managed-workspace guard
   above and the relay's per-group worktree exist to keep the description honest.
+- **The "workspace has not been trusted" warning is expected in h's clones, and inert.** Claude
+  ignores a repo's `permissions.allow` until its path is trusted, and h's managed clones are never
+  opened interactively, so the trust dialog never fires there — but local runs pass
+  `--dangerously-skip-permissions` (or read-only plan mode), which never prompts, so the ignored
+  allow-list changes nothing. h deliberately does NOT stamp trust on its own (that would be h
+  writing security assertions into the operator's `~/.claude.json` for every repo it clones). The
+  operator opt-in is `h workspaces trust [PATH]` — managed checkouts only; it silences the warning
+  and puts the allow-list in effect.
 
 ## Writing the task
 
