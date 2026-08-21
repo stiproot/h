@@ -46,9 +46,15 @@ behaviour observable in one run. If a feature-run agent could not verify it, sha
 ```
 
 **Size** — an issue should be landable as ONE focused PR by an agent with no context
-beyond the issue text, CLAUDE.md, and the code. If it needs design decisions, mark it
-`needs-design` in the title or file it as a discussion instead — the loop should not
-discover mid-run that the spec is a debate.
+beyond the issue text, CLAUDE.md, and the code. That is the SELECTION TEST between the two
+capture routes (CLAUDE.md "Plan or issue"): if any decision would be left open, it is not
+an issue yet — mark it `needs-design` in the title, and resolve it one of two ways: the
+decision gets made (with the operator, or in the issue thread) and the text sharpened to
+delegation grade, or the item GRADUATES to a plan in `docs/plans/` (a `Deferred` stub with
+`Revisit when:` if not now). A graduated issue is CLOSED with a "graduated to a plan"
+comment — never left open pointing at a plan path, which rots on archive; the plan's
+premise records the issue number instead. The reverse edge is normal too: a hardened
+plan's phases, reworded to pass this test, become loop-implementable issues.
 
 ## Etiquette and the loop's conventions
 

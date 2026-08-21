@@ -57,6 +57,21 @@ the two REFERENCE rules that follow from plans being transient:
 Items an otherwise-finished plan parks go to the single carried-followups doc under
 `docs/plans/`, not into a new near-empty follow-up doc.
 
+**PLAN OR ISSUE — the selection test** (operator call 2026-08-21, optimized for the solo
+operator + agent fleet; re-assess if human contributors arrive): *"Could an agent land this
+as one PR from the text alone, with no decision left open?"* YES → a GitHub issue (the
+`h-issues` shape — a unit of DELEGATION, loop fuel). NO → a plan (a `Deferred` stub with
+`Revisit when:` if not now — the unit of THINKING). A finished plan's parked leftovers stay
+carried-followups items. Two edges connect the routes, both legal, neither canonical:
+an issue that turns out to need design either gets its decision made interactively or
+GRADUATES to a plan — then the issue CLOSES with a "graduated" note (an open issue citing a
+plan path is a reference that rots on archive; provenance flows the other way — the plan's
+premise records the issue number). A hardened plan DECOMPOSES the other way: phases
+reworded to pass the one-PR test become loop-implementable issues; the plan stays the
+tracking log, the issues are its delegation surface. Design lives in repo files because the
+guards, the `review-plan` machinery, and lift-on-archive are all file-based; issues stay
+prompt-sized because their text is fed to an implementing agent.
+
 **INTERROGATE A PARKED ITEM BEFORE BUILDING IT.** A plan item's presence on a list is not a
 reason to build it — these are ideas written to be read months later, by which time their premise
 may have quietly expired. Before designing anything, state four things: what the item was trying
