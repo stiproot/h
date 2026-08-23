@@ -1,4 +1,5 @@
-// Effect surface (Phase 3 of the Effect migration — see plans/effect-refactor-map.md)
+// The Effect surface: ports as `Context.Tag`s, adapters as `Layer`s, wired at each service's
+// composition root (ARCHITECTURE.md#boundaries-enforced).
 export { registerAgentRoutesEffect, SetupBody, SetupError, SetupItem } from "./agent-routes.ts";
 export type { AgentRoutesEffectConfig, AgentRoutesEffectEnv } from "./agent-routes.ts";
 export { resolveGitAuth } from "./git-auth.ts";

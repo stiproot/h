@@ -2,7 +2,7 @@
 // Steering-surface drift guard — fail LOUDLY when on-disk components are not documented in the
 // steering sources agents plan from.
 //
-// Two checks:
+// Six checks, numbered as they appear below:
 //
 // 1. DIRECTORY CHECK — every directory under apps/, packages/js/, packages/py/ must appear by
 //    name in CLAUDE.md and README.md. These steering files are the per-component index every
@@ -10,12 +10,21 @@
 //    the kind of drift the hardening-audit found live (apps/codex-agent and packages/js/telemetry
 //    absent despite being real, in-use components).
 //
-// 2. ACTIVITY CHECK — every `case "run-*":` activity name in workflow-svc's activity-registry.ts
+// 2. ACTIVITY CHECK — every `run-*` key in workflow-svc's activity-registry.ts map
 //    must appear in CLAUDE.md (brace-expansion-aware: `run-{a,b,c}` counts as listing all three)
 //    and in skills/workflow-orchestrator/SKILL.md (literal substring). Missing activities make the
 //    SKILL.md guidance incorrect, steering agents toward an incomplete activity set.
 //
-// 3. CLI COMMAND CHECK — every module under cli/h/src/h_cli/commands/ must be named in CLAUDE.md
+// 3. SKILL SCRIPT CHECK — a `~/.claude/skills/<skill>/<file>` path in a SKILL.md must exist at
+//    `skills/<skill>/<file>` on disk. (Full rationale at the check itself.)
+//
+// 4. HOLLOW-GREEN TEST COMMAND CHECK — no steering doc may cite the CLI test suite without its
+//    `cli/h/tests` path scope. (Full rationale at the check itself.)
+//
+// 5. CHAIN-EXPRESSION FLAG CHECK — every flag in `h chain run`'s closed, hand-parsed vocabulary
+//    must be named in CLAUDE.md. (Full rationale at the check itself.)
+//
+// 6. CLI COMMAND CHECK — every module under cli/h/src/h_cli/commands/ must be named in CLAUDE.md
 //    (its layout line or its prose — the bar is "an agent reading CLAUDE.md learns this command
 //    exists", not a specific location) AND invoked as `h <name>` in cli/README.md's command list.
 //    An undocumented command is invisible:
@@ -107,9 +116,27 @@ for (const { prefix, dirs } of groups) {
 // 2. Activity check
 // ---------------------------------------------------------------------------
 
+// The registry is an object literal mapping activity NAME -> function, so read the keys of that
+// literal. It used to be a `switch`, and this check used to match `case "run-*"` — when the
+// refactor to a map landed, the pattern stopped matching ANYTHING and the check silently passed
+// on an empty list while reporting a tick. That is the repo's own hollow-green failure mode (the
+// `tsc` no-op guard), reproduced inside a guard. So the extraction is asserted below: finding no
+// activities at all is now a FAILURE, not a pass.
+const registryLiteral = activityRegistry.slice(
+  activityRegistry.indexOf("Object.entries({"),
+  activityRegistry.indexOf("} satisfies Record"),
+);
 const runActivities = [];
-for (const m of activityRegistry.matchAll(/case\s+"(run-[^"]+)"/g)) {
+for (const m of registryLiteral.matchAll(/^\s*"?(run-[A-Za-z0-9-]+)"?\s*:/gm)) {
   runActivities.push(m[1]);
+}
+
+if (runActivities.length === 0) {
+  console.error("\u2717 check-steering: found NO run-* activities in activity-registry.ts.\n");
+  console.error("  The registry's shape changed and this check can no longer read it, so it was");
+  console.error("  about to pass without checking anything. Fix the extraction above — a guard");
+  console.error("  that silently checks nothing is worse than no guard.\n");
+  process.exit(1);
 }
 
 const claudeRunNames = expandRunNames(claudeMd);
@@ -283,7 +310,7 @@ if (activityViolations.length > 0) {
   failed = true;
   console.error("✗ check-steering: undocumented run-* activities found.\n");
   console.error(
-    "  Every case \"run-*\" in activity-registry.ts must appear in CLAUDE.md (brace-expansion",
+    "  Every run-* key in activity-registry.ts's map must appear in CLAUDE.md (brace-expansion",
   );
   console.error(
     "  syntax counts: run-{a,b} covers both) and skills/workflow-orchestrator/SKILL.md.\n",
@@ -299,7 +326,50 @@ if (failed) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. CLI command check
+// 5. CHAIN-EXPRESSION FLAG CHECK — every flag in the chain grammar's closed vocabulary must be
+//    named in CLAUDE.md.
+//
+//    `h chain run` is the one surface whose flags are HAND-PARSED against a closed vocabulary
+//    (cli/h/src/h_cli/infrastructure/chain_expr.py), so the vocabulary is a real list a machine
+//    can read — unlike the click-declared flags everywhere else. That makes it exactly the
+//    surface where a documentation gap is both likely and checkable, and it had one: `--after`
+//    (the activation gate), `--slug`, `--strategy` and `--max-iterations` were all live, all
+//    used in docs/cookbook.md, and all absent from CLAUDE.md's enumerated chain-expression flag
+//    list. The existing command check could not see it — it asks whether the COMMAND is
+//    documented, not whether its vocabulary is.
+//
+//    CLAUDE.md is the bar (not cli/README.md) for the same reason as the command check: it is
+//    loaded into every agent session, so a flag missing from it is a flag agents do not compose
+//    with.
+// ---------------------------------------------------------------------------
+
+const chainExpr = readText("cli/h/src/h_cli/infrastructure/chain_expr.py");
+
+const chainFlags = new Set();
+for (const tuple of ["ROSTER_FLAGS", "VALUE_FLAGS", "MAP_FLAGS", "BOOL_FLAGS", "COMMAND_FLAGS"]) {
+  const m = chainExpr.match(new RegExp(`^${tuple} = \\(([\\s\\S]*?)^\\)`, "m"));
+  if (m === null) {
+    console.error(`\u2717 check-steering: chain_expr.py has no ${tuple} tuple to read.\n`);
+    console.error("  The chain grammar's vocabulary moved and this check can no longer see it,");
+    console.error("  so it was about to pass without checking anything.\n");
+    process.exit(1);
+  }
+  for (const f of m[1].matchAll(/"(--[a-z-]+)"/g)) chainFlags.add(f[1]);
+}
+
+const flagViolations = [...chainFlags].filter((f) => !claudeMd.includes(f)).sort();
+
+if (flagViolations.length > 0) {
+  console.error("\u2717 check-steering: chain-expression flags undocumented in CLAUDE.md.\n");
+  console.error("  `h chain run`'s flag vocabulary is closed and hand-parsed, so every flag in it");
+  console.error("  is composable machinery an agent needs to know exists.\n");
+  for (const f of flagViolations) console.error(`  ${f}`);
+  console.error("\n  Fix: name it in CLAUDE.md's `h chain run` line (cli/README.md is not enough).\n");
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// 6. CLI command check
 // ---------------------------------------------------------------------------
 
 // Command modules that are not a user-facing `h <name>` surface belong here, with a reason.
@@ -338,4 +408,6 @@ if (commandViolations.length > 0) {
   process.exit(1);
 }
 
-console.log("✓ check-steering: all components, activities and CLI commands documented in steering sources");
+console.log(
+  "✓ check-steering: components, activities, skill scripts, test commands, chain flags and CLI commands all documented",
+);

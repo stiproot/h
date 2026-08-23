@@ -712,3 +712,21 @@ simulation beyond `confirm: true`), and the four gameplay findings recorded in t
 Phase 0 section.
 
 *Revisit when:* the next trxy simulation arc starts — file them as trxy issues then.
+
+## From the 2026-08-23 steering-context audit
+
+### 33. Move `h-runtime.md` out of `apps/claude-agent/`
+
+h's runtime steering is delivered to EVERY agent, but it lives inside one agent app
+(`apps/claude-agent/steering/h-runtime.md`). It should sit at a repo-root dir delivered via an
+env var, mirroring the `skills/` + `H_SKILLS_DIR` pattern, so it is visibly agent-neutral and the
+agent service stays lean. The path is baked into `h.setupSteps` in
+`cli/charts/workflows/templates/_helpers.tpl` — moving it means updating that and re-blessing the
+chart goldens.
+
+Carried here from a root `TODO.md` that predated the plan/issue machinery and that nothing
+referenced or guarded. It passes the one-PR test, so its natural next home is a GitHub issue
+rather than this doc.
+
+*Revisit when:* a second agent's steering needs to diverge from claude-agent's, or the next time
+`_helpers.tpl`'s setup steps are edited for another reason — whichever comes first.

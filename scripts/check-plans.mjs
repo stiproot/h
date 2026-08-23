@@ -211,10 +211,15 @@ const isSelf = (f) => f === "scripts/check-plans.mjs";
 //   - a repo-root-style path in prose or a code comment: docs/plans/<name>.md
 //   - a RELATIVE markdown link, which never contains the literal "docs/plans/":
 //     docs/h-builds-h-runbook.md cited ](./plans/<name>.md) and rotted invisibly.
-// (Both spellings above use the <name> placeholder deliberately — a literal example path
+//   - a REPO-ROOT-RELATIVE path in a SOURCE comment: plans/<name>.md. This is neither of the
+//     above — no literal "docs/plans/", and not a markdown link, so nothing saw it. Five source
+//     files across agent-server, git-core and openhands-agent cited one plan this way, and that
+//     plan had never existed in the repo at all: the exact rot rule 2 exists to prevent, sitting
+//     in the tree uncaught. So the leading "docs/" is optional here.
+// (All spellings above use the <name> placeholder deliberately — a literal example path
 // here would be a citation this very guard then demands resolve. It caught exactly that.)
 // So resolve markdown links too, and check any whose resolved target lands under docs/plans/.
-const PLAN_PATH = /docs\/plans\/[A-Za-z0-9._/-]*\.md/g;
+const PLAN_PATH = /(?:docs\/)?\bplans\/[A-Za-z0-9._/-]*\.md/g;
 const MD_LINK = /\]\((\.{0,2}\/?[A-Za-z0-9._/-]*\.md)(?:#[^)]*)?\)/g;
 
 for (const rel of tracked) {
@@ -240,7 +245,7 @@ for (const rel of tracked) {
     );
   };
 
-  if (text.includes("docs/plans/")) {
+  if (text.includes("plans/")) {
     for (const m of text.matchAll(PLAN_PATH)) banned(m[0]);
   }
   if (rel.endsWith(".md")) {

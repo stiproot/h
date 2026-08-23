@@ -134,7 +134,7 @@ export type WorktreeOptions = {
 };
 
 // ---------------------------------------------------------------------------
-// Effect port + adapter (the GitClient hexagon unit — see plans/effect-refactor-map.md §2)
+// Effect port + adapter (the GitClient hexagon unit — ARCHITECTURE.md#boundaries-enforced)
 // ---------------------------------------------------------------------------
 
 /**

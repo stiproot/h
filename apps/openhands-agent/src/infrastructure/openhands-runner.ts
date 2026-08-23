@@ -56,8 +56,8 @@ const openhandsConfig = Effect.gen(function* () {
 });
 
 /**
- * `AgentRunner` implementation layer (Phase 5 of the Effect migration — see
- * plans/effect-refactor-map.md). All collaborators (invoker, run ledger, logger,
+ * `AgentRunner` implementation layer — the infrastructure adapter behind the port
+ * (ARCHITECTURE.md#boundaries-enforced). All collaborators (invoker, run ledger, logger,
  * FileSystem) are captured at layer build so the port method stays `R = never`.
  */
 export const OpenhandsRunnerLive: Layer.Layer<

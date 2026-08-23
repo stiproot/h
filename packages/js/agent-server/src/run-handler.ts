@@ -2,7 +2,8 @@ import { Cause, Effect, Exit, type ManagedRuntime, Option, ParseResult } from "e
 import { withAmbientParent } from "telemetry";
 
 /**
- * The Fastify-to-Effect bridge (plans/effect-refactor-map.md §2): the ONLY place
+ * The Fastify-to-Effect bridge — the inbound adapter seam (ARCHITECTURE.md#boundaries-enforced):
+ * the ONLY place
  * `runtime.runPromise*` touches an inbound request. A route handler builds one handler
  * Effect (Schema decode INSIDE the Effect, then yield the port tags) and hands it here;
  * the Exit is mapped onto the reply, so a `ParseError` becomes a real 400 and tagged

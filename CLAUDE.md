@@ -11,6 +11,12 @@ machinery: the `h` command itself (`cli/h/`, Typer + rich, a uv workspace member
 --help`), the helm-templated workflow definitions (`cli/charts/`), and the run/invoke shell
 scripts (`cli/scripts/`, the service bring-up + ops layer). The construction layers co-exist
 deliberately; validated command examples live in [docs/cookbook.md](./docs/cookbook.md).
+See [docs/DRIVER.md](./docs/DRIVER.md) if you are the DRIVER — the interactive supervisor session
+that fires chains, reads verdicts, verifies at head, and merges. It is written so a FRESH session
+can pick up that role from it plus durable state, with zero conversation history.
+See [docs/h-builds-h-runbook.md](./docs/h-builds-h-runbook.md) for standing up the self-improvement
+loop, [docs/installing-h.md](./docs/installing-h.md) for installing h as tooling in a consumer repo,
+and [docs/diagrams/README.md](./docs/diagrams/README.md) for the canonical diagram set.
 
 ## Plans
 
@@ -90,19 +96,15 @@ actively does not want.
 
 ## Execution substrates
 
-h composes work ONE way and executes it two. A template (⊕ overlays) renders to a **workflow
-definition** — `{params, steps, outputs}` — and only what runs it differs:
+h composes work ONE way and executes it two. **[ARCHITECTURE.md](./ARCHITECTURE.md#execution-substrates)
+compares the two substrates and says how to choose**; this section is the operational truth — the
+prerequisites, the exact refusals, and the local substrate's own durability machinery.
 
-- **The service substrate** (default): the definition is fired at workflow-svc, executed by the
-  Dapr workflow engine, and supervised/sequenced/recurred by the watcher, chain and cron engines.
-  Durable across machines and process death. Everything in *h primitives* below lives here.
-- **The local substrate** (`--local`, `h delegate`): the definition is executed IN THE CLI
-  PROCESS, driving the agent CLIs as local children. No Dapr, no services, no containers — but
-  since 2026-08-17 it DOES have registries and engines: JetStream KV rows plus a resident ENGINE
-  HOST (`h-local --engines`, brought up by `h events up`) that ticks the same `decide` functions
-  workflow-svc runs. Prerequisite: `bun run build`, plus CLIs the operator has already authenticated —
-  credentials come from the shell with the repo's `.env` filling gaps (shell wins, the opposite
-  of `compose.sh`'s precedence, because a one-shot command must honour a key you just exported).
+Running locally needs `bun run build`, a resident engine host for anything engine-shaped
+(`h-local --engines`, brought up by `h events up`), and CLIs the operator has already
+authenticated — credentials come from the shell with the repo's `.env` filling gaps (shell wins,
+the opposite of `compose.sh`'s precedence, because a one-shot command must honour a key you just
+exported).
 
 What makes them symmetric is structural, not conventional, and it now covers BOTH halves of the
 domain: what a DEFINITION means (`resolveRefs`/`resolveTokenString`, the output contract) lives once
@@ -182,10 +184,15 @@ run` / `h chain run` already use: `h workflow list|get --local` reads the local 
 and `h agents list|deny|allow --local` reads and writes the local `exec:` row — the fence the local
 executor and `h delegate` actually enforce. The flag is the selector rather than a config default or
 auto-detection, because the source of an answer belongs in the command you typed, not in which
-services happen to be up. Registries whose LOCAL half does not exist yet (`h cron|chain|watch list
---local`, and `h agents budget --local`, which is a WATCHER behaviour rather than a stored number)
-REFUSE BY NAME and say which engine lifts them — answering with an empty table would assert "none
-registered" when the truth is "no registry here". The CLI never speaks to JetStream directly: reads
+services happen to be up. `h cron list|discover add`, `h schedule list|rm` and `h watch list` all
+answer locally too — their registries landed with the local engine host on 2026-08-17. What is
+still PENDING refuses BY NAME and says which engine lifts it: today `h chain list --local` (the
+chain engine and its `chain:` KV registry), plus `h agents budget --local`, which is a WATCHER
+behaviour rather than a stored number. Answering with an empty table would assert "none
+registered" when the truth is "no registry here". The pending set lives in ONE place —
+`commands/_local_registry.py`'s `PENDING` map — and `scripts/check-refusal-classification.mjs`
+cross-checks it against the runner's registry ops, so an entry that outlives its engine fails the
+build instead of hiding a capability behind a message saying it does not exist. The CLI never speaks to JetStream directly: reads
 and writes go through the runner as a `registry` job, because registry ids contain `:` (which NATS
 forbids in a key) and a second copy of that codec in Python would drift, with an EMPTY listing as
 its symptom rather than an error.
@@ -230,10 +237,11 @@ groups, then let the DRIVER be the joiner over one durable consumer.
 
 ## h primitives (vocabulary)
 
-The standard vocabulary for composing components.
-**[ARCHITECTURE.md’s glossary](./ARCHITECTURE.md#glossary) is the canonical dictionary**; its
-primitives, authored-slot/target table, composition stack, and design principles define the terms
-used here. This section is the terse runtime-facing index.
+**[ARCHITECTURE.md](./ARCHITECTURE.md#primitives) defines what each primitive IS** — the
+definitions, the authored-slot/target table, the composition stack, the principles. Read it there;
+it is not repeated here. **This section is the RUNTIME INDEX for the same primitives: where each one
+is implemented, which registry rows it owns, and what its CLI surface is** — the things you need to
+change one, not to understand one.
 
 - **Template** — the authored, parameterized, composable unit (a chart template is one way to
   author one). Templates overlay (⊕, merge by step id) into ONE workflow definition; publish-mode
@@ -373,14 +381,10 @@ used here. This section is the terse runtime-facing index.
   shows budget vs today's tallied spend + gap-run count).
   The convention: a registry prefix names the single component that owns writing it.
 
-The watcher, the chain, and the cron are three instances of one build-pattern — a policy row in a
-registry, evaluated by a pure `decide` on the cron-tick clock, acting on workflows through a closed
-vocabulary, epoch-fenced, single-writer. None is a new runtime concept; each is a composition of
-Workflow + Trigger + Registry that earns its own name because its job (supervise; sequence; recur)
-recurs. The load-bearing invariant: **a workflow never supervises, sequences, or recurs itself —
-those live in engines outside it** (which is why sequencing is the Chain primitive, not an overload of
-the watcher's `escalate`). Watched/chained/cron'd workflows never depend on their engines; only
-judgment consumers read the rows.
+Watcher, chain and cron are one build-pattern instantiated three times — ARCHITECTURE.md states the
+shape and the invariant it protects. The runtime consequence to hold onto here: watched/chained/
+cron'd workflows never depend on their engines, and only judgment consumers read the rows. (It is
+also why sequencing is its own Chain primitive rather than an overload of the watcher's `escalate`.)
 
 **Registration follows the §10 `arm-*` pattern (registry state is created by ACTIVITIES).** A
 workflow arms its OWN follow-on cron via a `register-cron`/`register-discover` activity (siblings of
@@ -398,7 +402,6 @@ edge FIRES workflows; it no longer writes cron rows (`POST /cron/discover` was d
 apps/claude-agent/src/                    # claude-agent
 ├── index.ts                              # composition root – registers shared agent-server routes + /clone + /worktree + /workflow (babysitter), fatal crash handlers, starts Fastify
 ├── ../steering/h-runtime.md          # h runtime steering (the MCP set + how to use it), at the APP root not src/; a triage setup step copies it to the agent's ~/.claude/CLAUDE.md
-├── infrastructure/mcp-config.ts          # mergeMcpConfig – merge h's MCP servers into the cwd's existing .mcp.json (pure, value-tested)
 └── infrastructure/claude-runner.ts       # IAgentRunner impl; honours an optional cwd (e.g. a worktree); merges MCP config into cwd; routes (/run, /setup, /clone, /worktree, /dapr/subscribe) come from agent-server
 
 apps/openhands-agent/src/                 # openhands-agent
@@ -466,8 +469,10 @@ apps/workflow-svc/src/
 ├── infrastructure/
 │   ├── dapr-workflow-invoker.ts                      # DaprWorkflowClient wrapper (+ raw-HTTP terminate/purge/status)
 │   ├── dapr-workflow-store.ts                        # saved-workflow store (Redis): save/get/list/listScheduled/markRun
-│   ├── dapr-{watch,chain,cron,wf}-store.ts           # the registry stores (Redis) — watch:*, chain:*, cron:* (recur + cron:discover:* + cron:sched:*), wf:* (exact-key, no index); only workflow-svc writes these
-│   ├── github-source-reader.ts                       # ISourceReader adapter over git-core's GitHubClient (reads GH_TOKEN, maps to WorkflowError) — the discovery cron's GitHub read
+│   ├── dapr-{watch,chain,cron,wf,exec-policy}-store.ts # the registry stores (Redis) — watch:*, chain:*, cron:* (recur + cron:discover:* + cron:sched:*), wf:* (exact-key, no index), exec:config; only workflow-svc writes these
+│   ├── dapr-event-publisher.ts                       # the pub/sub adapter — terminal workflow-events, the chain's cron-disarm teardown
+│   #  (the ISourceReader adapter is NOT here: GitHubSourceReaderLive lives in git-core, so the local
+│   #   substrate's engine host gets the discovery cron's GitHub read from the same place)
 │   ├── activity-runtime.ts                           # the activity→Effect bridge (shared ManagedRuntime); ActivityEnv widened with CronStore/WorkflowInvoker/WorkflowStore for the arm-* activities
 │   ├── activity-registry.ts                          # maps activity name → function
 │   └── activities/
@@ -528,13 +533,16 @@ packages/js/agent-cli/src/
 
 packages/js/agent-server/src/                # shared HTTP contract for agent services
 ├── index.ts          # re-exports
-├── agent-routes.ts   # registerAgentRoutes – POST /run, POST /setup, GET /dapr/subscribe (workspace dir via resolver, or an explicit cwd e.g. a worktree; /setup idempotent via spec-hash sentinel)
-├── clone-route.ts    # registerCloneRoute – opt-in POST /clone (shallow git clone into the workspace)
-├── worktree-route.ts # registerWorktreeRoute – opt-in POST /worktree (git worktree of a pre-cloned repo at a shared, agent-neutral path; idempotent; returns { worktreePath })
+├── agent-routes.ts   # registerAgentRoutesEffect – POST /run, POST /setup, GET /dapr/subscribe (workspace dir via resolver, or an explicit cwd e.g. a worktree; /setup idempotent via spec-hash sentinel)
+├── clone-route.ts    # registerCloneRouteEffect – opt-in POST /clone (shallow git clone into the workspace)
+├── worktree-route.ts # registerWorktreeRouteEffect – opt-in POST /worktree (git worktree of a pre-cloned repo at a shared, agent-neutral path; idempotent; returns { worktreePath })
 ├── gc-route.ts       # registerGcRouteEffect – opt-in POST /worktree/gc, the collector for what /worktree creates, HERE because this is where the workspace is. Sweeps THIS service's own shared root (a caller cannot name a directory); params only ever make it collect LESS, and it always spares the caller's own workspace. Returns the full report — what it removed AND what it refused, with reasons
 ├── workflow-babysitter.ts # WorkflowBabysitter – submit-and-FORWARD (post-watcher-cutover): translates policy.maxDurationMs into a watch field on the run body (an explicit watch field wins); supervision is workflow-svc's durable watcher engine, no in-process loop; plain fetch, injectable for tests
 ├── workflow-route.ts # registerWorkflowRoute – the standard agent-service workflow endpoint: POST /workflow {key|steps, params?, instanceId?, workspaceId?, policy?|watch?, watchMeta?} → 202 {instanceId, watching}; GET /workflow/watches proxies workflow-svc's /watch/list (durable global truth)
-├── run-ledger.ts     # startRunLedger – per-run summary.json/events.jsonl/output.txt under AGENT_RUNS_DIR + statestore mirror; toolCalls tally counts tool_use blocks nested in claude-CLI assistant events; RunOutcome/RunSummary carry `stopReason` (agent-cli classify-stop) → the run:<id> mirror, read by the watcher's usage-limit fallback (loosely typed to avoid an agent-cli dep)
+├── git-auth.ts       # resolveGitAuth – the wire's auth NAME ('pat' | 'ssh') → a git-core GitAuth strategy; secrets stay in the service's env (GH_TOKEN / GIT_SSH_KEY_PATH), never on the wire
+├── run-handler.ts    # the Fastify↔Effect bridge — the ONLY place runtime.runPromise touches an inbound request; a ParseError becomes a real 400, tagged domain errors and defects become 500
+│                  #  (the run ledger is NOT here: it lives in packages/js/run-ledger so a non-HTTP
+│                  #   agent host gets it without fastify — agent-server re-exports it unchanged)
 └── runner.ts         # IAgentRunner port (run request → response)
 
 packages/js/core/src/
@@ -587,7 +595,7 @@ packages/js/engine-core/src/               # substrate-INDEPENDENT ENGINE semant
 ├── schedule-scan.ts          # the one-shot cron:sched variant: arm/disarm/advance + per-tick fire-once-then-deactivate (fires via invokeWithWatch). Spine for --at/--in, pause/resume, usage-limit fallback
 ├── exec-policy.ts            # the executor policy's pure half — normalize/merge denies, the two auto-fences' merges (usage-limited, daily budget), executorFrom{Activity,AgentId}
 ├── internal.ts               # the primitives barrel the scans import. SEPARATE from index.ts because index.ts exports the scans: importing the public barrel from inside would make the package cyclic
-└── .dependency-cruiser.cjs   # engine-core-is-pure — this package is imported by EVERY host, so one I/O dependency would pin all of them to a substrate. Extends the root config; patterns shared via scripts/dep-io-patterns.cjs
+└── ../.dependency-cruiser.cjs # (at the PACKAGE root, not src/) engine-core-is-pure — this package is imported by EVERY host, so one I/O dependency would pin all of them to a substrate. Extends the root config; patterns shared via scripts/dep-io-patterns.cjs
 
 packages/js/run-ledger/src/                # the run ledger, extracted from agent-server so a non-HTTP agent host (the local runtime) gets it without fastify
 ├── index.ts               # re-exports (agent-server re-exports these too, so agent services import unchanged)
@@ -644,7 +652,7 @@ cli/                                          # the h CLI + charts + run scripts
 ├── charts/workflows/  # strategy 2 – helm as a client-side templating engine; templates/<template>.tmpl.yaml → run_workflow body (YAML canonical, JSON only at the wire)
 └── h/             # the `h` command – Python (Typer + rich), uv workspace member, package h-cli
     ├── src/h_cli/{main,config}.py            # Typer composition root; env-derived settings mirroring the scripts' defaults
-    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron,schedule,status,workspaces,worktrees,delegate,doctor,events,runs}.py  # h feature render|run [--agent]; h template compose|list|get|drift [KEYS…] [--json] (re-render each saved key's template in publish mode and diff steps/params/outputs against the stored definition — catches a definition left behind by a template edit, and one changed under the chart; publish-time operational fields (schedule/workspaceId/disabled) are not content and are not compared; keys with no template, e.g. chain-published <slug>-wN, report unchecked; exits 1 on drift so it can gate); h workflow list [--local]|get KEY [--local]|status|publish|run KEY | TEMPLATE… [-p k=v] [--instance-id] [--agent (repeat = panel roster)] [--inline (operands are chart TEMPLATES, not a saved key; SEVERAL overlay into ONE workflow in composable mode — the unpersisted twin of `h template compose … --save`, so --save is for outliving the fire, never a precondition for composing; --cron refuses an ad-hoc overlay, which has no key for the cron:/wf: rows)] [--local [--with-setup] — execute on the LOCAL substrate instead of firing at workflow-svc; --cron/--at/--in/--watch/--budget all work here now, only --retry/--fallback-*/--via/--fresh are refused by name] [--cron/--max-fires] [--at <iso> | --in <dur>] [--fallback-agent/-model/-after/-max]|pause <id> <key> --in <dur>|resume <schedId>|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-member flags --agent (several names = panel roster → infrastructure/panelize.py)/--model/--fresh/--inline/--kind/--stage/--cron/--max-fires/--id/--capture/--input/--until, --parallel connector, hand-parsed via infrastructure/chain_expr.py — parallel STAGES, inline+cron members, namespaced threading, panel rosters all live) [--local [--with-setup] — sequence the stages in-process; every member composes on the fly, activation gates + cron members refused]|list; h watch list [--local]|get|delete; h cron list [--local] (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] [--local] (fires a provision workflow — §10, no POST /cron/discover; --local runs that SAME one-step provision workflow here, so the register-discover ACTIVITY still writes the row and its run still audits it); h schedule list [--local]|rm <id> [--local] (the one-shot cron:sched surface — a thin view over cron:sched:* rows; also visible in `h cron list`); h status [--json] (one-screen driver check-in — active chains, engine heartbeats, verdict OK/ATTENTION); h delegate TASK --agent A [--agent B …] [--model M] [--cwd D] [--worktree [--base B]] [--plan] [--timeout S] [--id G] [--json] (the LOCAL substrate's atom: run agent CLIs as local child processes — a roster fans out in parallel, --worktree isolates write work, no synthesis: use the answer template for a judged panel); h workspaces trust [PATH] (stamp Claude Code's per-project trust — projects[<path>].hasTrustDialogAccepted in ~/.claude.json — for an h-MANAGED checkout only (the assert_managed boundary; external paths refuse by name, trust those by running claude there interactively). Exists because h's clones are never opened interactively, so the trust dialog never fires and the claude CLI ignores the repo's permissions.allow with a warning; under the local substrate's --dangerously-skip-permissions runs those entries are INERT, so this is an operator opt-in for warning-free runs / future non-bypass modes, never something h stamps on its own); h worktrees list [--json] [--repo PATH] (prune + list the worktrees h cuts on EITHER substrate — `h-worktrees/` local/* AND `<workspace>/worktrees/` feature/*; a worktree outside both roots is somebody's own and never touched. Worktree admin lives in the CLONE, so --repo is how you reach another checkout's — without it a merged feature worktree is invisible from h's own checkout. Rich table branch|path|status, where status grades the dirt: `dirty` = modifications to TRACKED files, `scratch` = untracked-only, plus `unpushed`)|rm BRANCH [--force] [--prune-untracked] [--repo PATH] (refuse if dirty/unpushed unless --force; path fallback for detached HEAD; deletes branch after worktree)|sweep [--dry-run] [--force] [--prune-untracked] [--repo PATH] (batch remove: classifies, warns on unsafe force, skips dirty/unpushed otherwise, prints removed N/skipped M). **The two removal flags accept DIFFERENT classes of loss, which is why they are two flags**: `--force` discards tracked edits and commits that exist nowhere else, while `--prune-untracked` discards only files git never tracked (ignored paths like `node_modules` never count) and NAMES every one before removing it. The split is what makes the sweep usable on the worktrees it exists for — an agent routinely leaves one scratch file behind, which under a single dirty/clean bit marked a finished 803MB worktree unsweepable and pushed the operator to the blunt instrument. A worktree with unpushed commits stays blocked whatever its untracked state, and `clean` is stronger than it sounds — `worktree_has_unpushed` asks `git log HEAD --not --remotes`, so a never-pushed branch reports unpushed, and a swept branch is always recoverable from some remote; h events up [--with-relay]|down|status (the local substrate's THREE processes: supervised nats-server -js with streams h-tasks/h-results/h-journal, the ENGINE HOST (`h-local --engines` — holds the tick, runs the engines' decide against the KV registries, singleton-enforced by a KV lease), and optionally a supervised RELAY. The split is decision 1 of local-engine-parity: nats-server + engine host are INFRASTRUCTURE and come up together, the relay is WORK you watch — so it stays foreground unless `--with-relay`, which is for an unattended machine where a cron firing into an undrained queue would be a recurrence that silently never runs. `status` says what each absence COSTS, not just that it is down; `down` stops children before the server, since a host outliving its fabric spends every tick failing to reach it while its lease keeps a replacement out), h events publish --max-steps N [--template answer] [-p k=v] [--agent A] [--queue Q] [--group G] (seed a fire descriptor), h events serve [--queue Q] (the relay: compose-on-fire -> local executor -> forward the publish hand-off), h events await GROUP [--timeout S] [--json] (block for ONE loop's terminal — ephemeral consumer replaying the stream, so a loop that finished first still answers; exit 0 resolved/exhausted, 1 failed, 124 timeout), h events results [--durable NAME] [--group G] [--json] (the DRIVER'S BACK-EDGE: terminals off a durable acked consumer, one line each, resumes at its last ack so nothing that landed while it was not running is missed — at-least-once; --new starts a FRESH durable at the head instead of replaying retained history), h events tail [SUBJECT] (live subject watch, misses what it was not present for); h doctor (the CONSUMER surface's one-screen toolchain report: required binaries (node/git/helm), agent CLIs, optional pieces (nats-server), the built runner, both chart roots, and which consumer config is in effect — a report, never a gate: every surface still refuses loud by name at its own point of use. The consumer surface itself: a repo consuming h declares its paths ONCE in `<repo>/.h/config.toml` (discovered by walking up from cwd, git-style; precedence env var > config file > h-checkout default; keys charts_dir/local_bin/workspace_dir/worktrees_dir/runs_dir/dotenv/events_store, unknown keys fail loud), and charts resolve via a SEARCH PATH — the configured chart primary, h's stock chart the fallback, name collisions resolving to the primary — so a consumer's domain chart ADDS to the stock templates instead of replacing all of them; `h workflow run --local` checks the invoking checkout against the managed-workspace boundary like `h delegate --cwd` (override: --allow-external))
+    ├── src/h_cli/commands/{feature,template,workflow,chain,watch,cron,schedule,status,workspaces,worktrees,delegate,doctor,events,runs}.py  # h feature render|run [--agent]; h template compose|list|get|drift [KEYS…] [--json] (re-render each saved key's template in publish mode and diff steps/params/outputs against the stored definition — catches a definition left behind by a template edit, and one changed under the chart; publish-time operational fields (schedule/workspaceId/disabled) are not content and are not compared; keys with no template, e.g. chain-published <slug>-wN, report unchecked; exits 1 on drift so it can gate); h workflow list [--local]|get KEY [--local]|status|publish|run KEY | TEMPLATE… [-p k=v] [--instance-id] [--agent (repeat = panel roster)] [--inline (operands are chart TEMPLATES, not a saved key; SEVERAL overlay into ONE workflow in composable mode — the unpersisted twin of `h template compose … --save`, so --save is for outliving the fire, never a precondition for composing; --cron refuses an ad-hoc overlay, which has no key for the cron:/wf: rows)] [--local [--with-setup] — execute on the LOCAL substrate instead of firing at workflow-svc; --cron/--at/--in/--watch/--budget all work here now, only --retry/--fallback-*/--via/--fresh are refused by name] [--cron/--max-fires] [--at <iso> | --in <dur>] [--fallback-agent/-model/-after/-max]|pause <id> <key> --in <dur>|resume <schedId>|terminate; h chain run (EXPR: -w KEY | -t ATOM… + per-member flags --agent (several names = panel roster → infrastructure/panelize.py)/--model/--fresh/--inline/--kind/--stage/--cron/--max-fires/--id/--capture/--input/--until, --parallel connector, hand-parsed via infrastructure/chain_expr.py — parallel STAGES, inline+cron members, namespaced threading, panel rosters all live; the COMMAND flags, which must precede the expression because click would otherwise consume them out of position, are --slug (the chain's name) / --param|-p / --strategy / --max-iterations (the loop-until-clean bound) / --after (the ACTIVATION GATE: hold this chain until another chain finalizes, so a pipeline needs no glue) / --at|--in / --local / --with-setup / --resume / --no-journal — kept disjoint from the expression flags and asserted so by cli/h/tests/test_chain_expr.py) [--local [--with-setup] — sequence the stages in-process; every member composes on the fly, activation gates + cron members refused]|list; h watch list [--local]|get|delete; h cron list [--local] (recur + discovery rows), h cron rm REPO SLUG WORKFLOW (disarm a recur cron — POST /cron/disarm, single-writer), h cron discover add <repo> --label --cadence [--workflow] [--max-per-day] [--run-budget-mins] [--run-retries] [-p k=v] [--local] (fires a provision workflow — §10, no POST /cron/discover; --local runs that SAME one-step provision workflow here, so the register-discover ACTIVITY still writes the row and its run still audits it); h schedule list [--local]|rm <id> [--local] (the one-shot cron:sched surface — a thin view over cron:sched:* rows; also visible in `h cron list`); h status [--json] (one-screen driver check-in — active chains, engine heartbeats, verdict OK/ATTENTION); h delegate TASK --agent A [--agent B …] [--model M] [--cwd D] [--worktree [--base B]] [--plan] [--timeout S] [--id G] [--json] (the LOCAL substrate's atom: run agent CLIs as local child processes — a roster fans out in parallel, --worktree isolates write work, no synthesis: use the answer template for a judged panel); h workspaces trust [PATH] (stamp Claude Code's per-project trust — projects[<path>].hasTrustDialogAccepted in ~/.claude.json — for an h-MANAGED checkout only (the assert_managed boundary; external paths refuse by name, trust those by running claude there interactively). Exists because h's clones are never opened interactively, so the trust dialog never fires and the claude CLI ignores the repo's permissions.allow with a warning; under the local substrate's --dangerously-skip-permissions runs those entries are INERT, so this is an operator opt-in for warning-free runs / future non-bypass modes, never something h stamps on its own); h worktrees list [--json] [--repo PATH] (prune + list the worktrees h cuts on EITHER substrate — `h-worktrees/` local/* AND `<workspace>/worktrees/` feature/*; a worktree outside both roots is somebody's own and never touched. Worktree admin lives in the CLONE, so --repo is how you reach another checkout's — without it a merged feature worktree is invisible from h's own checkout. Rich table branch|path|status, where status grades the dirt: `dirty` = modifications to TRACKED files, `scratch` = untracked-only, plus `unpushed`)|rm BRANCH [--force] [--prune-untracked] [--repo PATH] (refuse if dirty/unpushed unless --force; path fallback for detached HEAD; deletes branch after worktree)|sweep [--dry-run] [--force] [--prune-untracked] [--repo PATH] (batch remove: classifies, warns on unsafe force, skips dirty/unpushed otherwise, prints removed N/skipped M). **The two removal flags accept DIFFERENT classes of loss, which is why they are two flags**: `--force` discards tracked edits and commits that exist nowhere else, while `--prune-untracked` discards only files git never tracked (ignored paths like `node_modules` never count) and NAMES every one before removing it. The split is what makes the sweep usable on the worktrees it exists for — an agent routinely leaves one scratch file behind, which under a single dirty/clean bit marked a finished 803MB worktree unsweepable and pushed the operator to the blunt instrument. A worktree with unpushed commits stays blocked whatever its untracked state, and `clean` is stronger than it sounds — `worktree_has_unpushed` asks `git log HEAD --not --remotes`, so a never-pushed branch reports unpushed, and a swept branch is always recoverable from some remote; h events up [--with-relay]|down|status (the local substrate's THREE processes: supervised nats-server -js with streams h-tasks/h-results/h-journal, the ENGINE HOST (`h-local --engines` — holds the tick, runs the engines' decide against the KV registries, singleton-enforced by a KV lease), and optionally a supervised RELAY. The split is decision 1 of local-engine-parity: nats-server + engine host are INFRASTRUCTURE and come up together, the relay is WORK you watch — so it stays foreground unless `--with-relay`, which is for an unattended machine where a cron firing into an undrained queue would be a recurrence that silently never runs. `status` says what each absence COSTS, not just that it is down; `down` stops children before the server, since a host outliving its fabric spends every tick failing to reach it while its lease keeps a replacement out), h events publish --max-steps N [--template answer] [-p k=v] [--agent A] [--queue Q] [--group G] (seed a fire descriptor), h events serve [--queue Q] (the relay: compose-on-fire -> local executor -> forward the publish hand-off), h events await GROUP [--timeout S] [--json] (block for ONE loop's terminal — ephemeral consumer replaying the stream, so a loop that finished first still answers; exit 0 resolved/exhausted, 1 failed, 124 timeout), h events results [--durable NAME] [--group G] [--json] (the DRIVER'S BACK-EDGE: terminals off a durable acked consumer, one line each, resumes at its last ack so nothing that landed while it was not running is missed — at-least-once; --new starts a FRESH durable at the head instead of replaying retained history), h events tail [SUBJECT] (live subject watch, misses what it was not present for); h doctor (the CONSUMER surface's one-screen toolchain report: required binaries (node/git/helm), agent CLIs, optional pieces (nats-server), the built runner, both chart roots, and which consumer config is in effect — a report, never a gate: every surface still refuses loud by name at its own point of use. The consumer surface itself: a repo consuming h declares its paths ONCE in `<repo>/.h/config.toml` (discovered by walking up from cwd, git-style; precedence env var > config file > h-checkout default; keys charts_dir/local_bin/workspace_dir/worktrees_dir/runs_dir/dotenv/events_store, unknown keys fail loud), and charts resolve via a SEARCH PATH — the configured chart primary, h's stock chart the fallback, name collisions resolving to the primary — so a consumer's domain chart ADDS to the stock templates instead of replacing all of them; `h workflow run --local` checks the invoking checkout against the managed-workspace boundary like `h delegate --cwd` (override: --allow-external))
     ├── src/h_cli/infrastructure/             # helm subprocess adapter, statestore/agent/svc/agent-service httpx clients, git worktree adapter (git.py), and local_runtime.py — the LOCAL substrate's client (spawns the h-local runner, layers .env under the shell env, forwards SIGINT)
     └── tests/     # pytest + syrupy goldens (chart contract tests) + respx-mocked wire
 ```
@@ -932,6 +940,55 @@ the `tsc` no-op above. `make test-py` uses the correct path-scoped form; `script
 fails the build if a steering doc cites the bare one. (Found 2026-08-06 during the nats work,
 recorded only in that plan; it then bit a local-substrate run on 2026-08-10 because the steering
 docs still carried the broken form — a plan finding that was never lifted.)
+
+## The guards (`bun run lint`)
+
+*Harden by encoding* means the guards ARE the steering: each one is an invariant somebody decided
+was worth a machine checking every time rather than a human remembering. Reading this list is the
+fastest way to learn what this repo refuses to let you do. Each script's header comment carries the
+live incident that motivated it — read that before working around one.
+
+| Guard | Invariant it holds |
+| --- | --- |
+| `check-tsc` | the toolchain is real — `tsc`/turbo/oxlint/oxfmt actually run (the hollow-green guard) |
+| `check-workspace-built` | a consumed workspace package has a `dist/`, so a missing build fails legibly |
+| `check-steering` | components, `run-*` activities, skill script paths, chain-expression flags and `h` commands are all documented; the CLI test suite is never cited without its `cli/h/tests` scope |
+| `check-plans` | plan-doc headers/triggers; **nothing outside `docs/plans/` cites a plan** (`docs/plans/…` *or* bare `plans/…`); intra-plan links survive archiving |
+| `check-vocabulary` | retired terms stay retired in long-lived prose (the ARCHITECTURE.md glossary is canonical; `docs/plans/` is exempt as a historical record) |
+| `check-templates` | no chart template drives a bare `git push --force` — `--force-with-lease` only |
+| `check-plugins` | the `h` plugin's manifests agree across the Claude and Codex marketplaces; skill frontmatter is exactly name+description |
+| `check-diagrams` | canonical diagrams are indexed both ways, kind-suffixed, one fence, `## Reading notes`; a `-class` doc with no manifest (which the generator skips silently) is caught |
+| `check-hex-lint` | every TS package with a `domain/` or `presentation/` runs dependency-cruiser in its `lint` |
+| `check-lint-parity` | every TS package's `lint` script runs the SAME checks — the repo had drifted into two halves each missing what the other had |
+| `check-runtime-parity` | neither substrate grows a private copy of `workflow-core` / `engine-core` semantics |
+| `check-sweep-parity` | the TS worktree-sweep rules match the operator command's behaviour |
+| `check-refusal-classification` | local refusals are `pending` vs `permanent`, and **no refusal outlives the engine it was waiting for** |
+| `check-registry-writers` | one writer per registry prefix in the flat shared keyspace |
+| `check-state-keys` | every Dapr `state.get`/`state.delete` wraps its key in `pathStateKey` (a `/` in a key 404s on read but saves fine) |
+| `check-kv-keys` | the JetStream sibling — registry ids contain `:`, which NATS forbids in a KV key; the symptom is an EMPTY registry, not an error |
+| `check-git-credentials` | no credential rests in a persisted remote URL — injection is per-operation |
+| `check-services` | the per-mode service list matches the `.zellij/*.kdl` pane sets |
+| `check-ports` | run-script cleanup, Dapr flags and the README port map stay in lockstep |
+| `check-env-parity` | Compose and the k8s secret generator read nothing `.env.example` fails to declare |
+| `check-dockerfiles` | every workspace `package.json` is COPY'd where `bun install --frozen-lockfile` needs it |
+| `check-mcp-parity` | agent runtimes expose the same MCP server set across host/Docker/k8s |
+| `vizzle doc --check` | generated `-class` diagrams have not drifted from the source they model |
+
+`check-env-local` is a helper (`bun run check-env-local`), not part of the lint chain.
+
+**When you add a boundary, add or extend its guard in the same change.** A new guard goes in
+`scripts/`, into `package.json`'s `lint` chain, and into this table — and its header comment records
+why it exists, because a guard whose motivation is lost is one the next person routes around.
+
+## Vocabulary
+
+When writing about h — docs, comments, PR bodies, workflow prose — use the canonical dictionary in
+[ARCHITECTURE.md's Glossary](./ARCHITECTURE.md#glossary): a workflow definition is ordered STEPS
+invoking ACTIVITIES; a chain is ordered MEMBERS (grouped into STAGES) firing WORKFLOWS, threading
+state through the CHAIN DATA. Retired terms fail `scripts/check-vocabulary.mjs`, whose banlist sits
+beside its glossary pointers. (`apps/claude-agent/steering/h-runtime.md` states the same rule for
+agents running INSIDE h, whose home memory h installs; this is the repo-side copy, so the rule holds
+for anyone working in h through any harness.)
 
 ## CI (self-hosted runner)
 

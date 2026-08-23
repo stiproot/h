@@ -3,7 +3,8 @@ import { Context, type Effect } from "effect";
 
 /**
  * The agent-runner port: the contract the shared agent routes invoke to execute a run
- * request, as a `Context.Tag` (see plans/effect-refactor-map.md §2). The workspace dir
+ * request, as a `Context.Tag` — a domain port per ARCHITECTURE.md#boundaries-enforced.
+ * The workspace dir
  * is resolved by the runner from the request (workspaceId / workflowInstanceId / cwd),
  * exactly as today's Promise-based runners do. Failures surface as `core`'s
  * cross-service `AgentRunError` tag, which the `runHandler` bridge maps to HTTP 500.

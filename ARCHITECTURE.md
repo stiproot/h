@@ -136,8 +136,8 @@ executors for the one composition. Picture:
 | Executes | Dapr workflow engine in workflow-svc | the `h` CLI's own process |
 | Agents | containerised fleet, dropped uid | agent CLIs as child processes, as the OPERATOR |
 | Needs | Dapr, Redis, the services | a built workspace and authenticated CLIs |
-| Durability | survives process death, machine death | dies with the process |
-| Engines | watcher, chain, cron, sched | none — the driver is the supervisor |
+| Durability | survives process death, machine death | the run journal — a dead driver's paid work is replayable with `--resume` |
+| Engines | watcher, chain, cron, sched — hosted by workflow-svc | the same engines, hosted by `h-local --engines` over JetStream KV |
 
 **The definition is the seam.** A template renders to `{params, steps, outputs}`, and that same
 artifact is either POSTed to workflow-svc or handed to the local runner on stdin. Symmetry is
@@ -146,23 +146,34 @@ resolution, the output contract, chain threading contracts, stage arithmetic —
 `packages/js/workflow-core` and are imported by both, with `scripts/check-runtime-parity.mjs`
 failing the build if either grows a private copy. (It found two live drifts the day it was added.)
 
-**The engines are what does not transfer, and that is the load-bearing invariant restated.** They
-exist precisely so a workflow never supervises, sequences or recurs itself; run in-process, the
-driver IS the supervisor, so there is nothing for them to be. The local substrate therefore
-REFUSES what needs them — by name, never by silently skipping: the machinery flags
-(`--cron/--watch/--budget/--retry/--at/--in/--fallback-*/--fresh/--via`, plus a chain's `--after`
-and cron members) and the engine/registry/cluster activities (`register-cron`, `write-wf-row`,
-`register-discover`, `run-itest`, the service-only agents). A silently-skipped `register-cron`
-would report a recurrence that was never armed.
+**The engines transfer too — what does not is short and specific.** Since 2026-08-17 an engine is
+not workflow-svc's: the rows, the ports, the five pure `decide` functions and the per-tick scans
+live in `packages/js/engine-core`, and a HOST supplies their adapters and a clock. workflow-svc is
+one host; the resident local engine host (`h-local --engines`) is the other. So recurrence,
+scheduling and discovery fan-out all run locally, and a wall-clock budget is enforced by the driver
+between steps — it declines to start work past the deadline but cannot kill a running agent.
+
+What remains local-impossible is a short list, and every entry names something this substrate
+genuinely lacks rather than a gap waiting to be filled: re-firing flags need something that
+outlives a shell; service-routing and Dapr-instance flags have no referent; and a handful of
+activities need a cluster, a service, or a registry that is not here. Each is refused BY NAME —
+never by silently skipping, because a silently-skipped `register-cron` would report a recurrence
+that was never armed — and the refusals are classified `pending` vs `permanent` in
+`local-runtime/domain/activities.ts`, with `scripts/check-refusal-classification.mjs` failing the
+build if a refusal outlives the engine it was waiting for. **The authoritative list is
+[CLAUDE.md's Execution substrates section](./CLAUDE.md#execution-substrates)**, which is kept in
+lockstep with the CLI; it is deliberately not duplicated here.
 
 **Choose by lifetime, not by weight.** Unattended, recurring, long-horizon or supervised work
 belongs on the service substrate however heavy it feels; work you are sitting and waiting on
 belongs on the local one. They compose rather than compete: a local agent inherits the repo's
 MCP config and can fire durable workflows onto a running service stack — triggers are data, so
 nothing cares who fired them. Local execution does not lack access to durability; it lacks
-durability of its own. Two asymmetries follow from having no engines and no containers: there is
-no cost fence (the run ledger both substrates write is the only accounting), and there is no
-process isolation (`--worktree`/`--plan` contain the blast radius; neither is a sandbox).
+durability of its own. Two asymmetries follow from having no containers: there is no cost fence
+(the run ledger both substrates write is the only accounting), and there is no process isolation —
+a local agent runs as the operator, with their credentials, so `--worktree`/`--plan` contain the
+blast radius but neither is a sandbox. That is why the managed-workspace boundary
+(`H_WORKSPACE_DIR`, `--allow-external` to override) is a boundary and not a preference.
 
 ## Principles
 
@@ -212,6 +223,29 @@ wires concrete adapters behind ports. These arrows are machine-checked, not just
   **workflow-svc has no `domain/` at all** — its domain is `engine-core`, and what remains is
   adapters, routers and a composition root. Domain logic sitting in one app's `domain/` that a
   second host needs is a boundary problem that has not surfaced yet.
+
+**The TypeScript stack expresses all of this in [Effect](https://effect.website).** It is the
+dominant idiom — ~186 source files import it — and the mapping onto the hexagon is one-to-one, so
+there is nothing extra to learn once the boundary rules are clear:
+
+| Hexagon concept | Effect expression |
+| --- | --- |
+| Port (an interface the domain defines) | a `Context.Tag` in `domain/` (or in a core package) |
+| Adapter (a concrete driver) | a `Layer` in `infrastructure/` / `presentation/` |
+| Composition root | the `Layer` graph a service builds in `index.ts` |
+| Long-lived wiring | a `ManagedRuntime` the host holds (workflow-svc's `activity-runtime.ts`) |
+| Typed failure | a tagged error in the Effect error channel, not a thrown exception |
+
+Two seams are worth knowing by name because everything inbound crosses them: `run-handler.ts` in
+`packages/js/agent-server` is the ONLY place `runtime.runPromise*` touches an inbound HTTP request
+(Schema decode happens INSIDE the Effect, so a `ParseError` becomes a real 400 and a tagged domain
+error becomes a 500), and `activity-runtime.ts` in workflow-svc is its counterpart for Dapr
+activities. A port method that still needs its environment (`R` ≠ `never`) has not finished
+crossing the boundary — adapters capture their collaborators at layer build precisely so it does.
+
+The Python agents express the same shapes in their own dialect: ports are `Protocol`s in
+`domain/ports.py` (structural, so adapters satisfy them without importing them) and the
+composition root wires them in `main.py`.
 
 The dependency arrow always points *into* the domain. Enforcement is part of `make lint`:
 [`dependency-cruiser`](./.dependency-cruiser.cjs) for the TS services (`bun run lint` per package)
