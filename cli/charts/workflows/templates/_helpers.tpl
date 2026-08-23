@@ -66,5 +66,14 @@ At most ONE atom in a composition declares a contract — overlay() fails loud o
 End your final message with a fenced ```json code block containing a single JSON
 object matching this schema. The block is machine-validated: a missing or
 mismatching block fails this step. Nothing may follow the block.
+{{- with .required }}
+
+MANDATORY — the block MUST carry {{ range $i, $k := . }}{{ if $i }}, {{ end }}`{{ $k }}`{{ end }}.
+Omitting {{ if gt (len .) 1 }}any one of them{{ else }}it{{ end }} fails the step even when the
+work itself succeeded, and a long run is exactly when this gets forgotten: on 2026-08-22 a
+revise-pr run rebased a branch, fixed five review findings, replied, resolved the threads and
+force-pushed — 28 minutes and $7.93 — then omitted one required field and was reported as a
+failed step. Re-read this line before you write the block.
+{{- end }}
 {{ . | toPrettyJson }}
 {{- end }}

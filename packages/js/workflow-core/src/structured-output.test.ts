@@ -137,6 +137,20 @@ describe("parseStructuredOutput", () => {
     );
   });
 
+  it("names what the block DID carry, so a near-miss is diagnosable", () => {
+    expect(() => parseStructuredOutput(fenced('{"url": "x"}'), PR_CONTRACT)).toThrow(
+      /the block carried: url/,
+    );
+  });
+
+  it("says the step already ran — its side effects are done even though the block failed", () => {
+    // A contract is checked AFTER the agent has run, so a push or a PR has already happened.
+    // Reported as a bare 'missing required X' this reads as work that never happened.
+    expect(() => parseStructuredOutput(fenced('{"url": "x"}'), PR_CONTRACT)).toThrow(
+      /side effects it had are already done/,
+    );
+  });
+
   it("fails CLOSED on a contract outside the subset — even if the value would pass", () => {
     expect(() =>
       parseStructuredOutput(fenced('{"pr": 42}'), { type: "object", oneOf: [] }),

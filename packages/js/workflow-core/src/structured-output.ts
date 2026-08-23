@@ -162,8 +162,20 @@ export function parseStructuredOutput(output: string, contract: unknown): unknow
     );
   }
   const problems = contractViolations(value, contract);
-  if (problems.length > 0)
-    throw new StructuredOutputError(`output violates its contract: ${problems.join("; ")}`);
+  if (problems.length > 0) {
+    // Name what the block DID carry, and say plainly that the work may already be done. A
+    // contract is checked after the agent has run, so its side effects — a push, a PR, a
+    // resolved review thread — have already happened by the time this throws. Reported as a
+    // bare 'missing required X', a failed step reads as work that did not happen: on
+    // 2026-08-22 a revise-pr run that had rebased, fixed five findings and force-pushed was
+    // reported purely as a failure because its final block omitted one field.
+    const carried = isRecord(value) ? Object.keys(value) : [];
+    const had = carried.length > 0 ? ` (the block carried: ${carried.join(", ")})` : "";
+    throw new StructuredOutputError(
+      `output violates its contract: ${problems.join("; ")}${had}. The step ran to completion, ` +
+        `so any side effects it had are already done — check them before re-running.`,
+    );
+  }
   return value;
 }
 
