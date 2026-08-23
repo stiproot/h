@@ -304,6 +304,31 @@ const addWorktreeEffect = (
 
     const { branch, remoteBase } = checkout;
 
+    // A BRANCH worktree is the write strategy: it becomes a PR, and a PR that outlives one run
+    // gets rebased onto a base that has moved. A --depth 1 clone cannot do that — the common
+    // ancestor sits below the shallow boundary, so `git merge-base` returns nothing and a rebase
+    // either refuses or misbehaves (observed 2026-08-23: a five-phase feature branch could not
+    // rebase, and an attempted rebase replayed a commit twice).
+    //
+    // So the clone is deepened ONCE, here, when the first write worktree is cut. Detached (read)
+    // worktrees are left shallow — a reviewer reading a diff never needs history. The cost is one
+    // full fetch per repo, amortised across every worktree that clone will ever host, and h's
+    // clones are long-lived shared workspaces rather than throwaway CI checkouts.
+    const shallow = (yield* runGit([
+      "-C",
+      repoPath,
+      "rev-parse",
+      "--is-shallow-repository",
+    ])).trim();
+    if (shallow === "true") {
+      const originUrl = (yield* runGit(["-C", repoPath, "remote", "get-url", "origin"])).trim();
+      yield* runGit(
+        ["-C", repoPath, "fetch", "--unshallow", "--quiet", resolveUrl(originUrl, auth)],
+        undefined,
+        authEnv(auth),
+      );
+    }
+
     // Reuse-by-branch (issue #76): a branch is checked out in at most one worktree; if one holds
     // it already (a finished chain's leftover, another workspace's checkout), return ITS path
     // instead of failing with "already used by worktree".

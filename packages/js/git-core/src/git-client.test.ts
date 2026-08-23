@@ -128,6 +128,61 @@ describe("GitClient (ExecGitClient layer)", () => {
     }
   });
 
+  it("deepens a shallow clone when cutting a BRANCH worktree, so it can still rebase", async () => {
+    // A --depth 1 clone cannot compute a merge base against a base branch that has moved, so a
+    // feature branch cut in one cannot be rebased — the failure that motivated this (2026-08-23).
+    const shallow = join(root, "shallow");
+    execFileSync("git", ["clone", "--depth", "1", "-q", `file://${repo}`, shallow], {
+      stdio: "pipe",
+    });
+    const isShallow = (dir: string) =>
+      execFileSync("git", ["-C", dir, "rev-parse", "--is-shallow-repository"], { stdio: "pipe" })
+        .toString()
+        .trim();
+    expect(isShallow(shallow)).toBe("true");
+
+    await run(
+      Effect.gen(function* () {
+        const git = yield* GitClient;
+        yield* git.addWorktree({
+          repoPath: shallow,
+          worktreePath: join(root, "worktrees", "deepened"),
+          checkout: { kind: "branch", branch: "feature/needs-rebase", remoteBase: "" },
+        });
+      }),
+    );
+
+    expect(isShallow(shallow)).toBe("false");
+  });
+
+  it("leaves a shallow clone shallow for a DETACHED worktree — a reader never rebases", async () => {
+    const shallow = join(root, "shallow-read");
+    execFileSync("git", ["clone", "--depth", "1", "-q", `file://${repo}`, shallow], {
+      stdio: "pipe",
+    });
+    const head = execFileSync("git", ["-C", shallow, "rev-parse", "HEAD"], { stdio: "pipe" })
+      .toString()
+      .trim();
+
+    await run(
+      Effect.gen(function* () {
+        const git = yield* GitClient;
+        yield* git.addWorktree({
+          repoPath: shallow,
+          worktreePath: join(root, "worktrees", "read-only"),
+          checkout: { kind: "detached", ref: head },
+        });
+      }),
+    );
+
+    const isShallow = execFileSync("git", ["-C", shallow, "rev-parse", "--is-shallow-repository"], {
+      stdio: "pipe",
+    })
+      .toString()
+      .trim();
+    expect(isShallow).toBe("true");
+  });
+
   it("adds a worktree on the requested new branch", async () => {
     const worktree = join(root, "worktrees", "run-1");
     await run(
