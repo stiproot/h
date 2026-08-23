@@ -24,6 +24,9 @@ def _entry(branch_short: str, under_local: bool = True) -> WorktreeEntry:
 
 
 def _patch_git(monkeypatch, entries, dirty=False, unpushed=False, untracked=()) -> None:
+    # The husk pass reads the real filesystem, so an unrelated test would otherwise see whatever
+    # leaked directories the developer's machine happens to hold. Husks have their own tests.
+    monkeypatch.setattr("h_cli.commands.worktrees._husks", lambda repo: [])
     monkeypatch.setattr("h_cli.infrastructure.local_runtime.repo_root", lambda cwd: str(FAKE_REPO))
     monkeypatch.setattr("h_cli.infrastructure.git.worktree_prune", lambda repo: None)
     monkeypatch.setattr(
@@ -447,3 +450,64 @@ def test_dry_run_shows_what_a_scratch_removal_would_discard(monkeypatch) -> None
     assert removed == []
     assert "discarding 1 untracked file" in result.output
     assert SCRATCH[0] in result.output
+
+
+# --- husks: directories git has no record of -------------------------------------------------
+#
+# The gap that let 1.8GB hide under h-worktrees/ on 2026-08-23: `git worktree list` reported
+# nothing, so the sweep reported "no h-managed worktrees found" and walked past a full worktree
+# whose registration had been lost. git-core's collector had this pass; the CLI did not.
+
+
+def _patch_husks(monkeypatch, names) -> None:
+    """Sweep-level: git knows of no worktrees, and `names` are sitting on disk unregistered."""
+    monkeypatch.setattr("h_cli.infrastructure.local_runtime.repo_root", lambda cwd: str(FAKE_REPO))
+    monkeypatch.setattr("h_cli.infrastructure.git.worktree_prune", lambda repo: None)
+    monkeypatch.setattr(
+        "h_cli.infrastructure.git.worktree_list", lambda repo: [_entry("main", under_local=False)]
+    )
+    monkeypatch.setattr(
+        "h_cli.commands.worktrees._husks",
+        lambda repo: [LOCAL_WORKTREES_DIR / n for n in names],
+    )
+
+
+def test_sweep_reports_a_husk_instead_of_claiming_nothing_to_do(monkeypatch):
+    """The exact 2026-08-23 shape: git knows of no worktrees, but a directory is sitting there."""
+    _patch_husks(monkeypatch, ["orphaned-run"])
+    result = runner.invoke(app, ["worktrees", "sweep", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "no h-managed worktrees found" not in result.output
+    assert "orphaned-run" in result.output and "husk" in result.output
+
+
+def test_sweep_keeps_a_husk_without_prune_untracked(monkeypatch):
+    """A husk holds only files git never tracked, so it needs the same permission as scratch."""
+    _patch_husks(monkeypatch, ["orphaned-run"])
+    result = runner.invoke(app, ["worktrees", "sweep", "--dry-run"])
+    assert "would skip: orphaned-run" in result.output
+    assert "--prune-untracked" in result.output
+
+
+def test_sweep_collects_a_husk_with_prune_untracked(monkeypatch):
+    _patch_husks(monkeypatch, ["orphaned-run"])
+    result = runner.invoke(app, ["worktrees", "sweep", "--dry-run", "--prune-untracked"])
+    assert "would remove: orphaned-run" in result.output
+
+
+def test_husks_finds_an_unregistered_directory_and_ignores_a_registered_one(monkeypatch, tmp_path):
+    """The detection itself, against a real directory tree."""
+    from h_cli.commands import worktrees as wt
+
+    root = tmp_path / "h-worktrees"
+    (root / "registered").mkdir(parents=True)
+    (root / "orphaned-run").mkdir()
+    (root / "not-a-dir.txt").write_text("x")
+    monkeypatch.setattr(wt, "_managed_roots", lambda: [root])
+    monkeypatch.setattr(
+        "h_cli.infrastructure.git.worktree_list",
+        lambda repo: [WorktreeEntry(path=root / "registered", head="abc", branch="refs/heads/x")],
+    )
+
+    found = [p.name for p in wt._husks("repo")]
+    assert found == ["orphaned-run"], "a registered worktree is not a husk, and a file is not one"

@@ -18,6 +18,7 @@ and push the operator to the blunt instrument. Every git check still defaults to
 error rather than auto-removing unknown state.
 """
 
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -62,6 +63,29 @@ def _managed_roots() -> list[Path]:
     and is left strictly alone.
     """
     return [LOCAL_WORKTREES_DIR.resolve(), (H_WORKSPACE_DIR / "worktrees").resolve()]
+
+
+def _husks(repo: str) -> list[Path]:
+    """Directories under a managed root that git has NO record of.
+
+    A worktree whose git registration is gone — a removal that failed partway, a pruned entry
+    whose directory survived — is invisible to every git-based tool while keeping its full size.
+    That is exactly how 1.8GB sat unnoticed under `h-worktrees/` on 2026-08-23: `git worktree
+    list` reported nothing, so the sweep reported nothing, and `du` was the only witness.
+
+    git-core's collector (`worktree-gc.ts`, the service substrate's `gc-worktrees` activity) has
+    always had this pass; the operator's sweep did not, which is the parity gap this closes.
+    """
+    known = {e.path.resolve() for e in git.worktree_list(repo)}
+    found: list[Path] = []
+    for root in _managed_roots():
+        if not root.is_dir():
+            continue
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.resolve() in known:
+                continue
+            found.append(child)
+    return found
 
 
 def _local_entries(repo: str) -> list[git.WorktreeEntry]:
@@ -291,7 +315,8 @@ def sweep(
     """Remove clean h-managed worktrees; keep and report the ones holding work."""
     repo = _repo_for(repo_path)
     entries = _local_entries(repo)
-    if not entries:
+    husks = _husks(repo)
+    if not entries and not husks:
         console.print("[dim]no h-managed worktrees found[/dim]")
         return
 
@@ -316,6 +341,14 @@ def sweep(
                 console.print(f"[dim]    {path}[/dim]")
         for e, reasons in to_skip:
             console.print(f"[dim]would skip: {e.branch_short or e.path.name} ({reasons})[/dim]")
+        for path in husks:
+            if prune_untracked:
+                console.print(f"would remove: {path.name} (husk — git has no record of it)")
+            else:
+                console.print(
+                    f"[dim]would skip: {path.name} (husk — git has no record of it; "
+                    "--prune-untracked to collect)[/dim]"
+                )
         return
 
     removed = 0
@@ -339,10 +372,38 @@ def sweep(
             err_console.print(f"[red]error:[/red] {e.branch_short or e.path.name}: {err}")
             errors += 1
 
+    husks_skipped = 0
+    for path in husks:
+        # A husk holds only files git never tracked, so it is collected under the same
+        # permission as scratch — never silently (git-core's worktree-gc.ts, pass two).
+        if not prune_untracked:
+            console.print(
+                f"[dim]skipped: {path.name} (husk — git has no record of it; "
+                "--prune-untracked to collect)[/dim]"
+            )
+            husks_skipped += 1
+            continue
+        console.print(f"discarding husk '{path.name}' — git has no record of it")
+        # Defence in depth: this is the one raw filesystem delete in the CLI, and unlike the
+        # worktree path it does not go through git (which a test can mock). Re-check containment
+        # at the point of removal so a future refactor that widens _husks cannot reach outside a
+        # managed root. Learned the hard way on 2026-08-23: an unmocked rmtree in a code path an
+        # existing test ran for real destroyed a stray run ledger.
+        if not any(path.resolve().is_relative_to(r) for r in _managed_roots()):
+            err_console.print(f"[red]refusing:[/red] {path} is outside every h-managed root")
+            errors += 1
+            continue
+        try:
+            shutil.rmtree(path)
+            removed += 1
+        except OSError as err:
+            err_console.print(f"[red]error:[/red] {path.name}: {err}")
+            errors += 1
+
     for e, reasons in to_skip:
         console.print(f"[dim]skipped: {e.branch_short or e.path.name} ({reasons})[/dim]")
 
-    summary = f"removed {removed}, skipped {len(to_skip)}"
+    summary = f"removed {removed}, skipped {len(to_skip) + husks_skipped}"
     if errors:
         summary += f", {errors} failed"
     console.print(summary)
