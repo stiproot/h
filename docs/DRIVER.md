@@ -182,7 +182,9 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 ## Standing conventions
 
-- **Verify a plan doc's CLAIMS against the repo before scoping a spec from it.** Plan docs
+- **Verify a plan doc's CLAIMS against the repo before scoping a spec from it.** Half one of
+  the pick-up validation the `plan-management` skill's step 2 and CLAUDE.md's Plans section
+  require of every plan; stated here because scoping a spec is where a driver hits it. Plan docs
   drift: on 2026-07-27 two of the four docs used to scope a batch were stale —
   `architecture-lint-rules.md` listed four backlog sections already fixed and enforced at
   `error`, and `e2e-flow-backlog.md` claimed "Covered: auth, challenge, spot" while the
@@ -192,9 +194,9 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
   file/rule/flow exist? is the config already flipped?). Spec-aware review CANNOT catch
   this — the panel checks the diff against the spec, so a spec built on a false premise
   passes clean.
-- **Interrogate a parked item before building it.** The sibling of the rule above, and the one
-  that catches what it cannot: that convention asks whether a doc's claims are still TRUE, this
-  asks whether its goal is still WANTED. Before designing anything from `carried-followups.md` or
+- **Interrogate the item's PREMISE before building it.** Half two, and the one the first cannot
+  catch: that asks whether a doc's claims are still TRUE, this asks whether its goal is still
+  WANTED. Both are required — a plan passing one says nothing about the other. Before designing anything from `carried-followups.md` or
   a plan's backlog, state what it was for, whether its `Revisit when:` trigger actually fired,
   what real usage exists, and what has changed since it was written. Dropping it is a normal
   outcome — record it in place with the reasoning. (2026-08-12: §2 proposed a coded chain-member

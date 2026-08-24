@@ -78,21 +78,38 @@ tracking log, the issues are its delegation surface. Design lives in repo files 
 guards, the `review-plan` machinery, and lift-on-archive are all file-based; issues stay
 prompt-sized because their text is fed to an implementing agent.
 
-**INTERROGATE A PARKED ITEM BEFORE BUILDING IT.** A plan item's presence on a list is not a
-reason to build it — these are ideas written to be read months later, by which time their premise
-may have quietly expired. Before designing anything, state four things: what the item was trying
-to achieve, whether its stated `Revisit when:` trigger has ACTUALLY fired, what real usage of the
-shape exists, and what has changed since it was written. Deciding to drop or re-trigger it is a
-normal, valuable outcome — record it in place with the reasoning, exactly like a completion.
-Every open item therefore carries a trigger line (`Revisit when:` / `Revisit as part of` /
-`Not revisited unless`), and **`scripts/check-plans.mjs` enforces that** — an item with no
-trigger cannot be interrogated at all, only rediscovered and rebuilt on faith.
+**VALIDATE A PLAN BEFORE PICKING IT UP — it is a hypothesis with a date on it, not a work
+order.** The `plan-management` skill's step 2 (*Pick up*) is the generic procedure and its
+pick-up checklist is the gate; this is h's concrete policy. Picking up a plan, a plan stub, or
+one item on one starts with a verification-and-grooming pass, never with its first step, and it
+happens BEFORE anything is scoped from it (a spec, an issue, a branch) — nothing downstream
+catches a bad premise, because a spec built on one reviews clean against itself. Two independent
+questions, both required, neither implying the other:
 
-This is distinct from DRIVER.md's "verify a plan doc's CLAIMS" convention, and both are needed:
-that one asks whether what the doc SAYS is still true, this one asks whether what it WANTS is
-still worth having. Carried-followups §2 (2026-08-12) failed the second test while passing the
-first — its facts were accurate and its stated benefit, fewer CLI flags, was something this repo
-actively does not want.
+- **Are its CLAIMS still TRUE?** (drift) Check the TREE, not the doc: do the files, activities,
+  rows, flags and guards it names still exist and still look like that? Is what it proposes
+  already landed? Seconds of grepping.
+- **Is its GOAL still WANTED?** (premise) State what it was trying to achieve, whether its stated
+  trigger has ACTUALLY fired, what real usage of the shape exists, and what has changed since it
+  was written. Presence on a list is not a reason to build.
+
+Deciding to drop or re-trigger is a normal, valuable outcome — record it in place with the
+reasoning, exactly like a completion; correct drift in the doc BEFORE implementing from it. This
+covers EVERY plan, not only parked ones: an `Active` plan resumed after a context reset is the
+dangerous case, because it reads as live and current. (DRIVER.md carries the same two questions
+as standing conventions for a driver session scoping a spec.)
+
+Because the premise question needs something to interrogate, every open item carries a trigger
+line (`Revisit when:` / `Revisit as part of` / `Not revisited unless`) and
+**`scripts/check-plans.mjs` enforces that** — an item with no trigger cannot be interrogated at
+all, only rediscovered and rebuilt on faith. That is as far as a machine reaches here: the guard
+checks a plan is INTERROGABLE, never that anyone interrogated it — the same line it draws in
+refusing to infer that a plan should be archived.
+
+Both halves have bitten, separately. Claims: a 2026-07-27 batch scoped from two stale plan docs
+produced a PR that redid finished work and was closed unmerged. Premise: carried-followups §2
+(2026-08-12) passed every claim check while its stated benefit — six fewer CLI flags — was
+something this repo actively does not want.
 
 ## Execution substrates
 
