@@ -56,7 +56,9 @@ def test_stamp_trust_is_idempotent(tmp_path):
 def test_trust_refuses_external_path(tmp_path):
     result = runner.invoke(app, ["workspaces", "trust", str(tmp_path)])
     assert result.exit_code == 1
-    assert "outside the workspace h manages" in result.output
+    # rich wraps the refusal, and where it wraps depends on how long tmp_path happens to be —
+    # so match on the unwrapped text, never on the console's line breaks.
+    assert "outside the workspace h manages" in " ".join(result.output.split())
 
 
 def test_trust_stamps_managed_path(tmp_path, monkeypatch):

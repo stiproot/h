@@ -389,3 +389,51 @@ def test_workflow_resume_and_no_journal_refusals() -> None:
     )
     assert result.exit_code == 1
     assert "drop --instance-id" in _all_output(result)
+
+
+# --- h workflow publish --local -------------------------------------------------
+
+
+@pytest.fixture
+def captured_registry(monkeypatch) -> list[dict[str, Any]]:
+    """Intercept the registry op the local publish issues, and answer as the runner would."""
+    calls: list[dict[str, Any]] = []
+
+    def fake_registry(op: str, **kwargs: Any) -> dict[str, Any]:
+        calls.append({"op": op, **kwargs})
+        return {"saved": kwargs["key"]}
+
+    monkeypatch.setattr("h_cli.commands.workflow.local_runtime.registry", fake_registry)
+    return calls
+
+
+@needs_helm
+def test_publish_local_saves_the_rendered_definition_into_the_local_store(
+    captured_registry,
+) -> None:
+    """The local store is what gives a local cron or trigger a KEY to fire: publish renders the
+    template in publish mode and saves the definition, exactly as the service path does."""
+    result = runner.invoke(app, ["workflow", "publish", "answer", "--local"])
+
+    assert result.exit_code == 0, _all_output(result)
+    assert captured_registry[0]["op"] == "workflows.save"
+    assert captured_registry[0]["key"] == "answer"
+    saved = captured_registry[0]["workflow"]
+    assert saved["key"] == "answer"
+    assert [s["id"] for s in saved["steps"]] == ["answer"]
+    # Publish mode leaves the fire-time identity open as params, so --agent works at fire time.
+    assert saved["params"]["runActivity"] == "run-claude"
+    assert saved["outputs"]  # the contract rides with the definition
+
+
+@needs_helm
+def test_publish_local_refuses_workflow_svcs_row_machinery(captured_registry) -> None:
+    """--schedule/--workspace-id/--disabled are fields of workflow-svc's saved-workflow ROW, read
+    by its cron tick. The local store holds definitions; a local recurrence is armed by the RUN."""
+    for flag in (["--schedule", "*/5 * * * *"], ["--workspace-id", "w"], ["--disabled"]):
+        result = runner.invoke(app, ["workflow", "publish", "answer", "--local", *flag])
+        assert result.exit_code == 1, _all_output(result)
+        out = " ".join(_all_output(result).split())
+        assert f"{flag[0]} applies to workflow-svc's store, not --local" in out
+        assert "h workflow run <key> --local --cron" in out
+    assert captured_registry == []

@@ -79,7 +79,7 @@ classDiagram
 
   class WorkflowCmd {
     <<Typer app workflow.py>>
-    +publish(template, key, schedule, workspace_id, disabled) None
+    +publish(template, key, schedule, workspace_id, local, disabled) None
     +run(keys, param, inline, agent, model, instance_id, fresh, watch, budget, retry, cron, max_fires, fallback_agent, fallback_model, fallback_after, fallback_max, at, in_, via, local, timeout, with_setup, allow_external, resume, no_journal) None
     +pause(instance_id, key, at, in_, param, workspace_id) None
     +resume(sched_id) None

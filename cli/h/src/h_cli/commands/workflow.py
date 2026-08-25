@@ -141,6 +141,16 @@ def publish(
             "workspace dir instead of a per-run one.",
         ),
     ] = None,
+    local: Annotated[
+        bool,
+        typer.Option(
+            "--local",
+            help="Save into the LOCAL saved-workflow store instead of workflow-svc, so a "
+            "local cron or trigger has a key to fire. --schedule/--workspace-id/--disabled "
+            "are workflow-svc's cron-tick machinery and are refused here; arm a local "
+            "recurrence with `h workflow run <key> --local --cron`.",
+        ),
+    ] = False,
     disabled: Annotated[
         bool,
         typer.Option(
@@ -168,6 +178,40 @@ def publish(
         err_console.print(f"[red]Template '{template}' rendered no steps[/red] — check its values.")
         raise typer.Exit(1)
     resolved_key = key or template
+    if local:
+        for name, used in (
+            ("--schedule", schedule),
+            ("--workspace-id", workspace_id),
+            ("--disabled", disabled),
+        ):
+            if used:
+                # These are workflow-svc's saved-workflow machinery: the cron tick reads the
+                # schedule off the stored row, and workspaceId keys a reusable provisioned
+                # dir. The local store holds definitions; recurrence is armed by the RUN
+                # (the arm-* pattern), not carried on the row.
+                err_console.print(
+                    f"[red]{name} applies to workflow-svc's store, not --local[/red] — "
+                    "arm a local recurrence with `h workflow run <key> --local --cron`"
+                )
+                raise typer.Exit(1)
+        saved = _local_guarded(
+            lambda: local_runtime.registry(
+                "workflows.save",
+                key=resolved_key,
+                workflow={
+                    "key": resolved_key,
+                    "steps": steps,
+                    **({"params": definition["params"]} if definition.get("params") else {}),
+                    **({"outputs": definition["outputs"]} if definition.get("outputs") else {}),
+                },
+            )
+        )
+        console.print(
+            f"==> Published template '{escape(template)}' into the LOCAL store as "
+            f"'{escape(saved['saved'])}'"
+        )
+        console.print(f"    fire it: h workflow run {saved['saved']} --local -p ...")
+        return
     result = _guarded(
         lambda: workflow_svc.save(
             resolved_key,

@@ -114,12 +114,21 @@ steps:
       task: |-
         You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
 
-        First check whether a prior run left anything: if plan-feature-{{ $slug }}.md exists
-        in the worktree root, read it — if it still matches the spec and the code, reuse it
-        as your plan instead of re-investigating. Check the branch's own commits too
-        (`git log`), and any plan or tracking doc the repository keeps for this work: you
-        may be a RESUMPTION, and re-planning finished work is the most expensive mistake
-        available to you. Verify a claim cheaply against the tree before trusting it.
+        First check whether a prior run left anything — you may be a RESUMPTION, and
+        re-planning finished work is the most expensive mistake available to you. Three
+        places, in order, because they survive different things:
+        1. `git log` on this branch. The most reliable: a re-fire reuses the branch, so a
+           prior run's COMMITS are here even when its worktree is not.
+        2. plan-feature-{{ $slug }}.md in the worktree root. Deliberately uncommitted, so it
+           is present when the worktree was reused and ABSENT when a fresh one was cut —
+           read it if it is there, and do not conclude from its absence that nothing was done.
+        3. ONLY if the dapr MCP is wired here: actor_state_get with actorId
+           'feature-{{ $slug }}' and key 'plan'. That is where a prior run's plan text
+           survives a fresh worktree; on the LOCAL substrate there are no services and so no
+           dapr MCP, and (1) plus (2) are the whole story — skipping this is EXPECTED, not a
+           degradation.
+        If what you find still matches the spec and the code, reuse it instead of
+        re-investigating. Verify a claim cheaply against the tree before trusting it.
 
         Otherwise investigate the feature request under ===FEATURE SPEC=== below: explore the
         relevant code and produce an implementation plan. Do NOT write code or modify any

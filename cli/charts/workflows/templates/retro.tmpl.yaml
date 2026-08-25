@@ -12,10 +12,14 @@ retro written from the same narrator's memory inherits that optimism. So this st
 DATA-FIRST: it computes from the run ledger, which no agent authored, and every finding must
 cite a number or a file. Prose is where self-assessment goes wrong.
 
-Fire-time params:
-  branch       the git branch the work ran on (required) — the join key. A group id is minted
-               per fire, so N passes at one feature are N groups with nothing tying them
-               together; the branch is stable across them by construction.
+Fire-time params (exactly ONE of branch / since):
+  branch       the git branch the work ran on — the per-feature use, e.g. as the closing member
+               of a chain. A group id is minted per fire, so N passes at one feature are N
+               groups with nothing tying them together; the branch is stable across them by
+               construction, because worktree-reuse-by-branch is what lets a pass resume.
+  since        a lookback window (e.g. 24h) — the NIGHTLY use, sweeping whatever ran, grouped
+               by branch internally. Bounded on purpose: a retro that re-reads the whole ledger
+               every night gets slower and more repetitive forever.
   repo         target repo of the WORK, for context only — never for issue content
   runActivity  / agentId — fire-time identity (--agent), defaulting to claude
 
@@ -57,7 +61,10 @@ properties:
           description: imperative, specific, about h — never about the target repo's domain
         evidence:
           type: string
-          description: the number or file that supports it; a finding without one is dropped
+          description: >-
+            the number or file the claim rests on, and it must SUPPORT that claim rather
+            than merely accompany it — a correct measurement with an unsupported inference
+            bolted on is the failure mode this field exists to prevent
         issue:
           type: string
           description: issue URL when filed, omitted when dry-run or unfiled
@@ -85,9 +92,16 @@ steps:
       model: {{ include "h.token" "params.modelRetro" | quote }}
       {{- end }}
       task: |-
-        Analyse what the work on branch `{{ include "h.token" "params.branch" }}` cost the
-        RUNTIME, and file what h should change. Your subject is h — never the repository the
-        work was done on.
+        Analyse what recent work cost the RUNTIME, and file what h should change. Your
+        subject is h — never the repository the work was done on.
+
+        SCOPE — exactly one of these is set; the other renders empty. Use whichever you have:
+          branch: `{{ include "h.token" "params.branch" }}`
+          since:  `{{ include "h.token" "params.since" }}`
+        A branch selects one piece of work and its passes. A `since` window selects everything
+        that ran in that lookback (e.g. 24h) — group those BY BRANCH and report per branch,
+        because passes-per-branch is the metric and a window mixes several. If neither is set,
+        say so and stop rather than guessing a scope.
 
         MEASURE FIRST, from the run ledger. Do not reason from memory or from any agent's
         summary; those were wrong often enough that this step exists. The ledger lives under
@@ -120,9 +134,24 @@ steps:
            its work" is the same incident as an h defect, and is the only version worth
            filing. If a finding cannot be stated without naming the domain, it is not an h
            finding — drop it.
-        3. EVIDENCE OR DROP IT. Every finding carries the number or the file that supports
-           it. A finding you believe but cannot support is exactly the kind of confident,
-           unfounded claim this step was built to stop reproducing.
+        3. THE EVIDENCE MUST SUPPORT THE CLAIM — not merely accompany it. Every finding
+           carries the number or the file behind it, and then you check that what you wrote
+           is what the number shows. Before each finding, state the claim and ask what the
+           data would look like if it were FALSE; if the data you have does not distinguish
+           the two, weaken the claim until it does.
+           This rule exists because of a real failure by this step's own first run: it
+           reported that "all 7 re-fires paid full investigation cost", citing correct line
+           numbers and a correct total. But the per-pass figures it had already computed ran
+           $1.77, $1.00, $0.83, $1.20, $0.55, $0.63, $0.88 — a falling curve, which is
+           context being REUSED, not re-derived. The measurement was right, the structural
+           observation was right, and the causal claim bolted onto them was wrong. A true
+           number with a false inference attached is the hardest defect to catch and the
+           easiest to file. State what you measured; claim only what it shows.
+
+        BEFORE FILING, search the open issues for each finding: on a schedule this step runs
+        unattended, and re-filing the same finding night after night poisons the tracker faster
+        than it improves anything. An existing open issue means DROP the finding, not file a
+        near-duplicate.
 
         FILE what survives, using the `h-issues` skill — follow it for shape and labels, and
         note it refuses to self-apply the trust label. One issue per finding. Put the issue
