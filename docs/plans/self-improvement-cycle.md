@@ -5,7 +5,8 @@ built" and had not noticed). The miner is the `retro` template: it computes from
 states findings in h's vocabulary, and files them with the `h-issues` skill for the discovery cron
 to pick up under the trust label — which is precisely the fold-one shape §2 designed, reached from
 a different direction. Fold TWO — per-repo knowledge accumulation — remains unwritten, and this
-plan is now about that half.
+plan is now about that half, whose design is §7 (written 2026-08-25, not built — §7.6 carries
+its open questions for the operator).
 Established: 2026-07-10
 
 **Re-groomed 2026-07-28 — read the body with these three corrections.**
@@ -184,13 +185,119 @@ synthesis step must encode in its prompt.
    is often the richest harness signal of all (it exercises clone/worktree/MCP/setup paths under
    real conditions), which argues for including cross-repo runs — but it widens the surface the
    synthesis step must reason about.
-3. **Fold two.** Lay out the object-level self-improvement axis (per-repo knowledge accumulation)
-   so it can be pressure-tested the same way.
+3. **Fold two.** ~~Lay out the object-level self-improvement axis~~ — laid out 2026-08-25 in §7
+   below; its own open questions are §7.6.
 4. **Issue labeling handoff.** Which label the friction workflow applies so `issue-sweep`
    picks it up — and whether auto-filed friction issues should require a human `agent-approved`
    click before the sweep acts (the h-builds-h trust gate), or ride a separate lane. (Leaning:
    friction issues are *filed* by the machine but still gated by a human label before apply —
    preserves the h-builds-h trust boundary.)
+
+---
+
+## 7. Fold two — per-repo knowledge accumulation (design, 2026-08-25)
+
+**Fold two is fold one with the SUBJECT swapped, and almost everything that made fold one cheap
+carries over.** One asymmetry does not, and the whole design turns on it.
+
+### 7.1 The symmetry
+
+| | fold one (built: `retro`) | fold two |
+| --- | --- | --- |
+| Subject | h itself | the target repo |
+| Signal | the run ledger | the same ledger, read for a different thing |
+| Synthesis | agent clusters incidents | agent clusters what was RE-derived |
+| Dedup store | open issues on the h repo | **the target repo's own steering file** |
+| Output | a GitHub issue | **a PR against that steering file** |
+| Human gate | the `agent-approved` label | the merge |
+| Apply step | discovery cron → `implement-pr` → PR | none — the doc IS the artifact |
+
+Fold two is *shorter* than fold one: fold one's output needs a second machine run to become a
+change, while fold two's output is already the change. The PR is the whole thing.
+
+It also needs no new primitive, for the same reason fold one needed none. Fold one refused to
+build a `friction:` registry and leaned on open issues as the dedup store; fold two refuses a
+`knowledge:` registry and leans on **the steering file itself** — read it before proposing, and
+if the fact is already there, drop it. No cursor key, no new writer of the flat keyspace, no
+engine. Fold two costs a template.
+
+### 7.2 The asymmetry that drives every constraint: an issue is INERT, a steering line is LOADED
+
+A bad fold-one issue sits in a tracker until a human triages it away. A bad fold-two line is
+**read by every subsequent run in that repo** and confidently misleads it. Fold two can make h
+*worse* at a repo, compounding, in a way fold one structurally cannot — it is a self-modification
+path, where fold one is a suggestion box.
+
+Four constraints follow, and none of them is taste:
+
+1. **PR only, never a direct write.** The merge is the ONLY gate fold two has; fold one's label
+   step does not exist here.
+2. **Every proposed line cites a path, and the cite is checked against the tree at write time.**
+   This is the rule the `retro` step learned the expensive way — a correct measurement with an
+   unsupported inference bolted on is the hardest defect to catch — and the stakes are higher
+   here, because a bad retro finding produces a bad issue while a bad steering line produces bad
+   *instructions*.
+3. **Deletion is a first-class output, not an afterthought.** A steering file rots, and a pass
+   that only ever ADDS makes the doc longer and more wrong every time it runs — the process would
+   degrade its own artifact. Proposing removal of a line the tree now contradicts is the
+   highest-value thing this can do, and it is available only because the target's steering is
+   source-controlled. h's own `check-plans`/`check-vocabulary` guards exist because the same rot
+   happens here.
+4. **Small diffs, capped.** A pass proposing twenty lines is not reviewable; it gets merged unread
+   (the worst outcome, given (2)) or closed wholesale.
+
+### 7.3 The discriminator: DURABILITY
+
+§5's discriminator for fold one is *recurrence across runs* — "h is wrong" vs "the task was hard".
+Fold two's sibling question is **"will this still be true in a month?"**
+
+- A fact about ONE feature is run context. It belongs in the `plan-feature-<slug>.md` handoff the
+  implement step writes and throws away, and `implement`'s prose already says that file is not a
+  tracking log.
+- A fact about the REPO is steering.
+
+The operational test: **would a run of a DIFFERENT task in this repo have wanted to know it?**
+Yes → steering. No → run context. This is checkable by the proposing agent, which is what makes
+it usable in a prompt.
+
+### 7.4 h's own repo is the worked example, and it hands us the format
+
+CLAUDE.md's *Key gotchas* section IS this artifact, accumulated by hand over months — each entry
+names the symptom, the cause, the fix, and stamps when it bit live ("Bit us live 2026-08-10 …").
+Fold two automates a habit the operator already performs for h. That means the output format
+needs no invention and no new convention: **symptom → cause → fix → the date it cost something.**
+
+The need is demonstrably real and currently misfiled. Facts of exactly this shape — "runs against
+this repo need host mode, because a CLI it depends on is host-only", "this repo's toolchain is
+invisible to a naive probe, so a run that checks for it the obvious way concludes it is absent" —
+today live in the OPERATOR's memory rather than in the repo where every run could read them.
+They are re-explained per session. That is fold two's backlog, already written, in the wrong place.
+
+### 7.5 Where the file is
+
+A consumer repo keeps its steering wherever it keeps it: `CLAUDE.md`, `AGENTS.md`, a `.cursorrules`,
+or under `.h/`. The template must DISCOVER rather than assume, and when a repo has none, proposing
+its creation is the same PR — and is the highest-value first pass for a repo h has only just
+started working in. (`bootstrap-repo` is not this: that is the genesis path for a repo that does
+not exist yet.)
+
+### 7.6 Open questions (operator, before anything is built)
+
+1. **Cadence and trigger — the important one.** `retro`'s nightly `since` window is fold ONE's
+   shape. Fold two's evidence is sharpest at the END of a feature arc, while the friction is fresh
+   and the `branch` scope already names it — which argues for a closing chain member rather than a
+   nightly sweep. Leaning: chain member.
+2. **It must read the tree to verify its claims**, so it needs a worktree, a branch and a push —
+   the write kind, reusing `create-pr`'s machinery. Confirm that is wanted, since it makes fold two
+   materially more expensive than fold one's read-only miner.
+3. **One PR per pass, or a long-lived steering branch a pass appends to?** Per-pass is noisy on an
+   active repo; a long-lived branch is quieter but stales and starts conflicting.
+4. **Does fold two ever run on h ITSELF?** It would let h edit `CLAUDE.md` — the most load-bearing
+   file in the repo and the one every h agent loads on every run. Given §7.2, almost certainly
+   excluded in v1, or gated harder than a merge.
+5. **Is a merge a sufficient gate at all?** Fold one is gated twice (a human labels the issue, and
+   a human merges the resulting PR). Fold two is gated once, on a change whose whole purpose is to
+   instruct future agents. This is the question to settle before writing the template, not after.
 
 ---
 
@@ -202,3 +309,17 @@ synthesis step must encode in its prompt.
   issues as the dedup store), feeding the existing `issue-sweep`→`feature` apply loop. Passive-
   mine first, active-emit deferred. `plugin-improvement` classified as spine-precedent, not a
   building block. Open: cadence, cross-repo window scope, fold two, the label/trust handoff.
+- 2026-08-25 — **Re-verified against the tree.** Fold one is BUILT — the `retro` template is §2's
+  miner, reached from the retro/ledger direction rather than from this doc: it computes from the
+  run ledger, forbids reasoning from an agent's self-report, requires evidence per finding,
+  searches open issues before filing (§2's "let GitHub be the dedup store", exactly), and files via
+  `h-issues` behind the trust label (§6 Q4's leaning, confirmed in practice). Two of §2's design
+  points are NOT in it and are the honest gap: the **cheap activity gate** (step 0, short-circuit an
+  idle window before spinning up judgment) and §6 Q2's **window scope** decision — `retro` reads
+  whatever ran, so cross-repo runs are included by default rather than by ruling.
+- 2026-08-25 — **Fold two designed** (§7), per §6 Q3. It is fold one with the subject swapped and
+  is shorter, because its output is the artifact rather than a request for one. The design turns on
+  a single asymmetry: fold one's output is inert until a human acts, while fold two's is LOADED by
+  every future run — so it can compound into making h worse at a repo, which fold one cannot. Not
+  built: §7.6 carries five questions for the operator, and per the standing preview convention the
+  surface goes to the operator before implementation.
