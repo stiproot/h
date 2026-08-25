@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from "node:fs";
 import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
@@ -70,12 +71,48 @@ export type RunOutcome = {
   stopReason?: string | null;
 };
 
+/**
+ * The checked-out branch at `dir`, or null.
+ *
+ * Reads .git directly rather than spawning git: the ledger is best-effort and observability
+ * must never break or slow a run. A WORKTREE's .git is a FILE (`gitdir: <path>`), so the real
+ * HEAD lives at that path; a normal clone's .git is a directory. Detached HEAD has no branch
+ * name and correctly yields null.
+ */
+const readBranch = (dir: string): string | null => {
+  try {
+    const dotGit = join(dir, ".git");
+    let gitDir = dotGit;
+    const stat = statSync(dotGit);
+    if (stat.isFile()) {
+      const pointer = readFileSync(dotGit, "utf8").trim();
+      if (!pointer.startsWith("gitdir:")) return null;
+      gitDir = pointer.slice("gitdir:".length).trim();
+    }
+    const head = readFileSync(join(gitDir, "HEAD"), "utf8").trim();
+    return head.startsWith("ref: refs/heads/") ? head.slice("ref: refs/heads/".length) : null;
+  } catch {
+    return null;
+  }
+};
+
 export type RunSummary = {
   runId: string;
   agentId: string;
   workflowInstanceId: string | null;
   workspaceId: string | null;
   workspacePath: string;
+  /**
+   * The git branch the run worked on, or null when it cannot be read.
+   *
+   * The join key for "how many passes did this piece of work take". A group id is minted per
+   * fire (`<base>-<yymmdd>-<hhmmss>`), so seven attempts at one feature are seven groups with
+   * nothing tying them together; the BRANCH is stable across them by construction, because
+   * worktree reuse-by-branch is what lets a later pass resume an earlier one's work. Recording
+   * it makes passes-per-branch a query instead of a directory glob, and needs no new
+   * identifier for anyone to remember to set.
+   */
+  branch: string | null;
   status: "completed" | "failed";
   model: string | null;
   turns: number | null;
@@ -180,6 +217,7 @@ function buildRunSummary(
     workflowInstanceId: ctx.workflowInstanceId ?? null,
     workspaceId: ctx.workspaceId ?? null,
     workspacePath: ctx.workspacePath,
+    branch: readBranch(ctx.workspacePath),
     status: outcome.status,
     model: outcome.model ?? null,
     turns: outcome.turns ?? null,

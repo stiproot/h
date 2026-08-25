@@ -28,6 +28,33 @@ def _runs_dir(explicit: str | None, workspace: Path) -> Path:
     return workspace.parent.parent.parent / ".runs"
 
 
+def _read_branch(workspace: Path) -> str | None:
+    """The checked-out branch at `workspace`, or None.
+
+    JS sibling: run-ledger.ts `readBranch`. The join key for "how many passes did this piece
+    of work take" -- a group id is minted per fire, so several attempts at one feature share
+    nothing, while the BRANCH is stable across them because worktree reuse-by-branch is what
+    lets a later pass resume an earlier one.
+
+    Reads .git directly rather than spawning git: the ledger is best-effort and observability
+    must never break or slow a run. A WORKTREE's .git is a FILE (`gitdir: <path>`); a clone's
+    is a directory. Detached HEAD correctly yields None.
+    """
+    try:
+        dot_git = workspace / ".git"
+        git_dir = dot_git
+        if dot_git.is_file():
+            pointer = dot_git.read_text().strip()
+            if not pointer.startswith("gitdir:"):
+                return None
+            git_dir = Path(pointer[len("gitdir:") :].strip())
+        head = (git_dir / "HEAD").read_text().strip()
+        prefix = "ref: refs/heads/"
+        return head[len(prefix) :] if head.startswith(prefix) else None
+    except Exception:
+        return None  # best-effort, exactly like every other ledger write
+
+
 def record_run(
     *,
     agent_id: str,
@@ -57,6 +84,7 @@ def record_run(
         "workflowInstanceId": request.workflow_instance_id,
         "workspaceId": request.workspace_id,
         "workspacePath": str(workspace),
+        "branch": _read_branch(workspace),
         "status": status,
         "model": response.model if response else None,
         "turns": response.turns if response else None,

@@ -177,7 +177,15 @@ steps:
         Do NOT push the branch and do NOT open a pull request — a
         composed-in create-pr step owns those.
         {{- else }}
-        Leave the result as uncommitted working-tree changes — do not commit or push.
+        COMMIT AS YOU GO on branch feature/{{ $slug }}, at a sensible cadence — after each
+        coherent unit of work (a migration, a module, one component), never after every file
+        edit. Add files individually (never `git add -A` or `git commit -a`), and leave
+        plan-feature-{{ $slug }}.md uncommitted (run context, not feature code).
+        Do NOT push the branch and do NOT open a pull request — this run stops at the local
+        branch, and the operator decides what happens to it.
+        (Committing costs the reader nothing: this is a worktree, so the change is
+        `git diff <base>...HEAD` either way. Leaving it uncommitted only meant that a step
+        killed at its wall-clock deadline lost everything it had paid for.)
         {{- end }}
 
         ===FEATURE SPEC===

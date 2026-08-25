@@ -183,6 +183,16 @@ answer:
     # AGENT_MODEL. A panel run strips per-branch models (each panelist uses its own default).
     answer: ""
 
+# retro workflow (templates/retro.tmpl.yaml): read a branch's run ledger and file what h
+# should change. The one step whose subject is h itself rather than the target repo.
+retro:
+  models:
+    # Model for the retro step; empty = the agent's AGENT_MODEL.
+    retro: ""
+  # Report findings without filing issues. Useful when trying the step out, or on a repo
+  # whose issue tracker should not receive h's own improvements.
+  dryRun: false
+
 # scout-repo workflow (templates/scout-repo.tmpl.yaml): review an external repo (agent, harness,
 # framework, tooling) for what h can take — the review half of the tooling-scout chain.
 # repoPath is fire-time-required (the step cwd); focus is the optional intake question.

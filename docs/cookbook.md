@@ -93,7 +93,7 @@ h workflow run implement --inline --local \
 ```
 
 The `implement` template on the local substrate: it cuts a worktree, plans read-only, then
-implements against the spec, leaving the result as uncommitted working-tree changes (standalone
+implements against the spec, committing as it goes on `feature/<slug>` without pushing (standalone
 mode — compose `create-pr` in if you want the PR). Write the spec as the WHOLE brief, naming the
 files to start from and the exact acceptance command including formatters — the delegate has none
 of your context, and an acceptance command that omits `ruff format` returns passing tests in code

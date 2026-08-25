@@ -230,7 +230,12 @@ def test_implement_never_opens_a_pr(hostile_spec: Path) -> None:
     rendered = _render_hostile(hostile_spec)
     assert "===CREATE PR===" not in rendered
     assert "===PR===" not in rendered
-    assert "do not commit or push" in rendered
+    # standalone commits incrementally too — on a worktree the diff reads the same either
+    # way (`git diff <base>...HEAD`), while an uncommitted tree loses everything to a
+    # wall-clock kill. What standalone still refuses is pushing and opening a PR.
+    assert "COMMIT AS YOU GO" in rendered
+    assert "Do NOT push the branch" in rendered
+    assert "do not open a pull request" in rendered.lower()
 
 
 def test_implement_publish_mode_golden(snapshot) -> None:
@@ -348,7 +353,8 @@ def test_composable_implement_commits_without_pushing(hostile_spec: Path) -> Non
     assert "COMMIT AS YOU GO" in implement  # incremental commit prose present
     assert "ONLY what that unit touched" in implement  # still scoped, not `git add -A`
     assert "do not push" in implement.lower()  # no push
-    assert "do not commit or push" not in implement  # standalone closer absent in composable mode
+    # both modes now commit; the difference is who pushes — composable defers to create-pr
+    assert "composed-in create-pr step owns those" in implement
     assert "open (or update) a pull request" not in implement  # PR-opening is create-pr's job
 
 

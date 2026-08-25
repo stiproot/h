@@ -231,7 +231,8 @@ def test_inline_composition_renders_atoms_in_composable_mode() -> None:
     assert solo.exit_code == 0 and composed.exit_code == 0, _all_output(composed)
     solo_task = json.loads(respx.calls[0].request.content)["steps"][-1]["input"]["task"]
     composed_body = json.loads(respx.calls[1].request.content)
-    assert "do not commit or push" in solo_task
+    assert "COMMIT AS YOU GO" in solo_task  # standalone commits; it just never pushes
+    assert "Do NOT push the branch" in solo_task
     assert "create-pr" in [s["id"] for s in composed_body["steps"]]
 
 
