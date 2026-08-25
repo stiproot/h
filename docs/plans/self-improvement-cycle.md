@@ -1,6 +1,11 @@
 # h improves h: friction detection → issues → the existing apply loop
 
-Status: Planning — the fold-one design holds, but its apply-half references are two supersessions stale and fold two is still unwritten; nothing built
+Status: Active — **fold one is BUILT** (2026-08-25 re-verification; the line above said "nothing
+built" and had not noticed). The miner is the `retro` template: it computes from the run ledger,
+states findings in h's vocabulary, and files them with the `h-issues` skill for the discovery cron
+to pick up under the trust label — which is precisely the fold-one shape §2 designed, reached from
+a different direction. Fold TWO — per-repo knowledge accumulation — remains unwritten, and this
+plan is now about that half.
 Established: 2026-07-10
 
 **Re-groomed 2026-07-28 — read the body with these three corrections.**

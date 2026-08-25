@@ -1,6 +1,13 @@
 # Hardening audit — encode the unguarded invariants
 
-Status: Active — 29 verified hardening findings, split per-area into this directory's phase docs. Phases 2 (A0, PR #100), 3 (PR #55), and 5 complete; phase 1 partial (3/11); phase 4 open on A26 only.
+Status: Complete — all 29 findings closed; every phase doc reads Complete. Closed 2026-08-25.
+Lifted to: the guard set itself is the deliverable and it lives in `scripts/check-*.mjs`, chained
+into root `package.json`'s `lint` and tabulated in [CLAUDE.md](../../../../CLAUDE.md)'s *The guards*
+section (each script's header comment carries the live incident that motivated it — that is the
+durable home for a finding's "why"). The A0 hook/CI outcome is in README's *Git hooks* + *CI*
+sections and CLAUDE.md's *CI (self-hosted runner)*; the codex integration recipe became the
+`.claude/skills/integrate-agent/` skill; the pattern learnings fold into *Harden by encoding*
+(ARCHITECTURE.md#principles).
 Established: 2026-07-23
 
 ## Phase docs
@@ -66,3 +73,20 @@ When this plan completes, before moving the whole directory to `docs/plans/impl/
 
 - 2026-07-23 — Plan created from the verified audit output (workflow run wf_580b2f94-226).
 - 2026-07-23 — Split from a single 74KB doc into this per-phase directory.
+- 2026-08-25 — **Closed.** Re-verification of the 9 items still marked open found 7 of them
+  already resolved by later, unrelated work that never touched this doc (A18/A28 by
+  codex-chatgpt-auth, A20/A22-part by `check-vocabulary` + `check-steering`, A23 by package
+  documentation, A24, A26 by `check-plans`'s citation rule, A30). Only A21 and the observe-h half
+  of A22 still reproduced, and both were fixed in the closing pass — A21 having drifted past its
+  own description into a live falsehood, since `cli/README.md` still listed
+  `--cron/--watch/--at/--in` as refused on the local substrate after the engine host made them
+  work. Two things are worth carrying out of that:
+  - **A hardening backlog decays in the GOOD direction, and that is exactly what makes working it
+    from the list dangerous.** Seven of nine items would have been re-implemented, or their
+    absence puzzled over, by anyone starting at step one. This is the concrete case behind
+    CLAUDE.md's *validate a plan before picking it up* rule: check the TREE, not the doc.
+  - **A guard closes its finding permanently; a doc edit does not.** Every item that closed
+    itself did so because someone encoded the invariant (`check-steering`, `check-vocabulary`,
+    `check-plans`). The two that were still open — both pure prose with no guard — were the two
+    that had rotted, and A21 had rotted into telling an operator a working capability did not
+    exist. That asymmetry is the audit's own strongest evidence for *Harden by encoding*.

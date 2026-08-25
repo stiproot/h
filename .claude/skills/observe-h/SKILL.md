@@ -10,8 +10,8 @@ description: >
 
 # Observing the h stack
 
-h orchestrates several agents (claude, openhands, dapr-agent, dapr-claude-loop, langgraph) via a
-Dapr Workflow service. This skill is the map for observing it.
+h orchestrates several agents (claude, codex, openhands, pi, kimi, dapr-agent, dapr-claude-loop,
+langgraph, claude-managed, and the itest-only stub) via a Dapr Workflow service. This skill is the map for observing it.
 
 ## The join key: `workflowInstanceId`
 

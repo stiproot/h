@@ -1,6 +1,6 @@
 # Phase 1 — Live drift & bug fixes
 
-Status: Active — 11 item(s), 3 complete (A16, A29 2026-07-28; A1 verified 2026-07-31); remainder are doc/steering fixes
+Status: Complete — 11 item(s). Closed 2026-08-25: 6 of the 8 remaining had been resolved by later work without this doc being updated (A18, A20, A22-part, A23, A24, A28, A30); A21 and the observe-h half of A22 were fixed in the closing pass.
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
@@ -82,9 +82,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** Two-part fix. (1) Close the drift: in cli/h/src/h_cli/config.py add "codex"/"codex-agent" → ("run-codex", "codex-agent") to AGENT_IDENTITY and "codex-agent": "http://localhost:8016" to AGENT_URLS (port from cli/scripts/run-codex-agent.sh:29), plus the playbook's skipped doc touchpoints (README agent list/port table, CLAUDE.md app-tree + activity list). (2) Encode the guard: add cli/h/tests/test_agent_identity_sync.py (runs under the existing `uv run --package h-cli pytest`) that resolves the repo root via Path(__file__).resolve().parents[3], regex-extracts every `case "run-([a-z-]+)"` label from apps/workflow-svc/src/infrastructure/activity-registry.ts, and for each opens apps/workflow-svc/src/infrastructure/activities/run-<name>.activity.ts and classifies it shared-input iff its `type Input` block declares both `cwd?: string` and `model?: string` (derives the exclusion set — run-langgraph/run-dapr-agent/run-dapr-claude-loop/run-claude-managed lack these — from source instead of a second hand-maintained frozenset that could itself drift); assert every shared-input activity has AGENT_IDENTITY entries under both `<name>` and `<name>-agent` keys whose runActivity matches, and that the corresponding `<name>-agent` app-id appears in AGENT_URLS. This makes the playbook's line-44 checklist item machine-checked per the Harden-by-encoding principle.
 
-## [ ] A18. codex-agent is fully wired but invisible on every doc and steering surface
+## [x] A18. codex-agent is fully wired but invisible on every doc and steering surface
 
 *Severity: medium · effort: medium*
+
+**RESOLVED — verified 2026-08-25.** Landed with [codex-chatgpt-auth](../codex-chatgpt-auth.md), not by this item: `AGENT_IDENTITY` carries both codex rows (`config.py:273-274`) and `AGENT_URLS` the 8016 entry (`:245`); README has the agents-table row (`:71`), the workspace-tree entry (`:92`), the run-script line (`:279`), the compose row (`:398`) and the port-map row (`:422`); CLAUDE.md's App layouts has the `apps/codex-agent/src/` block. The guard this item asked for exists as `cli/h/tests/test_agent_identity_sync.py` (source-derived exclusion set).
 
 **Gap:** A complete codex agent integration exists (Effect-based app landed PR #53 via commit 39d5b78, run script with pinned ports 8016/3516/36016/61017, compose profile, run-codex activity, agent-cli codexStrategy) but appears in NO surface an agent or developer loads: not in CLAUDE.md's App layouts (apps list, packages/js/agent-cli agents/ listing, and the run-{claude,openhands,pi,...} activity list all omit it), not in README.md's Agents table, workspace tree (lines 28-40), run-scripts list (lines 170-181), compose component table, or either port table (lines 250-281 — CLAUDE.md's port-collision invariant explicitly says 'the full map is in README.md', now false), and not in the CLI's AGENT_IDENTITY table — so `h workflow run --agent codex` silently has no identity mapping and any agent planning off the docs cannot route work to it.
 
@@ -92,9 +94,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** 1) Add "codex": ("run-codex", "codex-agent") and "codex-agent": ("run-codex", "codex-agent") to AGENT_IDENTITY in /home/stiproot/code/h/cli/h/src/h_cli/config.py:49 (run-codex.activity.ts takes the shared {cwd,model,task} input, meeting the table's stated inclusion criterion). 2) Add a pytest in cli/h/tests (e.g. test_config.py) asserting every runActivity value in AGENT_IDENTITY appears in workflow-svc's activity registry and, conversely, that every run-*-agent pair in apps/workflow-svc/src/infrastructure/activity-registry.ts with the shared input shape has an AGENT_IDENTITY entry — encoding the coverage invariant per 'Harden by encoding'. 3) Update docs: CLAUDE.md App layouts (apps/codex-agent entry, codex.ts in the agent-cli agents/ listing, run-codex in the activities line, codex in the AGENT_IDENTITY prose), README.md Agents table / workspace tree / run-scripts list / compose component table / both port tables (8016/3516/36016/61017 from run-codex-agent.sh:30-38). Note: drop the original claim that --agent codex fails silently — it errors loudly (workflow.py:190-196); the fix enables routing, it does not close a silent-failure hole.
 
-## [ ] A28. agent-integration-playbook was not updated by the newest agent integration (codex)
+## [x] A28. agent-integration-playbook was not updated by the newest agent integration (codex)
 
 *Severity: medium · effort: small*
+
+**RESOLVED — verified 2026-08-25.** Part 3 landed 2026-07-28 (the playbook became `.claude/skills/integrate-agent/`, since a durable recipe is a skill and never a plan). Parts 1-2 were already stale then. The one thing this item still carried — the A22 overlap — closed in the same pass as A22 below.
 
 > **Verified 2026-07-28 — PART 3 DONE, parts 1–2 STALE, re-scope before implementing.**
 > Part 3 landed with the plans-grooming pass: the playbook was never a plan (it is durable
@@ -108,7 +112,7 @@ are both refused and the victim file is never created, while legitimate writes s
 > Parts 1–2 no longer reproduce: `AGENT_IDENTITY`/`AGENT_URLS` carry codex
 > (`config.py:57`), README mentions it, and the proposed guard EXISTS as
 > `cli/h/tests/test_agent_identity_sync.py` (source-derived exclusion set, as specified) —
-> all landed via [codex-chatgpt-auth](../impl/codex-chatgpt-auth.md). What remains open is the
+> all landed via [codex-chatgpt-auth](../codex-chatgpt-auth.md). What remains open is the
 > overlap with **A22** (skill rosters still omit `run-pi`/`run-codex`), which this item's
 > relocation does not address.
 
@@ -118,9 +122,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** Three parts. (1) Functional: add the codex rows to cli/h/src/h_cli/config.py — AGENT_IDENTITY ("codex": ("run-codex", "codex-agent"), "codex-agent": (...)) and AGENT_URLS (port 8016 per cli/scripts/run-codex-agent.sh) — or add a comment there documenting why codex is excluded from --agent. (2) Docs the playbook checklist mandates: README.md agent list + port-allocation table row, CLAUDE.md app-tree entry for apps/codex-agent + run-codex in the activities line + codex.ts in the agent-cli list, .env.example OPENAI_API_KEY note. (3) Playbook: append a short codex worked example to docs/plans/agent-integration-playbook.md (JSONL thread.* event parser, OPENAI_API_KEY via Config.withDefault, mirrors pi/openhands — do NOT claim it introduced the Effect/telemetry pattern) and, per the harden-by-encoding principle, add a small guard (e.g. scripts/check-agent-parity.mjs run from root lint, or a cli/h/tests pytest) asserting every `run-<name>` case in apps/workflow-svc/src/infrastructure/activity-registry.ts has a matching AGENT_IDENTITY row or an explicit exclusion entry — that guard would have caught this drift at PR #53.
 
-## [ ] A22. Skill agent/activity rosters omit run-pi and run-codex
+## [x] A22. Skill agent/activity rosters omit run-pi and run-codex
 
 *Severity: medium · effort: small*
+
+**RESOLVED — verified 2026-08-25.** `skills/workflow-orchestrator/SKILL.md:52-54` lists `run-codex`/`run-pi` alongside the rest, and `scripts/check-steering.mjs` (the durable guard this item specified, now in `bun run lint`) parses the activity registry and fails if any `run-*` is undocumented. The observe-h roster was the last half still reproducing and was fixed in this pass — it now names codex, pi, kimi, claude-managed and the itest-only stub.
 
 **Gap:** workflow-orchestrator's 'Available activities' list — the menu an orchestrating agent builds steps from — omits run-pi and run-codex (both registered activities), and observe-h's agent roster stops at langgraph, omitting pi-agent and codex-agent; agents following these skills cannot dispatch to or reason about those agents.
 
@@ -128,9 +134,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** Immediate fix: (1) in /home/stiproot/code/h/skills/workflow-orchestrator/SKILL.md line 46, extend the activity list to `run-claude / run-openhands / run-pi / run-codex / run-dapr-agent / run-dapr-claude-loop / run-claude-managed / run-langgraph`; (2) in /home/stiproot/code/h/.claude/skills/observe-h/SKILL.md line 13, extend the roster to `(claude, openhands, pi, codex, dapr-agent, dapr-claude-loop, langgraph)`. Durable guard: create /home/stiproot/code/h/scripts/check-steering.mjs (it does not exist yet) with a rule that parses the `run-*` names from apps/workflow-svc/src/infrastructure/activity-registry.ts (the `case "run-…"` literals in getActivity) and fails if any is absent from skills/workflow-orchestrator/SKILL.md; wire it into the root package.json `lint` script beside scripts/check-templates.mjs, matching the existing content-guard pattern.
 
-## [ ] A23. packages/js/telemetry (and git-core in README) missing from all package listings
+## [x] A23. packages/js/telemetry (and git-core in README) missing from all package listings
 
 *Severity: medium · effort: small*
+
+**RESOLVED — verified 2026-08-25.** `packages/js/telemetry` has its App-layouts block in CLAUDE.md and its README tree line (`README.md:107`); `git-core` is in the README tree too. Both arrived with later package work rather than this item.
 
 **Gap:** packages/js/telemetry — the Effect/OpenTelemetry tracing layer (tracing/spans/bridge/context — the machinery CLAUDE.md's Observability section describes abstractly as 'initTracing (JS)') that codex-agent already consumes via makeTracingLive — appears in neither README.md's packages tree (lines 41-47 list agent-cli/agent-server/core/core-dapr/core-vercel/logger only; git-core is also missing there) nor CLAUDE.md's App layouts packages/js listing, which enumerates every other JS package file-by-file — so agents editing tracing code have no map for it, the Docker gotcha ('add its package.json COPY line to all relevant app Dockerfiles') has no anchor naming it, and a contributor cannot discover the repo's tracing package from any doc.
 
@@ -138,9 +146,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** (1) Add a `packages/js/telemetry/src/` block to CLAUDE.md's App layouts packages/js section (one-liners for index.ts — re-exports; tracing.ts — makeTracingLive/TracingLive Effect OTel layer + getTracer; spans.ts; bridge.ts; context.ts), and cross-link it from the Observability section's "initTracing (JS)" sentence so the abstract name resolves to the concrete package. (2) Add `telemetry/` and `git-core/` lines to README.md's packages/js tree (currently lines 43–48). (3) In the same pass, fix the adjacent verified drift: add `codex-agent` to README's apps list and an `apps/codex-agent/src/` block to CLAUDE.md's App layouts (it is entirely undocumented too). (4) For the automated guard: scripts/check-steering.mjs does NOT yet exist — if another audit finding creates it, extend its presence rule to cover `packages/js/*` and `packages/py/*` directory names appearing in both README.md's tree and CLAUDE.md's App layouts; otherwise create that script and wire it beside check-templates.mjs in the root lint pipeline (root package.json `lint`).
 
-## [ ] A20. Retired 'family' vocabulary and marker-protocol residue in the steering agents load every run
+## [x] A20. Retired 'family' vocabulary and marker-protocol residue in the steering agents load every run
 
 *Severity: low · effort: small*
+
+**RESOLVED — verified 2026-08-25.** No `famil(y|ies)` occurrence survives in `apps/claude-agent/steering/h-runtime.md` or any `skills/**/SKILL.md`. The lock this item proposed became `scripts/check-vocabulary.mjs`, whose banlist sits beside its glossary pointers and covers the whole retired dictionary rather than this one word.
 
 **Gap:** h-runtime.md — copied into every CLI agent's ~/.claude/CLAUDE.md at setup — still teaches the pre-2026-07-08 'families' vocabulary (retired for 'template' per CLAUDE.md's publish-mode gotcha) and its output-contract rule still legitimizes 'markers the task asks for' although marker parsing was retired 2026-07-15 (structured-only) and author-workflow-template explicitly forbids marker conventions; workflow-orchestrator and h-issues skills carry the same 'family' wording.
 
@@ -148,9 +158,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** Reword the retired vocabulary only: in /home/stiproot/code/h/apps/claude-agent/steering/h-runtime.md:20 change 'parameterized *families*' to 'parameterized *templates* (saved workflows with open {{params.x}} slots)'; in /home/stiproot/code/h/skills/workflow-orchestrator/SKILL.md:15,17,19 replace 'family/families' with 'template(s)'/'parameterized saved workflow(s)'; in /home/stiproot/code/h/skills/h-issues/SKILL.md:18 change 'a rough edge in a workflow family' to 'a rough edge in a workflow template'. Do NOT remove 'or markers' from h-runtime.md:33 — templates still legitimately ask for prose markers (e.g. cli/charts/workflows/templates/feature.yaml:115) and the line encodes the required ordering relative to the structured block. Then lock the vocabulary with a forbidden-regex check (e.g. /\bfamil(y|ies)\b/ scoped to skills/**/SKILL.md and apps/claude-agent/steering/*.md, with an allowlist escape comment) in a new scripts/check-steering.mjs, wired into root package.json's lint beside check-templates.mjs.
 
-## [ ] A21. cli/README command reference is two shipped plan-cycles behind the CLI
+## [x] A21. cli/README command reference is two shipped plan-cycles behind the CLI
 
 *Severity: low · effort: small*
+
+**RESOLVED — fixed in this pass, 2026-08-25**, and it had drifted further than the item recorded. Added: `workflow publish --local`, `template drift`, `events await`/`events results`, `--timeout`, and the chain expression's per-member `--parallel`/`--stage`/`--cron`/`--max-fires`/`--id`/`--inline` plus the dotted `id.field` `--input` form and the command-flags-precede-the-expression rule. The item's own framing understated the risk: the block's local-substrate footer still listed `--cron/--watch/--at/--in` as REFUSED BY NAME, which the engine host made false — a doc that denies a working capability costs more than one that omits a flag. The footer now states the real split (what the driver enforces, what still refuses, and how `chain run --local` differs from `workflow run --local`).
 
 **Gap:** cli/README.md's command block documents neither the schedule-and-fallback surface (no --at/--in, --fallback-agent/-model/-after/-max on `h workflow run`, no `h workflow pause|resume`, no `h schedule list|rm` entries — all shipped and e2e-validated 2026-07-18) nor the inline-chain-cron surface (chain EXPR shown without --parallel/--stage/--cron/--max-fires/--id/--inline, and threading shown as `--input PARAM=BB` instead of the dotted `id.field` SRC form — shipped 2026-07-20), so an agent or human reading the CLI's own README composes with a stale flag set.
 
@@ -158,9 +170,11 @@ are both refused and the victim file is never created, while legitimate writes s
 
 **Do:** Update cli/README.md's command block: (1) line 95 — extend the `h workflow run` line with `[--at ISO | --in DUR]` and `[--fallback-agent A [--fallback-model M] [--fallback-after DUR] [--fallback-max N]]` (copy the wording from root README.md:353-354, which is already correct); (2) after line 96, add three lines: `uv run h workflow pause <instanceId> <key> --in DUR` (terminate + arm a resume continuation reusing the workspace), `uv run h workflow resume <schedId>` (fire the continuation now), and `uv run h schedule list|rm <id>` (the one-shot cron:sched surface); (3) lines 97-100 — extend the chain EXPR description with the `--parallel` infix connector and per-member `--stage N / --cron CADENCE / --max-fires N / --id NAME / --inline` flags (per chain_expr.py:7-48), and change `--input PARAM=BB` to `--input PARAM=SRC` with SRC = flat key or dotted `id.field` (the D5 namespaced-blackboard form). Optionally, since no guard covers README-CLI sync and the repo's 'harden by encoding' principle applies, add a small pytest in cli/h/tests (e.g. test_readme_flags.py) asserting each Typer-registered flag/command name in commands/{workflow,chain,schedule}.py appears somewhere in cli/README.md — cheap drift tripwire, though this hardening is optional given the low severity.
 
-## [ ] A24. apps/claude-agent/CLAUDE.md carries a misplaced dapr-claude-loop-agent doc section
+## [x] A24. apps/claude-agent/CLAUDE.md carries a misplaced dapr-claude-loop-agent doc section
 
 *Severity: low · effort: small*
+
+**RESOLVED — verified 2026-08-25.** The `## dapr-claude-loop-agent` section is gone from `apps/claude-agent/CLAUDE.md`; the file is workspace rules only, as this item specified.
 
 **Gap:** The workspace-rules steering file loaded for claude-agent contexts devotes lines 21-74 (of 74) to documenting a different service entirely (dapr-claude-loop-agent's layout, run script, Docker profile, and demo workflow) — content that belongs in apps/dapr-claude-loop-agent/ and that dilutes the actual workspace rules (path confinement + review format) an agent must obey.
 
@@ -189,9 +203,11 @@ plan's claim is *well-formed*, never that it *should* be archived.
 
 **Do:** Fix docs/plans/h-builds-h.md:3 to reflect reality, e.g.: "**Status:** SHIPPED — the loop runs live (two engine crons, no sweep agent; operational home: docs/h-builds-h-runbook.md; mechanism: docs/plans/workflow-watcher-registry.md §9-§10). Validated live 2026-07-20 (PR #52) and 2026-07-21 (PR #53)." Then, per the plan-management skill, lift the still-open items from its progress log (phase-4 backlog, the review-comment-resolution note) into the runbook or an issue BEFORE archiving to docs/plans/impl/. Note: workflow-watcher-registry.md is also DONE (2026-07-12) yet still sits in docs/plans/ — archive both in the same pass so impl/ (currently only revise-rebase-stale.md) reflects the actual completed set; do NOT claim it is already archived.
 
-## [ ] A30. README workspace layout omits the skills/, docs/, and web/ top-level dirs
+## [x] A30. README workspace layout omits the skills/, docs/, and web/ top-level dirs
 
 *Severity: low · effort: small*
+
+**RESOLVED — verified 2026-08-25.** README's workspace tree carries `skills/` (`:126`), `docs/` (`:129`) and `web/` (`:131`).
 
 **Gap:** README.md's workspace-layout tree lists apps/packages/dapr/k8s/config/cli but not skills/ (the harness skill source, documented only in CLAUDE.md), docs/ (the plans discipline + runbook), or web/ (the viz sandbox), so from README alone a new contributor finds the CLI and charts but not the skills or the planning/runbook docs — undermining the onboarding path (no dead links exist, but these dirs are simply absent).
 

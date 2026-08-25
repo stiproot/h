@@ -730,3 +730,37 @@ rather than this doc.
 
 *Revisit when:* a second agent's steering needs to diverge from claude-agent's, or the next time
 `_helpers.tpl`'s setup steps are edited for another reason — whichever comes first.
+
+## From [local-engine-parity](./impl/local-engine-parity.md)
+
+### 34. Increment 3 — chain as a durable registration on the local substrate
+
+The one increment the plan closed without building, and it was DEFERRED rather than blocked:
+`chain:sub` in KV, the engine firing each stage as a task descriptor, the relay executing it —
+retiring the chain half of the run journal, since a KV row with history absorbs it.
+
+The reason to leave it is that it changes HOW local chains are hosted, not WHAT they can do.
+`h chain run --local` works today driver-sequenced and journaled, and resumes; what it lacks is
+a `chain:sub` row, which is why `h chain list --local` is the last registry read still refusing
+by name (`commands/_local_registry.py`'s `PENDING` map, cross-checked by
+`scripts/check-refusal-classification.mjs`). Building it buys an unattended local chain — one
+that survives the driver's shell — plus the read surface.
+
+Note the shape it would take: the foreground driver-sequenced path STAYS. Two hosts, one
+`decide`, exactly as increments 2 and 4 landed.
+
+*Revisit when:* a local chain needs to outlive the shell that fired it, or `h chain list --local`
+refusing becomes a real friction rather than a documented one.
+
+### 35. The three questions increment 4 left open
+
+- **`--fresh` on the local substrate** — it means purge-and-rerun a durable Dapr instance, and
+  there is no instance registry here. Left refused.
+- **Who supervises `h events serve`?** Nothing does; the operator runs it in a shell (or
+  `h events up --with-relay` supervises it). A separate decision from the engine host's
+  lifecycle, and deliberately not smuggled into the parity work.
+- **Does `h delegate` write a `wf:` row?** With KV always present it could, and it could read
+  `exec:` policy. It still has nothing to resume, so it stays unjournaled.
+
+*Revisit when:* unattended local operation is wanted — all three are the same question wearing
+different hats, namely what runs h when no operator is watching.

@@ -1,6 +1,8 @@
 # Spec review pipeline — review the plan before it becomes a prompt
 
-Status: Planning — scoped 2026-07-27 from the trxy #54 miss; design settled, not built
+Status: Active — the status line said "not built" until 2026-08-25, which was two templates out
+of date. Re-verified against the tree that day: the machinery EXISTS and the plan overshot its own
+acceptance in one place. Outstanding is the live-validation criterion alone.
 Established: 2026-07-27
 
 ## Origin
@@ -98,6 +100,33 @@ mistaken is a first-class finding, not out of scope. Ship this regardless of the
 it is a small prose change with immediate value.
 
 ## Acceptance
+
+**Re-verified 2026-08-25** — check the tree, not this list:
+
+- [x] `review-spec` template exists (`cli/charts/workflows/templates/review-spec.tmpl.yaml`),
+      publish-native on `repo`/`slug`/`pr`/`focus`, and reuses the existing `review-pr` chain kind
+      and verdict contract rather than introducing an engine kind — so `loop-until-clean` drives it
+      unchanged, exactly as this plan required. Golden: `test_review_spec_golden`.
+- [x] `review-pr` prose carries the independent-judgement correction
+      ("NOT SUFFICIENT — full independent review judgement always applies on top of it"),
+      goldens re-blessed.
+- [x] DRIVER.md documents both tiers and the choosing heuristics (§*Choosing a workflow tier*:
+      direct/light as the default, spec-reviewed/heavy for data models, migrations, interlocking
+      design questions, cross-cutting invariants, idea stubs, or multi-chain work — never mandatory).
+- [x] **Overshot:** a THIRD review landed that this plan never scoped — `review-plan.tmpl.yaml`,
+      which reviews a plan *in flight* (the text a planning agent just produced, against the request
+      that prompted it) rather than a spec already sitting in a PR. `review-pr` reviews a DIFF,
+      `review-spec` a spec PR, `review-plan` a plan while changing course is still cheap. That
+      closes the #80 half of the origin story more directly than the spec-PR tier does, since #80's
+      contradiction was IN the plan, not in a spec built from it.
+- [ ] `h chain run` expressing the heavy tier end-to-end — expressible today (the members and the
+      threading exist); never run as one composed chain.
+- [ ] **The remaining gate: validated on one real change** — a spec PR drawing at least one
+      substantive finding that would otherwise have surfaced during or after implementation. This
+      is the criterion the plan cannot retire itself on, because the whole premise is that a
+      false-premise spec is invisible to review, and only a live run tests that.
+
+### Original acceptance (as scoped 2026-07-27)
 
 - A `review-spec` template exists, declares the CLEAN/FINDINGS contract, and drives
   `loop-until-clean` unchanged.

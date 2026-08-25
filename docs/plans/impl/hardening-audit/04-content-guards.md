@@ -1,6 +1,6 @@
 # Phase 4 — Content-invariant guard scripts
 
-Status: Active — 9 item(s), 4 complete
+Status: Complete — 9 item(s). A26, the last one open, verified resolved 2026-08-25 by the check-plans citation rule.
 Established: 2026-07-23
 Parent: [hardening-audit index](./README.md) — read its context + executing-agent instructions first.
 
@@ -88,9 +88,11 @@ New `scripts/check-*.mjs` guards wired into the root `package.json` lint chain b
 
 **Do:** Add scripts/check-mcp-parity.mjs and chain it into root package.json's lint (line 7, beside check-templates.mjs). Scope it to ALL agent apps shipping MCP configs, not just claude-agent: (1) for each of apps/{claude-agent,codex-agent,openhands-agent}, JSON.parse .mcp.json and .mcp.host.json and assert identical mcpServers key sets; (2) for each k8s ConfigMap — k8s/apps/claude-agent.yaml (data key `mcp.json`) and k8s/apps/codex-agent.yaml (data key `.mcp.json`, note the differing key names) — slice the indentation-delimited block scalar (JSON.parse-able, no YAML dep) and assert its server set equals the app's .mcp.json set minus a per-app K8S_ABSENT allowlist (claude-agent: ['obs']); (3) the guard will immediately flag the existing bug it verified: codex-agent's ConfigMap references obs-mcp:8000 but no obs-mcp deployment exists in k8s/apps/ — fix that ConfigMap (drop obs, matching the claude-agent exception) in the same change that lands the guard, per the atomic-cutovers convention.
 
-## [ ] A26. ARCHITECTURE.md delegates canonical primitive knowledge to transient active-plan paths
+## [x] A26. ARCHITECTURE.md delegates canonical primitive knowledge to transient active-plan paths
 
 *Severity: low · effort: medium*
+
+**RESOLVED — verified 2026-08-25**, and by a stronger rule than this item asked for. `ARCHITECTURE.md` cites no plan path at all now, because `scripts/check-plans.mjs` forbids ANY reference to `docs/plans/**` from outside `docs/plans/` — a citation is a dependency, and a plan is written to be archived and forgotten. The item wanted canonical primitive knowledge moved out of transient plans; the guard makes the failure mode unrepresentable instead of merely corrected.
 
 **Gap:** ARCHITECTURE.md — the stated conceptual home — cites four ACTIVE plan docs as the reference for structured outputs, chain composition, schedule/fallback, and the panel principle (and CLAUDE.md adds ~11 more docs/plans references); this both violates the skill's rule that long-lived knowledge never depends on a plan and guarantees silently-stale prose paths the moment the plan archiving happens (the references are plain text, so no markdown link checker would catch the breakage).
 

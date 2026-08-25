@@ -1,6 +1,15 @@
 # Local engine parity — lifting the engines out of their host
 
-Status: Active — extract the five engines into a shared core, host them locally on JetStream, and re-classify what the local substrate refuses
+Status: Complete — the extraction landed, the local engine host runs the same five `decide`
+functions against KV registries, and the refusal set is re-classified. Closed 2026-08-25 with one
+increment DEFERRED by decision rather than blocked (increment 3, chain as a durable registration
+— carried as carried-followups §34), plus its three open questions (§35).
+Lifted to: `packages/js/engine-core` IS the deliverable, and its own headers carry the reasoning
+(`models/wf.model.ts` explains the `wf:` re-key at length). The operational truth lives in
+CLAUDE.md's *Execution substrates* section (prerequisites, the exact refusals, the run journal,
+`--local` registry reads) and its *h primitives* runtime index; the invariants are guarded by
+`check-runtime-parity.mjs` (neither substrate grows a private copy), `check-refusal-classification.mjs`
+(refusals are pending-vs-permanent and none outlives its engine) and `check-kv-keys.mjs`.
 Established: 2026-08-16
 
 ## The thesis

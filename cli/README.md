@@ -93,12 +93,18 @@ uv run h feature run <spec> [--slug s]    # render → seed → trigger workflow
 uv run h feature run <spec> --agent claude-agent   # render to RUN on that agent + submit (babysat, non-blocking)
 uv run h template compose t1 t2 ... [--save key]   # overlay templates → ONE definition (spatial)
 uv run h template list|get <t>            # the chart templates (overlay atoms)
+uv run h template drift [KEYS...] [--json]  # re-render each saved key's template and diff it against the
+                                          #   stored definition — exits 1 on drift, so it can gate
 uv run h agents list [--local]            # the workflow-invokable agents + their {runActivity, agentId}
 uv run h agents deny|allow NAME [--local] # the executor fence; --local writes the fence local runs read
                                           # identities — i.e. what `--agent <name>` accepts
 uv run h workflow list|get [--local]      # read-side views; --local reads the local KV saved-workflow store
 uv run h workflow status                  # runtime status of one instance (service substrate)
 uv run h workflow publish <template>        # render publish-mode ({{params.*}} slots) → save_workflow
+uv run h workflow publish <template> --local  # ...into the LOCAL store instead, so a local cron/trigger has a
+                                          #   key to fire. --schedule/--workspace-id/--disabled are
+                                          #   workflow-svc's ROW machinery and refuse here: a local
+                                          #   recurrence is armed by the RUN (`run <key> --local --cron`)
 uv run h workflow run <key> [-p k=v]... [--agent A] [--model M] [--fresh] [--instance-id id] [--via name] [--cron CADENCE] [--max-fires N]  # fire a template — CONTENT values ride -p key=value; flags are machinery (--agent=executor, --model, --via=routing); --cron arms a recur cron on the RUN (§10 arm-* activity, not the handler)
 uv run h workflow run <template> --inline [-p k=v]...   # operands are chart TEMPLATES, not a saved key: render and fire, no publish
 uv run h workflow run implement verify create-pr --inline -p slug=x -p spec=@s.md  # SEVERAL overlay into ONE workflow (composable mode) — no --save needed
@@ -111,9 +117,18 @@ uv run h workflow resume <schedId>        # fire a paused/scheduled continuation
 uv run h workflow run <key> --fallback-agent A [--fallback-model M] [--fallback-after DUR] [--fallback-max N]
                                           # on a usage-limited outcome, arm a deferred continuation under another identity
 uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); values ride -p; EXPR: -w KEY | -t ATOMS...
-                                          #   with per-workflow --agent/--model/--fresh/--kind flags and structured-output
-                                          #   threading mappings --capture BB=FIELD / --input PARAM=BB / --until PATH=VALUE
+                                          #   per-member flags: --agent (SEVERAL names = a panel roster)
+                                          #   /--model/--fresh/--kind/--inline/--id NAME, staging with the
+                                          #   --parallel infix connector or an explicit --stage N, and
+                                          #   recurrence with --cron CADENCE/--max-fires N
+                                          #   threading mappings --capture BB=FIELD / --input PARAM=SRC /
+                                          #   --until PATH=VALUE, where SRC is a flat key or a dotted
+                                          #   `id.field` (a member's captures namespace under its own --id,
+                                          #   so concurrent members never clobber)
                                           #   (validated against the workflow's declared outputs schema at registration)
+                                          #   COMMAND flags (--slug/-p/--strategy/--max-iterations/--after/
+                                          #   --at|--in/--local/--timeout/--resume/--no-journal) must PRECEDE
+                                          #   the expression — click would otherwise consume them out of position
 uv run h chain list                       # the durable chain registry + scan heartbeat
 uv run h watch list [--local]|get|delete  # the watcher registry (--local reads the JetStream KV rows)
 uv run h cron list [--local]              # the cron registry — recur crons + discovery/fan-out crons, with the scan heartbeat
@@ -147,6 +162,9 @@ uv run h chain run --slug s --local --resume GROUP EXPR  # CONTINUE that journal
                                           #   a changed composition is refused (definition hash)
 uv run h workflow run <t> --local --resume INSTANCE [-p k=v]...  # the workflow sibling: completed STEPS replay
 uv run h chain run --slug s --local --no-journal EXPR    # opt out (throwaway run / unprovisioned machine)
+uv run h workflow run <t> --local --timeout 3600   # per-agent-STEP wall clock (default 1800). There is no
+                                          #   watcher here, so THIS is the per-step budget — distinct from
+                                          #   --budget, which is the whole-run/whole-chain clock
 uv run h runs watch GROUP [--json]        # replay a run's journal, then follow live until its terminal
                                           #   record — progress from ANY shell, not just the driving one
                                           # --with-setup opts into the definition's setup steps (skipped by
@@ -156,10 +174,28 @@ uv run h runs watch GROUP [--json]        # replay a run's journal, then follow 
 uv run h events up [--with-relay]|down|status  # the local substrate's three processes: nats-server, the ENGINE HOST (ticks the engines), and optionally a supervised relay. status reports all three plus stream depths
 uv run h events publish --max-steps N -p task=@t.md [--template answer] [--agent claude]  # seed a loop (budget MANDATORY)
 uv run h events serve                     # the relay: compose-on-fire -> local executor -> forward the agent's publish hand-off
+uv run h events await GROUP [--timeout S] [--json]  # block for ONE loop's terminal — an EPHEMERAL consumer that
+                                          #   replays from the stream start, so a loop that already finished
+                                          #   still answers (exit 0 resolved/exhausted, 1 failed, 124 timeout)
+uv run h events results [--durable NAME] [--group G]  # the DRIVER'S BACK-EDGE: terminals off a DURABLE acked
+                                          #   consumer, resuming at its last ack — so terminals that landed
+                                          #   while nothing watched are still delivered (at-least-once)
 uv run h events tail 'h.result.>'         # watch loop terminals live (plain subscription, consumes nothing)
                                           #   default: they provision YOUR ~/.claude, not a container's)
-                                          # flags needing an engine (--cron/--watch/--at/--in/--fallback-*/
-                                          #   --fresh/--via, and a chain's --after) are REFUSED BY NAME
+                                          # On `workflow run --local`, --cron/--max-fires/--at/--in/--watch
+                                          #   all RUN now: the local ENGINE HOST (`h events up`) ticks the
+                                          #   same engines. --budget runs too, enforced by the DRIVER between
+                                          #   steps — it declines to start more work past the deadline but
+                                          #   cannot kill a running agent (--timeout bounds that).
+                                          #   What still REFUSES BY NAME, each naming what it lacks:
+                                          #   --retry/--fallback-* (both RE-FIRE, which needs something that
+                                          #   outlives a shell), --via (no agent service to route through),
+                                          #   --fresh (no durable Dapr instance to purge).
+                                          # On `chain run --local` the engine flags --after/--at/--in refuse
+                                          #   (they are the chain engine's activation machinery), as does a
+                                          #   per-member SUFFIX --budget (that position is a watch policy, and
+                                          #   no watcher runs a foreground chain); a chain-WIDE prefix
+                                          #   --budget is honoured between stages.
 ```
 
 Helm is invoked as a subprocess (arg-list, no shell) — the established wrapper pattern
