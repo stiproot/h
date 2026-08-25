@@ -339,3 +339,17 @@ def test_command_flags_match_the_real_typer_command() -> None:
     declared = {opt for param in run.params for opt in getattr(param, "opts", [])}
     declared -= {"--help"}
     assert declared == set(COMMAND_FLAGS)
+
+
+def test_timeout_is_a_command_flag_not_an_expression_flag() -> None:
+    """--timeout bounds one agent STEP on the local substrate; --budget bounds the whole run.
+
+    They are different clocks enforced by different things, so --timeout has to be a COMMAND
+    flag (parsed by Typer before the expression) rather than something the expression parser
+    could bind to a member. A per-member step timeout would be a watch policy, and there is
+    no watcher on this substrate.
+    """
+    assert "--timeout" in COMMAND_FLAGS
+    with pytest.raises(ExprError) as err:
+        parse_expr(["-w", "implement", "--timeout", "600"])
+    assert "--timeout" in str(err.value)

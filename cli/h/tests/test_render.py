@@ -186,10 +186,14 @@ def test_compose_implement_verify_create_pr_creates_five_steps() -> None:
     implement_task = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
     # verify prose (acceptance check) is in the implement step
     assert "===ACCEPTANCE CHECK===" in implement_task
-    # commit prose is in the implement step (composable mode)
-    assert "ONLY what the feature touched" in implement_task
+    # commit prose is in the implement step (composable mode) — incremental, and scoped to
+    # what the unit touched (never `git add -A`), so a step that runs out of clock leaves
+    # committed, resumable work rather than a lost diff.
+    assert "COMMIT AS YOU GO" in implement_task
+    assert "ONLY what that unit touched" in implement_task
+    assert "git add -A" in implement_task  # named as forbidden
     # commit instruction must appear BEFORE the acceptance check (forward-reference ordering)
-    commit_idx = implement_task.index("ONLY what the feature touched")
+    commit_idx = implement_task.index("COMMIT AS YOU GO")
     assert commit_idx < implement_task.index("===ACCEPTANCE CHECK===")
     create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
     # PR-opening prose is in the create-pr step, not implement
@@ -341,7 +345,8 @@ def test_composable_implement_commits_without_pushing(hostile_spec: Path) -> Non
     definition = json.loads(helm.to_wire_json(rendered))
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
     implement = definition["steps"][3]["input"]["task"]
-    assert "ONLY what the feature touched" in implement  # commit prose present
+    assert "COMMIT AS YOU GO" in implement  # incremental commit prose present
+    assert "ONLY what that unit touched" in implement  # still scoped, not `git add -A`
     assert "do not push" in implement.lower()  # no push
     assert "do not commit or push" not in implement  # standalone closer absent in composable mode
     assert "open (or update) a pull request" not in implement  # PR-opening is create-pr's job
@@ -370,7 +375,7 @@ def test_compose_implement_create_pr_appends_create_pr_step() -> None:
     implement = next(s for s in merged["steps"] if s["id"] == "implement")["input"]["task"]
     # Implement has commit prose but no PR-opening prose.
     assert "First persist the plan" in implement
-    assert "ONLY what the feature touched" in implement
+    assert "ONLY what that unit touched" in implement  # incremental, scoped commit prose
     assert "open (or update) a pull request" not in implement
     create_pr_step = next(s for s in merged["steps"] if s["id"] == "create-pr")
     # create-pr step carries fire-time identity, cwd (inside input), and outputContract.

@@ -481,6 +481,17 @@ def run(
             "registries. Same definition, same contracts; flags that need an engine are refused.",
         ),
     ] = False,
+    timeout: Annotated[
+        int | None,
+        typer.Option(
+            "--timeout",
+            metavar="SECONDS",
+            help="--local only: per-agent-STEP wall-clock budget, in seconds (default 1800). "
+            "There is no watcher on this substrate, so this timeout IS the per-step budget. "
+            "Raise it for work one step cannot finish in 30 minutes; the step is killed at the "
+            "deadline, and anything it left uncommitted dies with it.",
+        ),
+    ] = None,
     with_setup: Annotated[
         bool,
         typer.Option(
@@ -598,6 +609,18 @@ def run(
         if no_journal:
             err_console.print("[red]--no-journal applies to --local only[/red]")
             raise typer.Exit(1)
+        if timeout is not None:
+            # Elsewhere a step is bounded by the agent service's AGENT_RUN_TIMEOUT_MS and the
+            # run by the watcher's budget — neither is this flag's to set.
+            err_console.print(
+                "[red]--timeout applies to --local only[/red] (it bounds an agent step running "
+                "in THIS process; the service substrate uses the agent's AGENT_RUN_TIMEOUT_MS "
+                "and the watcher's budget)"
+            )
+            raise typer.Exit(1)
+    if timeout is not None and timeout <= 0:
+        err_console.print("[red]--timeout must be a positive number of seconds[/red]")
+        raise typer.Exit(1)
     if resume and no_journal:
         err_console.print(
             "[red]--resume needs the journal it would replay[/red] — drop --no-journal"
@@ -748,6 +771,7 @@ def run(
             with_setup,
             resume=resume,
             no_journal=no_journal,
+            timeout_ms=(timeout * 1000 if timeout else LOCAL_STEP_TIMEOUT_MS),
             budget_ms=_parse_budget(budget) if budget else None,
             arm_cron=(
                 {
@@ -888,6 +912,7 @@ def _run_local(
     budget_ms: int | None = None,
     arm_cron: dict[str, Any] | None = None,
     wf: dict[str, str] | None = None,
+    timeout_ms: int = LOCAL_STEP_TIMEOUT_MS,
 ) -> None:
     """Execute a rendered definition on the local substrate and report what its steps produced.
 
@@ -901,7 +926,7 @@ def _run_local(
         "params": params,
         "group": group,
         "runsDir": str(AGENT_RUNS_DIR),
-        "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
+        "timeoutMs": timeout_ms,
         "worktreeRoot": str(LOCAL_WORKTREES_DIR),
         # The checkout the operator invoked from is the default worktree source; a
         # template's own clonePath param still wins per step (the multi-repo knob).

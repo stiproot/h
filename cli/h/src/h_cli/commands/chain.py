@@ -636,6 +636,18 @@ def run(
             "journaled composition; a changed chain is a new run and is refused.",
         ),
     ] = None,
+    timeout: Annotated[
+        int | None,
+        typer.Option(
+            "--timeout",
+            metavar="SECONDS",
+            help="--local only: per-agent-STEP wall-clock budget, in seconds (default 1800). "
+            "There is no watcher on this substrate, so this timeout IS the per-step budget — "
+            "distinct from --budget, which bounds the whole chain between stages. Raise it for "
+            "work one step cannot finish in 30 minutes; the step is killed at the deadline, and "
+            "anything it left uncommitted dies with it.",
+        ),
+    ] = None,
     no_journal: Annotated[
         bool,
         typer.Option(
@@ -761,6 +773,15 @@ def run(
             _fail("--resume applies to --local only (the service substrate resumes via its engine)")
         if no_journal:
             _fail("--no-journal applies to --local only (only local runs journal)")
+        if timeout is not None:
+            # The per-step bound elsewhere is the agent service's AGENT_RUN_TIMEOUT_MS, and the
+            # run's wall clock is the watcher's budget — neither is this flag's to set.
+            _fail(
+                "--timeout applies to --local only (it bounds an agent step running in THIS "
+                "process; use --budget for a chain-wide wall clock)"
+            )
+    if timeout is not None and timeout <= 0:
+        _fail("--timeout must be a positive number of seconds")
     if resume and no_journal:
         _fail("--resume needs the journal it would replay — drop --no-journal")
 
@@ -879,7 +900,14 @@ def run(
         body["loop"] = {"startCursor": start, "maxIterations": max_iterations}
 
     if local:
-        _run_local_chain(body, slug, with_setup, resume=resume, no_journal=no_journal)
+        _run_local_chain(
+            body,
+            slug,
+            with_setup,
+            resume=resume,
+            no_journal=no_journal,
+            timeout_ms=(timeout * 1000 if timeout else LOCAL_STEP_TIMEOUT_MS),
+        )
         return
 
     result = _guarded(lambda: workflow_svc.chain_run(body))
@@ -906,6 +934,7 @@ def _run_local_chain(
     with_setup: bool,
     resume: str | None = None,
     no_journal: bool = False,
+    timeout_ms: int = LOCAL_STEP_TIMEOUT_MS,
 ) -> None:
     """Execute a composed chain on the local substrate and report what it threaded.
 
@@ -927,7 +956,7 @@ def _run_local_chain(
         "strategy": body["strategy"],
         "group": resume if resume else group_id(f"chain-{slug}"),
         "runsDir": str(AGENT_RUNS_DIR),
-        "timeoutMs": LOCAL_STEP_TIMEOUT_MS,
+        "timeoutMs": timeout_ms,
         # The whole-chain wall clock rides to the local driver exactly as it rides to the chain
         # row — including the per-member-count DEFAULT, so a local chain is bounded like a
         # registered one rather than running unbounded on the operator's own machine. The driver

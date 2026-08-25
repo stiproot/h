@@ -114,9 +114,12 @@ steps:
       task: |-
         You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
 
-        First check for a persisted plan from a prior run: if plan-feature-{{ $slug }}.md
-        exists in the worktree root, read it — if it still matches the spec and the code,
-        reuse it as your plan instead of re-investigating.
+        First check whether a prior run left anything: if plan-feature-{{ $slug }}.md exists
+        in the worktree root, read it — if it still matches the spec and the code, reuse it
+        as your plan instead of re-investigating. Check the branch's own commits too
+        (`git log`), and any plan or tracking doc the repository keeps for this work: you
+        may be a RESUMPTION, and re-planning finished work is the most expensive mistake
+        available to you. Verify a claim cheaply against the tree before trusting it.
 
         Otherwise investigate the feature request under ===FEATURE SPEC=== below: explore the
         relevant code and produce an implementation plan. Do NOT write code or modify any
@@ -139,7 +142,13 @@ steps:
         shared-context handoff, so a re-run or another session can pick it up — the planning
         agent runs read-only and cannot write it itself):
         1. Write it to plan-feature-{{ $slug }}.md in the worktree root. This is the handoff
-           and it is required.
+           and it is required. It is PER-RUN CONTEXT, not a tracking log: do NOT give it a
+           progress/status section. If the repository keeps its own plan or tracking doc for
+           this work, THAT doc is the authoritative record of what is done and what is next
+           — read it first and keep it current; this file only carries the plan itself. (A
+           scratch file carrying its own empty "Progress log" heading has shadowed a repo's
+           real one and cost a whole pass, because the reader saw an empty log and concluded
+           nothing had been done.)
         2. ONLY if the dapr MCP is wired in this environment, ALSO call actor_state_set with
            actorId 'feature-{{ $slug }}' and key 'plan', value the plan text — durable in the
            state store, inspectable from another session via actor_state_get. On the LOCAL
@@ -152,10 +161,15 @@ steps:
         Then implement the feature described under ===FEATURE SPEC=== below, following the
         plan. If the feature already appears implemented, make no changes and say so.
         {{- if $composable }}
-        Once the implementation and any checks appended below pass, commit
-        ONLY what the feature touched on branch feature/{{ $slug }}, with a
+        COMMIT AS YOU GO — you have a wall-clock budget and may not finish.
+        After each coherent unit of work (a migration, a module, one component),
+        commit ONLY what that unit touched on branch feature/{{ $slug }}, with a
         concise conventional commit message. Add files individually (never
-        `git add -A` or `git commit -a`). Two harness artifacts must NEVER
+        `git add -A` or `git commit -a`). Do not hold a large uncommitted diff
+        hoping to finish: a run that stops mid-edit with nothing committed loses
+        everything it paid for, while small honest commits are a resumable asset.
+        If you run short of time, stop, commit what works, record where you got
+        to and what is next, and finish cleanly rather than leaving the tree dirty. Two harness artifacts must NEVER
         ship: restore the runner's MCP merge with
         `git checkout -- .mcp.json` (when the repo tracks that file), and
         leave plan-feature-{{ $slug }}.md uncommitted (run context, not

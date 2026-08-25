@@ -72,7 +72,7 @@ classDiagram
     +KIND_MODEL_PARAMS : dict~str, tuple~str, ...~~
     +KIND_CONTRACT_SUPPLIES : dict~str, frozenset~str~~
     +WRITE_KINDS
-    +run(ctx, slug, param, local, with_setup, resume, no_journal, strategy, max_iterations, after, at, in_) None
+    +run(ctx, slug, param, local, with_setup, resume, timeout, no_journal, strategy, max_iterations, after, at, in_) None
     +list_(local) None
     +rm(chain_id) None
   }
@@ -80,7 +80,7 @@ classDiagram
   class WorkflowCmd {
     <<Typer app workflow.py>>
     +publish(template, key, schedule, workspace_id, disabled) None
-    +run(keys, param, inline, agent, model, instance_id, fresh, watch, budget, retry, cron, max_fires, fallback_agent, fallback_model, fallback_after, fallback_max, at, in_, via, local, with_setup, allow_external, resume, no_journal) None
+    +run(keys, param, inline, agent, model, instance_id, fresh, watch, budget, retry, cron, max_fires, fallback_agent, fallback_model, fallback_after, fallback_max, at, in_, via, local, timeout, with_setup, allow_external, resume, no_journal) None
     +pause(instance_id, key, at, in_, param, workspace_id) None
     +resume(sched_id) None
     +terminate(instance_id) None
