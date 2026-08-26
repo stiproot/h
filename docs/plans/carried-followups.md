@@ -764,3 +764,30 @@ refusing becomes a real friction rather than a documented one.
 
 *Revisit when:* unattended local operation is wanted — all three are the same question wearing
 different hats, namely what runs h when no operator is watching.
+
+## From [nats-event-substrate](./impl/nats-event-substrate.md)
+
+### 36. The two increments the event fabric closed without
+
+**A per-group cost ceiling.** The fabric's only spend fence today is the `exec:` registry's
+per-agent DAILY budget, which is the wrong axis for a loop: a runaway `h events` group burns its
+budget inside one day, under the cap, and nothing stops it. The design sketched a ceiling summed
+from the run-ledger mirrors and checked by the relay before each forward — cheap and local,
+because the relay already reads the terminal envelope's `costUsd`. Its stated weakness is
+honest: it is only as accurate as ledger cost capture, and an unpriced run (a codex ChatGPT-plan
+step) contributes nothing, so the fence under-counts rather than over-counts. `--max-steps` is
+the bound that actually holds today, and it bounds STEPS, not money.
+
+*Revisit when:* a loop is left running unattended, or a group's spend surprises someone — until
+then `--max-steps` is a real bound and the daily fence catches the slow case.
+
+**The bridging rung: leaf nodes, and Dapr `pubsub.jetstream`.** The scale-up story that made
+NATS the right choice — a local server joins a remote cluster outbound-only, traffic staying
+local unless remote interest exists, so the same subjects serve laptop and fleet; and Dapr's
+own JetStream pub/sub component means the service substrate could one day run on the same
+fabric. Deliberately unbuilt, and recorded in local-engine-parity too so it is not silently
+implied by parity work.
+
+*Revisit when:* a second machine needs to see this machine's events — which is the first moment
+any of it pays for itself. It becomes interesting only once both substrates read the same row
+shapes, which is what local-engine-parity delivered.

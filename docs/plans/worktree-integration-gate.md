@@ -1,6 +1,12 @@
 # Worktree integration gate — a machine-executed integration test on every h feature worktree
 
-Status: Active — plan reviewed by a 4-agent panel 2026-07-29 (verdict: sound-with-changes); blockers folded in; implementing Phases 1–2
+Status: Deferred — Phases 0/1/2/3b are DONE (the line above was stale on both counts: those
+phases landed, and the remaining ones cannot run here). Validated 2026-08-26: the GOAL survives
+intact, the MECHANISM's substrate has left this machine. See *Validation 2026-08-26* below.
+Revisit when: EITHER k8s mode returns to a machine (Phases 3–4 as written are then unblocked and
+correct), OR — the likelier trigger — the local substrate needs a machine gate of its own, at
+which point this plan's isolation reasoning (D7) and exit-code taxonomy are the design input and
+its k8s harness explicitly is not.
 Established: 2026-07-29
 
 ## Problem
@@ -213,6 +219,52 @@ layer — the CLI composes workflows for any repo). Instead, omission of the ove
   against the worktree, so the worktree cannot neuter its own gate (B1).
 - **D8 (new) — enforcement = merge-backstop + evidence-reading review, not CLI refusal** —
   the committed resolution of the panel's one unresolved architectural disagreement (see C).
+
+
+## Validation 2026-08-26 (pick-up pass, per `plan-management` step 2)
+
+Two independent questions, both asked against the tree.
+
+**1. Are the CLAIMS still true? Mostly YES — the artifacts are all there.**
+`apps/stub-agent/`, `apps/workflow-svc/src/infrastructure/activities/run-itest.activity.ts`,
+`scripts/itest/run-itest.sh`, `k8s/itest/base/`, `make itest` + `make itest-gc`, and
+`run-itest.tmpl.yaml` with its `itest.skip` break-glass all exist as Phases 1/2 describe.
+`create-pr` and `arm-revise-pr` both document the composed order
+`implement ⊕ verify ⊕ run-itest ⊕ create-pr ⊕ arm-revise-pr`, so Phase 3b's structural fix holds.
+Two claims are stale in the *other* direction — the status line said "implementing Phases 1–2"
+when those shipped 2026-07-29 — and one phase is simply not done: **there is no `itest` job in
+`.github/workflows/guards.yml`**, so Phase 3's CI half was never built. Phase 4 never ran.
+
+**2. Is the GOAL still wanted? The goal YES, emphatically. Its MECHANISM'S SUBSTRATE, no.**
+
+The goal is that an agent's "all tests pass" is verified by a machine rather than believed. That
+is more wanted than when this was written, not less — it is a standing operator rule.
+
+But the substrate the mechanism needs is gone from this machine, and not merely stopped:
+- `k3d cluster list` returns **no clusters at all**. Not a halted one — none.
+- No h service stack is running.
+- Every recent entry in the run ledger is a LOCAL-substrate run (`implement-260824-*`,
+  `retro-selftest`).
+- `make itest` is documented as the one k8s-only capability, and `run-itest` is classified
+  `permanent`ly refused on the local substrate — correctly, and with the right reason
+  ("needs an ephemeral k8s namespace and always will").
+
+So Phases 3–4 target a substrate the operator has moved off. That is a premise change, not a
+blocker: no amount of effort here makes the plan's remaining half applicable to how h is used
+today, which is exactly the situation `Deferred` exists for.
+
+**The finding worth more than the remaining phases.** Following the goal rather than the plan
+surfaces a gap this doc does not cover: **on the local substrate there is no machine gate at
+all.** What a local `implement-pr`-shaped composition has is `verify`'s PROSE gate — the
+implementing agent running the acceptance command and judging its own output. That is precisely
+the thing this plan's own Problem section says cannot be trusted, now sitting unguarded on the
+substrate where the work actually happens. `verify`'s own header concedes the point: it calls
+itself "the earlier, cheaper signal" and says *do not compose without `run-itest`* — advice that
+cannot be followed locally.
+
+That gap is a DIFFERENT question from finishing Phases 3–4 (it needs a gate that is not a k8s
+namespace), and it is the one with live exposure. It is recorded here rather than acted on,
+because choosing its shape is an operator decision, not a drift correction.
 
 ## Phases
 

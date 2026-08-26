@@ -1,6 +1,15 @@
 # NATS as the local substrate's event fabric
 
-Status: Active — POC built and live-validated (loop, durability, budget); follow-on increments open
+Status: Complete — the POC met all three exit criteria live (2026-08-06), every open question
+has since been answered, and the follow-on increments were either absorbed by
+[local-engine-parity](local-engine-parity.md), superseded by something better, or carried
+out. Validated and closed 2026-08-26; see *Validation 2026-08-26* below.
+Lifted to: CLAUDE.md's *Execution substrates* section owns the durable description — the three
+streams (`h-tasks`/`h-results`/`h-journal`), the fire descriptor, the relay as a TRIGGER HOST
+rather than an engine, the `publish:` loop edge and its `Nats-Msg-Id` dedup, the workspace pinning
+rule, and the back-edge's ephemeral-vs-durable split; `cli/README.md` carries the command surface,
+[docs/cookbook.md](../../cookbook.md) the stamped loop commands, and the `delegate-locally` skill the
+when-to-use judgement. Open items carried to [carried-followups](../carried-followups.md) §36.
 Established: 2026-08-06
 
 ## The idea
@@ -155,6 +164,42 @@ services, the `micro` stats surface. Each is a candidate follow-on with its own 
   extension; measure how it behaves on a 10-minute run.
 - **Cost fence mechanics.** Per-group cost ceiling summed from run-ledger mirrors, checked by the
   relay before each forward — cheap and local, but only as accurate as ledger cost capture.
+
+
+## Validation 2026-08-26 (pick-up pass, per `plan-management` step 2)
+
+**1. Are the CLAIMS still true? Yes, and the plan under-claims its own delivery.**
+
+All three POC exit criteria are stamped in the log with real group ids (`loop-260806-231849`,
+`durab-260806`, `budget-260806`). The fabric has since grown a THIRD stream this doc never
+mentions — `h-journal`, the run journal — and an engine host beside the relay, both landed by
+local-engine-parity. Everything this plan proposed exists.
+
+**2. Is the GOAL still wanted? It is DELIVERED — which is the version of "still wanted" that
+closes a plan.** Every open question has an answer, and every listed next increment has a
+disposition:
+
+| Open question (§*Open questions*) | Answer |
+| --- | --- |
+| Naming: `h events` vs `h relay`; glossary term for the relay | `h events` won; the relay is documented as a **trigger host, NOT an engine** — it supervises, recurs and sequences nothing |
+| Server lifecycle: auto-start vs refuse-loud | Both, correctly split: the journal preflight auto-ensures the fabric (idempotent `h events up` spawn), while the missing nats-server BINARY refuses loud — h manages the process, the operator provisions the binary |
+| Descriptor schema and where it lives | `infrastructure/events_protocol.py`, deliberately NOT `workflow-core`. The leaning was wrong for a good reason: composing on fire IS the relay's job and composition lives in the Python CLI, so no JS package was created at all |
+| Ack timing for long agent runs | In-progress extension, as leaned — and live-measured (120s claim, 30s extensions) rather than assumed |
+| Cost fence mechanics | The only one still open — carried |
+
+| Next increment (log tail) | Disposition |
+| --- | --- |
+| KV-backed chain data | The KV registries themselves LANDED (local-engine-parity increment 1) — a POC non-goal, now done. Chain data specifically is carried-followups §34 |
+| `h events tail` history mode | **Superseded by something better.** Rather than giving `tail` a history mode, the back-edge split in two: `h events await` (ephemeral, replays from the stream start, so a loop that already finished still answers, leaving nothing durable behind) and `h events results --durable` (an acked consumer resuming at its last ack). "Replay for one answer" and "durable back-edge" are different jobs, and one flag on `tail` would have conflated them |
+| Cost ceiling per group | Genuinely open — carried |
+| Leaf-node bridge; Dapr `pubsub.jetstream` swap | Out of scope, and recorded as such in local-engine-parity too so it is not silently implied — carried |
+
+**Lift honesty.** One gap is worth naming rather than papering over: the cookbook's stamped
+section covers `up` / `serve` / `publish` but stops before the back-edge, so `events await` and
+`events results` have prose homes (CLAUDE.md, `cli/README.md`) but no validated, stamped example.
+That is a cookbook entry someone should add the next time they actually run one — it is not
+written here, because a cookbook stamp asserts a command was run on a date, and inventing one
+would be exactly the class of unfounded claim the retro contract exists to stop.
 
 ## Log
 
