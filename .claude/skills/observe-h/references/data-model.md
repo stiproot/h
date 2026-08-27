@@ -35,7 +35,10 @@
 - `run:<runId>` → the summary plus `dir` and `outputPreview`.
 - **Registry rows** (each prefix single-writer by workflow-svc): `watch:*` (supervision), `chain:*`
   (sequencing), `cron:sub:*` (recur crons) + `cron:discover:*` / `cron:discover-index` (discovery/
-  fan-out crons), and `wf:<repo>:<slug>:<workflow>` (per-workflow status + `resolved` goal flag).
+  fan-out crons), and `wf:run:<instanceId>` (per-RUN status + the `resolved` goal flag, with the subject
+  (repo/slug/workflow) and the parent stamp (chainId/cronId/schedId/discoverId) as FIELDS).
+  Re-keyed 2026-08-17 — it used to be the artifact tuple `wf:<repo>:<slug>:<workflow>`, so a
+  re-run overwrote its predecessor; derive the id you want and read the exact key.
   Inspect via `h watch list` / `h chain list` / `h cron list`, or `state_get` the exact key.
 - Reachable via the `dapr` MCP: `state_get runs:index`, then `state_get run:<runId>`; or any sidecar's
   Dapr state API, e.g. `http://localhost:3503/v1.0/state/statestore/runs:index`.

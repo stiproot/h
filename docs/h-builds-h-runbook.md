@@ -124,8 +124,11 @@ uv run h cron list        # recur crons (per-PR revise loops) + discovery crons,
 
 The discovery cron serializes (one `implement-pr` in flight at a time) and is bounded by
 `--max-per-day`; it reads the issue board only when due (the cadence IS the GitHub read budget). It
-skips any issue that already has a `wf:<repo>:issue-<n>:implement-pr` row — the dedup that fixes the
-duplicate-dispatch bug.
+skips any issue that already has a `wf:run:feature-issue-<n>` row — the dedup that fixes the
+duplicate-dispatch bug. The key is DERIVED, not remembered: `issueInstanceId(n)` is a pure
+function of the issue number, which is what lets the cron ask "have I dispatched this issue?"
+with no cursor and no memory of the run. (Re-keyed 2026-08-17 from the old artifact tuple
+`wf:<repo>:<slug>:<workflow>`, which made a re-run overwrite its predecessor.)
 
 ## Kill switches (in order)
 

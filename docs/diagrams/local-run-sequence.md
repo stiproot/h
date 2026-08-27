@@ -24,7 +24,9 @@ sequenceDiagram
   participant CLI as agent CLI child process
 
   Op->>+Cmd: --local -p task=… [--agent a --agent b] [--with-setup]
-  Note over Cmd: refuse --cron/--watch/--at/--in/--fallback-*/--fresh/--via<br/>BEFORE rendering — nothing runs when a flag needs an engine
+  %% local-refusals:begin
+  Note over Cmd: refuse --retry/--fallback-*/--fresh/--via<br/>BEFORE rendering — nothing runs when a flag needs<br/>something that outlives this shell
+  %% local-refusals:end
 
   Cmd->>+Helm: render template (publish mode)
   Helm-->>-Cmd: definition {params, steps, outputs}

@@ -18,6 +18,37 @@ See [docs/h-builds-h-runbook.md](./docs/h-builds-h-runbook.md) for standing up t
 loop, [docs/installing-h.md](./docs/installing-h.md) for installing h as tooling in a consumer repo,
 and [docs/diagrams/README.md](./docs/diagrams/README.md) for the canonical diagram set.
 
+## Ways of working
+
+Four rules about HOW we build h, as opposed to what. They are here rather than only in a skill
+because they govern every exchange, and a skill that waits to be triggered would miss most of
+them. **The `ways-of-working` skill carries the detail** — the recipes, the reasoning, the worked
+examples; this is the always-on summary.
+
+1. **Explain in plain language; save the vocabulary for the artifact.** This repo's docs are
+   deliberately dense and guard their own dictionary — correct for a file someone re-reads, wrong
+   for a conversation someone reads once. While iterating, lead with what changes and why it
+   matters, in words that need no glossary, and spend a clause defining an h term the first time
+   it earns its place. The test is whether the reader could DISAGREE without first decoding you.
+   Plain is not vague: numbers, paths and concrete behaviour are what make it convincing.
+2. **Lead with a RENDERED diagram, and send it.** A mermaid fence is source code, not a diagram,
+   and much of this work is read on a phone through a remote session. So: write the doc, render it
+   (`uvx vizzle render …`), LOOK at the image, then put the file in front of the operator. See
+   *Diagrams are the medium for design and architecture* below for where and when, and the
+   `diagrams` skill for the rest.
+3. **h is ours — improve it rather than work around it.** Friction that surfaces while doing
+   something else is the most valuable thing that task produced; it has already been paid for.
+   Fix it in the same change when it is small, file it with `h-issues` when it is one PR's worth,
+   make it a plan when it needs a decision first, and delegate it to h itself when it is big
+   enough (`h delegate`, `--local`, a chain). The failure mode is silent accommodation: adapting
+   around a defect leaves no trace, so every later run pays it again.
+4. **Missing tooling is priority work, not a detour.** About to do by hand what a tool should do,
+   skip a check, or paste source where an image belongs? Build the tool first, then do the
+   original work. A workaround is paid every time by everyone; the tool is paid once — and the
+   workaround hides the gap, so it never gets fixed on purpose. Name the tooling a piece of work
+   needs BEFORE starting and verify each piece actually runs here; a documented command is not
+   evidence. Encode the fix where it fires again (a guard, a script, a make target, a skill).
+
 ## Plans
 
 Non-trivial work is scoped and tracked in a plan doc — a living tracking log, not a
@@ -766,7 +797,8 @@ repos carry their own conventions — with `create-issue.sh`, which refuses to s
 `agent-approved` trust label), and `author-workflow-template` (the authoring recipe for chart
 templates: the template gate, render modes, the output contract in its three places, the
 one-declarer composition rule, goldens, publish — for any agent creating or modifying a template,
-incl. h-builds-h feature runs), and `delegate-locally` (when and how to hand work to another agent
+incl. h-builds-h feature runs), `ways-of-working` (the collaboration layer from the section above — plain-language explanation, rendered diagrams, h-improves-h, tooling-first; h only),
+and `delegate-locally` (when and how to hand work to another agent
 CLI on the LOCAL substrate — `h delegate` / `--local` — including what it refuses, the cost
 accounting, and the safety rules that follow from a delegate running as the operator). A **Python** agent consumes a skill's body directly as its system prompt via
 `agent_core.load_skill_instructions` — workflow-agent loads `workflow-orchestrator` this way (the
@@ -980,6 +1012,7 @@ live incident that motivated it — read that before working around one.
 | `check-runtime-parity` | neither substrate grows a private copy of `workflow-core` / `engine-core` semantics |
 | `check-sweep-parity` | the TS worktree-sweep rules match the operator command's behaviour |
 | `check-refusal-classification` | local refusals are `pending` vs `permanent`, and **no refusal outlives the engine it was waiting for** |
+| `check-local-refusals` | docs that ENUMERATE the local refusal set match the code that refuses — the set shrinks as engines land, and a doc claiming a working capability is refused is worse than one omitting it |
 | `check-registry-writers` | one writer per registry prefix in the flat shared keyspace |
 | `check-state-keys` | every Dapr `state.get`/`state.delete` wraps its key in `pathStateKey` (a `/` in a key 404s on read but saves fine) |
 | `check-kv-keys` | the JetStream sibling — registry ids contain `:`, which NATS forbids in a KV key; the symptom is an EMPTY registry, not an error |

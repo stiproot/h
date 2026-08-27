@@ -188,9 +188,11 @@ uv run h events tail 'h.result.>'         # watch loop terminals live (plain sub
                                           #   steps — it declines to start more work past the deadline but
                                           #   cannot kill a running agent (--timeout bounds that).
                                           #   What still REFUSES BY NAME, each naming what it lacks:
+# local-refusals:begin
                                           #   --retry/--fallback-* (both RE-FIRE, which needs something that
                                           #   outlives a shell), --via (no agent service to route through),
                                           #   --fresh (no durable Dapr instance to purge).
+# local-refusals:end
                                           # On `chain run --local` the engine flags --after/--at/--in refuse
                                           #   (they are the chain engine's activation machinery), as does a
                                           #   per-member SUFFIX --budget (that position is a watch policy, and
