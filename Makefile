@@ -44,6 +44,13 @@ H_BUILDS_H_SESSION  ?= h-builds-h
 # Headless host-mode launcher (up-host/wait-host/down-host) — MODE selects the service set.
 MODE                ?= dev
 
+# Diagram tooling. PINNED to the same version `bun run lint` pins for `vizzle doc --check`:
+# a drift gate a third party's release can turn red is not a gate, and a render that disagrees
+# with the gate's renderer is worse than no render. Bump both together.
+VIZZLE_VERSION ?= 0.2.0
+DIAGRAMS_DIR   ?= docs/diagrams
+DIAGRAMS_OUT   ?= docs/diagrams/rendered
+
 WORKSPACE_DIR  ?= $(abspath $(CURDIR)/../h-workspace)
 # Pre-cloned target repo dir under the workspace root (see cli/scripts/clone.sh)
 TARGET_REPO_DIR ?= repo
@@ -130,6 +137,39 @@ test-py: ## Run the Python unit tests (pytest — all 7 suites)
 # a pure domain, adapters that never import each other. The flat namespace packages
 # need `src` on the path so `domain`/`infrastructure`/`presentation` resolve as roots.
 # -----------------------------------------------------------------------------
+
+.PHONY: diagrams diagrams-check
+diagrams: ## Regenerate the -class diagrams from source, then render the whole set to PNG
+	# Two steps, and the order matters: `doc` REGENERATES the managed -class diagrams from the
+	# AST (lint's `doc --check` fails on drift), then `render` turns every fence into a PNG.
+	# Rendering a stale -class doc would produce a confident picture of code that moved.
+	#
+	# Output is gitignored on purpose — render on demand, share the image. That is also why this
+	# is a target rather than a lint step: it needs headless Chrome, and a missing browser must
+	# not be able to fail the build.
+	uvx vizzle@$(VIZZLE_VERSION) doc --dir $(DIAGRAMS_DIR) --root .
+	uvx vizzle@$(VIZZLE_VERSION) render $(DIAGRAMS_DIR) $(DIAGRAMS_OUT)
+	# Prune renders whose source diagram is gone. Safe because this whole directory is
+	# gitignored and regenerable — and NOT cosmetic: a rename leaves a PNG behind under the OLD
+	# name, which is how `direct-run-sequence.png` outlived the direct→local vocabulary
+	# migration by three weeks. check-vocabulary scans committed prose, so a retired term living
+	# in a gitignored render is in the one place no guard looks. Strip a trailing -N first:
+	# vizzle numbers the outputs of a multi-fence doc.
+	@for f in $(DIAGRAMS_OUT)/*.png; do \
+		[ -e "$$f" ] || continue; \
+		b=$$(basename "$$f" .png); \
+		src=$$(printf '%s' "$$b" | sed -E 's/-[0-9]+$$//'); \
+		if [ ! -f "$(DIAGRAMS_DIR)/$$b.md" ] && [ ! -f "$(DIAGRAMS_DIR)/$$src.md" ]; then \
+			printf '    pruned orphan: %s (no source diagram)\n' "$$b.png"; rm -f "$$f"; \
+		fi; \
+	done
+	@printf '\n==> rendered to %s — LOOK at what you are about to share:\n' '$(DIAGRAMS_OUT)'
+	@printf '    mermaid emits valid-but-unreadable output happily, and C4 cannot be widened\n'
+	@printf '    ($$c4ShapeInRow is inert in the pinned mermaid — split the diagram instead).\n'
+
+diagrams-check: ## Fail if a managed -class diagram has drifted from the code it models
+	uvx vizzle@$(VIZZLE_VERSION) doc --check --dir $(DIAGRAMS_DIR) --root .
+	node scripts/check-diagrams.mjs
 
 .PHONY: lint lint-js lint-py
 lint: lint-js lint-py ## Run all linters + architecture checks (JS + Python)
