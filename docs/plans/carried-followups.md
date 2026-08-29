@@ -463,21 +463,19 @@ green tick is never mistaken for an enforced one. Nothing further owed.
 
 ## From [live-state-containment](./impl/live-state-containment.md)
 
-### 19. Rotate the exposed GitHub PAT
+### 19. Rotate the exposed GitHub PAT — RESOLVED 2026-08-29
 
 The PAT was readable by every agent process (including the dropped SUB_AGENT_UID) for an
-unknown period via the pre-clone's tokened remote URL. The URL is scrubbed, the guard
-(`scripts/check-git-credentials.mjs`) prevents recurrence, but the token itself was never
-rotated — an operator action on github.com.
+unknown period via the pre-clone's tokened remote URL. The URL was scrubbed and the guard
+(`scripts/check-git-credentials.mjs`) prevents recurrence; the token itself — the last live
+piece of the exposure — was **rotated by the operator 2026-08-29**. This was the only carried
+item that was a standing exposure rather than a parked improvement; the board now carries none.
 
-*Revisit when:* immediately, at the operator's next console session — this is the only
-carried item that is a standing exposure rather than a parked improvement.
-
-**Consider the alternative at the same moment.** [github-app-identities](./github-app-identities.md)
-(parked 2026-08-12) would replace this PAT with per-role GitHub Apps minting 1-hour installation
-tokens — which turns this whole class from "a standing exposure needing an operator rotation" into
-"a leak that expires by lunchtime". Rotating is still the right immediate action; the rotation is
-just the cheapest moment to decide whether to rotate *into* an app instead of another PAT.
+The rotation went to a fresh PAT, not to the
+[github-app-identities](./github-app-identities.md) alternative — this rotation was the
+"cheapest moment to adopt it" that item named, and the moment passed without adoption. That
+is a scheduling call, not a rejection: the app design stays parked, its trigger now reading
+on the NEXT credential provisioning or rotation (noted in that plan's status line).
 
 ---
 

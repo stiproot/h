@@ -2,11 +2,12 @@
 
 Status: Deferred — a design captured while discussing the §19 PAT exposure; nothing built, no app registered
 Established: 2026-08-12
-Revisit when: the next time a GitHub credential must be provisioned or rotated — including the
-outstanding §19 rotation in [carried-followups](./carried-followups.md), which is the cheapest
-moment to adopt the alternative instead — or when
+Revisit when: the next time a GitHub credential must be provisioned or rotated — or when
 [reviewer-identity-security](./reviewer-identity-security.md) reaches its minimal-surface-executor
-slice, since this is the credential half of that idea.
+slice, since this is the credential half of that idea. (The first such moment, the
+[carried-followups](./carried-followups.md) §19 rotation, fired 2026-08-29 and went to a fresh
+PAT without adopting this — a scheduling call, not a rejection; the trigger re-arms on the next
+one.)
 
 ## The idea
 
