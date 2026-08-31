@@ -192,7 +192,7 @@ Two consequences for implementation:
 - **The invocation difference is already configuration.** Both asset forks sit behind config keys
   (`charts_dir`, `local_bin`); the fork only selects the DEFAULT. So this is one code path with two
   default sets, not two code paths — `.h/config.toml` overrides whichever it wants.
-- **Source-mode trades pinning for SKEW.** `LOCAL_BIN` is `packages/js/local-runtime/dist/bin.js`,
+- **Source-mode trades pinning for SKEW — now filed as issue #120.** `LOCAL_BIN` is `packages/js/local-runtime/dist/bin.js`,
   a separate build artifact, so a current Python CLI can run against a stale JS runner. The packaged
   path ships both together and "cannot skew" (its own comment). This is the failure mode to watch
   for h-on-h, because it presents as h behaving like an older version of itself. Partly guarded by
@@ -250,3 +250,12 @@ boundary), `infrastructure/local_runtime.py` (an error message). The fork is con
   are dissolved by §2.6; three are intrinsic to source-vs-artifact invocation and one is a safety
   boundary. Named the skew risk source-mode accepts. The §5 steering-location experiment is still
   UNRUN.
+- **2026-08-31 — the skew risk was designed out and DELEGATED as issue #120**, so it does not
+  block this plan. Settled shape: a checkout-only `bun run build --filter=local-runtime` as a
+  SEPARATE subprocess before the runner spawn, which stays byte-identical (`["node", runner]`,
+  own process group, inherited stderr). The runner is deliberately NOT wrapped in `bun run`: the
+  Ctrl-C path signals the process it spawned, and that SIGINT must reach node so agent-cli's
+  reaper group-kills the agent CLIs — an intermediate script-runner would make that depend on its
+  own signal forwarding, and the failure mode is orphaned CLIs that keep billing. Measured:
+  `--filter=local-runtime` builds the whole 7-package closure, ~104-190ms fully cached, and turbo
+  writes nothing to stdout so the result envelope is safe.
