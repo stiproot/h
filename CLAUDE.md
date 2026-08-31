@@ -853,9 +853,16 @@ not skills its agents consume: the repo-root `.claude-plugin/marketplace.json` (
 sibling `.agents/plugins/marketplace.json`) publishes the **`h` plugin** (`plugins/h/`), the
 CONSUMER steering surface for repos that use h as installed tooling. Its skills are `use-h` (run
 domain workflows from a consumer repo — the consumer contract, the local substrate, refusals,
-ledger/cost) and `author-h-template` (author a domain chart under `.h/charts/` — vendored
+ledger/cost), `author-h-template` (author a domain chart under `.h/charts/` — vendored
 helpers, gate, params-as-contract, output contract, verify-without-goldens; its starter-chart
-reference is the canonical vendoring source). A consumer installs it like the other ecosystem
+reference is the canonical vendoring source), `delegate-locally` (hand bounded work to another
+agent CLI) and `analyze-workflow-run` (what a run did, and why it failed). The last two moved
+here from h's own set on 2026-08-31: the local substrate and the run ledger are exactly what a
+consumer uses, so keeping them h-only was the gap, not a boundary. h still reaches them —
+`.h/skills/<name>` is a symlink into `plugins/h/skills/`, so there is ONE copy, published by the
+plugin and linked for h's own sessions. h does not enable its own plugin: the marketplace source
+is GitHub, so enabling it would run a PUBLISHED copy against a live source tree — the same
+stale-artifact trap `.h/venv` would be. A consumer installs it like the other ecosystem
 plugins: `extraKnownMarketplaces` → `{"source": "github", "repo": "stiproot/h"}` +
 `"h@h-marketplace"` in `enabledPlugins`. Consumer-facing prose in these skills must stay
 env-agnostic (no h-checkout paths, no operator-machine specifics). Metadata invariants are
