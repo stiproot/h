@@ -169,13 +169,19 @@ def chart_root_for(template: str) -> Path | None:
 # The runner the CLI spawns instead of firing a workflow through workflow-svc. Checkout mode: the
 # built workspace package (`bun run build` is the one prerequisite). Packaged mode: the wheel's
 # bundled single-file runner — CLI and runner ship together, so they cannot skew.
+# Named separately from LOCAL_BIN so the freshness gate can tell the artifact h BUILDS from one
+# an operator pointed it at: h may rebuild its own, and must never rebuild somebody else's.
+CHECKOUT_RUNNER = _REPO_DIR / "packages/js/local-runtime/dist/bin.js"
 LOCAL_BIN = _setting(
     "H_LOCAL_BIN",
     "local_bin",
-    _REPO_DIR / "packages/js/local-runtime/dist/bin.js"
-    if IS_CHECKOUT
-    else _BUNDLED_DIR / "h-local.mjs",
+    CHECKOUT_RUNNER if IS_CHECKOUT else _BUNDLED_DIR / "h-local.mjs",
 )
+
+# May h build this runner before running it? Only in a checkout, and only when LOCAL_BIN is still
+# the one h builds — an H_LOCAL_BIN/local_bin override names a binary h does not own, and a
+# packaged install ships its runner beside the CLI (they cannot skew, and there is no source).
+LOCAL_BIN_BUILDABLE = IS_CHECKOUT and LOCAL_BIN == CHECKOUT_RUNNER
 
 # Run-ledger root. Defaults to the SAME directory the agent services write (host mode's
 # AGENT_BASE_DIR sibling, which is the compose bind mount too), so a local run shows up in

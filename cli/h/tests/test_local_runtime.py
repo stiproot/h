@@ -1,10 +1,12 @@
 """The local-substrate client: env layering and the runner boundary."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from h_cli.infrastructure import local_runtime
 from h_cli.infrastructure.local_runtime import LocalRunError, child_env, run_job
 
 
@@ -97,3 +99,71 @@ def test_envelope_round_trips_unicode(tmp_path: Path) -> None:
         f"process.stdin.on('end',()=>console.log({json.dumps(payload)}));\n"
     )
     assert run_job({"kind": "delegate"}, bin_path=fake)["runs"][0]["output"] == "答え — ✓"
+
+
+# --- the freshness gate ---------------------------------------------------------------------
+#
+# The gate exists because `runner_path` only ever checked that dist/bin.js EXISTS, so editing any
+# of the seven packages in the runner's closure and forgetting to build meant the CLI silently ran
+# the old code — h behaving like an older version of itself.
+
+
+def test_an_explicit_bin_path_is_never_rebuilt(tmp_path: Path, monkeypatch) -> None:
+    """h builds the runner it OWNS, never one the caller named.
+
+    This is also what keeps the suite honest: tests pass `bin_path`, so they must not shell out to
+    turbo. A gate that fired here would make every test depend on a built workspace.
+    """
+    fake = tmp_path / "runner.js"
+    fake.write_text("")
+    monkeypatch.setattr(
+        local_runtime.subprocess,
+        "run",
+        lambda *a, **k: pytest.fail("an explicit bin_path must not trigger a build"),
+    )
+    assert local_runtime.runner_path(bin_path=fake) == fake
+
+
+def test_a_silent_build_failure_names_the_hollow_toolchain(monkeypatch) -> None:
+    """A 0-byte turbo/tsc from a poisoned bun cache exits nonzero having printed NOTHING.
+
+    Silence is the diagnosis, so the refusal has to supply the one the operator cannot read off
+    the output — otherwise it reads as an unexplained build failure and sends them hunting.
+    """
+    monkeypatch.setattr(
+        local_runtime.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a[0], 1, stdout="", stderr=""),
+    )
+    with pytest.raises(LocalRunError, match="hollow toolchain"):
+        local_runtime._build_runner()
+
+
+def test_a_real_build_failure_surfaces_the_compiler_output(monkeypatch) -> None:
+    monkeypatch.setattr(
+        local_runtime.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            a[0], 1, stdout="", stderr="src/x.ts(3,1): error TS2322: nope"
+        ),
+    )
+    with pytest.raises(LocalRunError, match="TS2322"):
+        local_runtime._build_runner()
+
+
+def test_missing_bun_says_so_and_names_the_way_out(monkeypatch) -> None:
+    def _no_bun(*_a, **_k):
+        raise FileNotFoundError("bun")
+
+    monkeypatch.setattr(local_runtime.subprocess, "run", _no_bun)
+    with pytest.raises(LocalRunError, match="H_LOCAL_BIN"):
+        local_runtime._build_runner()
+
+
+def test_a_clean_build_is_silent(monkeypatch) -> None:
+    monkeypatch.setattr(
+        local_runtime.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, stdout="", stderr="cached"),
+    )
+    assert local_runtime._build_runner() is None

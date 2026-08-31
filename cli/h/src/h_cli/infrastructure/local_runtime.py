@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from h_cli.config import DOTENV_PATH, EVENTS_URL, LOCAL_BIN
+from h_cli.config import _REPO_DIR, DOTENV_PATH, EVENTS_URL, LOCAL_BIN, LOCAL_BIN_BUILDABLE
 
 
 class LocalRunError(RuntimeError):
@@ -143,13 +143,69 @@ def live_runs() -> list[str]:
         return [g for g, p in _LIVE_RUNS.items() if p.poll() is None]
 
 
+# A build that has real work to do takes seconds; one that does not takes ~0.4s. The ceiling is
+# generous because the alternative to waiting is running code that is not the code you edited.
+_BUILD_TIMEOUT_S = 600
+
+
+def _build_runner() -> None:
+    """Rebuild the runner's package closure, so a `--local` run cannot execute stale JS.
+
+    `--filter=local-runtime` builds the WHOLE closure — local-runtime plus core, workflow-core,
+    engine-core, agent-cli, git-core and run-ledger — because turbo's `build` declares
+    `dependsOn: ["^build"]`. That matters: the shared engine and definition semantics live in the
+    dependencies, so rebuilding only the entry point would leave exactly the wrong half stale.
+
+    Going through `bun run build` rather than turbo directly is deliberate — the root script runs
+    `scripts/check-tsc.mjs` first, which is the repo's hollow-toolchain guard. ~0.4s on an
+    already-built tree, and turbo writes only to stderr, so nothing here can reach the result
+    envelope the caller parses off the runner's stdout.
+
+    Quiet on success: an operator who changed nothing should see nothing.
+    """
+    try:
+        done = subprocess.run(
+            ["bun", "run", "build", "--filter=local-runtime"],
+            cwd=_REPO_DIR,
+            capture_output=True,
+            text=True,
+            timeout=_BUILD_TIMEOUT_S,
+        )
+    except FileNotFoundError as err:
+        raise LocalRunError(
+            "bun is not on PATH, and a checkout builds its own runner before running it.\n"
+            "Install bun, or point H_LOCAL_BIN at an already-built bin.js to skip the build."
+        ) from err
+    except subprocess.TimeoutExpired as err:
+        raise LocalRunError(
+            f"the runner build did not finish in {_BUILD_TIMEOUT_S}s: {err}"
+        ) from err
+    if done.returncode == 0:
+        return
+    detail = (done.stderr or done.stdout or "").strip()
+    if not detail:
+        # SILENCE is the diagnosis, not a missing message: a 0-byte native binary (turbo/tsc from
+        # a cross-uid poisoned bun cache) exits nonzero having printed nothing at all. Naming the
+        # repair here is what stops the next reader reading it as an unexplained build failure.
+        detail = (
+            f"the build exited {done.returncode} with no output at all — the usual cause is a "
+            "hollow toolchain (0-byte turbo/tsc from a poisoned bun cache).\n"
+            "Repair: find ~/.bun/install/cache -mindepth 1 ! -uid $(id -u) -print0 "
+            "| xargs -0 -r rm -rf -- && rm -rf node_modules && bun install --frozen-lockfile"
+        )
+    raise LocalRunError(f"could not build the local runner:\n{detail}")
+
+
 def runner_path(bin_path: Path | None = None) -> Path:
-    """The local runner, or a refusal that names the fix.
+    """The local runner — built fresh where h owns it — or a refusal that names the fix.
 
     Shared by `run_job` and the engine host's launch, so the two cannot disagree about WHICH runner
-    is in play — a packaged install carries its own, and H_LOCAL_BIN can point anywhere.
+    is in play — a packaged install carries its own, and H_LOCAL_BIN can point anywhere. Building
+    HERE rather than in `run_job` is what makes both paths fresh from one place.
     """
     runner = bin_path or LOCAL_BIN
+    if bin_path is None and LOCAL_BIN_BUILDABLE:
+        _build_runner()
     if not runner.is_file():
         from h_cli.config import IS_CHECKOUT
 

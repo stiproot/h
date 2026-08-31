@@ -6,7 +6,9 @@ consumer setting up a repo can see the whole toolchain on one screen instead of 
 missing piece one refusal at a time.
 """
 
+import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import typer
@@ -14,11 +16,13 @@ from rich.console import Console
 from rich.table import Table
 
 from h_cli.config import (
+    _REPO_DIR,
     CONSUMER_CONFIG_ROOT,
     DOTENV_PATH,
     EVENTS_STORE_DIR,
     H_WORKSPACE_DIR,
     LOCAL_BIN,
+    LOCAL_BIN_BUILDABLE,
     LOCAL_WORKTREES_DIR,
     charts_roots,
 )
@@ -52,6 +56,34 @@ def _count_templates(root: Path) -> int:
     return len(list((root / "workflows" / "templates").glob("*.tmpl.yaml")))
 
 
+def _runner_stale_packages(limit: int = 3) -> list[str]:
+    """Packages turbo would rebuild before the next `--local` run — empty when the runner is
+    current.
+
+    Asks TURBO rather than comparing mtimes. Turbo hashes content, so a `touch` or a branch switch
+    that changed nothing reports fresh, where an mtime comparison cries stale — and a column that
+    cries wolf is one the reader learns to skip. Costs one dry run and only in a checkout, the one
+    place the answer is h's to give; anything unreadable (missing or hollow turbo) reports nothing
+    rather than guessing, since the run itself refuses loudly on a broken toolchain.
+    """
+    turbo = _REPO_DIR / "node_modules/.bin/turbo"
+    if not LOCAL_BIN_BUILDABLE or not turbo.is_file():
+        return []
+    try:
+        done = subprocess.run(
+            [str(turbo), "build", "--filter=local-runtime", "--dry-run=json"],
+            cwd=_REPO_DIR,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        tasks = json.loads(done.stdout).get("tasks", []) if done.returncode == 0 else []
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+    stale = [t["package"] for t in tasks if t.get("cache", {}).get("status") != "HIT"]
+    return stale[:limit]
+
+
 def doctor() -> None:
     """Report the local-substrate toolchain: binaries, the built runner, charts, and which
     consumer config (.h/config.toml) is in effect. Informational — nothing is installed."""
@@ -72,14 +104,23 @@ def doctor() -> None:
 
     paths = Table("piece", "status", "path", title="local substrate")
     runner_ok = LOCAL_BIN.is_file()
-    paths.add_row(
-        "h-local runner",
-        "[green]built[/green]" if runner_ok else "[yellow]not built[/yellow]",
-        str(LOCAL_BIN)
-        if runner_ok
-        else f"{LOCAL_BIN} — run `bun install && bun run build` in the h checkout, "
-        "or point H_LOCAL_BIN / local_bin at a built bin.js",
-    )
+    stale_pkgs = _runner_stale_packages() if runner_ok else []
+    if not runner_ok:
+        runner_status = "[yellow]not built[/yellow]"
+        runner_detail = (
+            f"{LOCAL_BIN} — run `bun install && bun run build` in the h checkout, "
+            "or point H_LOCAL_BIN / local_bin at a built bin.js"
+        )
+    elif stale_pkgs:
+        runner_status = "[yellow]stale[/yellow]"
+        runner_detail = (
+            f"{LOCAL_BIN} — {', '.join(stale_pkgs)} would rebuild; "
+            "a --local run does that automatically before it runs"
+        )
+    else:
+        runner_status = "[green]built[/green]"
+        runner_detail = str(LOCAL_BIN)
+    paths.add_row("h-local runner", runner_status, runner_detail)
     for label, root in zip(("charts (primary)", "charts (stock)"), charts_roots()):
         count = _count_templates(root)
         paths.add_row(
