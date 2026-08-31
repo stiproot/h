@@ -76,6 +76,50 @@ These are operator calls from 2026-08-30/31, not open questions. They constrain 
    and a pinned venv would mean `uv run h` executing a STALE h while you edit `cli/h/` — the tool
    disagreeing with the source in front of you. The split is config vs installation.
 
+7. **THREE distribution mechanisms, each matched to a property — not one bucket.** The symlink
+   route is the fallback for what cannot be a plugin, never the primary:
+
+   | Content | Mechanism | Why |
+   | --- | --- | --- |
+   | published, versioned skills (`use-h`, `author-h-template`) | `.claude/settings.json` plugin entries | already works (trxy uses it today), smallest footprint, cross-agent |
+   | unpublished / repo-private skills, h's own internal ones | `.h/skills/` + symlinks into pickup locations | there is no marketplace to publish them to |
+   | rules / steering | `.h/rules/` → `.claude/CLAUDE.md`, or markers | not skill-shaped |
+
+8. **`.h/skills/` in EVERY repo, h included — the flow-2 exception is deleted.** h moves
+   `skills/` → `.h/skills/`, so the CLI links `.h/skills/*` into the pickup locations everywhere
+   with no source-root parameter, no config key and no branch on repo kind. Parity is the point:
+   one code path h's own development exercises daily.
+9. **Nothing in `.h/` is gitignored except `.h/venv/`** (operator, 2026-08-31). `.h/` carries its
+   OWN `.gitignore`, provisioned at init, so h never edits the repo's root one. h has no venv, so
+   in h nothing under `.h/` is ignored at all.
+10. **RETRACTED: "transient runtime steering" was an inflated category.** Read end to end,
+   `apps/claude-agent/steering/h-runtime.md` is 49 lines of which ONE sentence is genuinely
+   run-scoped; the rest is always-true (the vocabulary rule, verbatim duplication of CLAUDE.md's),
+   stack-conditional (the MCP servers, `pubsub_publish`) or self-guarding (the output-contract
+   rule, which states itself completely). **The real defect is accuracy, not lifetime**: the file
+   asserts unconditionally that the MCP servers "are already wired into your environment", which
+   was false in the session that found it and is false for every local-substrate run. What
+   survives is narrower and about SCOPE: h must not write claims about a run anywhere outside that
+   run's worktree — today it installs them into the operator's machine-global `~/.claude/CLAUDE.md`.
+   Consequence: no second provisioning mechanism is needed, and rules live in `.h/` committed like
+   everything else.
+11. **Primitives are selected per MODE, and the selection is both configured and dynamic.** This is
+   the mechanism for per-run context variation — not a new subsystem, just *which subset gets
+   linked*. Two halves, mirroring `h.pluginSetupSteps` exactly (curated sources baked at publish;
+   WHICH ones fire-time):
+   - **Manifest** — profiles in `.h/` mapping a mode to its primitives (`[profiles.container]
+     rules = ["h-runtime"]`). Reviewable in a diff, owned by the CLI, and it does not fight the
+     skill frontmatter schema, which `check-plugins.mjs` pins to exactly name+description.
+   - **Fire-time** — the link is a workflow SETUP STEP, so a run selects its primitives at
+     invocation. That is what makes A/B possible: run A of a workflow with one skill, run B with
+     another, same definition.
+12. **Rules use a FALLBACK CHAIN, not a fixed location.** Own `<cwd>/.claude/CLAUDE.md` when the
+   slot is free (verified to load alongside the repo's own `CLAUDE.md`, and removal is deleting one
+   file); fall back to marker-based writing into the repo's `CLAUDE.md`/`AGENTS.md` when it is not.
+   `skills/install-steering.sh` already implements the marker half. Three repos checked (h, trxy,
+   vizzle) have the slot free, but three is an observation, not a guarantee — and another agent may
+   have no free slot at all.
+
 ### 2.1 The consequence worth naming
 
 Decisions 1 and 3 together collapse most of the per-run provisioning problem. If a repo's h
@@ -126,6 +170,29 @@ flowchart TB
   p2 -.->|"HOME, not cwd"| G3["worktree gets nothing"]
 ```
 
+### 3.4 What is actually h-only — the skill inventory (verified 2026-08-31)
+
+h carries 10 internal skills; only FIVE genuinely cannot reach a consumer, and four say so in
+their own frontmatter — the declaration IS the boundary, which is what makes selection checkable:
+
+| h-only | Why |
+| --- | --- |
+| `ways-of-working` | declares "Applies to work on the h repo ONLY" |
+| `h-issues` | declares h-only; encodes h's issue conventions and the loop's labels |
+| `author-workflow-template` | declares h-only; h's STOCK charts — `author-h-template` is its published sibling |
+| `integrate-agent` | declares h-only; coupled to `apps/<name>-agent/`, agent-cli, the activity registry |
+| `diagrams` | h's canonical-diagram POLICY (`docs/diagrams/`, the index, naming) |
+
+**The h plugin is UNDER-POPULATED, and that is the real gap.** Consumers get two skills when at
+least two more already serve them: `delegate-locally` (the local substrate IS what consumers use)
+and `analyze-workflow-run` (consumers have runs; its script is env-configurable, not path-bound).
+`observe-h` and `workflow-orchestrator` are publishable in principle but gated on a running stack.
+So the consumer work is mostly MOVING skills into the plugin, not building distribution.
+
+`linear` is misfiled: it reads and writes Linear issues via `LINEAR_API_KEY` and has nothing to do
+with h. It belongs in its own plugin or outside this repo. *Revisit when: the plugin split above is
+implemented — it is the natural moment to relocate it.*
+
 ### 3.3 The precedent already in the CLI
 
 `h workspaces trust` is already an agent-context command: it stamps Claude Code's per-project
@@ -140,8 +207,12 @@ provisioning a worktree are the same code against different targets.
 
 | Target | Creates | Reconciles |
 | --- | --- | --- |
-| a CLONE (bootstrap) | `.h/config.toml`, `h.lock`, `.h/charts/` skeleton, `h-sync.sh`, `.claude/settings.json` plugin entries, trust stamp | drift against the pin |
-| a WORKTREE (per run) | only what the clone could not commit | same code, narrower scope |
+| a CLONE (bootstrap) | `.h/config.toml` + `.h/.gitignore`, `h.lock`, `.h/charts/` skeleton, `.claude/settings.json` plugin entries, trust stamp | drift against the pin |
+| a WORKTREE (per run) | the symlinks for the run's selected profile (§2.11) | same code, narrower scope |
+
+(Superseded in detail by §2.7-§2.12: `h-sync.sh` is NOT scaffolded (§4.2), and what a worktree
+gets is a profile SELECTION rather than "whatever the clone could not commit" — since §2.9 means
+the clone commits everything but the venv.)
 
 Everything the clone commits, the worktree inherits. The two paths consolidate because the
 committed artifact IS the provisioning.
@@ -165,6 +236,42 @@ Two steps, in order:
 
 Step 2 depends on step 1, which is why the current chicken-and-egg is fatal: `h-sync.sh` is the
 thing that installs the CLI, and today it must be hand-copied before h can do anything.
+
+## 4.2 `h-sync.sh` is retired, and the two-h model that replaces it
+
+The scaffold must NOT write `h-sync.sh`. Every operation it performs — read the pin, compare
+against `.h/venv/bin/h --version-json`, `uv pip install h-cli @ git+<repo>@<sha>`, rewrite the pin
+from `origin/main`, exit 1 on drift — is a CLI operation, and its one structural justification
+("install h when you have no h") contradicts decision §2.3, that the CLI is the prerequisite.
+
+What remains true is a real circularity: **the pinned h cannot upgrade itself past its own pin.**
+So there are deliberately TWO h's, the shape nvm and rbenv use:
+
+- the **bootstrap** h — whatever is on PATH or in a checkout; it runs `init` and `sync`;
+- the **pinned** h — `.h/venv`, invoked through `.h/bin/h`; it runs the repo's work at a revision
+  an upgrade makes reviewable.
+
+Under the CLI model the bootstrap role is filled by the same tool rather than a hand-copied shell
+script. The CI case (a runner clones with no h) is a documented one-liner —
+`uvx --from git+<repo>@<sha>#subdirectory=cli/h h …` — not a committed file. trxy still carries the
+script; leaving it is harmless, moving it is a deliberate follow-up.
+*Revisit when: `h workspaces sync` lands and trxy is next touched.*
+
+## 4.3 The `h-runtime.md` refactor
+
+Decision §2.10 makes this content work rather than mechanism work. What survives:
+
+- **DROP** the vocabulary section — verbatim duplication of CLAUDE.md's, which says so itself.
+- **DROP** the output-contract section — `h.outputContractEpilogue` states the rule completely,
+  per step, beside the schema it governs. Two copies of a protocol is how protocols drift.
+  (Proven: this session's `--local` runs installed no steering and still validated their contracts.)
+- **MAKE CONDITIONAL** the MCP claims — "already wired into your environment" is asserted as fact
+  and is false locally and whenever the stack is down.
+- **KEEP** what is true in container mode: you are a step in a workflow, how to reach runtime
+  state, how to hand work to another workflow.
+
+The result is smaller and honest in every environment that loads it, and it becomes the first
+consumer of the §2.11 mode profiles: linked in container mode, absent locally.
 
 ## 5. Verification — DONE (2026-08-31)
 
@@ -281,6 +388,13 @@ boundary), `infrastructure/local_runtime.py` (an error message). The fork is con
   file is authoritative rather than merely present. `charts_dir`/`local_bin` are deliberately NOT
   declared — §5.1's asset-location forks, where the difference is real. The INSTALLATION half
   (`h.lock`, `.h/venv`, `.h/bin/h`) remains correctly absent. Suite: 501 pass.
+- **2026-08-31 — decisions §2.7-§2.12 recorded** after working the context model end to end:
+  three mechanisms rather than one bucket; `.h/skills/` everywhere (the flow-2 exception deleted);
+  nothing in `.h/` ignored but the venv; the "transient steering" category RETRACTED as inflated,
+  with an accuracy-and-scope rule in its place; mode profiles plus fire-time selection on the
+  `h.pluginSetupSteps` precedent; and a fallback chain for rules. Added §3.4 (the skill inventory —
+  five genuinely h-only, the plugin under-populated, `linear` misfiled), §4.2 (`h-sync.sh` retired,
+  the two-h model) and §4.3 (the `h-runtime.md` refactor).
 - **2026-08-31 — §5 verification DONE, and it moved the design.** Steering: both `<cwd>/CLAUDE.md`
   and `<cwd>/.claude/CLAUDE.md` load, proven with a two-codeword probe, so h writes the one the
   repo does not own and never edits the repo's own file. Skills: `mergeMcpConfig` supplies the
