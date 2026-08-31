@@ -1,8 +1,8 @@
 # Agent context management in the CLI
 
-Status: Active — all six decisions recorded, all five open questions closed, and the §5
-verification pass is done; §2.6's config half has landed and the `h workspaces` bootstrap surface
-is the remaining build
+Status: Active — the CONTEXT half is built (`.h/skills` migration, `h workspaces link` with mode
+profiles, the h-runtime refactor, the plugin publication); the BOOTSTRAP half (`h workspaces init`)
+is what remains
 Established: 2026-08-31
 
 ## 1. The premise
@@ -190,8 +190,8 @@ and `analyze-workflow-run` (consumers have runs; its script is env-configurable,
 So the consumer work is mostly MOVING skills into the plugin, not building distribution.
 
 `linear` is misfiled: it reads and writes Linear issues via `LINEAR_API_KEY` and has nothing to do
-with h. It belongs in its own plugin or outside this repo. *Revisit when: the plugin split above is
-implemented — it is the natural moment to relocate it.*
+with h. It belongs in its own plugin or outside this repo. Filed as issue #121.
+*Revisit when: that issue is picked up.*
 
 ### 3.3 The precedent already in the CLI
 
@@ -395,6 +395,29 @@ boundary), `infrastructure/local_runtime.py` (an error message). The fork is con
   `h.pluginSetupSteps` precedent; and a fallback chain for rules. Added §3.4 (the skill inventory —
   five genuinely h-only, the plugin under-populated, `linear` misfiled), §4.2 (`h-sync.sh` retired,
   the two-h model) and §4.3 (the `h-runtime.md` refactor).
+- **2026-08-31 — the CONTEXT half is IMPLEMENTED** (four commits, all pushed):
+  1. **`skills/` → `.h/skills/`** (§2.8). Atomic across `H_SKILLS_DIR` in seven run scripts, five
+     compose mounts, three Dockerfile COPYs, three guards and the docs. k8s needed nothing — its
+     manifests name `/h-skills`, which the images still provide. Found and fixed a latent bug:
+     `check-steering` derived a skill's name from a fixed path index, which the extra directory
+     level silently shifted into `.h/skills/skills/…` expectations.
+  2. **`h workspaces link`** (§2.11) — skills become relative symlinks, rules become one
+     marker-delimited block. Selection is `--skill`/`--rule` > profile > everything. Pruning is
+     unconditional for links h owns, because selection without pruning means run B inherits run
+     A's context; a real directory or a foreign link is never touched. Removing the last rule block
+     DELETES the steering file — an empty one cannot be told from a failed write. 10 unit tests.
+  3. **`h-runtime.md` refactored** (§4.3) into `.h/rules/`, losing the vocabulary section and the
+     output-contract rule and gaining conditional MCP language. `H_RULES_DIR` mirrors
+     `H_SKILLS_DIR` across run scripts, compose, three images and both k8s manifests. The `local`
+     profile selects NO rules, so a local agent is no longer told it is inside a Dapr workflow.
+  4. **`delegate-locally` + `analyze-workflow-run` published** (§3.4), plugin 0.1.4 → 0.2.0. ONE
+     copy: they live in `plugins/h/skills/` and `.h/skills/<name>` symlinks into them, so the
+     plugin publishes them and h still loads them. h deliberately does NOT enable its own plugin —
+     the marketplace source is GitHub, so it would run a published copy against a live source tree,
+     the same trap that keeps `.h/venv` out of h.
+
+  Verified throughout: every guard, 511 CLI tests, compose config parses, and the goldens re-blessed
+  after reviewing that the only change was the one setup-step line, in 11 templates.
 - **2026-08-31 — §5 verification DONE, and it moved the design.** Steering: both `<cwd>/CLAUDE.md`
   and `<cwd>/.claude/CLAUDE.md` load, proven with a two-codeword probe, so h writes the one the
   repo does not own and never edits the repo's own file. Skills: `mergeMcpConfig` supplies the
