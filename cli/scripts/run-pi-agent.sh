@@ -17,7 +17,7 @@ export AGENT_MODEL="${PI_MODEL:-claude-sonnet-4-6}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/pi-agent}"
 # Consumed by a workflow's `setup` step (h.setupSteps): install the h skills into the agent's workspace.
 export AGENT_APP_DIR="${APP_DIR}"
-export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
 
 # The agent spawns `pi` as a child process, inheriting this process's PATH. The binary may live
 # in the user-local bin dir; prepend it so it resolves even from a minimal-PATH shell.

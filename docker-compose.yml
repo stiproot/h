@@ -262,7 +262,7 @@ services:
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
     volumes:
       - ../h-workspace:/workspace
-      - ./skills:/h-skills:ro
+      - ./.h/skills:/h-skills:ro
       - ./apps/claude-agent/.mcp.json:/workspace/claude-agent/.mcp.json:ro
       # Host AWS SSO session (read-only) so the ops plugin can run aws ssm commands.
       # Mounted into the 'claude' user's home (the container runs as that user).
@@ -325,7 +325,7 @@ services:
       - H_SKILLS_DIR=/h-skills
     volumes:
       - ../h-workspace:/workspace
-      - ./skills:/h-skills:ro
+      - ./.h/skills:/h-skills:ro
       - ./apps/openhands-agent/.mcp.json:/workspace/openhands-agent/.mcp.json:ro
     ports:
       - "8004:8000"
@@ -441,7 +441,7 @@ services:
       - MCP_CONFIG_SRC=/workspace/codex-agent/.mcp.json
     volumes:
       - ../h-workspace:/workspace
-      - ./skills:/h-skills:ro
+      - ./.h/skills:/h-skills:ro
       - ./apps/codex-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro
       # Host ChatGPT auth, seeded read-only; the runner copies it into the private CODEX_HOME.
       - ../h-workspace/codex-home/auth.json:/codex-seed/auth.json:ro
@@ -506,7 +506,7 @@ services:
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
     volumes:
       - ../h-workspace:/workspace
-      - ./skills:/h-skills:ro
+      - ./.h/skills:/h-skills:ro
       - ./apps/kimi-agent/.mcp.json:/workspace/kimi-agent/.mcp.json:ro
     ports:
       - "8017:8000"
@@ -741,7 +741,7 @@ services:
       - H_SKILLS_DIR=/h-skills
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
     volumes:
-      - ./skills:/h-skills:ro
+      - ./.h/skills:/h-skills:ro
     ports:
       - "8010:8000"
       - "3510:3500"

@@ -6,7 +6,7 @@ Lifted to:
 - [CLAUDE.md](../../../CLAUDE.md) Key gotchas — the `GitCheckout` named-strategy vocabulary, the
   "a PR head is not a branch you can name" trap, and the additive-setup rule (plus the corrected
   skills-install line in the h-skills section).
-- [skills/author-workflow-template](../../../skills/author-workflow-template/SKILL.md) §6 — which
+- [skills/author-workflow-template](../../../.h/skills/author-workflow-template/SKILL.md) §6 — which
   checkout strategy a new template picks and why a read-only agent still wants a checkout.
 - `git-client.ts` — the `GitCheckout` doc comment carries the strategy split's rationale at the
   code; `review-pr.tmpl.yaml`'s worktree step carries the three-failure-modes argument beside the

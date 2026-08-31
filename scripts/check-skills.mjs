@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guard the two homes h's skills have to reach. `skills/` is the DISTRIBUTION source — a setup
+// Guard the two homes h's skills have to reach. `.h/skills/` is the DISTRIBUTION source — a setup
 // step copies it into an agent's own ~/.claude/skills. `.claude/skills/` is what a session
 // working ON this repo can load. They are different audiences, but every skill h ships to its
 // agents is also a skill the session building h needs, so each one is SYMLINKED (relative, so it
@@ -18,7 +18,7 @@ import { readdirSync, readlinkSync, existsSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const SRC = join(ROOT, "skills");
+const SRC = join(ROOT, ".h/skills");
 const DEST = join(ROOT, ".claude/skills");
 const failures = [];
 
@@ -30,16 +30,16 @@ const skillDirs = (dir) =>
 for (const name of skillDirs(SRC)) {
   const link = join(DEST, name);
   if (!existsSync(link)) {
-    failures.push(`skills/${name} has no .claude/skills/${name} link — a session working on h cannot load it`);
+    failures.push(`.h/skills/${name} has no .claude/skills/${name} link — a session working on h cannot load it`);
     continue;
   }
   if (!lstatSync(link).isSymbolicLink()) {
-    failures.push(`.claude/skills/${name} is a COPY of skills/${name} — copies drift; make it a symlink`);
+    failures.push(`.claude/skills/${name} is a COPY of .h/skills/${name} — copies drift; make it a symlink`);
     continue;
   }
   const target = readlinkSync(link);
-  if (target !== `../../skills/${name}`) {
-    failures.push(`.claude/skills/${name} -> ${target}; expected ../../skills/${name} (relative, so clones/worktrees resolve)`);
+  if (target !== `../../.h/skills/${name}`) {
+    failures.push(`.claude/skills/${name} -> ${target}; expected ../../.h/skills/${name} (relative, so clones/worktrees resolve)`);
   }
 }
 

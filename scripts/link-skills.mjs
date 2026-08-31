@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-// Create the .claude/skills/ -> skills/ symlinks that scripts/check-skills.mjs enforces.
+// Create the .claude/skills/ -> .h/skills/ symlinks that scripts/check-skills.mjs enforces.
 // Idempotent: it repairs a wrong or broken link and leaves real directories (repo-only skills)
-// alone. Run after adding a skill to skills/.
+// alone. Run after adding a skill to .h/skills/.
 import { readdirSync, existsSync, lstatSync, symlinkSync, unlinkSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const SRC = join(ROOT, "skills");
+const SRC = join(ROOT, ".h/skills");
 const DEST = join(ROOT, ".claude/skills");
 
 for (const entry of readdirSync(SRC, { withFileTypes: true })) {
   if (!entry.isDirectory() || !existsSync(join(SRC, entry.name, "SKILL.md"))) continue;
   const link = join(DEST, entry.name);
-  const want = `../../skills/${entry.name}`;
+  const want = `../../.h/skills/${entry.name}`;
   if (existsSync(link) || lstatSync(link, { throwIfNoEntry: false })) {
     const isLink = lstatSync(link).isSymbolicLink();
     if (isLink && readlinkSync(link) === want) continue;

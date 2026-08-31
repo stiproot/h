@@ -1,0 +1,3 @@
+# h installs its venv here in a CONSUMER repo; h itself has none. Everything else
+# under .h/ is committed — the config, the primitives, the charts.
+venv/

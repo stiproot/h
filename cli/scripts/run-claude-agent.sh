@@ -27,7 +27,7 @@ export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/claude-ag
 export AGENT_APP_DIR="${APP_DIR}"
 # Root-level h skills (harness skill source), reusable by any agent — delivered to the agent's
 # ~/.claude/skills/ by a workflow setup step. Lives at the repo root, not inside an agent app.
-export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
 export TESSL_TOKEN="${TESSL_API_KEY:-}"
 export GH_TOKEN="${GH_TOKEN:-}"
 # Git transport strategy for /clone + /worktree (git-core GitAuth): "ssh" | "pat" (default).

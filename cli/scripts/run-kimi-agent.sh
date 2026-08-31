@@ -32,7 +32,7 @@ export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-10485
 export MCP_CONFIG_SRC="${MCP_CONFIG_SRC:-${PROJECT_DIR}/apps/kimi-agent/.mcp.json}"
 export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/kimi-agent}"
 export AGENT_APP_DIR="${APP_DIR}"
-export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
 export GH_TOKEN="${GH_TOKEN:-}"
 
 cd "${PROJECT_DIR}"

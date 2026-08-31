@@ -24,7 +24,7 @@ export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/openhands
 # step's `cp -r $H_SKILLS_DIR/.` runs against an empty var. openhands-agent ships no steering/ dir,
 # so the (guarded) steering copy is a clean no-op.
 export AGENT_APP_DIR="${APP_DIR}"
-export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
 export TESSL_TOKEN="${TESSL_API_KEY:-}"
 # Available to the agent process so OpenHands' built-in "linear" skill can authenticate to the
 # Linear GraphQL API; leave unset if no scenario needs Linear.

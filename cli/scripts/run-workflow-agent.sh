@@ -17,7 +17,7 @@ export AGENT_MAX_ITERATIONS="${AGENT_MAX_ITERATIONS:-25}"
 export WORKFLOW_MCP_URL="${WORKFLOW_MCP_URL:-http://localhost:8005/sse}"
 # Orchestration knowledge is the workflow-orchestrator h-skill; the agent loads it as its
 # system prompt from the repo skills root (same source claude-agent gets via ~/.claude/skills).
-export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
 
 cd "${APP_DIR}/src"
 

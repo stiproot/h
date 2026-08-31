@@ -12,11 +12,11 @@
 //
 // 2. ACTIVITY CHECK — every `run-*` key in workflow-svc's activity-registry.ts map
 //    must appear in CLAUDE.md (brace-expansion-aware: `run-{a,b,c}` counts as listing all three)
-//    and in skills/workflow-orchestrator/SKILL.md (literal substring). Missing activities make the
+//    and in .h/skills/workflow-orchestrator/SKILL.md (literal substring). Missing activities make the
 //    SKILL.md guidance incorrect, steering agents toward an incomplete activity set.
 //
 // 3. SKILL SCRIPT CHECK — a `~/.claude/skills/<skill>/<file>` path in a SKILL.md must exist at
-//    `skills/<skill>/<file>` on disk. (Full rationale at the check itself.)
+//    `.h/skills/<skill>/<file>` on disk. (Full rationale at the check itself.)
 //
 // 4. HOLLOW-GREEN TEST COMMAND CHECK — no steering doc may cite the CLI test suite without its
 //    `cli/h/tests` path scope. (Full rationale at the check itself.)
@@ -77,7 +77,7 @@ function expandRunNames(text) {
 
 const claudeMd = readText("CLAUDE.md");
 const readmeMd = readText("README.md");
-const skillMd = readText("skills/workflow-orchestrator/SKILL.md");
+const skillMd = readText(".h/skills/workflow-orchestrator/SKILL.md");
 const activityRegistry = readText(
   "apps/workflow-svc/src/infrastructure/activity-registry.ts",
 );
@@ -145,7 +145,7 @@ const activityViolations = [];
 for (const activity of runActivities) {
   const missingFrom = [];
   if (!claudeRunNames.has(activity)) missingFrom.push("CLAUDE.md");
-  if (!skillMd.includes(activity)) missingFrom.push("skills/workflow-orchestrator/SKILL.md");
+  if (!skillMd.includes(activity)) missingFrom.push(".h/skills/workflow-orchestrator/SKILL.md");
   if (missingFrom.length > 0) {
     activityViolations.push({ activity, missingFrom });
   }
@@ -202,10 +202,12 @@ function skillMarkdownFiles(dir) {
   return out;
 }
 
-for (const file of skillMarkdownFiles("skills")) {
+for (const file of skillMarkdownFiles(".h/skills")) {
   const text = readText(file) ?? "";
   const seen = new Set();
-  const skill = file.split("/")[1];
+  // Relative to the skills root, not a fixed path index — the root moved once (skills/ →
+  // .h/skills/) and an index-based split silently produced ".h/skills/skills/..." expectations.
+  const skill = file.slice(".h/skills/".length).split("/")[0];
   for (const m of text.matchAll(HOME_SKILL_RE)) {
     skillViolations.push({
       file,
@@ -223,9 +225,9 @@ for (const file of skillMarkdownFiles("skills")) {
     if (seen.has(key)) continue;
     seen.add(key);
     try {
-      statSync(join(root, "skills", skill, rest));
+      statSync(join(root, ".h/skills", skill, rest));
     } catch {
-      skillViolations.push({ file, ref: `<skill-dir>/${rest}`, expected: `skills/${key}` });
+      skillViolations.push({ file, ref: `<skill-dir>/${rest}`, expected: `.h/skills/${key}` });
     }
   }
 }
@@ -257,7 +259,7 @@ const steeringDocs = [
   "docs/DRIVER.md",
   "docs/cookbook.md",
   "docs/h-builds-h-runbook.md",
-  ...skillMarkdownFiles("skills"),
+  ...skillMarkdownFiles(".h/skills"),
 ];
 
 for (const file of steeringDocs) {
@@ -298,7 +300,7 @@ if (skillViolations.length > 0) {
     "  A `<skill-dir>/<rest>` reference in a SKILL.md maps 1:1 onto this repo's",
   );
   console.error(
-    "  `skills/<skill>/<rest>` — the harness announces that base dir on load. A wrong",
+    "  `.h/skills/<skill>/<rest>` — the harness announces that base dir on load. A wrong",
   );
   console.error("  path fails at the AGENT, mid-task, as a 'no such file'.\n");
   for (const v of skillViolations) {

@@ -40,7 +40,7 @@ export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/codex-age
 # compose sets it explicitly to /workspace/codex-home.
 export CODEX_HOME="${CODEX_HOME:-$(dirname "${AGENT_BASE_DIR}")/codex-home}"
 export AGENT_APP_DIR="${APP_DIR}"
-export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/skills}"
+export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
 
 cd "${PROJECT_DIR}"
 node "${PROJECT_DIR}/scripts/check-tsc.mjs" --native-only || exit 1
