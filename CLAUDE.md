@@ -784,6 +784,18 @@ run is `merge`. Docker deployments mount
 
 ### h skills (harness skill source)
 
+**The skills have TWO homes and ONE source.** `skills/` is the distribution source (copied into
+an agent's own `~/.claude/skills/` by a setup step); `.claude/skills/` is what a session working ON
+this repo loads. Every skill in `skills/` is therefore SYMLINKED into `.claude/skills/` with a
+relative link (`../../skills/<name>`, so clones, worktrees and containers all resolve it) rather
+than copied — a skill edit is live in both homes at once, and there is no copy to drift.
+`scripts/check-skills.mjs` enforces it and `node scripts/link-skills.mjs` repairs it; run that
+after adding a skill. A REAL directory in `.claude/skills/` is legal and means a repo-only skill
+agents are not given (`diagrams`, `integrate-agent`, `observe-h`). This is a guard because the gap
+is SILENT: `ways-of-working` and `delegate-locally` sat in `skills/` for ten days reachable from
+neither home — a local-substrate run skips the setup step that would have copied them, and a
+missing skill never announces itself, it just never triggers.
+
 h provides its own agent skills, kept at the repo-root `skills/` dir — not inside any agent app, so
 they stay reusable across agents and the agent services stay thin. A workflow setup step copies them
 into a CLI agent's user-global `~/.claude/skills/` (`cp -r $H_SKILLS_DIR/* ~/.claude/skills/`).
@@ -1006,6 +1018,7 @@ live incident that motivated it — read that before working around one.
 | `check-vocabulary` | retired terms stay retired in long-lived prose (the ARCHITECTURE.md glossary is canonical; `docs/plans/` is exempt as a historical record) |
 | `check-templates` | no chart template drives a bare `git push --force` — `--force-with-lease` only |
 | `check-plugins` | the `h` plugin's manifests agree across the Claude and Codex marketplaces; skill frontmatter is exactly name+description |
+| `check-skills` | every skill in `skills/` is symlinked into `.claude/skills/`, so both homes see one source |
 | `check-diagrams` | canonical diagrams are indexed both ways, kind-suffixed, one fence, `## Reading notes`; a `-class` doc with no manifest (which the generator skips silently) is caught |
 | `check-hex-lint` | every TS package with a `domain/` or `presentation/` runs dependency-cruiser in its `lint` |
 | `check-lint-parity` | every TS package's `lint` script runs the SAME checks — the repo had drifted into two halves each missing what the other had |
