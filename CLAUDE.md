@@ -148,7 +148,20 @@ h composes work ONE way and executes it two. **[ARCHITECTURE.md](./ARCHITECTURE.
 compares the two substrates and says how to choose**; this section is the operational truth — the
 prerequisites, the exact refusals, and the local substrate's own durability machinery.
 
-Running locally needs `bun run build`, a resident engine host for anything engine-shaped
+**The runner is kept FRESH automatically** (2026-08-31): in a checkout, `runner_path` builds
+`--filter=local-runtime` — the whole 7-package closure, since turbo's `build` declares
+`dependsOn: ["^build"]` — before spawning it, so a `--local` run can never execute JS older than
+the source you just edited. ~0.4s on an already-built tree. It goes through `bun run build` so
+`check-tsc` runs first, and a 0-byte turbo (which exits nonzero printing NOTHING) is reported as
+the hollow-toolchain failure it is rather than falling through to the stale artifact. The build is
+a SEPARATE subprocess and the runner spawn is unchanged — wrapping it in `bun run` would put a
+script runner between `run_job`'s SIGINT and node, and that signal is what makes agent-cli's
+reaper group-kill the agent CLIs instead of orphaning ones that keep billing. Never fires for an
+`H_LOCAL_BIN` override, an explicit `bin_path`, or a packaged install (no source, and its runner
+ships beside the CLI so they cannot skew). `h doctor` reports `stale` from turbo's dry run, not
+from mtimes, which lie across a branch switch.
+
+Running locally needs a resident engine host for anything engine-shaped
 (`h-local --engines`, brought up by `h events up`), and CLIs the operator has already
 authenticated — credentials come from the shell with the repo's `.env` filling gaps (shell wins,
 the opposite of `compose.sh`'s precedence, because a one-shot command must honour a key you just

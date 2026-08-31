@@ -16,8 +16,9 @@ h delegate --agent codex "In one short sentence: what is a git worktree?"
 ```
 
 `h delegate` runs the agent CLI as a local child process — no Dapr, no services, no registries.
-Credentials come from your shell, with the repo's `.env` filling the gaps (shell wins). The only
-prerequisite is `bun run build`. *(Validated 2026-08-06 — run
+Credentials come from your shell, with the repo's `.env` filling the gaps (shell wins). In a
+checkout the runner is built for you before each run, so there is no build step to remember.
+*(Validated 2026-08-06 — run
 `direct-260806-124834:codex:1786013315291`.)*
 
 ## A local panel: several agents, one task, in parallel

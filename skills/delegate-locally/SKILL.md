@@ -7,7 +7,7 @@ description: Hand a bounded piece of work to another agent CLI (codex, pi, openh
 
 h has two execution substrates. This skill is about the **local** one: `h` drives the agent CLIs
 as child processes of your own shell. Nothing has to be running — no Dapr, no agent services, no
-Redis, no containers. The prerequisites are `bun run build` once, and CLIs the operator has
+Redis, no containers. The prerequisite is CLIs the operator has
 already authenticated.
 
 The other substrate — plain `h workflow run` / `h chain run` — fires the same definition at
