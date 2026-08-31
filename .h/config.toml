@@ -1,0 +1,29 @@
+# h's own consumer config — h consuming its own contract.
+#
+# Every repo h works in declares its paths here, discovered by walking up from cwd the way git
+# finds its root. h itself was the exception: it fell back to `IS_CHECKOUT` defaults in config.py,
+# so the code path a consumer takes was exercised only by other repos. That is a dogfooding gap —
+# a "works in h, breaks in a consumer" bug had nowhere to surface. Declaring the same values here
+# makes h resolve its paths through the identical code a consumer uses.
+#
+# These RESTATE the checkout defaults exactly; adding this file changed no resolved path. Relative
+# paths resolve against this repo root, so a clone anywhere gets the same sibling layout.
+#
+# Deliberately NOT declared: charts_dir and local_bin. Those defaults differ between a checkout
+# and a packaged install because the ASSETS genuinely live in different places (source tree vs
+# wheel bundle) — that is not a path preference, and pinning them here would hardcode
+# checkout-only paths into a file the packaged install also reads.
+
+# The workspace root h owns: the clones it works on, beside the run ledger and the fabric store.
+workspace_dir = "../h-workspace"
+
+# The LOCAL substrate's worktrees. Distinct from the SERVICE substrate's
+# `<workspace>/worktrees/`, which lives inside the shared workspace because that is the volume
+# the agent containers mount. `h worktrees list` reports both.
+worktrees_dir = "../h-worktrees"
+
+# The run ledger, shared with the agent services so local and service runs land in one place.
+runs_dir = "../h-workspace/.runs"
+
+# Agent credentials for local runs. The shell still wins; this only fills gaps.
+dotenv = ".env"

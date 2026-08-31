@@ -66,7 +66,8 @@ These are operator calls from 2026-08-30/31, not open questions. They constrain 
    needs no uninstall step: the worktree already supplies the lifetime, and deleting the worktree
    is the uninstall. The sorting test for any piece of context is **"is this still true when
    nobody is running h?"**
-6. **h consumes h for CONFIG, not for INSTALLATION.** h gets its own `.h/config.toml` like any
+6. **h consumes h for CONFIG, not for INSTALLATION.** (Config half LANDED 2026-08-31 — h now
+   carries its own `.h/config.toml`.) h gets its own `.h/config.toml` like any
    consumer, so path resolution goes through the identical code path (`config.py` forks on
    `IS_CHECKOUT` in NINE places today — every one a works-in-h/breaks-in-a-consumer bug waiting to
    happen, and h's consumer contract is currently exercised only by trxy). h does NOT get
@@ -259,3 +260,11 @@ boundary), `infrastructure/local_runtime.py` (an error message). The fork is con
   own signal forwarding, and the failure mode is orphaned CLIs that keep billing. Measured:
   `--filter=local-runtime` builds the whole 7-package closure, ~104-190ms fully cached, and turbo
   writes nothing to stdout so the result envelope is safe.
+- **2026-08-31 — decision §2.6's CONFIG half is IMPLEMENTED.** h carries `.h/config.toml`
+  declaring `workspace_dir`, `worktrees_dir`, `runs_dir` and `dotenv` as relative paths, so those
+  four settings now resolve through the SAME code a consumer takes rather than through
+  `IS_CHECKOUT` defaults. Verified as a true no-op: the seven resolved paths are byte-identical
+  before and after, `h doctor` reports the config discovered, and a mutation probe confirmed the
+  file is authoritative rather than merely present. `charts_dir`/`local_bin` are deliberately NOT
+  declared — §5.1's asset-location forks, where the difference is real. The INSTALLATION half
+  (`h.lock`, `.h/venv`, `.h/bin/h`) remains correctly absent. Suite: 501 pass.
