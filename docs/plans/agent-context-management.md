@@ -181,12 +181,13 @@ Neither is settled; both are cheap and must happen BEFORE code.
 1. ~~**Vendored or referenced?**~~ ANSWERED by decision §2.4 — REFERENCED, through the plugin
    marketplace entry, which is what the plugin mechanism is for. Copied content is limited to
    `.h/` config and charts.
-2. **What is the command surface?** A new `h context` noun (`init`, `sync`, `check`), or extending
-   `h workspaces` (which already holds `trust` and already means "a clone h manages")? Leaning
-   toward the latter — it needs no new concept, and `trust` is already this.
-3. **Does bootstrapping WRITE or EMIT?** h writing directly into a repo is convenient; emitting a
-   diff the operator commits keeps h's changes reviewable. Decision 3 says the resources are
-   committed, which does not by itself say who runs `git add`.
+2. ~~**What is the command surface?**~~ ANSWERED (operator, 2026-08-31) — EXTEND `h workspaces`.
+   It already means "a clone h manages" and already carries `trust`, an agent-context command, so
+   the bootstrap needs no new noun.
+3. ~~**Does bootstrapping WRITE or EMIT?**~~ ANSWERED (operator, 2026-08-31) — h WRITES the files
+   and NEVER commits them. The model is `npm install`: installing produces a diff, and whoever is
+   carrying out the change — operator or agent — commits it later as part of their own change.
+   So the bootstrap is not a git author, and its output is reviewable by construction.
 4. ~~**How much does a NON-h repo receive?**~~ ANSWERED by decision §2.4 — exactly the `h`
    plugin's two skills. The frontmatter "h repo ONLY" declaration IS the split, and it is already
    written. A related asymmetry STAYS and is correct: h enables `author-workflow-template` (stock
@@ -217,3 +218,6 @@ Neither is settled; both are cheap and must happen BEFORE code.
   (referenced, not vendored); transient context belongs to the worktree and is not a plugin; h
   consumes its own config contract but never installs a pinned copy of itself. Open: §6.2 (command
   surface) and §6.3 (write vs emit).
+- **2026-08-31 — §6.2 and §6.3 answered** (extend `h workspaces`; write but never commit, on the
+  `npm install` model). All five open questions are now closed. REMAINING BEFORE `Active`: the §5
+  verification pass, which was paused by the operator before it ran.
