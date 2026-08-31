@@ -249,6 +249,7 @@ services:
       - AGENT_APP_DIR=/app/apps/claude-agent
       # Root-level h skills, mounted read-only below; a setup step copies them to ~/.claude/skills/.
       - H_SKILLS_DIR=/h-skills
+      - H_RULES_DIR=/h-rules
       - TESSL_TOKEN=${TESSL_TOKEN:-}
       # GitHub token for cloning private repos (clone-repo activity → /clone → git-core).
       - GH_TOKEN=${GH_TOKEN:-}
@@ -263,6 +264,7 @@ services:
     volumes:
       - ../h-workspace:/workspace
       - ./.h/skills:/h-skills:ro
+      - ./.h/rules:/h-rules:ro
       - ./apps/claude-agent/.mcp.json:/workspace/claude-agent/.mcp.json:ro
       # Host AWS SSO session (read-only) so the ops plugin can run aws ssm commands.
       # Mounted into the 'claude' user's home (the container runs as that user).
@@ -323,9 +325,11 @@ services:
       # h skills, copied into ~/.claude/skills by the workflow setup step (cp -r $H_SKILLS_DIR/.).
       # Unset here → the copy runs against an empty var; mounted read-only like the other agents.
       - H_SKILLS_DIR=/h-skills
+      - H_RULES_DIR=/h-rules
     volumes:
       - ../h-workspace:/workspace
       - ./.h/skills:/h-skills:ro
+      - ./.h/rules:/h-rules:ro
       - ./apps/openhands-agent/.mcp.json:/workspace/openhands-agent/.mcp.json:ro
     ports:
       - "8004:8000"
@@ -436,12 +440,14 @@ services:
       # h skills, copied into ~/.claude/skills by the setup step (cp -r $H_SKILLS_DIR/. …). MUST be
       # set + mounted, or the setup command expands to `cp -r /. …` and copies the whole root fs.
       - H_SKILLS_DIR=/h-skills
+      - H_RULES_DIR=/h-rules
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
       # h's canonical MCP set (mounted below); the runner translates it into codex config.toml.
       - MCP_CONFIG_SRC=/workspace/codex-agent/.mcp.json
     volumes:
       - ../h-workspace:/workspace
       - ./.h/skills:/h-skills:ro
+      - ./.h/rules:/h-rules:ro
       - ./apps/codex-agent/.mcp.json:/workspace/codex-agent/.mcp.json:ro
       # Host ChatGPT auth, seeded read-only; the runner copies it into the private CODEX_HOME.
       - ../h-workspace/codex-home/auth.json:/codex-seed/auth.json:ro
@@ -501,12 +507,14 @@ services:
       # overrides any compose-level value, but we don't set it here to avoid shadowing risk.
       - GH_TOKEN=${GH_TOKEN:-}
       - H_SKILLS_DIR=/h-skills
+      - H_RULES_DIR=/h-rules
       - AGENT_BASE_DIR=/workspace/kimi-agent
       - MCP_CONFIG_SRC=/workspace/kimi-agent/.mcp.json
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
     volumes:
       - ../h-workspace:/workspace
       - ./.h/skills:/h-skills:ro
+      - ./.h/rules:/h-rules:ro
       - ./apps/kimi-agent/.mcp.json:/workspace/kimi-agent/.mcp.json:ro
     ports:
       - "8017:8000"
@@ -739,9 +747,11 @@ services:
       - WORKFLOW_MCP_URL=${WORKFLOW_MCP_URL:-http://workflow-mcp:8000/sse}
       # Orchestration knowledge is the workflow-orchestrator h-skill, loaded as the system prompt.
       - H_SKILLS_DIR=/h-skills
+      - H_RULES_DIR=/h-rules
       - ZIPKIN_ENDPOINT=${ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
     volumes:
       - ./.h/skills:/h-skills:ro
+      - ./.h/rules:/h-rules:ro
     ports:
       - "8010:8000"
       - "3510:3500"

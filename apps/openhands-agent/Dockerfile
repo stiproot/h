@@ -47,6 +47,7 @@ COPY apps/openhands-agent/ ./apps/openhands-agent/
 # over this for live editing; k8s has no such mount, so the image must carry them —
 # without it the setup step's `cp -r $H_SKILLS_DIR/.` has no source.
 COPY .h/skills/ /h-skills/
+COPY .h/rules/ /h-rules/
 
 RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
     bunx turbo build --filter=openhands-agent...

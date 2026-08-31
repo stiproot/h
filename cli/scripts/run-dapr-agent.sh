@@ -22,6 +22,7 @@ export AGENT_BASE_DIR="${AGENT_BASE_DIR:-${PROJECT_DIR}/../h-workspace/dapr-agen
 # let this agent construct/invoke/monitor workflows. H_SKILLS_DIR (defaulted here) then lets it load
 # the workflow-orchestrator procedure; both are inert when WORKFLOWS_MCP_URL is unset.
 export H_SKILLS_DIR="${H_SKILLS_DIR:-${PROJECT_DIR}/.h/skills}"
+export H_RULES_DIR="${H_RULES_DIR:-${PROJECT_DIR}/.h/rules}"
 
 cd "${APP_DIR}/src"
 

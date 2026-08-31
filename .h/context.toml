@@ -1,0 +1,20 @@
+# Which agent primitives each MODE gets, read by `h workspaces link --profile <name>`.
+#
+# A profile is the USUAL set for a mode; `--skill`/`--rule` override it per invocation, so one
+# workflow can run A with one skill and B with another without editing this file. Same split
+# h.pluginSetupSteps already uses: curated config here, the per-run choice at fire time.
+#
+# `["*"]` means everything on offer. An omitted key means "unselected" (fall back to the default);
+# an empty list means "deliberately none", which is how a mode turns something OFF.
+
+[profiles.container]
+# A service-substrate run: Dapr, the MCP servers, and a workflow that fired it.
+skills = ["*"]
+rules = ["h-runtime"]
+
+[profiles.local]
+# A local-substrate run: no Dapr and no guaranteed MCP servers, so the runtime rule would be
+# describing an environment that is not there. The output-contract instruction a local run does
+# depend on rides the step prose itself (h.outputContractEpilogue), not this rule.
+skills = ["*"]
+rules = []

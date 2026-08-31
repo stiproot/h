@@ -33,6 +33,9 @@ spec:
             # Compose supplies this by bind mount; in k8s the skills ship in the image.
             - name: H_SKILLS_DIR
               value: /h-skills
+            # The h RULES root — the runtime steering the setup step installs.
+            - name: H_RULES_DIR
+              value: /h-rules
             # OpenHands is BYOK — the provider-neutral endpoint pair, pointed at DeepSeek.
             - name: LLM_API_KEY
               valueFrom:

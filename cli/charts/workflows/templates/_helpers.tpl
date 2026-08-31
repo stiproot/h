@@ -12,7 +12,7 @@ helper — it is plain YAML/JSON with no delimiter overlap at all.)
 
 {{/*
 h.setupSteps — the shared claude-agent workspace setup block: install the h skills and the
-h runtime steering into the agent's user-global ~/.claude. $H_SKILLS_DIR and $AGENT_APP_DIR
+h runtime steering into the agent's user-global ~/.claude. $H_SKILLS_DIR and $H_RULES_DIR
 are agent-side shell env vars, expanded where the setup cmd runs — inert text to both helm
 and the workflow engine (this is exactly the class of token that made envsubst need an
 allowlist; here it needs nothing).
@@ -31,7 +31,7 @@ and `--with-setup` locally is the one path that would put them there.
 */}}
 {{- define "h.setupSteps" -}}
 - cmd: "mkdir -p ~/.claude/skills && cp -rn \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
-- cmd: "if [ -f $AGENT_APP_DIR/steering/h-runtime.md ]; then bash \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/install-steering.sh $AGENT_APP_DIR/steering/h-runtime.md; fi"
+- cmd: "if [ -f \"${H_RULES_DIR:-}\"/h-runtime.md ]; then bash \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/install-steering.sh \"$H_RULES_DIR\"/h-runtime.md; fi"
 {{- end }}
 
 {{/*

@@ -40,6 +40,7 @@ COPY apps/kimi-agent/ ./apps/kimi-agent/
 
 # h skills at the agent-neutral path H_SKILLS_DIR points at.
 COPY .h/skills/ /h-skills/
+COPY .h/rules/ /h-rules/
 
 RUN --mount=type=cache,id=turbo-store,target=/app/.turbo \
     bunx turbo build --filter=kimi-agent...

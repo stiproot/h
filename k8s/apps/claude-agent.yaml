@@ -68,6 +68,9 @@ spec:
             # Compose supplies this by bind mount; in k8s the skills ship in the image.
             - name: H_SKILLS_DIR
               value: /h-skills
+            # The h RULES root — the runtime steering the setup step installs.
+            - name: H_RULES_DIR
+              value: /h-rules
             # Auth is either/or: ANTHROPIC_API_KEY (pay-as-you-go) or a Claude Max/Pro
             # subscription token. Both are marked optional so a token-only or key-only
             # secret starts cleanly; the agent-cli claude strategy won't forward an
