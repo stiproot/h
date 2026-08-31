@@ -72,10 +72,11 @@ plan's phases, reworded to pass this test, become loop-implementable issues.
 
 ## Filing
 
-Use the bundled script (GH_TOKEN, curl — works headlessly):
+Use the bundled script (GH_TOKEN, curl — works headlessly), resolved against this skill's own
+directory (announced as its base directory when the skill loads):
 
 ```bash
-~/.claude/skills/h-issues/scripts/create-issue.sh "title" body.md [label ...]
+<skill-dir>/scripts/create-issue.sh "title" body.md [label ...]
 ```
 
 Or the GitHub MCP's create_issue / `curl -X POST .../repos/<owner>/h/issues` directly.

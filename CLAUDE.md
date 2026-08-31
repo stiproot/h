@@ -784,6 +784,17 @@ run is `merge`. Docker deployments mount
 
 ### h skills (harness skill source)
 
+**The OPERATOR's `~/.claude/skills/` is NOT a home for h's skills** (operator call 2026-08-31).
+h's skills are self-contained in this repo: a session working on h loads them from
+`.claude/skills/`, and an h worktree carries the same links, so a local-substrate agent gets them
+as PROJECT skills with nothing installed in anyone's home. A CONTAINERISED agent still receives a
+copy in its own (container) home via `h.setupSteps` — that home is not the operator's. The one
+path that would re-pollute yours is `--with-setup` on the local substrate, which is an explicit
+operator choice. Because a skill must now work from whichever home serves it, a SKILL.md names its
+scripts as `<skill-dir>/<rest>` — the base directory the harness announces on load — and
+`scripts/check-steering.mjs` REJECTS a `~/.claude/...` path outright: it resolves in exactly one
+home, which is what kept the skills from being self-contained.
+
 **The skills have TWO homes and ONE source.** `skills/` is the distribution source (copied into
 an agent's own `~/.claude/skills/` by a setup step); `.claude/skills/` is what a session working ON
 this repo loads. Every skill in `skills/` is therefore SYMLINKED into `.claude/skills/` with a

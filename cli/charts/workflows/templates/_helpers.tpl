@@ -23,6 +23,11 @@ paragraph says exactly that — so it has no business replacing either. The old 
 ~/.claude/CLAUDE.md and clobbered whatever was there; on the local substrate that file is the
 OPERATOR's own memory, destroyed on every --with-setup run. install-steering.sh writes only
 between its markers, and `cp -n` lets a same-named skill already present win.
+
+The skills copy serves a CONTAINERISED agent, whose home is its own. h's skills are otherwise
+self-contained in the repo — a session or local agent working in an h checkout loads them from
+`.claude/skills/` (symlinks to `skills/`), so nothing needs installing into the operator's home,
+and `--with-setup` locally is the one path that would put them there.
 */}}
 {{- define "h.setupSteps" -}}
 - cmd: "mkdir -p ~/.claude/skills && cp -rn \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"

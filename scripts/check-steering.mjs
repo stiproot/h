@@ -159,9 +159,13 @@ for (const activity of runActivities) {
 // 3. SKILL SCRIPT CHECK — a skill that tells an agent to run a script must name a path that
 //    actually exists.
 //
-//    Skills are copied wholesale into an agent's `~/.claude/skills/`, so a SKILL.md instructs
-//    with an installed path (`~/.claude/skills/<skill>/<rest>`) that maps 1:1 onto this repo's
-//    `skills/<skill>/<rest>`. Nothing checked that mapping, and it had rotted: the `linear`
+//    A skill is served from whichever home reaches the session — this repo's `.claude/skills/`
+//    symlinks, or an agent's own `~/.claude/skills/` — so a SKILL.md names its scripts against
+//    `<skill-dir>/<rest>`, the base directory the harness announces when the skill loads, which
+//    maps 1:1 onto this repo's `skills/<skill>/<rest>`. A `~/.claude/...` path is REJECTED
+//    outright (2026-08-31): it hardcodes one home and breaks in every other, which is exactly
+//    what blocked h's skills from being self-contained in the repo.
+//    Nothing checked that mapping, and it had rotted: the `linear`
 //    skill — the ONLY way h reads/writes Linear, since the hosted MCP cannot authenticate
 //    unattended — pointed every one of its invocations at
 //    `~/.claude/skills/linear/cli/scripts/…`, an extra `cli/` segment. The scripts live at
@@ -171,7 +175,9 @@ for (const activity of runActivities) {
 //    "no such file" the agent then has to work around or silently skip.
 // ---------------------------------------------------------------------------
 
-const SKILL_PATH_RE = /~\/\.claude\/skills\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._/-]+)/g;
+const SKILL_PATH_RE = /<skill-dir>\/([A-Za-z0-9._/-]+)/g;
+// A HOME-anchored path is banned outright — it only resolves in one home.
+const HOME_SKILL_RE = /~\/\.claude\/skills\/[A-Za-z0-9._/-]+/g;
 const skillViolations = [];
 
 function skillMarkdownFiles(dir) {
@@ -199,8 +205,16 @@ function skillMarkdownFiles(dir) {
 for (const file of skillMarkdownFiles("skills")) {
   const text = readText(file) ?? "";
   const seen = new Set();
+  const skill = file.split("/")[1];
+  for (const m of text.matchAll(HOME_SKILL_RE)) {
+    skillViolations.push({
+      file,
+      ref: m[0],
+      expected: `<skill-dir>/… (a HOME path resolves in only one home)`,
+    });
+  }
   for (const m of text.matchAll(SKILL_PATH_RE)) {
-    const [, skill, rest] = m;
+    const rest = m[1];
     // Skip placeholders — a doc may illustrate with <ISSUE_ID>-style tokens.
     if (rest.includes("<") || rest.includes("*")) continue;
     // Only check things that look like an invocable file, not a directory reference.
@@ -211,7 +225,7 @@ for (const file of skillMarkdownFiles("skills")) {
     try {
       statSync(join(root, "skills", skill, rest));
     } catch {
-      skillViolations.push({ file, ref: `~/.claude/skills/${key}`, expected: `skills/${key}` });
+      skillViolations.push({ file, ref: `<skill-dir>/${rest}`, expected: `skills/${key}` });
     }
   }
 }
@@ -281,10 +295,10 @@ if (skillViolations.length > 0) {
   failed = true;
   console.error("✗ check-steering: skill scripts referenced at paths that do not exist.\n");
   console.error(
-    "  A `~/.claude/skills/<skill>/<rest>` reference in a SKILL.md maps 1:1 onto this repo's",
+    "  A `<skill-dir>/<rest>` reference in a SKILL.md maps 1:1 onto this repo's",
   );
   console.error(
-    "  `skills/<skill>/<rest>` — skills are copied wholesale into the agent's home. A wrong",
+    "  `skills/<skill>/<rest>` — the harness announces that base dir on load. A wrong",
   );
   console.error("  path fails at the AGENT, mid-task, as a 'no such file'.\n");
   for (const v of skillViolations) {

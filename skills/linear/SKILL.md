@@ -12,10 +12,11 @@ interactive OAuth login.
 
 ## Fetch an issue
 
-Run the bundled script with the issue identifier:
+Run the bundled script with the issue identifier, resolved against this skill's own directory
+(announced as its base directory when the skill loads):
 
 ```bash
-~/.claude/skills/linear/scripts/get-issue.sh <ISSUE_ID>     # e.g. ABC-123
+<skill-dir>/scripts/get-issue.sh <ISSUE_ID>     # e.g. ABC-123
 ```
 
 It prints the issue's title, state, assignee, URL, description, and all comments — the human context
@@ -26,8 +27,8 @@ you need to understand what the issue requires. `LINEAR_API_KEY` is already set 
 Write findings, context, or a grooming write-up back onto an issue:
 
 ```bash
-~/.claude/skills/linear/scripts/add-comment.sh <ISSUE_ID> <BODY_FILE>   # e.g. add-comment.sh ABC-123 findings.md
-cat findings.md | ~/.claude/skills/linear/scripts/add-comment.sh <ISSUE_ID> -   # or from stdin
+<skill-dir>/scripts/add-comment.sh <ISSUE_ID> <BODY_FILE>   # e.g. add-comment.sh ABC-123 findings.md
+cat findings.md | <skill-dir>/scripts/add-comment.sh <ISSUE_ID> -   # or from stdin
 ```
 
 The comment body is read from a **file or stdin**, never a command-line argument — so multi-line
