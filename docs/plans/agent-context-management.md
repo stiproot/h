@@ -176,6 +176,31 @@ Neither is settled; both are cheap and must happen BEFORE code.
 2. **That skills provisioning MERGES**, the way `mergeMcpConfig` does, so h's own checkout (which
    already carries `.claude/skills/`) is not clobbered by its own bootstrap.
 
+## 5.1 The nine forks, classified (verified 2026-08-31)
+
+Decision §2.6 rests on removing `IS_CHECKOUT` forks. Reading them, they are THREE kinds and only
+one is about invocation — which bounds how much §2.6 actually changes:
+
+| Kind | Count | Fate |
+| --- | --- | --- |
+| Path DEFAULTS (runs, worktrees, workspace, dotenv) | 4 | Dissolved by h's own `.h/config.toml` — they are `_setting(env, key, default)` and the default stops being consulted. This IS the dogfooding win. |
+| "Where are my own assets" (stock charts, local runner, version string) | 3 | STAY. Source tree vs wheel bundle, `git describe` vs package version. Intrinsic to source-vs-artifact invocation. |
+| Safety boundary (`managed_roots()`) | 1 | Neither. Checkout mode adds h's own repo as a third root a local run may work in; a wheel install has no checkout, so that root would be site-packages nonsense. |
+
+Two consequences for implementation:
+
+- **The invocation difference is already configuration.** Both asset forks sit behind config keys
+  (`charts_dir`, `local_bin`); the fork only selects the DEFAULT. So this is one code path with two
+  default sets, not two code paths — `.h/config.toml` overrides whichever it wants.
+- **Source-mode trades pinning for SKEW.** `LOCAL_BIN` is `packages/js/local-runtime/dist/bin.js`,
+  a separate build artifact, so a current Python CLI can run against a stale JS runner. The packaged
+  path ships both together and "cannot skew" (its own comment). This is the failure mode to watch
+  for h-on-h, because it presents as h behaving like an older version of itself. Partly guarded by
+  `check-workspace-built`; `h doctor` reports the runner as built.
+
+`IS_CHECKOUT` appears in only three files — `config.py`, `infrastructure/workspace.py` (the
+boundary), `infrastructure/local_runtime.py` (an error message). The fork is contained.
+
 ## 6. Open questions (operator, before implementation)
 
 1. ~~**Vendored or referenced?**~~ ANSWERED by decision §2.4 — REFERENCED, through the plugin
@@ -221,3 +246,7 @@ Neither is settled; both are cheap and must happen BEFORE code.
 - **2026-08-31 — §6.2 and §6.3 answered** (extend `h workspaces`; write but never commit, on the
   `npm install` model). All five open questions are now closed. REMAINING BEFORE `Active`: the §5
   verification pass, which was paused by the operator before it ran.
+- **2026-08-31 — §5.1 added**: the nine `IS_CHECKOUT` forks classified from the source. Only four
+  are dissolved by §2.6; three are intrinsic to source-vs-artifact invocation and one is a safety
+  boundary. Named the skew risk source-mode accepts. The §5 steering-location experiment is still
+  UNRUN.
