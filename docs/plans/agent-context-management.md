@@ -54,6 +54,26 @@ These are operator calls from 2026-08-30/31, not open questions. They constrain 
    `.h/h.lock` already takes ("COMMIT THIS FILE — it is what makes an h upgrade a reviewable
    change rather than something that happens to a machine").
 
+4. **ONE plugin, not two.** A "transient plugin" carrying h's ways of working has no content:
+   `ways-of-working` and `h-issues` declare "Applies to the h repo ONLY" in their own frontmatter,
+   so they belong in a consumer repo neither persistently nor transiently. The single `h` plugin
+   (`use-h`, `author-h-template`) is committed and enabled in the repo. This also settles §6.1:
+   the plugin MECHANISM is the reference — skills reach a repo through the marketplace entry in
+   `.claude/settings.json`, not as copied files. Only `.h/` config and charts are committed content.
+5. **Genuinely transient context is provisioned into the WORKTREE, and is not a plugin.** The
+   runtime steering ("you are an agent inside a workflow, here are your MCP servers") is true only
+   during a run and actively FALSE for a human opening the repo, so it must never be committed. It
+   needs no uninstall step: the worktree already supplies the lifetime, and deleting the worktree
+   is the uninstall. The sorting test for any piece of context is **"is this still true when
+   nobody is running h?"**
+6. **h consumes h for CONFIG, not for INSTALLATION.** h gets its own `.h/config.toml` like any
+   consumer, so path resolution goes through the identical code path (`config.py` forks on
+   `IS_CHECKOUT` in NINE places today — every one a works-in-h/breaks-in-a-consumer bug waiting to
+   happen, and h's consumer contract is currently exercised only by trxy). h does NOT get
+   `.h/h.lock`, `.h/venv` or `.h/bin/h`: pinning h to a commit of itself carries no information,
+   and a pinned venv would mean `uv run h` executing a STALE h while you edit `cli/h/` — the tool
+   disagreeing with the source in front of you. The split is config vs installation.
+
 ### 2.1 The consequence worth naming
 
 Decisions 1 and 3 together collapse most of the per-run provisioning problem. If a repo's h
@@ -132,6 +152,18 @@ Consequences for existing machinery:
 - The `--with-setup` hazard on the local substrate disappears rather than being special-cased —
   there is no longer a step that writes into the operator's home.
 
+## 4.1 The flow (operator, 2026-08-31)
+
+Two steps, in order:
+
+1. **Install the CLI into the repo.** This makes h a declared DEPENDENCY of the repo and writes
+   the base config — `.h/config.toml`, the pin, `h-sync.sh`, and the `.h/venv` ignore rule.
+2. **Use the CLI to initialise the plugin.** `.claude/settings.json` gains the h marketplace and
+   the `h@h-marketplace` entry.
+
+Step 2 depends on step 1, which is why the current chicken-and-egg is fatal: `h-sync.sh` is the
+thing that installs the CLI, and today it must be hand-copied before h can do anything.
+
 ## 5. Verification still required
 
 Neither is settled; both are cheap and must happen BEFORE code.
@@ -146,19 +178,20 @@ Neither is settled; both are cheap and must happen BEFORE code.
 
 ## 6. Open questions (operator, before implementation)
 
-1. **Vendored or referenced?** Does a consumer repo commit COPIES of h's skills, or a pointer h
-   resolves at run time? Copies are self-contained and reviewable but drift; pointers stay fresh
-   but reintroduce the "context lives elsewhere" problem this plan exists to kill. The `h.lock`
-   precedent argues for copies plus a reconcile command.
+1. ~~**Vendored or referenced?**~~ ANSWERED by decision §2.4 — REFERENCED, through the plugin
+   marketplace entry, which is what the plugin mechanism is for. Copied content is limited to
+   `.h/` config and charts.
 2. **What is the command surface?** A new `h context` noun (`init`, `sync`, `check`), or extending
    `h workspaces` (which already holds `trust` and already means "a clone h manages")? Leaning
    toward the latter — it needs no new concept, and `trust` is already this.
 3. **Does bootstrapping WRITE or EMIT?** h writing directly into a repo is convenient; emitting a
    diff the operator commits keeps h's changes reviewable. Decision 3 says the resources are
    committed, which does not by itself say who runs `git add`.
-4. **How much does a NON-h repo receive?** h's runtime skills are written "h only" in their own
-   frontmatter (`ways-of-working`, `h-issues`). A consumer repo should get `use-h` and
-   `author-h-template`, not h's internal ways of working. The bootstrap needs a defensible split.
+4. ~~**How much does a NON-h repo receive?**~~ ANSWERED by decision §2.4 — exactly the `h`
+   plugin's two skills. The frontmatter "h repo ONLY" declaration IS the split, and it is already
+   written. A related asymmetry STAYS and is correct: h enables `author-workflow-template` (stock
+   charts), a consumer enables `author-h-template` (`.h/charts/`) — different audiences, genuinely
+   different content, not an accident to unify away.
 5. ~~**Is `.h/venv` committed?**~~ ANSWERED 2026-08-31 by inspecting trxy-v2: the repo's root
    `.gitignore:195` carries `.h/venv/` while `.h/config.toml`, `.h/h.lock` and `.h/charts/` are
    tracked. So the established split is *everything in `.h/` is committed except the virtualenv*,
@@ -180,3 +213,7 @@ Neither is settled; both are cheap and must happen BEFORE code.
   plan's steering-content fold.
 - **2026-08-31 — §6.5 answered** from the live consumer rather than left open: trxy ignores
   `.h/venv/` and tracks the rest of `.h/`. Recorded as a scaffold requirement.
+- **2026-08-31 — decisions §2.4-§2.6 recorded**, closing open questions 1 and 4: one plugin
+  (referenced, not vendored); transient context belongs to the worktree and is not a plugin; h
+  consumes its own config contract but never installs a pinned copy of itself. Open: §6.2 (command
+  surface) and §6.3 (write vs emit).
