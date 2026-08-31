@@ -1,7 +1,8 @@
 # Agent context management in the CLI
 
-Status: Planning — the shape is settled (h adds committed resources to a repo it works on); the
-open questions in §6 need answers before implementation
+Status: Active — all six decisions recorded, all five open questions closed, and the §5
+verification pass is done; §2.6's config half has landed and the `h workspaces` bootstrap surface
+is the remaining build
 Established: 2026-08-31
 
 ## 1. The premise
@@ -165,17 +166,29 @@ Two steps, in order:
 Step 2 depends on step 1, which is why the current chicken-and-egg is fatal: `h-sync.sh` is the
 thing that installs the CLI, and today it must be hand-copied before h can do anything.
 
-## 5. Verification still required
+## 5. Verification — DONE (2026-08-31)
 
-Neither is settled; both are cheap and must happen BEFORE code.
+Both items ran before any code was written. Both changed the design.
 
-1. **Where project-scope steering is actually read from in a cwd.** `<cwd>/CLAUDE.md` is the
-   project memory, but appending h's runtime steering into a target repo's own CLAUDE.md is more
-   invasive than a home file was. `skills/install-steering.sh` already takes a destination as its
-   second argument (`home="${2:-$HOME/.claude}"`), so the plumbing exists either way — confirm the
-   destination that actually loads.
-2. **That skills provisioning MERGES**, the way `mergeMcpConfig` does, so h's own checkout (which
-   already carries `.claude/skills/`) is not clobbered by its own bootstrap.
+1. **Project-scope steering: BOTH files load.** A headless session in a scratch project carrying
+   two distinct codewords — one in `<cwd>/CLAUDE.md`, one in `<cwd>/.claude/CLAUDE.md` — reported
+   BOTH verbatim. So h's runtime steering goes into **`<cwd>/.claude/CLAUDE.md`**, a file the
+   target repo does not own, instead of being appended into the repo's own `CLAUDE.md`. That
+   removes the invasiveness objection entirely: no edit to a file the repo authored, and
+   `install-steering.sh`'s existing second argument already points anywhere. It stays TRANSIENT
+   per decision §2.5 — provisioned into the worktree, never committed, listed in
+   `.git/info/exclude`.
+2. **`mergeMcpConfig` is the model to copy, and it already states the rule.** Its `merge` mode
+   preserves the project's own entries and other top-level keys while h's win on a name conflict,
+   and an unparseable project file falls back to h's config rather than throwing. Skills
+   provisioning takes the same shape: h's skills are ADDED beside whatever `.claude/skills/`
+   already exists, and a same-named skill already present is the repo's, so it wins — the
+   `cp -rn` rule that already governs the HOME copy, applied to the working directory. This
+   matters for h itself, whose checkout carries both real skill directories and the symlinks into
+   `skills/`; a clobbering bootstrap would destroy them.
+
+Its `replace` mode is worth carrying over too, unchanged in meaning: an agent executing untrusted
+specs inherits nothing from the cwd. Not needed today, and the seam should exist.
 
 ## 5.1 The nine forks, classified (verified 2026-08-31)
 
@@ -268,3 +281,7 @@ boundary), `infrastructure/local_runtime.py` (an error message). The fork is con
   file is authoritative rather than merely present. `charts_dir`/`local_bin` are deliberately NOT
   declared — §5.1's asset-location forks, where the difference is real. The INSTALLATION half
   (`h.lock`, `.h/venv`, `.h/bin/h`) remains correctly absent. Suite: 501 pass.
+- **2026-08-31 — §5 verification DONE, and it moved the design.** Steering: both `<cwd>/CLAUDE.md`
+  and `<cwd>/.claude/CLAUDE.md` load, proven with a two-codeword probe, so h writes the one the
+  repo does not own and never edits the repo's own file. Skills: `mergeMcpConfig` supplies the
+  merge semantics AND the precedent that the project's own entries survive. Status → **Active**.
