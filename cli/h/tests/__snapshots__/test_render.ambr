@@ -246,6 +246,7 @@
   summary: Overlay — append the push / open-PR / respond-to-review finishing step.
   params:
     issueNumber: ""
+    baseBranch: ""
   steps:
     - id: create-pr
       activity: "{{params.runActivity}}"
@@ -266,8 +267,12 @@
              git push "https://x-access-token:${GH_TOKEN}@github.com/<owner>/<repo>.git" feature/{{params.slug}}
              Never write the token into git config or the remote URL; if GH_TOKEN is unset,
              skip the push and explain why in the `skipped` field of your final json block.
-          2. Open a pull request against the repository's default branch with the github
-             MCP tool create_pull_request: title from the feature, body from the plan file
+          2. Open a pull request with the github MCP tool create_pull_request. Its BASE is
+             `{{params.baseBranch}}` — when that is empty use the
+             repository's default branch, and when it names a branch pass it as the tool's
+             `base` argument so the PR targets that branch instead. Do not retarget an
+             existing PR you did not open in this run.
+             Title from the feature, body from the plan file
              and the implementation commit (summarize what the implementation step committed).
              Include the `===ITEST EVIDENCE===` section below in the PR body when those values
              are non-empty (i.e. when run-itest was composed in and ran).
