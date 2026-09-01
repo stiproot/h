@@ -36,8 +36,30 @@ steps:
     input:
       task: |-
         ===ACCEPTANCE CHECK===
-        Before you finish, prove the change with the acceptance check. Run at minimum
-        this floor command in the worktree root:
+
+        FIRST, BEFORE YOU CHANGE ANYTHING: run the floor command below and record its
+        result. This is the BASELINE, and taking it is not optional.
+
+        A worktree is not guaranteed to start green. A dependency may be declared but
+        not installed, a build artifact may be stale, or the branch may simply have
+        landed red. If you skip the baseline you cannot tell "my change broke this"
+        from "this was already broken" — and the instinct is always to assume the
+        former and start fixing code you never touched.
+
+        - If the baseline FAILS: that is a PRE-EXISTING failure. Do NOT try to fix it
+          unless the spec explicitly asks you to. Record exactly what failed, then
+          judge whether it blocks your work. If it does, STOP and report it — do not
+          commit, do not push. If it does not (a failure in an area your change cannot
+          reach), you may proceed, but you MUST carry the baseline failures forward and
+          say so in your final report.
+        - If the baseline PASSES: that is the bar. Your change must leave it passing.
+
+        THEN do the work. AFTERWARDS, run the same command again and COMPARE against
+        the baseline you recorded. The comparison is the gate, not the exit code: a
+        failure present in both runs is not yours, and a failure present only in the
+        second one is. Report both counts.
+
+        The floor command, run in the worktree root:
 
             {{ include "h.token" "params.verifyCmd" }}
 
@@ -54,14 +76,17 @@ steps:
         "the change is documentation-only" are examples of valid justifications; mere
         convenience is not.
 
-        If any command fails, diagnose the failure, fix the code, and re-run. Repeat
-        until it passes or you have made 3 fix attempts. Do not weaken any check (no
-        skipping tests, no suppressing errors).
+        If a command fails with a failure that was NOT in your baseline, diagnose it,
+        fix the code, and re-run. Repeat until it passes or you have made 3 fix
+        attempts. Do not weaken any check (no skipping tests, no suppressing errors),
+        and do not spend attempts on failures your baseline already contained — that is
+        someone else's bug, and chasing it is how a run burns its budget without
+        touching its task.
 
-        This check GATES everything below it. If the commands STILL fail after your
-        attempts, STOP here: do not commit, do not push, do not open a pull request —
-        report the failure in plain output (the check outcome; no json block is needed
-        from this step) and halt. The itest machine gate will also catch any locally
+        This check GATES everything below it. If commands YOU regressed still fail after
+        your attempts, STOP here: do not commit, do not push, do not open a pull request —
+        report the failure in plain output (the check outcome and the baseline comparison;
+        no json block is needed from this step) and halt. The itest machine gate will also catch any locally
         committed changes that did not pass, but the check here is the earlier, cheaper gate.
 
         If it passes, commit per the instructions at the top of this composable section
