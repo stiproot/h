@@ -63,6 +63,14 @@ params:
   the pre-clone path the worktree cuts from. Values default (empty = the shared <root>/repo);
   fire-time -p clonePath=/workspace/<other-repo> aims the run at another checkout. */}}
   clonePath: {{ $f.clonePath | default "" | quote }}
+  {{- /*
+  The branch this run's worktree is CUT FROM. Empty keeps the previous behaviour — whatever the
+  clone's own checkout resolves to. It became a fire-time param on 2026-09-01, after a batch of
+  runs collecting onto an integration branch each silently cut from `main` instead: the clone was
+  checked out on the integration branch and every worktree still branched off the default, so run
+  N+1 conflicted with everything run N had merged. Like `create-pr`'s baseBranch, the base is a
+  property of the CAMPAIGN rather than of the repo, so values cannot answer it. */}}
+  remoteBase: {{ $f.remoteBase | default "" | quote }}
   agentId: {{ .Values.agentId | quote }}
   {{- /* wf-registry identity (owner/name) — a stored default; -p repo=… overrides per fire.
   Identity only: no step reads it (the worktree cuts from clonePath, the push derives owner/repo
@@ -91,9 +99,7 @@ steps:
       checkout:
         kind: branch
         branch: {{ printf "feature/%s" $slug | quote }}
-        {{- with $f.remoteBase }}
-        remoteBase: {{ . | quote }}
-        {{- end }}
+        remoteBase: {{ include "h.token" "params.remoteBase" | quote }}
       {{- with $f.gitAuth }}
       auth: {{ . | quote }}
       {{- end }}

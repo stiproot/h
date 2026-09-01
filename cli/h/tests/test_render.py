@@ -252,7 +252,15 @@ def test_implement_publish_mode_opens_param_slots() -> None:
     )
     assert "instanceId" not in definition
     checkout = definition["steps"][0]["input"]["checkout"]
-    assert checkout == {"kind": "branch", "branch": "feature/{{params.slug}}"}
+    # remoteBase is a fire-time slot too: the base a run's worktree is CUT FROM is a property of
+    # the campaign, not of the repo. Empty is equivalent to absent — git-core gates the fetch on
+    # `remoteBase &&` — so the previous behaviour (branch off whatever the clone resolves) is what
+    # an unset param still gives.
+    assert checkout == {
+        "kind": "branch",
+        "branch": "feature/{{params.slug}}",
+        "remoteBase": "{{params.remoteBase}}",
+    }
     assert "{{params.spec}}" in definition["steps"][2]["input"]["task"]
     # implement carries no PR params — opening a PR is the create-pr overlay's job, not feature's.
     assert "{{params.createPr}}" not in definition["steps"][3]["input"]["task"]
