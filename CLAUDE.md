@@ -767,13 +767,22 @@ cli/                                          # the h CLI + charts + run scripts
     │   #       child processes, a roster in parallel, no synthesis (use the answer template for a
     │   #       judged panel)
     │   #   h workspaces   link [PATH] [--profile] [--skill N]… [--rule N]… [--rules-target] [--dry-run]
-    │   #       | trust [PATH]  – `link` provisions this repo's agent primitives into the locations
+    │   #       | plugins [PATH] [--dry-run] | trust [PATH]  – `link` provisions this repo's agent primitives into the locations
     │   #       agents READ (.h/skills/* → symlinks under .claude/skills/, .h/rules/* → one
     │   #       marker-delimited block in a steering file), SELECTING them per run — `--skill`/
     │   #       `--rule` win, else the named profile in `.h/context.toml`, else everything on offer —
     │   #       so one definition can run A with one skill and B with another, and PRUNING what is no
     │   #       longer selected (or run B silently inherits run A's context). Writes files, never
     │   #       commits them: the `npm install` model.
+    │   #       `plugins` installs h's CONSUMER plugin into a repo that PINS h (`.h/h.lock` names
+    │   #       which h, so a fork installs the fork's plugin and h's own checkout is refused —
+    │   #       enabling its published plugin would shadow the live source tree): DECLARE the
+    │   #       marketplace + `h@h-marketplace` in `.claude/settings.json` additively, INSTALL at
+    │   #       PROJECT scope (installs pin per scope; a user entry says nothing about the clone an
+    │   #       agent runs in), then VERIFY by reading `installed_plugins.json` back for this exact
+    │   #       projectPath. DECLARED IS NOT INSTALLED — trxy carried the settings entries from
+    │   #       2026-08-13 under a commit titled "install the h plugin" and it never loaded once, so
+    │   #       the read-back is the gate and the install command's success line is not.
     │   #       `trust` stamps Claude Code's per-project trust for an h-MANAGED checkout only
     │   #   h worktrees    list|rm BRANCH|sweep [--json] [--repo PATH] [--force] [--prune-untracked]
     │   #       [--dry-run]  – both substrates' leftovers. The two removal flags accept DIFFERENT

@@ -1,10 +1,11 @@
 """h workspaces — clone-level admin for the shared workspace root, the sibling of `h worktrees`'
 worktree admin.
 
-Two commands: `link` — provision a repo's agent primitives (`.h/skills/`, `.h/rules/`) into the
-locations agents actually read — and `trust`, which stamps Claude Code's per-project workspace
-trust for an h-managed checkout. The claude CLI ignores a repo's `permissions.allow` entries
-until its path is trusted, and h's clones are never opened interactively, so the dialog that
+Three commands: `link` — provision a repo's agent primitives (`.h/skills/`, `.h/rules/`) into
+the locations agents actually read — `plugins`, which puts h's own consumer plugin where a
+consumer repo's agents will actually load it, and `trust`, which stamps Claude Code's per-project
+workspace trust for an h-managed checkout. The claude CLI ignores a repo's `permissions.allow`
+entries until its path is trusted, and h's clones are never opened interactively, so the dialog that
 grants trust never appears there. Under the local substrate's `--dangerously-skip-permissions`
 runs the ignored entries are INERT (bypass never prompts), so nothing is broken — this command
 exists for the operator who wants the warning gone and the allow-lists in effect, as an explicit
@@ -13,6 +14,9 @@ act rather than something h does to `~/.claude.json` on its own.
 
 import json
 import os
+import re
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Annotated
@@ -28,6 +32,16 @@ console = Console()
 err_console = Console(stderr=True)
 
 CLAUDE_CONFIG = Path.home() / ".claude.json"
+
+# Claude Code's own plugin state. h reads these rather than trusting a command's exit code —
+# see `verify_installed` for why that distinction is the whole point of the `plugins` command.
+CLAUDE_PLUGINS = Path.home() / ".claude" / "plugins"
+INSTALLED_PLUGINS = CLAUDE_PLUGINS / "installed_plugins.json"
+MARKETPLACES = CLAUDE_PLUGINS / "marketplaces"
+
+PLUGIN = "h"
+MARKETPLACE = "h-marketplace"
+PLUGIN_REF = f"{PLUGIN}@{MARKETPLACE}"
 
 
 def stamp_trust(config_path: Path, project_path: Path) -> bool:
@@ -303,6 +317,204 @@ def link(
         )
     elif changed:
         console.print(f"{prefix}rules: block removed from {steering}")
+
+
+# --- plugins: h's consumer plugin, where agents will actually load it -------------------------
+#
+# DECLARING a plugin and INSTALLING one are different things, and conflating them cost 19 days.
+# trxy committed the `.claude/settings.json` marketplace + enabledPlugins entries on 2026-08-13
+# under a commit titled "install the h plugin". The plugin never loaded once: an agent running in
+# a trxy worktree reported seven plugins in its init event and `h` was not among them, because
+# nothing had written an `h@h-marketplace` entry to installed_plugins.json. Every plugin that DID
+# load had one.
+#
+# Nothing surfaced that. The settings file said yes, the marketplace clone was present and
+# current, and the only way to find out was to read what an agent actually loaded. So this command
+# does three things in order, and the third is the one that matters: declare, install, then VERIFY
+# by reading Claude Code's own registry back. A command that trusts its own success line would
+# have reproduced exactly the failure it exists to fix.
+
+
+def h_source(repo: Path) -> str:
+    """The `owner/name` this repo pins h to, read from `.h/h.lock`.
+
+    Derived from the pin rather than hardcoded, so a fork's consumer installs the fork's plugin —
+    the marketplace and the CLI must come from the same place or the skills describe a different h
+    than the one running. It also draws the boundary for free: a repo with no pin is not a
+    consumer, which is what keeps h itself out (h must never enable its own plugin — the
+    marketplace source is GitHub, so it would run a published copy against a live source tree).
+    """
+    lock = repo / ".h" / "h.lock"
+    if not lock.is_file():
+        raise typer.BadParameter(
+            f"no {lock} — this repo does not pin h, so it is not an h consumer.\n"
+            "  The h plugin is for repos that USE h. h's own checkout deliberately does not "
+            "enable it."
+        )
+    match = re.search(r'^repo\s*=\s*"(.+?)"', lock.read_text(), re.MULTILINE)
+    if not match:
+        raise typer.BadParameter(f"{lock} declares no `repo` — cannot tell which h to install.")
+    slug = re.sub(r"^https?://github\.com/", "", match.group(1).strip()).removesuffix(".git")
+    if slug.count("/") != 1:
+        raise typer.BadParameter(
+            f"{lock}'s repo ({match.group(1)}) is not a github owner/name — "
+            "the plugin marketplace can only be sourced from GitHub."
+        )
+    return slug
+
+
+def declare_plugin(repo: Path, slug: str, *, dry_run: bool) -> bool:
+    """Add the marketplace + enabledPlugins entries to `.claude/settings.json`, additively.
+
+    Read-modify-write touching only h's two keys. The file is the REPO's — its other marketplaces,
+    permissions and MCP settings must survive byte-for-byte in value terms, the same rule
+    `stamp_trust` follows for `~/.claude.json` and `link_skills` follows for a real skill
+    directory. Returns False when both entries already say what they should.
+    """
+    path = repo / ".claude" / "settings.json"
+    config = json.loads(path.read_text()) if path.is_file() else {}
+    want_source = {"source": "github", "repo": slug}
+    enabled = config.setdefault("enabledPlugins", {})
+    markets = config.setdefault("extraKnownMarketplaces", {})
+    if (
+        enabled.get(PLUGIN_REF) is True
+        and markets.get(MARKETPLACE, {}).get("source") == want_source
+    ):
+        return False
+    enabled[PLUGIN_REF] = True
+    markets[MARKETPLACE] = {"source": want_source}
+    if not dry_run:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(config, indent=2) + "\n")
+    return True
+
+
+def offered_version() -> str | None:
+    """The plugin version the marketplace CLONE currently offers, or None if it is not cloned yet.
+
+    Read so an install that is present but STALE is updated rather than reported as fine — the
+    per-scope pinning trap: `claude plugin marketplace update` refreshes the clone and moves no
+    install, so a project scope sits on its old snapshot indefinitely and nothing says so.
+    """
+    manifest = MARKETPLACES / MARKETPLACE / "plugins" / PLUGIN / ".claude-plugin" / "plugin.json"
+    if not manifest.is_file():
+        return None
+    try:
+        return json.loads(manifest.read_text()).get("version")
+    except (OSError, ValueError):
+        return None
+
+
+def verify_installed(repo: Path) -> dict | None:
+    """The PROJECT-scope install entry for this repo, straight from Claude Code's registry.
+
+    This is the load-bearing half of the command. `installed_plugins.json` holds one entry per
+    SCOPE — a `user` entry plus a `project` entry per projectPath — so a user-scope install proves
+    nothing about the clone an agent runs in, and the entry for a sibling clone proves nothing
+    about this one. Matching on the exact path is what makes a pass mean something.
+    """
+    if not INSTALLED_PLUGINS.is_file():
+        return None
+    try:
+        registry = json.loads(INSTALLED_PLUGINS.read_text())
+    except (OSError, ValueError):
+        return None
+    for entry in registry.get("plugins", {}).get(PLUGIN_REF, []):
+        if entry.get("scope") == "project" and entry.get("projectPath") == str(repo):
+            return entry
+    return None
+
+
+def claude_plugin(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    """Run `claude plugin …` from the repo, so `--scope project` binds to the right projectPath."""
+    return subprocess.run(
+        ["claude", "plugin", *args], cwd=cwd, capture_output=True, text=True, timeout=300
+    )
+
+
+@app.command()
+def plugins(
+    path: Annotated[
+        Path | None,
+        typer.Argument(help="The consumer repo to provision; default: the cwd's repository root."),
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Report what would change; write nothing.")
+    ] = False,
+    allow_external: Annotated[
+        bool, typer.Option("--allow-external", help="Permit a repo outside the managed workspace.")
+    ] = False,
+) -> None:
+    """Install h's consumer plugin into a repo, and prove it will actually load.
+
+    Declares the marketplace and plugin in `.claude/settings.json`, installs at PROJECT scope, and
+    then reads Claude Code's install registry back to confirm it took. Idempotent — re-run it after
+    a plugin version bump, which is the normal case rather than an exception.
+    """
+    target = Path(path) if path is not None else Path(repo_root(Path.cwd()))
+    try:
+        repo = assert_managed(target, allow_external=allow_external, flag="path")
+    except ExternalWorkspaceError as err:
+        err_console.print(f"[red]{err}[/red]")
+        raise typer.Exit(1) from err
+
+    slug = h_source(repo)
+    prefix = "[yellow]would[/yellow] " if dry_run else ""
+    declared = declare_plugin(repo, slug, dry_run=dry_run)
+    console.print(
+        f"{prefix}declare: {PLUGIN_REF} from {slug} → {repo / '.claude/settings.json'}"
+        + ("" if declared else " (already declared)")
+    )
+
+    if not shutil.which("claude"):
+        err_console.print(
+            "[red]claude is not on PATH[/red] — h never auto-installs it. The declaration above "
+            "is written, but the plugin cannot be installed or verified from here."
+        )
+        raise typer.Exit(1)
+
+    entry = verify_installed(repo)
+    offered = offered_version()
+    if dry_run:
+        state = f"installed {entry['version']}" if entry else "NOT installed"
+        console.print(f"would install: {PLUGIN_REF} at project scope (currently {state})")
+        if entry and offered and entry.get("version") != offered:
+            console.print(f"  would update: {entry['version']} → {offered}")
+        return
+
+    # The marketplace has to be known before an install can resolve it, and a fresh consumer has
+    # never cloned it. `add` is idempotent in practice but reports failure when already present,
+    # so its outcome is deliberately not treated as fatal — the install below is the real gate.
+    if not (MARKETPLACES / MARKETPLACE).is_dir():
+        console.print(f"marketplace: adding {slug}…")
+        claude_plugin(["marketplace", "add", slug], repo)
+
+    if entry and offered and entry.get("version") == offered:
+        console.print(f"install: {PLUGIN_REF} {offered} already at project scope")
+    else:
+        verb = "update" if entry else "install"
+        console.print(f"install: running `claude plugin {verb} {PLUGIN_REF} --scope project`…")
+        done = claude_plugin([verb, PLUGIN_REF, "--scope", "project", "-y"], repo)
+        if done.returncode != 0:
+            err_console.print(f"[red]claude plugin {verb} failed[/red]\n{done.stderr.strip()}")
+            raise typer.Exit(1)
+
+    # VERIFY. Never the command's success line — that is exactly what was trusted for 19 days.
+    final = verify_installed(repo)
+    if final is None:
+        err_console.print(
+            f"[red]✗ {PLUGIN_REF} is declared but NOT installed for {repo}[/red]\n"
+            f"  Nothing in {INSTALLED_PLUGINS} names this project path, so an agent running here "
+            "will load no h skills.\n"
+            "  The install command reported success; the registry disagrees. Do not trust the "
+            "former."
+        )
+        raise typer.Exit(1)
+    console.print(
+        f"[green]✓ verified[/green] {PLUGIN_REF} {final.get('version')} at project scope "
+        f"({final.get('installPath')})"
+    )
+    console.print("  restart any running session — it keeps the plugin set it started with.")
 
 
 @app.command()

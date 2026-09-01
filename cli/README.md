@@ -147,6 +147,21 @@ uv run h workspaces link [PATH] [--profile NAME] [--skill N]... [--rule N]... [-
                                           #   Pruning is not optional: a link no longer selected is REMOVED, or run B
                                           #   silently inherits run A's context. A real directory, or a link pointing
                                           #   elsewhere, is never touched. Writes files, never commits them (npm install model).
+uv run h workspaces plugins [PATH] [--dry-run]
+                                          # install h's CONSUMER plugin into a repo that pins h, and prove it will load:
+                                          #   1. DECLARE — the h marketplace + `h@h-marketplace` into .claude/settings.json,
+                                          #      additively (the repo's own marketplaces/permissions survive untouched). WHICH h
+                                          #      comes from .h/h.lock, so a fork installs the fork's plugin and a repo with no pin
+                                          #      is refused by name — that is what keeps h's own checkout out, since enabling its
+                                          #      published plugin would run a published copy against the live source tree.
+                                          #   2. INSTALL — `claude plugin install --scope project`, run from the repo, because
+                                          #      installs pin PER SCOPE and a user-scope entry says nothing about the clone an
+                                          #      agent actually runs in. A stale install is updated rather than reported fine.
+                                          #   3. VERIFY — read installed_plugins.json back and match this exact projectPath.
+                                          #      DECLARED IS NOT INSTALLED: trxy committed the settings entries on 2026-08-13 under
+                                          #      a commit titled "install the h plugin" and the plugin never loaded once (measured
+                                          #      from a run ledger — seven plugins in the agent's init event, h absent). The install
+                                          #      command reports success either way, so the read-back is the gate.
 uv run h workspaces trust [PATH]          # stamp Claude Code's per-project trust for an h-MANAGED checkout (default: the cwd's repo root) so its permissions.allow applies; external paths refuse by name — trust those by running claude there interactively. The warning this silences is inert under bypass runs; this is the operator's explicit opt-in, never something h does on its own
 uv run h worktrees list [--json] [--repo PATH]  # both substrates' leftovers: prune + list, status graded dirty (tracked edits) / scratch (untracked only) / unpushed
 uv run h worktrees rm BRANCH [--force] [--prune-untracked]    # remove one worktree + its branch; REFUSES while dirty or unpushed unless forced
