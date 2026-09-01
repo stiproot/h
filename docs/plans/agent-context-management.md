@@ -232,7 +232,19 @@ Two steps, in order:
 1. **Install the CLI into the repo.** This makes h a declared DEPENDENCY of the repo and writes
    the base config — `.h/config.toml`, the pin, `h-sync.sh`, and the `.h/venv` ignore rule.
 2. **Use the CLI to initialise the plugin.** `.claude/settings.json` gains the h marketplace and
-   the `h@h-marketplace` entry.
+   the `h@h-marketplace` entry — AND the plugin is then actually INSTALLED, per scope. Those are
+   two different things, and conflating them is what this step originally got wrong (corrected
+   2026-09-01, see §8): a settings entry DECLARES a plugin, `~/.claude/plugins/installed_plugins.json`
+   is what makes it LOAD. trxy has carried the declaration since 2026-08-13 (`18c0bc5d`, "install
+   the h plugin") and the plugin has never loaded once — measured from a run ledger, not inferred:
+   seven plugins in the agent's init event, `h` not among them, and no `h@h-marketplace` key in the
+   install registry while all seven that loaded have one.
+
+   So `init` writes the entries and then runs the install, per scope, and VERIFIES by reading the
+   registry back rather than trusting the command's success line (the per-scope pinning trap: a
+   marketplace update moves no install, and `--scope user` leaves every project scope behind).
+   Verification is the load-bearing half — the failure this corrects was silent for 19 days
+   precisely because nothing ever read back what the declaration claimed.
 
 Step 2 depends on step 1, which is why the current chicken-and-egg is fatal: `h-sync.sh` is the
 thing that installs the CLI, and today it must be hand-copied before h can do anything.
@@ -422,3 +434,24 @@ boundary), `infrastructure/local_runtime.py` (an error message). The fork is con
   and `<cwd>/.claude/CLAUDE.md` load, proven with a two-codeword probe, so h writes the one the
   repo does not own and never edits the repo's own file. Skills: `mergeMcpConfig` supplies the
   merge semantics AND the precedent that the project's own entries survive. Status → **Active**.
+- **2026-09-01 — §4.1 step 2 was WRONG, found by dogfooding trxy.** The step defined "initialise
+  the plugin" as writing the marketplace + `enabledPlugins` entries into `.claude/settings.json`.
+  That is exactly the state trxy has been in since 2026-08-13, and the h plugin has never loaded
+  there: `use-h`, `author-h-template`, `delegate-locally` and `analyze-workflow-run` were absent
+  from all 54 skills an agent loaded in a trxy worktree. Enabled is not installed. Had `h
+  workspaces init` been built to this spec it would have reproduced the broken state and reported
+  success. §4.1 corrected to require the install AND a read-back of `installed_plugins.json`.
+
+  The same session produced a SECOND instance of the identical class, which is why it is worth
+  naming rather than just fixing: `h doctor` reports `codex ok` from `shutil.which` while codex
+  cannot authenticate, and a two-agent panel lost half its roster to it at run time — after paying.
+  `check-env-local` had the right answer all along (it reads each strategy's `validateEnvironment`)
+  but is wired into `up-host.sh`, so the local substrate has no auth preflight at all.
+
+  **The class: h reports PRESENCE where the operator needs READINESS.** A binary on PATH is not an
+  agent that can run; a settings entry is not a plugin that loads; and in both cases the gap is
+  silent and only surfaces after a run has been paid for. Both surfaces have an authority that
+  already knows the true answer and is simply not being asked. Proposed: doctor asks the runner
+  (`agents.probe` → `AGENT_STRATEGIES[...].validateEnvironment`) and reads the plugin registry,
+  making `h doctor` a readiness report rather than a presence report. `init` provisions, `doctor`
+  verifies.
