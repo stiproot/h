@@ -14,9 +14,10 @@ const exactFiles = [
   "ARCHITECTURE.md",
   "cli/README.md",
   "docs/cookbook.md",
-  "apps/claude-agent/steering/h-runtime.md",
+  "docs/gotchas.md",
+  ".h/rules/h-runtime.md",
 ];
-const proseDirs = ["skills", ".claude/skills/observe-h"];
+const proseDirs = [".h/skills", ".claude/skills/observe-h"];
 const proseExtensions = new Set([".md", ".txt", ".yaml", ".yml"]);
 export const rules = [
   { pattern: /\bhops?\b/gi, replacement: "path or step" },
@@ -63,8 +64,22 @@ export function findViolations(path, contents, repositoryRoot = root) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // A source that has MOVED must fail, never silently drop. Both lists below had gone stale
+  // undetected: `skills/` became `.h/skills/` and the runtime rule left
+  // `apps/claude-agent/steering/` on 2026-08-31, and because a missing path contributed zero
+  // files the guard kept reporting a pass while checking neither — every h skill and the one
+  // rule agents run on, unguarded. That is this repo's own hollow-green failure mode, inside a
+  // guard. Deleting a source is now a deliberate edit to these lists.
+  const missing = [...exactFiles, ...proseDirs].filter((path) => !existsSync(resolve(root, path)));
+  if (missing.length) {
+    console.error("Vocabulary guard failed: these prose sources do not exist:");
+    for (const path of missing) console.error(`  ${path}`);
+    console.error("  A moved source silently checks NOTHING — update the list, don't drop it.");
+    process.exit(1);
+  }
+
   const files = [
-    ...exactFiles.map((path) => resolve(root, path)).filter(existsSync),
+    ...exactFiles.map((path) => resolve(root, path)),
     ...proseDirs.flatMap((path) => filesUnder(resolve(root, path))),
   ];
   const violations = files.flatMap((path) =>

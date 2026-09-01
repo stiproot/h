@@ -135,6 +135,18 @@ uv run h cron list [--local]              # the cron registry — recur crons + 
 uv run h cron rm <repo> <slug> <workflow>  # disarm a recur cron: set inactive+disabled, keep row for audit (idempotent; calls POST /cron/disarm — single-writer)
 uv run h cron discover add <repo> --label L --cadence C [--workflow feature-pr] [--max-per-day N] [--run-budget-mins M] [--run-retries K] [-p k=v] [--local]  # arm a discovery cron: fires a provision workflow whose register-discover activity writes cron:discover (§10 — no POST /cron/discover). Each due tick fans out one <workflow> per newly-labeled issue, deduped vs wf:*; --run-budget-mins supervises each fired run
 uv run h status [--json]                  # one-screen driver check-in: active chains, engine heartbeats (stale >5m flagged), verdict OK / ATTENTION
+uv run h workspaces link [PATH] [--profile NAME] [--skill N]... [--rule N]... [--rules-target F] [--dry-run]
+                                          # provision this repo's agent primitives into the locations agents READ:
+                                          #   .h/skills/* become symlinks under .claude/skills/, .h/rules/* become one
+                                          #   marker-delimited block in a steering file (default .claude/CLAUDE.md).
+                                          #   A [sources] entry in .h/context.toml first links a skill whose FILES live
+                                          #   elsewhere in the tree INTO .h/skills/, so there is one copy, not two that drift.
+                                          #   SELECTION is the point: --skill/--rule win, else the named profile from
+                                          #   .h/context.toml, else everything on offer — so a workflow's setup step
+                                          #   narrows it PER RUN and one definition runs A with one skill and B with another.
+                                          #   Pruning is not optional: a link no longer selected is REMOVED, or run B
+                                          #   silently inherits run A's context. A real directory, or a link pointing
+                                          #   elsewhere, is never touched. Writes files, never commits them (npm install model).
 uv run h workspaces trust [PATH]          # stamp Claude Code's per-project trust for an h-MANAGED checkout (default: the cwd's repo root) so its permissions.allow applies; external paths refuse by name — trust those by running claude there interactively. The warning this silences is inert under bypass runs; this is the operator's explicit opt-in, never something h does on its own
 uv run h worktrees list [--json] [--repo PATH]  # both substrates' leftovers: prune + list, status graded dirty (tracked edits) / scratch (untracked only) / unpushed
 uv run h worktrees rm BRANCH [--force] [--prune-untracked]    # remove one worktree + its branch; REFUSES while dirty or unpushed unless forced

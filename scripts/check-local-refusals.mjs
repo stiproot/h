@@ -59,6 +59,7 @@ const CALL = "_refuse_engine_flags(";
 // Docs known to enumerate the set. Losing a marker here is a failure, not a silent opt-out:
 // the whole point is that this list only ever grows.
 const REQUIRED = [
+  "CLAUDE.md",
   "cli/README.md",
   "docs/diagrams/execution-substrates-c4-container.md",
   "docs/diagrams/local-run-sequence.md",

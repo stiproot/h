@@ -34,6 +34,12 @@
 //    (caught only by a human code review) and `h delegate` shipped absent from both lists
 //    (caught only when someone thought to ask whether the docs were current).
 //
+// 7. CLAUDE.md SIZE BUDGET — CLAUDE.md must stay under a hard character cap. (Rationale at the
+//    check itself.)
+//
+// 8. GOTCHA INDEX LOCKSTEP — the `## Key gotchas` index in CLAUDE.md and docs/gotchas.md must name
+//    the same gotchas, in both directions. (Rationale at the check itself.)
+//
 // Wired into `bun run lint` (package.json) beside check-templates.mjs. No skip flag by design.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -258,6 +264,7 @@ const steeringDocs = [
   "cli/README.md",
   "docs/DRIVER.md",
   "docs/cookbook.md",
+  "docs/gotchas.md",
   "docs/h-builds-h-runbook.md",
   ...skillMarkdownFiles(".h/skills"),
 ];
@@ -424,6 +431,91 @@ if (commandViolations.length > 0) {
   process.exit(1);
 }
 
+// ---------------------------------------------------------------------------
+// 7. CLAUDE.md size budget
+//
+//    CLAUDE.md is loaded into EVERY agent session — which is exactly why the checks above insist
+//    that things be named in it, and exactly why it cannot grow without bound. The harness refuses
+//    a steering file past ~150k characters; CLAUDE.md reached 157k on 2026-09-01 and the session
+//    that hit the ceiling had to restructure it before doing any work. Two sections were 88k of
+//    the 157k on their own.
+//
+//    The cap is deliberately BELOW the harness limit, so the repo notices while there is still
+//    room to think. Blowing it is never fixed by deleting knowledge: move the DETAIL to its one
+//    long-lived home (a doc, a skill, a guard header, ARCHITECTURE.md) and leave a titled index
+//    line behind — the shape `## Key gotchas` and the `h` CLI command list already use.
+// ---------------------------------------------------------------------------
+
+const CLAUDE_MD_MAX_CHARS = 130_000;
+
+if (claudeMd.length > CLAUDE_MD_MAX_CHARS) {
+  console.error("✗ check-steering: CLAUDE.md is over its size budget.\n");
+  console.error(
+    `  ${claudeMd.length.toLocaleString()} chars vs a ${CLAUDE_MD_MAX_CHARS.toLocaleString()} cap ` +
+      `(the harness itself refuses past ~150,000).\n`,
+  );
+  console.error("  CLAUDE.md is loaded into every agent session, so its size is a budget.");
+  console.error("  Fix: move the DETAIL of the largest section to its one long-lived home (a doc,");
+  console.error("  a skill, a guard header, ARCHITECTURE.md) and leave a titled index line here —");
+  console.error("  the shape `## Key gotchas` -> docs/gotchas.md already uses. Never just delete.\n");
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Gotcha index lockstep
+//
+//    The gotchas were split on 2026-09-01: docs/gotchas.md holds the entries in full, CLAUDE.md
+//    holds a one-line-per-gotcha INDEX so an agent still learns the trap EXISTS without paying 43k
+//    characters of context for it. That split only works while the two lists agree — an entry
+//    added to the doc but not the index is invisible to every agent session (the same failure the
+//    CLI command check exists for), and an index line whose entry was removed points at nothing.
+//    Neither drift is visible to any other guard, and both are one careless edit away.
+//
+//    Titles must match BYTE-FOR-BYTE, which is also what makes the index line a usable anchor for
+//    finding the entry in the doc.
+// ---------------------------------------------------------------------------
+
+const GOTCHA_TITLE_RE = /^- \*\*(.+?)\*\*/gm;
+
+const gotchaTitles = (text) => new Set([...text.matchAll(GOTCHA_TITLE_RE)].map((m) => m[1]));
+
+const gotchasDoc = readText("docs/gotchas.md");
+const claudeIndexSection = claudeMd.slice(claudeMd.indexOf("\n## Key gotchas"));
+
+if (claudeIndexSection === claudeMd) {
+  console.error("✗ check-steering: CLAUDE.md has no `## Key gotchas` section to index.\n");
+  console.error("  The section is the always-in-context index for docs/gotchas.md; without it the");
+  console.error("  gotchas are invisible to agents and this check silently verifies nothing.\n");
+  process.exit(1);
+}
+
+const docTitles = gotchaTitles(gotchasDoc);
+const indexTitles = gotchaTitles(claudeIndexSection);
+
+if (docTitles.size === 0) {
+  console.error("✗ check-steering: no gotcha titles found in docs/gotchas.md.\n");
+  console.error("  The `- **Title** —` shape changed, so this check was about to pass on an");
+  console.error("  empty list — the repo's own hollow-green failure mode inside a guard.\n");
+  process.exit(1);
+}
+
+const missingFromIndex = [...docTitles].filter((t) => !indexTitles.has(t));
+const missingFromDoc = [...indexTitles].filter((t) => !docTitles.has(t));
+
+if (missingFromIndex.length > 0 || missingFromDoc.length > 0) {
+  console.error("✗ check-steering: the gotcha index and docs/gotchas.md disagree.\n");
+  for (const t of missingFromIndex) {
+    console.error(`  in docs/gotchas.md but NOT indexed in CLAUDE.md:  **${t}**`);
+  }
+  for (const t of missingFromDoc) {
+    console.error(`  indexed in CLAUDE.md but NOT in docs/gotchas.md:  **${t}**`);
+  }
+  console.error("\n  A gotcha missing from the index is invisible to every agent session; an index");
+  console.error("  line with no entry points at nothing. Titles must match byte-for-byte.\n");
+  process.exit(1);
+}
+
 console.log(
-  "✓ check-steering: components, activities, skill scripts, test commands, chain flags and CLI commands all documented",
+  "✓ check-steering: components, activities, skill scripts, test commands, chain flags, CLI commands," +
+    ` gotcha index (${docTitles.size}) and CLAUDE.md size (${claudeMd.length.toLocaleString()}/${CLAUDE_MD_MAX_CHARS.toLocaleString()}) all OK`,
 );
