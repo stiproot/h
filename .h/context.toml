@@ -18,3 +18,13 @@ rules = ["h-runtime"]
 # depend on rides the step prose itself (h.outputContractEpilogue), not this rule.
 skills = ["*"]
 rules = []
+
+# Skills whose FILES live elsewhere in this repo. h links them into .h/skills/ so there is one
+# copy: the plugin owns delegate-locally and analyze-workflow-run because consumers need them, and
+# h reads the same files rather than keeping a second set that would drift.
+#
+# Declared rather than "everything under plugins/" because that is a SELECTION: use-h and
+# author-h-template are consumer-facing and would be noise in h's own sessions.
+[sources]
+delegate-locally = "plugins/h/skills/delegate-locally"
+analyze-workflow-run = "plugins/h/skills/analyze-workflow-run"

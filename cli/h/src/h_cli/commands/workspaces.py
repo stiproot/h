@@ -12,6 +12,7 @@ act rather than something h does to `~/.claude.json` on its own.
 """
 
 import json
+import os
 import tomllib
 from pathlib import Path
 from typing import Annotated
@@ -86,6 +87,45 @@ def load_profile(repo: Path, profile: str | None) -> tuple[list[str] | None, lis
         raise typer.BadParameter(f"no profile '{profile}' in {manifest} (have: {known})")
     entry = profiles[profile]
     return entry.get("skills"), entry.get("rules")
+
+
+def link_sources(repo: Path, *, dry_run: bool) -> list[str]:
+    """Link skills whose files live elsewhere in the repo INTO `.h/skills/`.
+
+    The first of two hops: this populates the source dir, and `link_skills` then publishes
+    it to the agent pickup locations. It exists because a skill can have two audiences —
+    `delegate-locally` is published to consumers from `plugins/h/skills/` AND used by h
+    itself — and keeping a second copy in `.h/skills/` would be the drift this design avoids.
+
+    Declared in `[sources]` rather than inferred from a directory listing, because which of the
+    published skills h ALSO wants is a selection, not a rule.
+    """
+    manifest = repo / ".h" / MANIFEST
+    if not manifest.is_file():
+        return []
+    try:
+        sources = tomllib.loads(manifest.read_text()).get("sources", {})
+    except (OSError, tomllib.TOMLDecodeError) as err:
+        raise typer.BadParameter(f"unreadable {manifest}: {err}") from err
+    made = []
+    for name, rel in sources.items():
+        target = repo / rel
+        if not (target / "SKILL.md").is_file():
+            raise typer.BadParameter(f'[sources] {name} = "{rel}" — no SKILL.md at {target}')
+        link = repo / ".h" / "skills" / name
+        want = os.path.relpath(target, link.parent)
+        if link.is_symlink() and link.readlink().as_posix() == want:
+            continue
+        if link.exists() and not link.is_symlink():
+            raise typer.BadParameter(
+                f"{link} is a real directory — [sources] would replace it; remove it first"
+            )
+        if not dry_run:
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.unlink(missing_ok=True)
+            link.symlink_to(want)
+        made.append(name)
+    return made
 
 
 def available(src: Path, marker: str) -> list[str]:
@@ -236,6 +276,7 @@ def link(
         err_console.print(f"[red]{err}[/red]")
         raise typer.Exit(1) from err
 
+    sourced = link_sources(repo, dry_run=dry_run)
     prof_skills, prof_rules = load_profile(repo, profile)
     skills = resolve_names(skill or prof_skills, available(repo / ".h" / "skills", "SKILL.md"))
     rules = (
@@ -249,6 +290,8 @@ def link(
     changed = write_rules(repo, rules, steering, dry_run=dry_run)
 
     prefix = "[yellow]would[/yellow] " if dry_run else ""
+    if sourced:
+        console.print(f"{prefix}sources: {', '.join(sourced)} linked into .h/skills/")
     console.print(
         f"{prefix}skills: {len(skills)} selected, {len(linked)} linked, {len(pruned)} pruned"
     )

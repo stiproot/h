@@ -117,3 +117,35 @@ def test_star_and_none_both_mean_everything(tmp_path: Path) -> None:
     assert resolve_names(["*"], offered) == ["alpha", "beta"]
     with pytest.raises(Exception, match="not available"):
         resolve_names(["ghost"], offered)
+
+
+def test_sources_link_skills_whose_files_live_elsewhere(tmp_path: Path) -> None:
+    """A skill can have two audiences: published for consumers AND used by this repo.
+
+    `[sources]` links the one copy into `.h/skills/` rather than keeping a second set that drifts.
+    """
+    from h_cli.commands.workspaces import link_sources
+
+    repo = tmp_path
+    published = repo / "plugins" / "h" / "skills" / "delegate-locally"
+    published.mkdir(parents=True)
+    (published / "SKILL.md").write_text("---\nname: delegate-locally\n---\n")
+    (repo / ".h").mkdir(exist_ok=True)
+    (repo / ".h" / "context.toml").write_text(
+        '[sources]\ndelegate-locally = "plugins/h/skills/delegate-locally"\n'
+    )
+    assert link_sources(repo, dry_run=False) == ["delegate-locally"]
+    link = repo / ".h" / "skills" / "delegate-locally"
+    assert link.is_symlink()
+    assert (link / "SKILL.md").is_file()
+    # idempotent — a second run has nothing to do
+    assert link_sources(repo, dry_run=False) == []
+
+
+def test_a_source_pointing_nowhere_is_refused(tmp_path: Path) -> None:
+    (tmp_path / ".h").mkdir()
+    (tmp_path / ".h" / "context.toml").write_text('[sources]\nghost = "plugins/h/skills/ghost"\n')
+    from h_cli.commands.workspaces import link_sources
+
+    with pytest.raises(Exception, match="no SKILL.md"):
+        link_sources(tmp_path, dry_run=False)
