@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 import typer
 
-from h_cli.commands.workspaces import declare_plugin, h_source, verify_installed
+from h_cli.commands.workspaces import (
+    declare_plugin,
+    h_source,
+    marketplace_registered,
+    verify_installed,
+)
 
 
 def _consumer(tmp_path: Path, repo_url: str = "https://github.com/stiproot/h") -> Path:
@@ -183,3 +188,42 @@ def test_a_missing_or_corrupt_registry_reads_as_not_installed(
     bad.write_text("{not json")
     monkeypatch.setattr("h_cli.commands.workspaces.INSTALLED_PLUGINS", bad)
     assert verify_installed(repo) is None
+
+
+# --- marketplace registration: known, not merely cloned ---------------------------------------
+
+
+def test_a_clone_on_disk_is_not_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two come apart, and an install cannot resolve a marketplace the config does not know.
+    Gating on the directory would be a presence check standing in for a readiness one."""
+    (tmp_path / "marketplaces" / "h-marketplace").mkdir(parents=True)
+    monkeypatch.setattr("h_cli.commands.workspaces.MARKETPLACES", tmp_path / "marketplaces")
+    monkeypatch.setattr(
+        "h_cli.commands.workspaces.KNOWN_MARKETPLACES", tmp_path / "known_marketplaces.json"
+    )
+    (tmp_path / "known_marketplaces.json").write_text(json.dumps({"other-marketplace": {}}))
+    assert marketplace_registered() is False
+
+
+def test_a_registered_marketplace_reads_as_registered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "known_marketplaces.json"
+    path.write_text(json.dumps({"h-marketplace": {}, "other-marketplace": {}}))
+    monkeypatch.setattr("h_cli.commands.workspaces.KNOWN_MARKETPLACES", path)
+    assert marketplace_registered() is True
+
+
+def test_a_missing_or_corrupt_registry_reads_as_unregistered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fail closed: re-adding a registered marketplace is harmless, assuming one that is not
+    registered is how the install fails to resolve."""
+    monkeypatch.setattr("h_cli.commands.workspaces.KNOWN_MARKETPLACES", tmp_path / "absent.json")
+    assert marketplace_registered() is False
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    monkeypatch.setattr("h_cli.commands.workspaces.KNOWN_MARKETPLACES", bad)
+    assert marketplace_registered() is False

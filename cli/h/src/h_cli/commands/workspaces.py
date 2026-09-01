@@ -37,6 +37,7 @@ CLAUDE_CONFIG = Path.home() / ".claude.json"
 # see `verify_installed` for why that distinction is the whole point of the `plugins` command.
 CLAUDE_PLUGINS = Path.home() / ".claude" / "plugins"
 INSTALLED_PLUGINS = CLAUDE_PLUGINS / "installed_plugins.json"
+KNOWN_MARKETPLACES = CLAUDE_PLUGINS / "known_marketplaces.json"
 MARKETPLACES = CLAUDE_PLUGINS / "marketplaces"
 
 PLUGIN = "h"
@@ -161,6 +162,23 @@ def resolve_names(selected: list[str] | None, offered: list[str]) -> list[str]:
             f"not available: {', '.join(unknown)} (have: {', '.join(offered) or 'none'})"
         )
     return selected
+
+
+def why_none(src: Path, offered: list[str], chose: str) -> str:
+    """Why a count of zero is zero — the three situations a bare `0 selected` cannot tell apart.
+
+    A repo with no `.h/skills/`, a repo whose `.h/skills/` is empty, and a profile that
+    deliberately selects nothing all produced the identical line `0 selected, 0 linked, 0 pruned`
+    with a clean exit. Only the third is what the operator asked for; the first two mean their
+    agents will run with no context and nothing said so. That is the same shape as the plugin bug
+    this command's sibling exists to fix — a success line that cannot fail — so it gets the same
+    treatment: say WHICH.
+    """
+    if not src.is_dir():
+        return f"no {src.name}/ under .h/ — this repo provisions none"
+    if not offered:
+        return f".h/{src.name}/ is empty — nothing on offer"
+    return f"{chose} selects none of the {len(offered)} on offer ({', '.join(offered)})"
 
 
 def link_skills(repo: Path, names: list[str], *, dry_run: bool) -> tuple[list[str], list[str]]:
@@ -292,31 +310,52 @@ def link(
 
     sourced = link_sources(repo, dry_run=dry_run)
     prof_skills, prof_rules = load_profile(repo, profile)
-    skills = resolve_names(skill or prof_skills, available(repo / ".h" / "skills", "SKILL.md"))
-    rules = (
-        resolve_names(rule or prof_rules or [], available(repo / ".h" / "rules", "*.md"))
-        if (rule or prof_rules)
-        else []
-    )
+    skills_src, rules_src = repo / ".h" / "skills", repo / ".h" / "rules"
+    offered_skills = available(skills_src, "SKILL.md")
+    offered_rules = available(rules_src, "*.md")
+    skills = resolve_names(skill or prof_skills, offered_skills)
+    rules = resolve_names(rule or prof_rules or [], offered_rules) if (rule or prof_rules) else []
 
     linked, pruned = link_skills(repo, skills, dry_run=dry_run)
     steering = rules_target or (repo / ".claude" / "CLAUDE.md")
     changed = write_rules(repo, rules, steering, dry_run=dry_run)
 
+    chose = (
+        "--skill/--rule"
+        if (skill or rule)
+        else f"profile '{profile}'"
+        if profile
+        else "the default selection"
+    )
     prefix = "[yellow]would[/yellow] " if dry_run else ""
     if sourced:
         console.print(f"{prefix}sources: {', '.join(sourced)} linked into .h/skills/")
-    console.print(
-        f"{prefix}skills: {len(skills)} selected, {len(linked)} linked, {len(pruned)} pruned"
-    )
+
+    if skills:
+        console.print(
+            f"{prefix}skills: {len(skills)} selected, {len(linked)} linked, {len(pruned)} pruned"
+        )
+    else:
+        console.print(f"skills: none — {why_none(skills_src, offered_skills, chose)}")
     if pruned:
         console.print(f"  pruned: {', '.join(pruned)}")
+
     if rules:
         console.print(
             f"{prefix}rules: {', '.join(rules)} → {steering}" + ("" if changed else " (unchanged)")
         )
     elif changed:
         console.print(f"{prefix}rules: block removed from {steering}")
+    else:
+        console.print(f"rules: none — {why_none(rules_src, offered_rules, chose)}")
+
+    # The case the operator most needs told: they ran a provisioning command and the repo gained
+    # NOTHING. Not an error — trxy legitimately has no primitives yet — but it must never read as
+    # a successful provision, which is precisely how `0 selected, 0 linked, 0 pruned` read.
+    if not skills and not rules and not pruned and not sourced:
+        console.print(
+            "[yellow]nothing was provisioned[/yellow] — agents here get no skills or rules from h."
+        )
 
 
 # --- plugins: h's consumer plugin, where agents will actually load it -------------------------
@@ -405,6 +444,23 @@ def offered_version() -> str | None:
         return None
 
 
+def marketplace_registered() -> bool:
+    """Whether Claude Code KNOWS the h marketplace — not merely whether its clone sits on disk.
+
+    The two come apart: `marketplace remove` and a hand-edited config can leave either half
+    without the other, and an install cannot resolve a marketplace the config does not know.
+    Gating on the clone directory would be a PRESENCE check standing in for a READINESS one,
+    which is the exact substitution this whole command exists to eliminate — so it reads the
+    registry, the same way `verify_installed` refuses to read an exit code.
+    """
+    if not KNOWN_MARKETPLACES.is_file():
+        return False
+    try:
+        return MARKETPLACE in json.loads(KNOWN_MARKETPLACES.read_text())
+    except (OSError, ValueError):
+        return False
+
+
 def verify_installed(repo: Path) -> dict | None:
     """The PROJECT-scope install entry for this repo, straight from Claude Code's registry.
 
@@ -482,10 +538,10 @@ def plugins(
             console.print(f"  would update: {entry['version']} → {offered}")
         return
 
-    # The marketplace has to be known before an install can resolve it, and a fresh consumer has
-    # never cloned it. `add` is idempotent in practice but reports failure when already present,
-    # so its outcome is deliberately not treated as fatal — the install below is the real gate.
-    if not (MARKETPLACES / MARKETPLACE).is_dir():
+    # The marketplace has to be REGISTERED before an install can resolve it, and a fresh consumer
+    # has never added it. `add` reports failure when it is already present, so its outcome is
+    # deliberately not fatal — the install below, and the read-back after it, are the real gates.
+    if not marketplace_registered():
         console.print(f"marketplace: adding {slug}…")
         claude_plugin(["marketplace", "add", slug], repo)
 

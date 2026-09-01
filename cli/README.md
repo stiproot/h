@@ -284,7 +284,20 @@ without reading h's own docs.
 `h doctor` reports the whole toolchain on one screen — required binaries (node, git, helm, and
 nats-server, which journaled `--local` chain runs refuse loud without — `--no-journal` is the
 per-run out), agent CLIs, the remaining optional pieces, the built runner, both chart roots,
-and which consumer config is in effect. It is a report, not a gate: every surface still
+and which consumer config is in effect.
+
+**An agent CLI is reported by READINESS, not presence.** A binary on PATH is not an agent that
+can run: doctor printed `codex ok` on 2026-09-01 and a two-agent review lost half its roster at
+run time, because nothing set `CODEX_AUTH_MODE=chatgpt` — the credentials were on disk the whole
+time. So a row is `ok`, `no auth` (naming the variables that would fix it), `missing`, or
+`on PATH` when the answer is UNKNOWN. The answer comes from each agent strategy's own
+`validateEnvironment` through the runner's `probe` job, rather than from a list of keys restated
+in Python that would drift into confidently wrong; it is asked over the same shell-wins-over-.env
+layering a `--local` run uses, so it is the answer the RUN will give for this repo. An
+unreachable probe (no built runner, an older one) reports UNKNOWN and never `ok` — answering from
+ignorance is the failure being fixed, not a milder version of it.
+
+It is a report, not a gate: every surface still
 refuses loud by name at its own point of use (the operator-provisioned posture — h never
 auto-installs). `h workflow run --local` checks the invoking checkout against the managed
 workspace boundary exactly like `h delegate --cwd` (override: `--allow-external`).

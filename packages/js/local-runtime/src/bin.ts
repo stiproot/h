@@ -14,6 +14,7 @@ import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schema } from "effec
 import { ExecGitClient } from "git-core";
 
 import { runChain } from "./domain/chain.ts";
+import { runProbe } from "./domain/probe.ts";
 import { runRegistry } from "./domain/registry.ts";
 import { runDelegate } from "./domain/delegate.ts";
 import { runWorkflow } from "./domain/execute.ts";
@@ -193,6 +194,8 @@ const main = async (): Promise<void> => {
           return yield* runChain(job);
         case "registry":
           return yield* runRegistry(job);
+        case "probe":
+          return yield* runProbe(job);
       }
     }),
   );

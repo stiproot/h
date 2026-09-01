@@ -411,7 +411,37 @@ export type RegistryEnvelope = {
   error?: string;
 };
 
-export const LocalJob = Schema.Union(DelegateJob, WorkflowJob, ChainJob, RegistryJob);
+/**
+ * A READINESS probe — "could each agent actually run from here?"
+ *
+ * Its own kind rather than a `registry` op, because it touches no registry and needs no fabric:
+ * the answer comes from each agent strategy's own `validateEnvironment`, in process. Folding it
+ * into RegistryJob would make `h doctor` depend on a running NATS to answer a question about
+ * credentials.
+ */
+export const ProbeJob = Schema.Struct({
+  kind: Schema.Literal("probe"),
+  op: Schema.Literal("agents"),
+});
+export type ProbeJob = Schema.Schema.Type<typeof ProbeJob>;
+
+/** One agent's readiness, in the strategy's own words. */
+export type AgentReadiness = {
+  agent: LocalAgentType;
+  /** True when the agent's own `validateEnvironment` is satisfied by the ambient env. */
+  ready: boolean;
+  /** What is missing, named by the strategy — null when ready. */
+  detail: string | null;
+};
+
+/** What a probe job answers with. */
+export type ProbeEnvelope = {
+  ok: boolean;
+  op: string;
+  agents: ReadonlyArray<AgentReadiness>;
+};
+
+export const LocalJob = Schema.Union(DelegateJob, WorkflowJob, ChainJob, RegistryJob, ProbeJob);
 export type LocalJob = Schema.Schema.Type<typeof LocalJob>;
 
 /** What a workflow job writes to stdout: the step results map, exactly as the engine returns it. */

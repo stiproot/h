@@ -793,7 +793,14 @@ cli/                                          # the h CLI + charts + run scripts
     │   #       seed/relay/back-edge surface
     │   #   h doctor       – the consumer surface's one-screen toolchain report: required binaries,
     │   #       agent CLIs, the built runner, both chart roots, and which consumer config is in
-    │   #       effect. A report, never a gate: every surface still refuses loud by name at its own
+    │   #       effect. An agent CLI is reported by READINESS, not presence — `ok` / `no auth`
+    │   #       (naming the variables) / `missing` / `on PATH` when unknown — because a binary on
+    │   #       PATH is not an agent that can run: doctor said `codex ok` on 2026-09-01 and a panel
+    │   #       lost half its roster at run time for want of CODEX_AUTH_MODE. The answer comes from
+    │   #       each strategy's own `validateEnvironment` via the runner's `probe` job, over the
+    │   #       same shell+.env layering a `--local` run uses, so it is the answer the RUN will
+    │   #       give; an unreachable probe reports UNKNOWN rather than reviving the guess.
+    │   #       A report, never a gate: every surface still refuses loud by name at its own
     │   #       point of use. THE CONSUMER SURFACE ITSELF: a repo consuming h declares its paths
     │   #       ONCE in `<repo>/.h/config.toml` (found by walking up from cwd, git-style; precedence
     │   #       env var > config file > h-checkout default; keys charts_dir/local_bin/workspace_dir/

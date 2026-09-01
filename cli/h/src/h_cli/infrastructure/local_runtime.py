@@ -303,3 +303,27 @@ def registry(op: str, **fields: Any) -> Any:
     if not envelope.get("ok"):
         raise LocalRunError(envelope.get("error") or f"registry {op} failed")
     return envelope.get("result")
+
+
+def probe_agents() -> list[dict[str, Any]] | None:
+    """Which agents could actually run from here, asked of the runner.
+
+    Returns one `{agent, ready, detail}` per agent, or None when the probe cannot be reached at
+    all — an unbuilt runner, a packaged install with no binary, an older runner that does not know
+    this job kind. None means UNKNOWN, and a caller must render it as unknown rather than as a
+    failure: reporting "no auth" because we could not ask is the same class of lie as reporting
+    "ok" because a binary exists.
+
+    The env matters as much as the question. `run_job` layers the repo's .env under the shell env,
+    which is exactly what a `--local` run does, so the answer is the one the RUN will give for this
+    repo's config — not a generic one. That is why this goes through the runner rather than
+    restating each agent's auth rules in Python, where they would drift into confidently wrong.
+    """
+    try:
+        envelope = run_job({"kind": "probe", "op": "agents"})
+    except (LocalRunError, OSError, ValueError):
+        return None
+    if not envelope.get("ok"):
+        return None
+    agents = envelope.get("agents")
+    return agents if isinstance(agents, list) else None

@@ -9,6 +9,7 @@ from h_cli.commands.workspaces import (
     link_skills,
     load_profile,
     resolve_names,
+    why_none,
     write_rules,
 )
 
@@ -149,3 +150,31 @@ def test_a_source_pointing_nowhere_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(Exception, match="no SKILL.md"):
         link_sources(tmp_path, dry_run=False)
+
+
+# --- why a zero is zero -----------------------------------------------------------------------
+#
+# Three different situations produced the identical line `0 selected, 0 linked, 0 pruned` and a
+# clean exit. Only one of them is what the operator asked for.
+
+
+def test_a_repo_with_no_source_dir_says_so(tmp_path: Path) -> None:
+    """trxy's case: no .h/skills/ at all, so agents there get no context from h."""
+    assert "no skills/ under .h/" in why_none(tmp_path / ".h" / "skills", [], "the default")
+
+
+def test_an_empty_source_dir_is_distinct_from_a_missing_one(tmp_path: Path) -> None:
+    """A populated-looking repo whose directory is empty is a DIFFERENT failure to diagnose."""
+    src = tmp_path / ".h" / "skills"
+    src.mkdir(parents=True)
+    assert ".h/skills/ is empty" in why_none(src, [], "the default")
+
+
+def test_a_deliberate_empty_selection_names_what_it_passed_over(tmp_path: Path) -> None:
+    """The legitimate case — `--profile local` turning rules off — must not read like a fault,
+    and must name what was on offer so the operator can see the choice was real."""
+    src = tmp_path / ".h" / "rules"
+    src.mkdir(parents=True)
+    message = why_none(src, ["h-runtime"], "profile 'local'")
+    assert "profile 'local' selects none of the 1 on offer" in message
+    assert "h-runtime" in message

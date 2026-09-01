@@ -26,6 +26,7 @@ from h_cli.config import (
     LOCAL_WORKTREES_DIR,
     charts_roots,
 )
+from h_cli.infrastructure.local_runtime import probe_agents
 
 console = Console()
 
@@ -50,6 +51,33 @@ _OPTIONAL = (
 def _tool_row(name: str, purpose: str) -> tuple[str, str, str]:
     path = shutil.which(name)
     return (name, "[green]ok[/green]" if path else "[yellow]missing[/yellow]", path or purpose)
+
+
+def _agent_row(name: str, readiness: dict[str, dict] | None) -> tuple[str, str, str]:
+    """An agent CLI's row: on PATH is necessary, being able to AUTHENTICATE is what matters.
+
+    Doctor used to answer this with `shutil.which` alone and print `ok` for a binary that could not
+    run. On 2026-09-01 that cost a two-agent review half its roster: codex was reported ok, the run
+    started, and codex died on its first breath because nothing set CODEX_AUTH_MODE=chatgpt. The
+    credentials were on disk the whole time.
+
+    So a row now carries three distinct states, and the third is the one that did not exist:
+    `missing` (no binary), `no auth` (binary present, its own validateEnvironment unsatisfied,
+    naming the variables), and `ok`. A fourth, `on PATH`, is UNKNOWN — the probe could not be
+    reached — and is deliberately not rendered as either ok or no auth, because answering from
+    ignorance is the failure being fixed, not a milder version of it.
+    """
+    path = shutil.which(name)
+    if not path:
+        return (name, "[yellow]missing[/yellow]", "agent CLI")
+    if readiness is None:
+        return (name, "[dim]on PATH[/dim]", f"{path} (auth unknown — runner probe unavailable)")
+    state = readiness.get(name)
+    if state is None:
+        return (name, "[dim]on PATH[/dim]", f"{path} (auth unknown — agent not probed)")
+    if state.get("ready"):
+        return (name, "[green]ok[/green]", path)
+    return (name, "[yellow]no auth[/yellow]", state.get("detail") or "cannot authenticate")
 
 
 def _count_templates(root: Path) -> int:
@@ -90,16 +118,21 @@ def doctor() -> None:
     tools = Table("tool", "status", "detail", title="tools")
     for name, purpose in _REQUIRED:
         tools.add_row(*_tool_row(name, f"REQUIRED — {purpose}"))
-    agent_rows = [_tool_row(name, "agent CLI") for name in _AGENT_CLIS]
+    probed = probe_agents()
+    readiness = {a["agent"]: a for a in probed} if probed else None
+    agent_rows = [_agent_row(name, readiness) for name in _AGENT_CLIS]
     for row in agent_rows:
         tools.add_row(*row)
     for name, purpose in _OPTIONAL:
         tools.add_row(*_tool_row(name, f"optional — {purpose}"))
     console.print(tools)
+    # The aggregate is about READINESS, not presence: a box full of binaries that cannot
+    # authenticate runs exactly as much work as a box with none.
     if not any("ok" in status for _, status, _ in agent_rows):
         console.print(
-            "[yellow]no agent CLI on PATH[/yellow] — a --local run needs at least one of: "
+            "[yellow]no agent can run here[/yellow] — a --local run needs at least one of "
             + ", ".join(_AGENT_CLIS)
+            + " both installed AND authenticated."
         )
 
     paths = Table("piece", "status", "path", title="local substrate")
