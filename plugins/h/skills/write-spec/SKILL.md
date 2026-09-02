@@ -32,9 +32,9 @@ down. Name the files, directories, or classes that are off-limits and the reason
 
 ### 3. What it must do
 
-The behaviour, as **observable facts**, not as design. "The check exits non-zero when any file's
-git-recorded modification time is older than its content hash" — not "implement a freshness
-check". Observability means: if you ran the thing in a terminal, you would see this output.
+The behaviour, as **observable facts**, not as design. "The check exits non-zero and names every
+doc whose source has a newer commit than the doc itself" — not "implement a freshness check".
+Observability means: if you ran the thing in a terminal, you would see this output.
 
 ### 4. The trap
 
@@ -43,9 +43,10 @@ it, and tell the agent how to **prove** it was avoided. Do not leave this sectio
 cannot name a trap, the trap is that you have not looked hard enough.
 
 Example: a freshness check that compares filesystem mtimes passes forever in any clone, because
-every file gets the checkout timestamp. The proof: run it in a fresh worktree on the unmodified
-tree, observe it passes, then `touch` one file, observe it still passes. That is how you know the
-implementation is wrong.
+every file gets the checkout timestamp — and a fresh clone or worktree is how CI and every agent
+run sees the repo. The proof: run it in the main checkout AND in a fresh worktree of the same
+commit, and report both counts. An mtime check reports N in one and 0 in the other; a git-time
+check reports the same N in both.
 
 ### 5. Demonstrate it can fail
 
@@ -79,8 +80,8 @@ Require: the baseline command run **before** the change; the same command **afte
 codes and failure counts reported; and the statement that a failure is pre-existing accepted only
 when it also fails on the **base branch** (not just the worktree's HEAD before the edit).
 
-**Incident:** a run turned `db:test` red in a file it edited and wrote "1 pre-existing failure
-unrelated to changes" — but the failure was in the line the agent had just modified.
+**Incident:** a run turned `db:test` red in a file it had edited and wrote "1 pre-existing
+failure unrelated to changes"; the suite exits 0 on the base branch and 1 on the run's branch.
 
 ### Rule 2: A correction needs the command that establishes it
 
@@ -93,13 +94,15 @@ day, a different commit, and a different reason, found by `git log -S`.
 
 ### Rule 3: Never satisfy a guard by silencing it
 
-The honest fix for a true false-positive is a **named, reasoned exemption** — an
-`// oxlint-disable-next-line rule-name -- <reason>` comment or a config-level ignore with a
-comment explaining why. An unused import added to satisfy "a test imports what it tests" is a
-reject. An `eslint-disable` with no reason is a reject.
+The honest fix for a true false-positive is a **named, reasoned exemption** — an entry in the
+guard's own exemption list with the reason beside it, so the hole stays visible. An unused import
+added to satisfy "a test imports what it tests" is a reject. A disable comment with no reason is
+a reject.
 
-**Incident:** an `import type` added to an unrelated file plus an `eslint-disable` comment to
-satisfy the "test imports its module" check — the rule was green, the code was worse.
+**Incident:** an unused `import type` plus an `eslint-disable` line added to the flagged test to
+satisfy "a test imports what it tests" — the regex was satisfied and nothing else changed. The
+flag was a true false-positive (the test spawns the app as a child process on purpose), so the
+honest fix was a named exemption, which is what landed.
 
 ### Rule 4: Name what a fresh worktree will not have
 
@@ -125,8 +128,9 @@ The base branch, the agent, the model, and the acceptance command are fire-time 
 contract fields the run **reports**. The spec should not restate them as prose instructions,
 because prose is honoured three times in four and a reader cannot tell which time this was.
 
-**Incident:** a PR was opened against `main` with `baseBranch=beta` clearly stated in the task's
-contract fields — the spec's prose also said "target the beta branch" but the agent used `main`.
+**Incident:** a PR was opened against `main` with `baseBranch=beta` clearly stated in the task
+text — 69 files onto the wrong branch, reverted by hand. The base is now a contract field the
+run reports, which is what makes it checkable.
 
 ---
 
@@ -135,9 +139,13 @@ contract fields — the spec's prose also said "target the beta branch" but the 
 Before reading the diff, the driver checks these fields **mechanically** from the run's reported
 structured blocks. A missing field is a reject.
 
-- **`base`** equals what was requested (the spec's base branch or the chain's `--base` flag).
-- **`final.failures <= baseline.failures`** — a number that grew is a regression the run owns.
-- **`stop_reason == "completed"`** — `usage-limited` or `failed` means the work is incomplete.
+- **`base`** (the create-pr step's block) equals what was requested — the `-p baseBranch=`
+  the run was fired with.
+- **`final.failures <= baseline.failures`** (the implement step's block) — a number that grew is
+  a regression the run owns.
+- **`stopReason == "completed"`** for every agent step — read from the run ledger's
+  `summary.json`, not the structured block; `usage-limited`, `timeout` or `failed` means the
+  work is incomplete whatever the block says.
 
 Tell the implementing agent that these three fields will be checked. An agent that knows the
 driver will re-run the baseline is more careful about what it reports.
@@ -222,4 +230,5 @@ Both runs must exit 0. Report the exit code and the number of lint errors for ea
 - [ ] Guard demonstrated failing (output recorded).
 - [ ] Mtime trap avoided (both `touch` outputs recorded).
 - [ ] Baseline lint exit 0; final lint exit 0; counts reported.
-- [ ] `base`, `final.failures`, `stop_reason` present in the structured block.
+- [ ] Driver read-back: create-pr's `base` equals the requested branch, `final.failures <=
+      baseline.failures`, every step's `stopReason` is `completed`.
