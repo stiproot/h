@@ -4,6 +4,7 @@ Spatial composition lives under the template noun (`h template compose`); this c
 definition/run level: publish, run, list, get, status, terminate.
 """
 
+import json
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -571,6 +572,14 @@ def run(
             "For throwaway runs or a machine without nats-server provisioned.",
         ),
     ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="--local only: print the run's result envelope (every step's result, incl. each "
+            "validated `structured` block) to stdout instead of the final agent output.",
+        ),
+    ] = False,
 ) -> None:
     """Fire a saved workflow (or, with --inline, a template rendered on the fly) with fire-time
     params; prints the instance id.
@@ -637,6 +646,12 @@ def run(
         )
     elif with_setup:
         err_console.print("[red]--with-setup applies to --local only[/red]")
+        raise typer.Exit(1)
+    elif as_json:
+        err_console.print(
+            "[red]--json applies to --local only[/red] — a service fire returns an "
+            "instance id, not a result envelope."
+        )
         raise typer.Exit(1)
     if allow_external and not local:
         err_console.print("[red]--allow-external applies to --local only[/red]")
@@ -815,6 +830,7 @@ def run(
             with_setup,
             resume=resume,
             no_journal=no_journal,
+            as_json=as_json,
             timeout_ms=(timeout * 1000 if timeout else LOCAL_STEP_TIMEOUT_MS),
             budget_ms=_parse_budget(budget) if budget else None,
             arm_cron=(
@@ -957,6 +973,7 @@ def _run_local(
     arm_cron: dict[str, Any] | None = None,
     wf: dict[str, str] | None = None,
     timeout_ms: int = LOCAL_STEP_TIMEOUT_MS,
+    as_json: bool = False,
 ) -> None:
     """Execute a rendered definition on the local substrate and report what its steps produced.
 
@@ -1015,10 +1032,21 @@ def _run_local(
         ),
         None,
     )
-    # The agent's own output already contains its fenced json block, so printing the validated
-    # value again would just echo it. Validation's job is to GATE the step, not to reformat it.
-    if final:
+    if as_json:
+        # The whole envelope, for a driver that reads results by machine (a shepherding session,
+        # a script gating a merge). stdout carries nothing else.
+        console.print_json(data=envelope)
+    elif final:
+        # The agent's own output already contains its fenced json block, so printing the FINAL
+        # step's validated value again would just echo it. Validation's job is to GATE the step,
+        # not to reformat it.
         console.print(final["output"])
+    # But the final step is not the only one that ended with a checked block. In a composition
+    # every contract-carrying step's `structured` field is a FACT the run verified — verify's
+    # `gate` and counts, create-pr's `base` as GitHub holds it — and a driver deciding whether to
+    # merge needs each of them without opening the ledger. One line per step, in step order,
+    # printed even when the run failed (the steps that completed still reported).
+    _print_structured_steps(results)
 
     if not envelope.get("ok"):
         failed = envelope.get("failedStep")
@@ -1032,6 +1060,14 @@ def _run_local(
     err_console.print(
         f"[green]done[/green] · {group}{contract} — runs under {AGENT_RUNS_DIR}/{group}"
     )
+
+
+def _print_structured_steps(results: dict[str, Any]) -> None:
+    for step_id, value in results.items():
+        if step_id == "params" or not isinstance(value, dict) or "structured" not in value:
+            continue
+        block = json.dumps(value["structured"], separators=(",", ":"), sort_keys=True)
+        err_console.print(f"[cyan]{escape(step_id)}[/cyan] ▸ {escape(block)}")
 
 
 @app.command()

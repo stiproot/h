@@ -11,8 +11,8 @@ FUNCTIONS see the new values while other modules' from-imports of constants stay
 until the restoring reload).
 """
 
-import json
 import importlib
+import json
 from pathlib import Path
 
 import pytest
@@ -232,11 +232,11 @@ def test_values_layers_only_preceding_roots_and_existing_files(tmp_path, reload_
 def test_consumer_worktree_seed_lands_on_every_create_worktree_step(
     name: str, tmp_path, reload_config
 ) -> None:
-    """A consumer declares `worktree.seed` ONCE in its committed values.yaml and every stock template
-    that cuts a worktree carries it as the create-worktree step's `seed` input — the gitignored env
-    files a gate needs (trxy night 1, 2026-08-31: every worktree gate failed on a missing .env until
-    the driver copied it by hand). Publish mode keeps the list literal: chart config, not a fire-time
-    param."""
+    """A consumer declares `worktree.seed` ONCE in its committed values.yaml and every stock
+    template that cuts a worktree carries it as the create-worktree step's `seed` input — the
+    gitignored env files a gate needs (trxy night 1, 2026-08-31: every worktree gate failed on a
+    missing .env until the driver copied it by hand). Publish mode keeps the list literal: chart
+    config, not a fire-time param."""
     from h_cli.infrastructure import helm
 
     repo = _consumer_repo(tmp_path, 'charts_dir = ".h/charts"\n')

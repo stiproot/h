@@ -740,7 +740,10 @@ cli/                                          # the h CLI + charts + run scripts
     │   #       --cron refuses an ad-hoc overlay, which has no key for the cron:/wf: rows)/--cron
     │   #       --max-fires/--at|--in/--fallback-agent|-model|-after|-max/--local [--with-setup]
     │   #       [--timeout SECONDS, the per-agent-STEP wall clock, default 1800 — distinct from
-    │   #       --budget's whole-run clock, and refused without --local]. `publish --local` saves into
+    │   #       --budget's whole-run clock, and refused without --local] [--json, the result envelope
+    │   #       on stdout; without it every contract-carrying step's validated block prints as a
+    │   #       `<step> ▸ {json}` line, so a driver reads verify's gate and create-pr's base without
+    │   #       opening the ledger]. `publish --local` saves into
     │   #       the LOCAL store so a local cron/trigger has a key to fire; --schedule/--workspace-id/
     │   #       --disabled are workflow-svc row machinery and refuse there.
     │   #   h chain        run|list  – run takes the EXPRESSION (-w KEY | -t ATOM…) hand-parsed by

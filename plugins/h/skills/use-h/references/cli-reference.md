@@ -51,6 +51,7 @@ h template drift [KEYS…]        # saved definitions vs a re-render of their te
 ```sh
 h workflow run <template> --local [-p k=v]... [--instance-id id] [--agent A]... [--model M]
 h workflow run <t> --local --with-setup        # opt IN to the definition's setup steps
+h workflow run <t> --local --json              # the result envelope on stdout (every step's `structured` block)
 h workflow run <t> --local --allow-external    # deliberate override of the workspace boundary
 h delegate "TASK" --agent codex [--agent claude]... [--model M] [--cwd D] \
     [--worktree [--base B]] [--plan] [--timeout S] [--id G] [--json]

@@ -110,6 +110,10 @@ watcher, so the ledger and the CLI's printed cost table are **the only cost acco
 cost of `—` means the agent reported none (e.g. codex on a ChatGPT plan), never that the run
 was free. A template that declares an `outputs:` schema ends its run with a machine-validated
 fenced JSON block — the last thing in `output.txt`, and the thing to parse, not the prose.
+A local run prints those checked blocks for you: one `<step> ▸ {json}` line per
+contract-carrying step (a composition has several — the verify gate on the implement step, the
+PR's base on create-pr), and `--json` puts the whole result envelope on stdout for a script.
+Decide on those fields, never on the transcript's claims.
 
 Workflow and chain runs are additionally **journaled by default** (h auto-ensures its event
 fabric; a missing `nats-server` binary refuses loud, `--no-journal` opts a run out): if a run

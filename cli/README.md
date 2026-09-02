@@ -192,6 +192,12 @@ uv run h chain run --slug s --local --no-journal EXPR    # opt out (throwaway ru
 uv run h workflow run <t> --local --timeout 3600   # per-agent-STEP wall clock (default 1800). There is no
                                           #   watcher here, so THIS is the per-step budget — distinct from
                                           #   --budget, which is the whole-run/whole-chain clock
+uv run h workflow run <t> --local --json           # the result ENVELOPE on stdout (every step's result incl.
+                                          #   its validated `structured` block) instead of the final transcript.
+                                          #   Without it, the final step's output prints on stdout and EVERY
+                                          #   contract-carrying step's checked block prints on stderr, one
+                                          #   `<step> ▸ {json}` line each — verify's gate, create-pr's base —
+                                          #   so a driver merges on what the run CHECKED, not on its prose
 uv run h runs watch GROUP [--json]        # replay a run's journal, then follow live until its terminal
                                           #   record — progress from ANY shell, not just the driving one
                                           # --with-setup opts into the definition's setup steps (skipped by

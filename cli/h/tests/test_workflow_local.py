@@ -437,3 +437,77 @@ def test_publish_local_refuses_workflow_svcs_row_machinery(captured_registry) ->
         assert f"{flag[0]} applies to workflow-svc's store, not --local" in out
         assert "h workflow run <key> --local --cron" in out
     assert captured_registry == []
+
+
+def _envelope_with_two_checked_steps(ok: bool) -> dict[str, Any]:
+    return {
+        "ok": ok,
+        "group": "g",
+        "results": {
+            "params": {"slug": "x"},
+            "worktree": {"worktreePath": "/wt"},
+            "implement": {
+                "output": "did the work\n```json\n{}\n```",
+                "structured": {
+                    "gate": "passed",
+                    "baseline": {"failures": 3},
+                    "final": {"failures": 3},
+                },
+            },
+            "create-pr": {
+                "output": "opened\n```json\n{}\n```",
+                "structured": {"pr": "https://github.com/o/r/pull/9", "base": "beta"},
+            },
+        },
+        **({} if ok else {"failedStep": "create-pr", "error": "boom"}),
+    }
+
+
+@pytest.mark.parametrize("ok", [True, False])
+def test_local_prints_every_step_s_validated_block_not_only_the_final_one(
+    monkeypatch, captured_job, ok: bool
+) -> None:
+    """A composition's contract-carrying steps each end with a CHECKED block — verify's gate and
+    counts on the implement step, the PR's base as GitHub holds it on create-pr. A driver deciding
+    whether to merge needs all of them, and before this only the final step's transcript printed,
+    so verify's gate lived only in the ledger. One line per step, in order; still printed when the
+    run failed, because the steps that completed still reported."""
+    monkeypatch.setattr(
+        "h_cli.commands.workflow.local_runtime.run_job",
+        lambda job, bin_path=None: _envelope_with_two_checked_steps(ok),
+    )
+    result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q"])
+
+    assert result.exit_code == (0 if ok else 1), _all_output(result)
+    output = _all_output(result)
+    implement_line = next(line for line in output.splitlines() if line.startswith("implement ▸"))
+    create_pr_line = next(line for line in output.splitlines() if line.startswith("create-pr ▸"))
+    assert '"gate":"passed"' in implement_line and '"failures":3' in implement_line
+    assert '"base":"beta"' in create_pr_line
+    assert output.index("implement ▸") < output.index("create-pr ▸")
+    assert "worktree ▸" not in output, "a step without a contract has nothing checked to print"
+
+
+def test_local_json_prints_the_envelope_and_nothing_else_on_stdout(monkeypatch, captured_job):
+    """--json is the machine-readable form: the full result envelope on stdout, so a shepherding
+    session reads every step's `structured` field without parsing rich output."""
+    import json
+
+    monkeypatch.setattr(
+        "h_cli.commands.workflow.local_runtime.run_job",
+        lambda job, bin_path=None: _envelope_with_two_checked_steps(True),
+    )
+    result = runner.invoke(app, ["workflow", "run", "answer", "--local", "-p", "task=q", "--json"])
+
+    assert result.exit_code == 0, _all_output(result)
+    envelope = json.loads(result.stdout)  # the WHOLE of stdout parses: nothing else is on it
+    assert envelope["results"]["implement"]["structured"]["gate"] == "passed"
+    assert envelope["results"]["create-pr"]["structured"]["base"] == "beta"
+
+
+def test_json_without_local_is_refused(captured_job) -> None:
+    result = runner.invoke(app, ["workflow", "run", "answer", "--json", "-p", "task=q"])
+
+    assert result.exit_code == 1
+    assert "--json applies to --local only" in _all_output(result)
+    assert captured_job == []
