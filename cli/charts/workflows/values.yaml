@@ -7,6 +7,19 @@
 # Agent that provisions worktrees and executes setup / run steps.
 agentId: claude-agent
 
+# Worktree seeding (2026-09-02), shared by every template with a create-worktree step. Each entry
+# is a repo-RELATIVE path copied from the clone into the freshly cut worktree when the worktree
+# does not already have it — the gitignored files a repo's gate needs (`.env`, `apps/svc/.env`) and
+# that `git worktree add` therefore leaves behind. Idempotent and structurally confined to
+# untracked files: a tracked path already exists in the worktree, so it is never overwritten; a
+# missing source is REPORTED in the step result, not fatal; a path that escapes the clone
+# (`..`, absolute) is refused before anything is copied. Declare the list in the CONSUMER chart's
+# values.yaml — it layers over this one (the values search path) — so a stock template seeds a
+# consumer repo's env files without a per-fire flag. Bit night 1 of the trxy campaign (2026-08-31):
+# every gate run in a worktree failed on a missing .env until the driver copied it by hand.
+worktree:
+  seed: []
+
 # Activity that runs a template's plan/implement/verify steps. Defaults to run-claude; set to
 # run-openhands to run the flow on the openhands-agent (pair with agentId: openhands-agent so the
 # worktree/setup steps run there too).

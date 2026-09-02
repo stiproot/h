@@ -82,3 +82,15 @@ failed step. Re-read this line before you write the block.
 {{- end }}
 {{ . | toPrettyJson }}
 {{- end }}
+
+{{/*
+h.worktreeSeed: the `seed` input of a create-worktree step, from the shared `.Values.worktree.seed`
+list (see values.yaml). Emits NOTHING when the list is empty so a definition without seeding renders
+byte-identical to before the input existed; the step input sits at six spaces in every template that
+cuts a worktree, which is what the literal indent below assumes.
+*/}}
+{{- define "h.worktreeSeed" -}}
+{{- with .Values.worktree.seed }}
+      seed: {{ toJson . }}
+{{- end }}
+{{- end -}}

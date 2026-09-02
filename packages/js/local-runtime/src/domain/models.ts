@@ -44,6 +44,19 @@ export type WorktreeSpec = {
   worktreePath: string;
   /** WHAT to check out there — the named strategy, identical on both substrates. */
   checkout: CheckoutSpec;
+  /**
+   * Repo-relative gitignored files/directories to copy from `repoPath` when absent here — the
+   * `.env` beside a service that a checkout cannot carry. Never overwrites; a missing source is
+   * reported. git-core's `seedWorktree` owns the rules, on both substrates.
+   */
+  seed?: ReadonlyArray<string>;
+};
+
+/** What seeding did — copied / kept (already present) / missing (absent in the clone). */
+export type SeedReport = {
+  copied: string[];
+  kept: string[];
+  missing: string[];
 };
 
 /** One agent's slice of a delegate job, after the roster has been resolved and cwds assigned. */

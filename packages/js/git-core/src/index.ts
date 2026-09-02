@@ -13,3 +13,5 @@ export { GitHubApiError, GitHubClient, HttpGitHubClient } from "./github-client.
 export type { IssueRef, ListOpenIssuesOptions } from "./github-client.ts";
 
 export { GitHubSourceReaderLive } from "./github-source-reader.ts";
+export { SeedPathError, safeSeedPath, seedWorktree } from "./worktree-seed.ts";
+export type { SeedOptions, SeedReport } from "./worktree-seed.ts";

@@ -65,7 +65,7 @@ const stubs = (
       prepare: (spec: WorktreeSpec) =>
         Effect.sync(() => {
           recorder.worktrees.push(spec);
-          return spec.worktreePath;
+          return { worktreePath: spec.worktreePath, seeded: { copied: [], kept: [], missing: [] } };
         }),
       provision: (cwd: string, commands: ReadonlyArray<{ cmd: string }>) =>
         Effect.sync(() => {
@@ -207,6 +207,28 @@ describe("runWorkflow", () => {
       branch: undefined,
       baseRef: undefined,
       remoteBase: "main",
+    });
+  });
+
+  // The seed list — gitignored files a checkout cannot carry — reaches the WorkspacePort as
+  // declared, and what seeding did lands in the step result beside worktreePath, so a later
+  // step (or the driver reading the envelope) can see that `.env` was copied, kept, or missing.
+  it("forwards a seed list and surfaces the seed report in the step result", async () => {
+    const { layer, recorder } = stubs();
+    const envelope = await run(
+      job([
+        {
+          id: "worktree",
+          activity: "create-worktree",
+          input: { seed: ["apps/svc/.env", ".env.local", 42] },
+        },
+      ]),
+      layer,
+    );
+    expect(recorder.worktrees[0]?.seed).toEqual(["apps/svc/.env", ".env.local"]);
+    expect(envelope.results.worktree).toMatchObject({
+      worktreePath: "/wt/answer-260806-120000",
+      seeded: { copied: [], kept: [], missing: [] },
     });
   });
 

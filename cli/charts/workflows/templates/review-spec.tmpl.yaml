@@ -48,6 +48,7 @@ steps:
     input:
       agentId: "claude-agent"
       clonePath: {{ include "h.token" "params.clonePath" | quote }}
+      {{- include "h.worktreeSeed" $ }}
       checkout:
         kind: detached
         ref: {{ printf "refs/remotes/origin/pr/%s/%s" (include "h.token" "params.pr") (include "h.token" "params.prRef") | quote }}

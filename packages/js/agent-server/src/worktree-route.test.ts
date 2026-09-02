@@ -131,7 +131,10 @@ describe("POST /worktree defaults", () => {
       payload: { workflowInstanceId: "wf" },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ worktreePath: path });
+    expect(response.json()).toEqual({
+      worktreePath: path,
+      seeded: { copied: [], kept: [], missing: [] },
+    });
     expect(calls).toEqual([]);
     await app.close();
     await runtime.dispose();

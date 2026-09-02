@@ -83,7 +83,11 @@ const stubs = (
         }),
     }),
     Layer.succeed(WorkspacePort, {
-      prepare: (spec) => Effect.succeed(spec.worktreePath),
+      prepare: (spec) =>
+        Effect.succeed({
+          worktreePath: spec.worktreePath,
+          seeded: { copied: [], kept: [], missing: [] },
+        }),
       provision: () => Effect.void,
     }),
     // An in-memory journal shared across run() calls on ONE stub set, so a resume test can
@@ -358,7 +362,11 @@ describe("runChain", () => {
             ),
         }),
         Layer.succeed(WorkspacePort, {
-          prepare: (spec) => Effect.succeed(spec.worktreePath),
+          prepare: (spec) =>
+            Effect.succeed({
+              worktreePath: spec.worktreePath,
+              seeded: { copied: [], kept: [], missing: [] },
+            }),
           provision: () => Effect.void,
         }),
         Layer.succeed(ProgressPort, { emit: () => Effect.void }),

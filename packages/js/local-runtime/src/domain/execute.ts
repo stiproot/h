@@ -54,6 +54,10 @@ const stepId = (step: StepDefinition): string => step.id ?? step.activity;
  * substrates: absent = the bare branch strategy, and a branch strategy with no pinned `baseRef`
  * refreshes from `origin/main` (an explicit "" opts out and branches from local HEAD).
  */
+/** The `seed` list of a create-worktree step: repo-relative paths; anything else is ignored. */
+const seedFromInput = (input: Record<string, unknown>): string[] =>
+  Array.isArray(input.seed) ? input.seed.filter((p): p is string => typeof p === "string") : [];
+
 const checkoutFromInput = (input: Record<string, unknown>): CheckoutSpec => {
   const raw = (input.checkout ?? {}) as Record<string, unknown>;
   if (raw.kind === "detached") {
@@ -398,17 +402,25 @@ const runStep = (
       const workspace = yield* WorkspacePort;
       if (classified.name === "create-worktree") {
         const key = str(input.workspaceId) ?? str(input.workflowInstanceId) ?? job.group;
-        const worktreePath = yield* workspace
+        const repoPath = str(input.clonePath) ?? job.repoPath;
+        const { worktreePath, seeded } = yield* workspace
           .prepare({
             // A step's own clonePath wins (the multi-repo knob); otherwise the checkout the
             // operator invoked from — local execution has no pre-cloned shared workspace.
-            repoPath: str(input.clonePath) ?? job.repoPath,
+            repoPath,
             worktreePath: join(job.worktreeRoot, key),
             checkout: checkoutFromInput(input),
+            seed: seedFromInput(input),
           })
           .pipe(Effect.mapError((err) => new StepError(id, err.message)));
         yield* progress.emit(`⎇ ${id}: ${worktreePath}`);
-        return { worktreePath };
+        if (seeded.copied.length + seeded.missing.length > 0) {
+          yield* progress.emit(
+            `⎇ ${id}: seeded ${seeded.copied.join(", ") || "nothing"}` +
+              (seeded.missing.length ? ` (missing in clone: ${seeded.missing.join(", ")})` : ""),
+          );
+        }
+        return { worktreePath, seeded };
       }
 
       if (classified.name === "register-discover") {

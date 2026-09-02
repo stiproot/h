@@ -49,7 +49,7 @@ const stubs = (
       prepare: (spec: WorktreeSpec) =>
         Effect.sync(() => {
           recorder.worktrees.push(spec);
-          return spec.worktreePath;
+          return { worktreePath: spec.worktreePath, seeded: { copied: [], kept: [], missing: [] } };
         }),
       // `h delegate` never provisions — setup steps belong to a workflow definition, not the atom.
       // So the stub DIES rather than no-ops: a silent stub would let a future call through

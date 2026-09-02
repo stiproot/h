@@ -22,6 +22,9 @@ type Input = {
   // Git auth strategy NAME ("pat" | "ssh") forwarded to the agent's /worktree; secrets stay
   // in the agent service's env.
   auth?: string;
+  // Repo-relative gitignored paths to copy from the clone into the worktree (forwarded verbatim;
+  // the agent's /worktree owns the rules via git-core's seedWorktree).
+  seed?: string[];
   agentId?: string;
   traceparent?: string;
 };
@@ -32,7 +35,7 @@ export async function createWorktreeActivity(
   _ctx: WorkflowActivityContext,
   input: unknown,
 ): Promise<{ worktreePath: string }> {
-  const { workflowInstanceId, workspaceId, clonePath, checkout, auth, agentId, traceparent } =
+  const { workflowInstanceId, workspaceId, clonePath, checkout, auth, seed, agentId, traceparent } =
     input as Input;
   const targetAgent = agentId ?? "claude-agent";
   return runActivity(
@@ -40,7 +43,7 @@ export async function createWorktreeActivity(
       label: "create-worktree",
       appId: targetAgent,
       method: "worktree",
-      body: { workflowInstanceId, workspaceId, clonePath, checkout, auth },
+      body: { workflowInstanceId, workspaceId, clonePath, checkout, auth, seed },
       span: "client",
       parse: "json",
     }).pipe(Effect.map((json) => json as { worktreePath: string })),

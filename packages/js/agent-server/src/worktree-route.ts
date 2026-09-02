@@ -4,7 +4,7 @@ import { FileSystem } from "@effect/platform";
 import { CloneError } from "core";
 import { Effect, type ManagedRuntime, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
-import { GitClient, type GitCheckout } from "git-core";
+import { GitClient, type GitCheckout, seedWorktree } from "git-core";
 import { withServerSpan } from "telemetry";
 
 import { resolveGitAuth } from "./git-auth.ts";
@@ -49,6 +49,10 @@ const WorktreeBody = Schema.Struct({
   ),
   // Auth strategy NAME only (secrets stay in the service env — see resolveGitAuth).
   auth: Schema.optional(Schema.Literal("pat", "ssh")),
+  // Repo-relative gitignored files/directories to copy from the clone when absent in the
+  // worktree (git-core's seedWorktree: never overwrites, refuses an escaping path, reports a
+  // missing source). Runs on a reused worktree too.
+  seed: Schema.optional(Schema.Array(Schema.String)),
 });
 type WorktreeBody = Schema.Schema.Type<typeof WorktreeBody>;
 
@@ -90,7 +94,7 @@ const worktreeEffect = (
   { sharedRoot, ledger }: Pick<WorktreeRouteEffectConfig, "sharedRoot" | "ledger">,
 ) =>
   Effect.gen(function* () {
-    const { workflowInstanceId, workspaceId, clonePath, checkout, auth } =
+    const { workflowInstanceId, workspaceId, clonePath, checkout, auth, seed } =
       yield* Schema.decodeUnknown(WorktreeBody)(rawBody);
     // Absent checkout = the bare branch strategy (git names a branch after the worktree path),
     // which is what a body carrying no checkout has always meant.
@@ -129,11 +133,17 @@ const worktreeEffect = (
         : Effect.void;
 
     const fs = yield* FileSystem.FileSystem;
+    const seedInto = (path: string) =>
+      seedWorktree({ repoPath, worktreePath: path, paths: seed ?? [] }).pipe(
+        Effect.tapError((err) => rec("failed", { error: err.message })),
+        Effect.mapError((cause) => new CloneError({ cause, url: repoPath, dir: path })),
+      );
     // Idempotent: a second caller in the same run (or a re-run) finds the worktree present.
     const alreadyPresent = yield* fs.exists(worktreePath).pipe(Effect.orElseSucceed(() => false));
     if (alreadyPresent) {
+      const seeded = yield* seedInto(worktreePath);
       yield* rec("skipped");
-      return { worktreePath };
+      return { worktreePath, seeded };
     }
 
     const git = yield* GitClient;
@@ -153,6 +163,7 @@ const worktreeEffect = (
       Effect.mapError((cause) => new CloneError({ cause, url: repoPath, dir: worktreePath })),
     );
 
+    const seeded = yield* seedInto(effectivePath);
     yield* rec("completed", effectivePath !== worktreePath ? { detail: effectivePath } : undefined);
-    return { worktreePath: effectivePath };
+    return { worktreePath: effectivePath, seeded };
   });

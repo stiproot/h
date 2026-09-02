@@ -101,6 +101,7 @@ steps:
     input:
       agentId: {{ $agentIdRef | quote }}
       clonePath: {{ include "h.token" "params.clonePath" | quote }}
+      {{- include "h.worktreeSeed" $ }}
       {{- /* The WRITE checkout strategy: the plan lands as a commit on the feature branch. */}}
       checkout:
         kind: branch

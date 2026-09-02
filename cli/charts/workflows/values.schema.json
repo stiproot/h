@@ -19,6 +19,20 @@
       "type": "boolean",
       "$comment": "Overlay mode: render a template as an overlay-able atom \u2014 implement omits its standalone commit-decision closer so a create-pr overlay supplies it. Set by `h template compose`."
     },
+    "worktree": {
+      "type": "object",
+      "$comment": "Shared by every template with a create-worktree step. seed: repo-relative paths copied from the clone into a fresh worktree when absent there (gitignored env files a gate needs). Escaping paths are refused at the step, not here.",
+      "properties": {
+        "seed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "implement": {
       "type": "object",
       "properties": {

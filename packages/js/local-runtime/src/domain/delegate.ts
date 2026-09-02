@@ -164,7 +164,7 @@ const prepareCwds = (
     const paths: string[] = [];
     for (const branch of branches) {
       const worktreePath = join(spec.root, branch.replaceAll("/", "-"));
-      const effective = yield* workspace.prepare({
+      const { worktreePath: effective } = yield* workspace.prepare({
         repoPath: spec.repoPath,
         worktreePath,
         // Always the branch strategy: `--worktree` exists to isolate WRITE work, and write work

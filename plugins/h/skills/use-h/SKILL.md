@@ -95,6 +95,12 @@ agent. Do not work around a refusal; each one names what it needs. Likewise:
   sandbox — the boundary is the blast radius.
 - **A freshly cut worktree has no installed dependencies** — run the repo's install commands
   there before any build/lint acceptance step.
+- **A freshly cut worktree has no gitignored files either** — `git worktree add` copies what git
+  tracks, so an `.env` the gate reads is absent. Declare those paths once as `worktree.seed` in
+  the consumer chart's `values.yaml` (repo-relative, e.g. `["apps/svc/.env"]`) and every stock
+  template's create-worktree step copies them from the clone. Existing files are never
+  overwritten, a missing source is reported in the step result, and a path that escapes the
+  clone is refused — so the list is safe to leave declared.
 
 ## Reading the result
 

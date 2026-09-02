@@ -34,6 +34,7 @@ steps:
       {{- with $p.clonePath }}
       clonePath: {{ . | quote }}
       {{- end }}
+      {{- include "h.worktreeSeed" $ }}
       {{- /* The WRITE checkout strategy: the improvement lands on its own branch. */}}
       checkout:
         kind: branch

@@ -74,6 +74,7 @@ steps:
     input:
       agentId: {{ $agentIdRef | quote }}
       clonePath: {{ include "h.token" "params.clonePath" | quote }}
+      {{- include "h.worktreeSeed" $ }}
       {{- /* The WRITE checkout strategy: the revision pushes to the PR's own branch. */}}
       checkout:
         kind: branch

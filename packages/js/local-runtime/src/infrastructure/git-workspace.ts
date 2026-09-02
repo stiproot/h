@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 
 import { Command, type CommandExecutor, FileSystem } from "@effect/platform";
 import { Effect, Layer, Stream } from "effect";
-import { GitClient } from "git-core";
+import { GitClient, seedWorktree } from "git-core";
 
 import type { WorktreeSpec } from "../domain/models.ts";
 import { WorkspaceError, WorkspacePort, type SetupCommand } from "../domain/ports.ts";
@@ -33,18 +33,28 @@ export const GitWorkspaceLive: Layer.Layer<
         // under the same group — finds the worktree present and uses it rather than failing on
         // "already exists".
         const present = yield* fs.exists(spec.worktreePath).pipe(Effect.orElseSucceed(() => false));
-        if (present) return spec.worktreePath;
-        yield* fs.makeDirectory(dirname(spec.worktreePath), { recursive: true });
-        // addWorktree returns the EFFECTIVE path: a branch lives in at most one worktree, so if
-        // one already holds it, that path comes back instead of an error.
-        // spec.checkout is git-core's GitCheckout in all but name (the domain may not import an
-        // I/O package). This assignment is the drift guard: a shape change on either side fails
-        // the typecheck here.
-        return yield* git.addWorktree({
+        let worktreePath = spec.worktreePath;
+        if (!present) {
+          yield* fs.makeDirectory(dirname(spec.worktreePath), { recursive: true });
+          // addWorktree returns the EFFECTIVE path: a branch lives in at most one worktree, so if
+          // one already holds it, that path comes back instead of an error.
+          // spec.checkout is git-core's GitCheckout in all but name (the domain may not import an
+          // I/O package). This assignment is the drift guard: a shape change on either side fails
+          // the typecheck here.
+          worktreePath = yield* git.addWorktree({
+            repoPath: spec.repoPath,
+            worktreePath: spec.worktreePath,
+            checkout: spec.checkout,
+          });
+        }
+        // Seeding runs on the reused path too: it never overwrites, so a present worktree only
+        // gains what it lacks — which is what makes a re-run under the same group safe.
+        const seeded = yield* seedWorktree({
           repoPath: spec.repoPath,
-          worktreePath: spec.worktreePath,
-          checkout: spec.checkout,
+          worktreePath,
+          paths: spec.seed ?? [],
         });
+        return { worktreePath, seeded };
       }).pipe(
         Effect.mapError((cause) => new WorkspaceError({ worktreePath: spec.worktreePath, cause })),
       );

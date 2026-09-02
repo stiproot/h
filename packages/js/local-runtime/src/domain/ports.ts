@@ -1,6 +1,12 @@
 import { Context, Data, type Effect } from "effect";
 
-import type { AgentRunReport, AgentRunRequest, JournalRecord, WorktreeSpec } from "./models.ts";
+import type {
+  AgentRunReport,
+  AgentRunRequest,
+  JournalRecord,
+  SeedReport,
+  WorktreeSpec,
+} from "./models.ts";
 
 /**
  * Running one agent CLI to completion.
@@ -35,8 +41,10 @@ export type SetupCommand = { readonly cmd: string; readonly validateCmd?: string
 export class WorkspacePort extends Context.Tag("local-runtime/WorkspacePort")<
   WorkspacePort,
   {
-    /** Create (or reuse) the worktree and return its EFFECTIVE path. */
-    readonly prepare: (spec: WorktreeSpec) => Effect.Effect<string, WorkspaceError>;
+    /** Create (or reuse) the worktree, seed it, and return its EFFECTIVE path + what seeding did. */
+    readonly prepare: (
+      spec: WorktreeSpec,
+    ) => Effect.Effect<{ worktreePath: string; seeded: SeedReport }, WorkspaceError>;
     /** Run a `setup` step's commands in `cwd`, in order; a non-zero exit fails the step. */
     readonly provision: (
       cwd: string,

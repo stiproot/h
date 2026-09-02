@@ -228,6 +228,21 @@ def test_git_auth_ssh_on_worktree_step(hostile_spec: Path) -> None:
     assert definition["steps"][0]["input"]["auth"] == "ssh"
 
 
+def test_worktree_seed_empty_emits_no_input(hostile_spec: Path) -> None:
+    """The default (empty) `worktree.seed` renders no `seed` key at all — a definition without
+    seeding is byte-identical to one rendered before the input existed, which the goldens hold.
+    The populated case lives in test_consumer_config.py, because a list only reaches helm through
+    a values FILE (the consumer chart's values.yaml), never `--set`."""
+    rendered = helm.render_workflow(
+        "implement",
+        values={"implement.slug": "hostile-fixture"},
+        file_values={"implement.spec": hostile_spec},
+        include_local=False,
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    assert "seed" not in definition["steps"][0]["input"]
+
+
 def test_create_pr_gitauth_ssh_swaps_push() -> None:
     """createPr.gitAuth=ssh swaps create-pr's push instruction to the ssh transport."""
     rendered = helm.render_workflow(
