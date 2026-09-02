@@ -39,3 +39,21 @@ fi
 
 echo ""
 echo "✔ pre-push: all guards passed."
+
+# ─── Is main's CI red? ──────────────────────────────────────────────────────
+# The guards above are LOCAL; CI runs the tests in a different environment, and nothing else
+# in the workflow ever looks at its result. main was red for seventeen days (2026-08-16 →
+# 09-02) on a test that only failed under GitHub's env, and every push in that span went out
+# green here. This does not block — a push may be the fix — it makes the state impossible to
+# not see. Skipped quietly when gh is absent or unauthenticated (offline pushes are legal).
+if command -v gh >/dev/null 2>&1; then
+  latest="$(gh run list --branch main --limit 1 --json conclusion,headSha,url,createdAt \
+    --jq '.[0] | "\(.conclusion // "in-progress") \(.headSha[0:7]) \(.createdAt) \(.url)"' 2>/dev/null || true)"
+  case "$latest" in
+    failure*)
+      echo ""
+      echo "⚠ pre-push: main's CI is RED — ${latest}"
+      echo "  A green local guard chain does not cover it: fix or triage before adding to the pile."
+      ;;
+  esac
+fi
