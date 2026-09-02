@@ -198,9 +198,22 @@ def test_compose_implement_verify_create_pr_creates_five_steps() -> None:
     create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
     # PR-opening prose is in the create-pr step, not implement
     assert "open (or update) a pull request" in create_pr["input"]["task"]
-    # exactly one outputContract declarer (create-pr, not implement)
-    declarers = [s for s in merged["steps"] if "outputContract" in s.get("input", {})]
-    assert len(declarers) == 1 and declarers[0]["id"] == "create-pr"
+    # STEP contracts are per step: verify's checked report rides on implement (baseline/final/
+    # gate), create-pr's on its own step. The one-declarer rule is about the WORKFLOW `outputs:`
+    # block, which create-pr alone owns.
+    declarers = {
+        s["id"]: s["input"]["outputContract"]
+        for s in merged["steps"]
+        if "outputContract" in s.get("input", {})
+    }
+    assert set(declarers) == {"implement", "create-pr"}
+    verify_contract = declarers["implement"]
+    if isinstance(verify_contract, str):  # helm emits the toJson string; overlay keeps it verbatim
+        verify_contract = json.loads(verify_contract)
+    assert verify_contract["required"] == ["baseline", "final", "gate"]
+    assert verify_contract["properties"]["gate"]["enum"] == ["passed", "failed", "blocked"]
+    assert implement_task.rstrip().endswith("}")  # the epilogue closes the merged prose
+    assert "outputs" in merged and "pr" in merged["outputs"]["properties"]
 
 
 def test_git_auth_ssh_on_worktree_step(hostile_spec: Path) -> None:
@@ -781,8 +794,8 @@ def test_composed_implement_pr_full_order_single_declarer() -> None:
     ids = [s["id"] for s in merged["steps"]]
     assert ids == ["worktree", "setup", "plan", "implement", "itest", "create-pr", "arm-revise-pr"]
     assert ids.index("itest") < ids.index("create-pr")
-    declarers = [s for s in merged["steps"] if "outputContract" in s.get("input", {})]
-    assert len(declarers) == 1 and declarers[0]["id"] == "create-pr"
+    declarers = sorted(s["id"] for s in merged["steps"] if "outputContract" in s.get("input", {}))
+    assert declarers == ["create-pr", "implement"]  # verify's step contract + create-pr's
     assert merged["steps"][-1]["input"]["requirePrFrom"] == "{{create-pr.output}}"
     create_pr = next(s for s in merged["steps"] if s["id"] == "create-pr")
     assert create_pr["activity"] == "{{params.runActivity}}"

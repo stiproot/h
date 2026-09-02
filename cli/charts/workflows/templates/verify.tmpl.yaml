@@ -7,10 +7,17 @@ implement agent, after writing the code, runs the acceptance command and fixes f
 verify step, no second agent (independent review is the downstream pr-review chained workflow, a different
 agent). It replaces the retired `implement.verifyCmd`: verification is now only ever composed in.
 
-The check is a prose GATE: on failure the agent halts the implement step without committing. In the
-composed implement → itest → create-pr order, the composed-in `run-itest` machine gate is the
-structural block — it fails the workflow before `create-pr` fires; verify's prose gate is the earlier,
-cheaper signal. Do not compose without run-itest (see docs/h-builds-h-runbook.md).
+The check is a prose GATE with a CHECKED REPORT (2026-09-02): on failure the agent halts the implement
+step without committing, and either way the step ends with a validated json block — `baseline` and
+`final` (command, exitCode, failures) plus a `gate` verdict — so a driver can ASSERT the comparison
+(`final.failures <= baseline.failures`, `gate == passed`) instead of reading it out of prose. Night 1
+of the trxy campaign (2026-09-01) found every one of nine runs reporting green in prose while the
+driver's own re-run disagreed on several; a claim the machine can check is the rung above a claim
+it can only read. The block is a STEP contract (`input.outputContract` on the implement step), NOT
+a top-level `outputs:` — that block is the composed workflow's one output signature, which create-pr
+owns. In the composed implement → itest → create-pr order the composed-in `run-itest` machine gate is
+still the structural block — it fails the workflow before `create-pr` fires; verify's prose gate is
+the earlier, cheaper signal. Do not compose without run-itest (see docs/h-builds-h-runbook.md).
 
 Config: verify.cmd (the acceptance command, e.g. "bun install && bun run lint") bakes from values at
 publish/compose time — it is a property of the target repo, not a per-run input.
@@ -21,6 +28,51 @@ Render alone (for inspection):
   helm template verify cli/charts/workflows -s templates/verify.tmpl.yaml --set template=verify \
     --set verify.cmd="bun run lint"
 */ -}}
+{{- define "h.contract.verify-check" -}}
+type: object
+required: [command, exitCode, failures]
+properties:
+  command:
+    type: string
+    description: the exact command run, from the worktree root
+  exitCode:
+    type: integer
+    description: the command's exit status
+  failures:
+    type: integer
+    description: how many failing tests / errors / checks the command reported (0 when it passed)
+  notes:
+    type: string
+    description: what failed, in one line — names, not counts (omit when nothing failed)
+{{- end }}
+{{- define "h.contract.verify" -}}
+type: object
+required: [baseline, final, gate]
+properties:
+  baseline:
+    description: the floor command run BEFORE any change
+{{ include "h.contract.verify-check" . | indent 4 }}
+  final:
+    description: the SAME floor command run after the work, on the tree you are handing over
+{{ include "h.contract.verify-check" . | indent 4 }}
+  gate:
+    type: string
+    enum: [passed, failed, blocked]
+    description: "passed: every final failure was already in the baseline (nothing regressed, and the work is committed); failed: a regression YOU introduced remains after 3 attempts (nothing committed); blocked: the baseline itself prevented the work (nothing committed)"
+  extraChecks:
+    type: array
+    description: every further applicable check you ran beyond the floor (lint, type-check, suites) — command, exitCode, and why it covers the change
+    items:
+      type: object
+      required: [command, exitCode]
+      properties:
+        command:
+          type: string
+        exitCode:
+          type: integer
+        why:
+          type: string
+{{- end }}
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "verify" }}
 role: overlay
@@ -29,11 +81,13 @@ summary: Overlay — add an acceptance-check gate to the implement step.
 {{- $cmd := required "verify.cmd is required (--set verify.cmd=<command>)" $v.cmd }}
 {{- /* The command is a fire-time param (multi-repo): values supply the default (required so a
 render can never silently have no check); -p verifyCmd="bun run verify" retargets per fire. */}}
+{{- $contract := include "h.contract.verify" . | fromYaml }}
 params:
   verifyCmd: {{ $cmd | quote }}
 steps:
   - id: implement
     input:
+      outputContract: {{ $contract | toJson }}
       task: |-
         ===ACCEPTANCE CHECK===
 
@@ -85,11 +139,17 @@ steps:
 
         This check GATES everything below it. If commands YOU regressed still fail after
         your attempts, STOP here: do not commit, do not push, do not open a pull request —
-        report the failure in plain output (the check outcome and the baseline comparison;
-        no json block is needed from this step) and halt. The itest machine gate will also catch any locally
-        committed changes that did not pass, but the check here is the earlier, cheaper gate.
+        report `gate: failed` in the json block below and halt. If the baseline itself
+        blocked the work, report `gate: blocked`. The itest machine gate will also catch
+        any locally committed changes that did not pass, but the check here is the
+        earlier, cheaper gate.
 
         If it passes, commit per the instructions at the top of this composable section
-        (the commit block that appeared before this acceptance check), then halt this
-        step — the workflow engine proceeds to the next step.
+        (the commit block that appeared before this acceptance check), report
+        `gate: passed`, then halt this step — the workflow engine proceeds to the next
+        step. `baseline` and `final` MUST be the SAME command; `final` is run on the tree
+        you hand over (after the commit, nothing uncommitted). Counts are what the
+        command printed, not your judgement of them — the driver re-runs the command and
+        compares, so a number that does not reproduce is worse than a failing one.
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
 {{- end }}
