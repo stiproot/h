@@ -273,6 +273,17 @@ stock chart (`cli/charts`) is the fallback, so a consumer keeps the stock templa
 authoring helpers it needs from the stock `_helpers.tpl` (`h.token`,
 `h.outputContractEpilogue`).
 
+**The search path applies to VALUES too** (2026-09-02). Rendering a STOCK template from a
+consumer repo layers the consumer chart's committed `workflows/values.yaml` over the stock
+defaults (then each root's gitignored `values.local.yaml`, then `--set`), so a consumer
+declares its own facts ONCE — `verify.cmd` (its acceptance command, `required` by the stock
+`verify` overlay), `worktree.seed` (the gitignored files a fresh worktree needs), git auth —
+and composes `implement verify create-pr` without repeating them per fire. Only roots that
+PRECEDE the owning root are layered (a consumer template renders from its own chart, never with
+stock defaults overriding it); `helm.values_layers` is the one place the rule lives. Before
+this, `verify.cmd`'s only home was the stock chart's `values.local.yaml`, which a packaged
+install does not have — exactly the piece a consumer could not reach.
+
 The consumer's steering context ships as the **`h` plugin** (`plugins/h/` at the h repo root,
 published via `.claude-plugin/marketplace.json` — the h repo is its own plugin marketplace):
 skills `use-h` (running domain workflows from a consumer repo) and `author-h-template`

@@ -166,3 +166,62 @@ def test_allow_external_requires_local() -> None:
     result = runner.invoke(app, ["workflow", "run", "answer", "--allow-external"])
     assert result.exit_code == 1
     assert "--allow-external applies to --local only" in (result.output or "")
+
+
+def _consumer_values(repo: Path, body: str, local: bool = False) -> Path:
+    name = "values.local.yaml" if local else "values.yaml"
+    path = repo / ".h" / "charts" / "workflows" / name
+    path.write_text(body)
+    return path
+
+
+def test_consumer_values_layer_over_a_stock_template(tmp_path, reload_config) -> None:
+    """A consumer's committed values.yaml is layered over the stock chart's defaults when a STOCK
+    template renders from the consumer repo — the values counterpart of the template search path.
+    `verify.cmd` is the motivating case: required at render, and a packaged install has no other
+    place to put it (trxy, 2026-09-01)."""
+    from h_cli.infrastructure import helm
+
+    repo = _consumer_repo(tmp_path, 'charts_dir = ".h/charts"\n')
+    _consumer_values(repo, 'verify:\n  cmd: "bun run verify"\n')
+    reload_config(repo)
+    rendered = helm.render_workflow("verify", values={"publish": "true"}, include_local=False)
+    assert "bun run verify" in rendered
+
+
+def test_consumer_values_precedence_is_stock_then_consumer_then_set(
+    tmp_path, reload_config
+) -> None:
+    """--set still wins over the consumer's file, and the consumer's values.local.yaml (machine
+    overrides) wins over its committed values.yaml — but only when include_local is on."""
+    from h_cli.infrastructure import helm
+
+    repo = _consumer_repo(tmp_path, 'charts_dir = ".h/charts"\n')
+    _consumer_values(repo, 'verify:\n  cmd: "committed-cmd"\n')
+    _consumer_values(repo, 'verify:\n  cmd: "local-cmd"\n', local=True)
+    reload_config(repo)
+    hermetic = helm.render_workflow("verify", values={"publish": "true"}, include_local=False)
+    assert "committed-cmd" in hermetic and "local-cmd" not in hermetic
+    with_local = helm.render_workflow("verify", values={"publish": "true"})
+    assert "local-cmd" in with_local
+    explicit = helm.render_workflow("verify", values={"publish": "true", "verify.cmd": "set-cmd"})
+    assert "set-cmd" in explicit and "local-cmd" not in explicit
+
+
+def test_values_layers_only_preceding_roots_and_existing_files(tmp_path, reload_config) -> None:
+    """Only roots that PRECEDE the owning root on the search path are layered, and only files
+    that exist. A consumer template renders from its own chart — layering the stock chart's
+    values.yaml under it would let stock defaults override the consumer's own, inverting the
+    search path — while a stock template gains the consumer layer."""
+    from h_cli.infrastructure import helm
+
+    repo = _consumer_repo(tmp_path, 'charts_dir = ".h/charts"\n', "domain-thing")
+    consumer_chart = (repo / ".h" / "charts" / "workflows").resolve()
+    cfg = reload_config(repo)
+    stock_chart = cfg.STOCK_CHARTS_DIR / "workflows"
+    assert helm.values_layers(stock_chart, include_local=False) == []
+    _consumer_values(repo, "x: 1\n")
+    assert helm.values_layers(stock_chart, include_local=False) == [consumer_chart / "values.yaml"]
+    assert helm.values_layers(consumer_chart, include_local=False) == []
+    _consumer_values(repo, "x: 2\n", local=True)
+    assert helm.values_layers(consumer_chart) == [consumer_chart / "values.local.yaml"]

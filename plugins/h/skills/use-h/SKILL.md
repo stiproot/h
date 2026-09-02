@@ -34,7 +34,12 @@ silently falling back is how a run lands in the wrong charts.
 **Charts are a SEARCH PATH, not a replacement**: the configured `charts_dir` is the primary
 and h's stock chart is the fallback, so this repo's domain templates (`h template list` shows
 a `chart` column) sit beside h's stock ones (`answer`, `implement`, `review-pr`, …). A name
-present in both resolves to the primary.
+present in both resolves to the primary. **The consumer chart's committed
+`workflows/values.yaml` is layered over the stock defaults whenever a STOCK template renders**,
+so declare the repo's own facts there once — `verify.cmd` (the acceptance command the stock
+`verify` overlay requires), `worktree.seed` (gitignored files a fresh worktree needs, e.g. an
+`.env`) — instead of repeating them as `--set` per fire. `values.local.yaml` beside it is the
+gitignored machine-local override.
 
 ## Running work
 

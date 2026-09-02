@@ -86,6 +86,11 @@ workspace_dir = "~/code/h-workspace"  # reuse an existing workspace instead of ~
 dotenv = "~/code/h/.env"              # reuse existing credentials
 ```
 
+The consumer chart's committed `.h/charts/workflows/values.yaml` is layered over h's stock
+defaults whenever a stock template renders from the repo — declare `verify.cmd` (the acceptance
+command the stock `verify` overlay requires) and `worktree.seed` there once, rather than as
+`--set` on every fire. `values.local.yaml` beside it is the gitignored machine-local override.
+
 ## 4. First run
 
 ```sh

@@ -10,7 +10,9 @@ A consumer repo's domain templates live in its own helm chart —
 h CLI into a workflow definition: `steps:` (+ optional `params:`, `outputs:`). The chart is
 the repo's to own and version: h finds it via `.h/config.toml`'s `charts_dir` and resolves
 template names against the search path (this chart primary, h's stock chart fallback — a name
-present in both shadows the stock one).
+present in both shadows the stock one). The chart's committed `values.yaml` is ALSO layered
+over h's stock defaults whenever a stock template renders from this repo — so repo facts a
+stock overlay needs (`verify.cmd`, `worktree.seed`) belong there, declared once.
 
 Copy the starting skeleton from the [starter chart](references/starter-chart.md) when the
 chart or a new template doesn't exist yet. Then follow this checklist — each item is
