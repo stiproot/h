@@ -1,7 +1,8 @@
 # Delegated-run reliability — move claims off prose
 
-Status: Planning — nine supervised runs against trxy on 2026-09-01/02 produced one recurring
-defect shape; this plan converts the highest-cost instances from prose to checked or impossible.
+Status: Active — (1)–(3) landed on 2026-09-02 (`2b5114c` consumer values layer, `8a93c46`
+worktree seeding, `177422a` per-step evidence on stdout); the second campaign runs tonight and
+its repair count is this plan's verdict. (4) is delegated to h as its first proof run.
 Established: 2026-09-02
 
 ## The premise, and the evidence for it
@@ -61,6 +62,13 @@ to remember.
 
 ### 3. `create-worktree` seeds declared gitignored files (h) — the one worth making impossible
 
+*Landed 2026-09-02 (`8a93c46`): `seed: [paths]` on both substrates' `create-worktree`,
+`worktree.seed` in a consumer's values (layered over stock templates via `2b5114c`), relative-only
+paths, never overwrite, an escape refused before any copy. Proven against a fixture before the
+commit. (1)'s fields and (2)'s `base` landed with the same series; `h workflow run --local` now
+prints every contract-carrying step's validated block as `<step> ▸ {json}` (`177422a`) so the
+driver reads them without opening the ledger.*
+
 A worktree is correctly a clean checkout. A consumer that keeps real credentials in gitignored
 files therefore hands its agents a tree that fails for reasons they cannot see — and "pre-existing,
 unrelated" is the only conclusion available from inside it. It cost time twice and nearly cost a
@@ -94,6 +102,22 @@ the convention rather than each repo reinventing it.)
 A guard with no exemption mechanism gets satisfied by whatever is cheapest — an unused import, in
 one case. Two guards landed with explicit named-and-reasoned exemptions; that shape should be the
 default, because **a visible hole beats a silenced one.**
+
+### 7. A deterministic `run-exec` activity (h) — found while declaring trxy's consumer values
+
+trxy's chart runs its MECHANICAL steps (a script that prints JSON and exits non-zero on failure)
+through `run-claude`, and says so in its values: *"the day a stdout-capturing run-exec lands
+upstream, this line is the only change"*. Every template already declares
+`activity: {{params.execActivity}}`. So today an LLM is paid to run a shell command and transcribe
+its stdout — the transcription is exactly the "claim nothing forced to be true" shape this plan
+exists for, applied to a step that has no judgement in it at all. A `run-exec` activity (command
+in, `{exitCode, stdout, structured}` out, the output contract applied to stdout) makes the
+mechanical steps impossible to misreport and free. Both substrates; the local one is a child
+process, the service one is the same in an agent container.
+
+*Revisit when: the verify overlay's baseline/final counts (item 1) have been produced by a real run
+— the same activity is what would make THEM deterministic too, which decides whether `run-exec`
+is a step activity or the verify overlay's own mechanism.*
 
 ## What is deliberately NOT proposed
 
