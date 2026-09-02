@@ -10,12 +10,20 @@ function lookup(path: string, results: Record<string, unknown>): unknown {
   return val;
 }
 
+// A token inside a STRING has to become text. A scalar is itself; an object or array is its JSON —
+// `String({})` is "[object Object]", which made every object-valued result (a step's validated
+// `structured` block above all) unreachable from a task string. Found 2026-09-02: the create-pr
+// step could not carry the implement step's baseline/final evidence into the PR body, so the body
+// omitted what the ledger held and the driver repaired it by hand.
+function stringify(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+}
+
 function resolveValue(value: unknown, results: Record<string, unknown>): unknown {
   if (typeof value === "string") {
     if (!value.includes("{{")) return value;
-    return value.replace(/\{\{([^}]+)\}\}/g, (_, path) =>
-      String(lookup(path.trim(), results) ?? ""),
-    );
+    return value.replace(/\{\{([^}]+)\}\}/g, (_, path) => stringify(lookup(path.trim(), results)));
   }
   if (Array.isArray(value)) {
     return value.map((v) => resolveValue(v, results));

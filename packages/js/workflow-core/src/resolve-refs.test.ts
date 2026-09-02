@@ -41,6 +41,21 @@ describe("resolveRefs", () => {
     });
   });
 
+  // An object-valued result inside a string is its JSON, never "[object Object]" — this is how a
+  // downstream step's task quotes an upstream step's validated `structured` block verbatim.
+  it("renders an object or array {{ref}} inside a string as JSON", () => {
+    const withStructured = {
+      ...results,
+      implement: { structured: { baseline: { exitCode: 0, failures: 0 }, extraChecks: ["a"] } },
+    };
+    expect(resolveRefs({ task: "evidence:\n{{implement.structured}}" }, withStructured)).toEqual({
+      task: `evidence:\n${JSON.stringify(withStructured.implement.structured, null, 2)}`,
+    });
+    expect(resolveRefs({ task: "{{implement.structured.extraChecks}}" }, withStructured)).toEqual({
+      task: '[\n  "a"\n]',
+    });
+  });
+
   // The params contract: the generic workflow seeds named params into the results map under the
   // reserved id `params`, so they resolve exactly like step results.
   it("resolves {{params.x}} and $ref params when seeded into results", () => {

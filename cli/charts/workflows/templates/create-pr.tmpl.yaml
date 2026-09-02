@@ -111,6 +111,13 @@ steps:
            existing PR you did not open in this run.
            Title from the feature, body from the plan file
            and the implementation commit (summarize what the implementation step committed).
+           Include the `===VERIFY EVIDENCE===` block below in the PR body VERBATIM, as a
+           fenced json block under an "## Evidence" heading, when it is non-empty (verify
+           was composed in): it is the implementation step's validated report — baseline
+           and final exit codes and failure counts, the gate verdict, every extra check —
+           and a driver reads those numbers from the PR, not from your prose. Do not
+           summarise or reformat it, and do not omit it (2026-09-02: a run did every check
+           the spec asked for and the PR body carried none of it).
            Include the `===ITEST EVIDENCE===` section below in the PR body when those values
            are non-empty (i.e. when run-itest was composed in and ran).
            Pass the intended Markdown directly as the tool's body value, beginning with the intended heading or first line;
@@ -125,6 +132,9 @@ steps:
            because a PR that landed against the wrong branch is exactly what the field
            exists to catch (2026-09-01: the base was in prose only, and a driver could
            not tell a retargeted PR from a correct one without opening each).
+
+        ===VERIFY EVIDENCE===
+        {{ include "h.token" "implement.structured" }}
 
         ===ITEST EVIDENCE===
         class: {{ include "h.token" "itest.class" }}
