@@ -38,6 +38,12 @@ properties:
   url:
     type: string
     description: the pull request URL
+  base:
+    type: string
+    description: the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch
+  head:
+    type: string
+    description: the PR's head branch as GitHub reports it
   skipped:
     type: string
     description: present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)
@@ -113,6 +119,12 @@ steps:
            `Closes #N` on its own line in the PR body, so the merge auto-closes that issue;
            otherwise omit it. If a PR for this branch already exists, your push has updated
            it — do not open a duplicate.
+           AFTER opening or finding the PR, read it back (pull_request_read) and report
+           its `base` and `head` branches from that response in your json block. Never
+           copy the requested base into the block: the value must be what GitHub holds,
+           because a PR that landed against the wrong branch is exactly what the field
+           exists to catch (2026-09-01: the base was in prose only, and a driver could
+           not tell a retargeted PR from a correct one without opening each).
 
         ===ITEST EVIDENCE===
         class: {{ include "h.token" "itest.class" }}
