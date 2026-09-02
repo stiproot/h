@@ -28,3 +28,4 @@ rules = []
 [sources]
 delegate-locally = "plugins/h/skills/delegate-locally"
 analyze-workflow-run = "plugins/h/skills/analyze-workflow-run"
+write-spec = "plugins/h/skills/write-spec"

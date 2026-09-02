@@ -936,7 +936,9 @@ one-declarer composition rule, goldens, publish — for any agent creating or mo
 incl. h-builds-h feature runs), `ways-of-working` (the collaboration layer from the section above — plain-language explanation, rendered diagrams, h-improves-h, tooling-first; h only),
 and `delegate-locally` (when and how to hand work to another agent
 CLI on the LOCAL substrate — `h delegate` / `--local` — including what it refuses, the cost
-accounting, and the safety rules that follow from a delegate running as the operator). A **Python** agent consumes a skill's body directly as its system prompt via
+accounting, and the safety rules that follow from a delegate running as the operator), and
+`write-spec` (the procedure and six rules for writing a spec an implementing agent can execute
+unsupervised — sections, trap, read-back; consumer-facing). A **Python** agent consumes a skill's body directly as its system prompt via
 `agent_core.load_skill_instructions` — workflow-agent loads `workflow-orchestrator` this way (the
 same source a CLI agent gets), so the orchestration procedure has a single home. This is a skill
 source alongside the tessl registry (org-published plugins) and a repo's own `.claude/` skills.
@@ -954,7 +956,8 @@ domain workflows from a consumer repo — the consumer contract, the local subst
 ledger/cost), `author-h-template` (author a domain chart under `.h/charts/` — vendored
 helpers, gate, params-as-contract, output contract, verify-without-goldens; its starter-chart
 reference is the canonical vendoring source), `delegate-locally` (hand bounded work to another
-agent CLI) and `analyze-workflow-run` (what a run did, and why it failed). The last two moved
+agent CLI), `analyze-workflow-run` (what a run did, and why it failed), and `write-spec` (write a
+spec an implementing agent can execute unsupervised — sections, six rules, read-back). The last two moved
 here from h's own set on 2026-08-31: the local substrate and the run ledger are exactly what a
 consumer uses, so keeping them h-only was the gap, not a boundary. h still reaches them —
 `.h/skills/<name>` is a symlink into `plugins/h/skills/`, so there is ONE copy, published by the
