@@ -30,11 +30,17 @@ Render alone (for inspection):
 */ -}}
 {{- define "h.contract.verify-check" -}}
 type: object
-required: [command, exitCode, failures]
+required: [command, exitCode, failures, commit, dirty]
 properties:
   command:
     type: string
     description: the exact command run, from the worktree root
+  commit:
+    type: string
+    description: "`git rev-parse HEAD` at the moment the command ran — for the baseline this MUST be the base branch's head (the driver checks it: a baseline taken after your own edits is not a baseline)"
+  dirty:
+    type: boolean
+    description: "whether `git status --porcelain` printed anything when the command ran — MUST be false for both checks: the baseline is the untouched tree, the final is the committed one"
   exitCode:
     type: integer
     description: the command's exit status
@@ -107,7 +113,14 @@ steps:
         ===ACCEPTANCE CHECK===
 
         FIRST, BEFORE YOU CHANGE ANYTHING: run the floor command below and record its
-        result. This is the BASELINE, and taking it is not optional.
+        result. This is the BASELINE, and taking it is not optional. Record the commit
+        it ran at (`git rev-parse HEAD`) and whether the tree was dirty
+        (`git status --porcelain`) — the driver checks that the baseline's commit is the
+        base branch's head and the tree was clean. A "baseline" taken after you have
+        already written files measures your own unfinished work, not the floor (one run
+        reported 2 format failures in files it had just created, and called that the
+        baseline); if that happens, say so and take it again from a clean checkout of
+        the base (`git stash` / a fresh worktree), never by editing the number.
 
         A worktree is not guaranteed to start green. A dependency may be declared but
         not installed, a build artifact may be stale, or the branch may simply have

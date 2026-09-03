@@ -152,6 +152,12 @@ structured blocks. A missing field is a reject.
   the run was fired with.
 - **`final.failures <= baseline.failures`** (the implement step's block) — a number that grew is
   a regression the run owns.
+- **`baseline.commit` equals the base branch's head and `baseline.dirty` is `false`** — otherwise
+  the "baseline" measured the agent's own half-written files, and the inequality above is being
+  checked against a meaningless floor. (`final.dirty` must be `false` too: the final runs on the
+  committed tree.) **Incident:** a run reported a baseline of 2 failures — both format errors in
+  files it had just created — and honestly noted as much in `notes`; the numbers still satisfied
+  the check.
 - **`stopReason == "completed"`** for every agent step — read from the run ledger's
   `summary.json`, not the structured block; `usage-limited`, `timeout` or `failed` means the
   work is incomplete whatever the block says.
@@ -240,4 +246,5 @@ Both runs must exit 0. Report the exit code and the number of lint errors for ea
 - [ ] Mtime trap avoided (both `touch` outputs recorded).
 - [ ] Baseline lint exit 0; final lint exit 0; counts reported.
 - [ ] Driver read-back: create-pr's `base` equals the requested branch, `final.failures <=
-      baseline.failures`, every step's `stopReason` is `completed`.
+      baseline.failures`, `baseline.commit` is the base head with `dirty: false`, every step's
+      `stopReason` is `completed`.
