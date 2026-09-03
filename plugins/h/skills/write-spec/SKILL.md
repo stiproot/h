@@ -101,6 +101,20 @@ plausible date and cause.
 **Incident:** "removed 2026-08-30 when the .tsx fix landed" — the real answer was a different
 day, a different commit, and a different reason, found by `git log -S`.
 
+The same rule binds the spec's AUTHOR. A test recipe the spec hands over — "assert X with
+`has_table_privilege`", "use `throws_ok` on the update" — is a claim that the recipe works
+against this tree, and the author is the one who can check it in seconds: run it before naming
+it. "Whichever the neighbours use" is not a recipe; it delegates a design decision to the agent,
+who must then either guess or substitute, and a substitute made under time pressure is where a
+weaker proxy gets in.
+
+**Incident:** a spec offered two pgTAP asserts for "a signed-in user cannot write the table";
+neither could work (the grant exists, so the privilege check is true; RLS denies the UPDATE
+silently, so `throws_ok` never fires). The agent found that honestly and substituted a
+policy-count proxy — green with RLS switched off — which the driver then had to replace with
+the behavioural assert (attempt the write as the role, read the value back). One `psql` before
+writing the spec would have found both.
+
 ### Rule 3: Never satisfy a guard by silencing it
 
 The honest fix for a true false-positive is a **named, reasoned exemption** — an entry in the
