@@ -127,7 +127,7 @@ export function foldQuota(observations: readonly QuotaObservation[]): QuotaRepor
   for (const obs of observations) {
     report = {
       status: obs.status,
-      windows: { ...(report?.windows ?? {}), ...obs.windows },
+      windows: { ...report?.windows, ...obs.windows },
       observedAt: obs.observedAt,
       spent: report?.spent ?? {},
     };

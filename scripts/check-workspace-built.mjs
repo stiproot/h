@@ -27,6 +27,7 @@
 // root-chain copy runs BEFORE turbo gets that chance and reports staleness turbo is about to
 // resolve itself — a false failure in the one place the guard is not needed.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
@@ -62,6 +63,35 @@ const root = findRepoRoot(process.cwd());
 if (!root) {
   console.error("check-workspace-built: no workspace root found above " + process.cwd());
   process.exit(1);
+}
+
+/**
+ * Whether turbo would serve `pkg`'s build from cache — i.e. its inputs hash to a build it has
+ * already produced. One dry run per call; the answer is memoised across packages because the
+ * dry run for one package lists its whole dependency closure.
+ */
+let turboTasks;
+function turboCacheHit(pkg) {
+  if (turboTasks === undefined) {
+    turboTasks = null;
+    const turbo = join(root, "node_modules", ".bin", "turbo");
+    if (existsSync(turbo)) {
+      try {
+        const out = execFileSync(turbo, ["build", "--dry-run=json"], {
+          cwd: root,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 60_000,
+        });
+        turboTasks = JSON.parse(out).tasks ?? null;
+      } catch {
+        turboTasks = null;
+      }
+    }
+  }
+  if (!turboTasks) return false;
+  const task = turboTasks.find((t) => t.package === pkg && t.task === "build");
+  return task?.cache?.status === "HIT";
 }
 
 /** Newest mtime under `dir` (recursive), or 0 when it has no files. */
@@ -108,13 +138,24 @@ for (const name of existsSync(packagesDir) ? readdirSync(packagesDir) : []) {
   }
 }
 
-if (unbuilt.length > 0 || stale.length > 0) {
+// mtime is a SIEVE, not a verdict. It lies in one common direction: after a rebase, a branch
+// switch or a fresh worktree, every checked-out src file is newer than a dist turbo restored
+// from its cache — with the cache tarball's ORIGINAL timestamps — even though the bytes are
+// identical and the build is current. (Bit us 2026-09-03: a rebase onto one unrelated commit
+// made four packages read STALE straight after a green `bun run build`.) turbo's cache key is a
+// content hash, so its dry run is the arbiter: HIT clears the flag, anything else keeps it —
+// and if turbo cannot answer (missing, hollow, unparsable) the mtime verdict stands, because a
+// guard that fails open on a broken toolchain is the hollow-green check-tsc.mjs exists to catch.
+// Consulted only when the sieve caught something, so the common path pays no subprocess.
+const confirmedStale = stale.length > 0 ? stale.filter((s) => !turboCacheHit(s.name)) : stale;
+
+if (unbuilt.length > 0 || confirmedStale.length > 0) {
   const kind = unbuilt.length > 0 ? "NOT BUILT" : "STALE";
   console.error(`\ncheck-workspace-built: workspace packages are ${kind}\n`);
   for (const { name, entry } of unbuilt) {
     console.error(`  ${name} — missing ${entry.slice(root.length + 1)}`);
   }
-  for (const { name, entry } of stale) {
+  for (const { name, entry } of confirmedStale) {
     console.error(`  ${name} — ${entry.slice(root.length + 1)} is OLDER than its src/`);
   }
   if (unbuilt.length > 0) {
@@ -126,7 +167,7 @@ if (unbuilt.length > 0 || stale.length > 0) {
         "\nThat is not a package.json problem and not an ESM quirk.",
     );
   }
-  if (stale.length > 0) {
+  if (confirmedStale.length > 0) {
     console.error(
       "\nThese built entries are OLDER than their source, so consumers are importing the\n" +
         "PREVIOUS build: tests can pass green against code that no longer exists, and a change\n" +

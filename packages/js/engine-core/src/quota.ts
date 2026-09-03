@@ -144,7 +144,7 @@ export function foldQuotaRow(
   return {
     executor,
     status: report.status,
-    windows: { ...(prev?.windows ?? {}), ...report.windows },
+    windows: { ...prev?.windows, ...report.windows },
     observedAt: report.observedAt,
     runId,
     history,
