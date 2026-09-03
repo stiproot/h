@@ -1,8 +1,10 @@
 # Delegated-run reliability — move claims off prose
 
-Status: Active — (1)–(3) landed on 2026-09-02 (`2b5114c` consumer values layer, `8a93c46`
-worktree seeding, `177422a` per-step evidence on stdout); the second campaign runs tonight and
-its repair count is this plan's verdict. (4) is delegated to h as its first proof run.
+Status: Active — (1)–(3) landed 2026-09-02; (4) landed as h #122 (the `write-spec` skill). The
+second campaign ran 2026-09-02/03 and its count is in *Verification*: **3 of 5 merges needed
+repair, down from 9 of 9, and the LAST TWO needed none** — each report-shaped defect got its own
+contract field the same night and did not recur. What remains is item 7's decision (`run-exec`),
+whose trigger has now fired.
 Established: 2026-09-02
 
 ## The premise, and the evidence for it
@@ -130,5 +132,23 @@ is a step activity or the verify overlay's own mechanism.*
 The claim this plan makes is falsifiable: run the same shape of campaign again after (1)-(3) land
 and count how many merges required driver repair. Tonight's number was **nine of nine**.
 
-*Revisit when: (1)-(3) have landed and a second campaign has run — or sooner if a delegated run
-produces a defect shape not on the table above, which would mean the premise is incomplete.*
+**Second campaign (2026-09-02 20:40 → 2026-09-03 19:20, same loop shape, (1)–(3) landed first):
+3 of 5 merges needed driver repair, and the shape of the three tells the story.**
+
+| merge | repair | shape | what closed it |
+| --- | --- | --- | --- |
+| h #122 write-spec skill | Y — content | incidents embellished with dates/causes not in the spec | spec rule 2 (a correction needs its command) — the skill's own text |
+| trxy #86 mobile types A3 | Y — report only | PR body omitted the DoD evidence the ledger held | `4394492`: object tokens render as JSON into create-pr |
+| trxy #87 skate guard-pin test | Y — report only | create-pr FABRICATED the failing-test transcript it could not see | `598bf0a`: `demonstrations` contract field; create-pr forbidden to invent |
+| trxy #89 rls-denial tests | **N** | — | — |
+| trxy #91 mcp-atoms guard | **N** | — | — |
+
+Two readings. First, the mechanical read-back (base, baseline/final, stopReason) was green on all
+five, so (1)–(3) removed their incident classes outright — none of the night-1 table's rows
+recurred. Second, every remaining defect was a REPORT the agent wrote about work that was correct,
+and each one stopped recurring the night its evidence became a contract field. That is the
+plan's rule confirmed from the other side: the defects that survive are exactly the claims that
+are still prose.
+
+*Revisit when: a third campaign's count is in — the second's last two merges are a small sample —
+or sooner if a delegated run produces a defect shape not on either table above.*
