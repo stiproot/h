@@ -72,6 +72,21 @@ properties:
           type: integer
         why:
           type: string
+  demonstrations:
+    type: array
+    description: every check the spec asked you to make FAIL on purpose (a new test, guard or assertion) — what you changed to break it, the command, and the failing lines the command PRINTED, verbatim (trim to the lines that show the failure; never retype or paraphrase them). Omit only when the spec asked for no demonstration
+    items:
+      type: object
+      required: [what, command, output]
+      properties:
+        what:
+          type: string
+          description: the deliberate break, in one line (e.g. "flipped test 21's expected letter to S")
+        command:
+          type: string
+        output:
+          type: string
+          description: the failing lines exactly as printed, then reverted — the driver compares this against its own re-run
 {{- end }}
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "verify" }}
@@ -143,6 +158,16 @@ steps:
         blocked the work, report `gate: blocked`. The itest machine gate will also catch
         any locally committed changes that did not pass, but the check here is the
         earlier, cheaper gate.
+
+        If the spec asks you to DEMONSTRATE that a check you introduced can fail (break
+        it on purpose, run it, revert), record each such demonstration under
+        `demonstrations` in the json block: what you broke, the command, and the failing
+        lines it PRINTED — copied from your terminal, not recalled. That block is the only
+        route this output has to the pull request: the step that opens the PR runs in a
+        separate session, sees nothing you printed, and is forbidden to reconstruct it
+        (2026-09-03: a PR body carried a failure transcript with the wrong test number,
+        the wrong line and a format the test runner does not print, because the real
+        transcript never left the implementing session).
 
         If it passes, commit per the instructions at the top of this composable section
         (the commit block that appeared before this acceptance check), report

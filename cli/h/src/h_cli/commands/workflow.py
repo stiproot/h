@@ -13,10 +13,10 @@ import typer
 import yaml
 from rich.console import Console
 from rich.markup import escape
-from rich.syntax import Syntax
 from rich.table import Table
 
 from h_cli.commands._local_journal import journal_preflight as _journal_preflight
+from h_cli.commands._output import print_yaml
 from h_cli.commands.template import compose_templates, refuse_overlay, template_name_for_key
 from h_cli.config import (
     AGENT_IDENTITY,
@@ -106,7 +106,7 @@ def get(
     else:
         stored = _guarded(lambda: workflow_svc.get(key))
     rendered = yaml.safe_dump(stored, sort_keys=False)
-    console.print(Syntax(rendered, "yaml", background_color="default"))
+    print_yaml(rendered)
 
 
 @app.command()
@@ -1067,7 +1067,7 @@ def _print_structured_steps(results: dict[str, Any]) -> None:
         if step_id == "params" or not isinstance(value, dict) or "structured" not in value:
             continue
         block = json.dumps(value["structured"], separators=(",", ":"), sort_keys=True)
-        err_console.print(f"[cyan]{escape(step_id)}[/cyan] ▸ {escape(block)}")
+        err_console.print(f"[cyan]{escape(step_id)}[/cyan] ▸ {escape(block)}", soft_wrap=True)
 
 
 @app.command()

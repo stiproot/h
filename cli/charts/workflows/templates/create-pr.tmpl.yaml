@@ -118,6 +118,13 @@ steps:
            and a driver reads those numbers from the PR, not from your prose. Do not
            summarise or reformat it, and do not omit it (2026-09-02: a run did every check
            the spec asked for and the PR body carried none of it).
+           Everything the implementation step OBSERVED that belongs in the PR is in that
+           block — including any `demonstrations` (a check deliberately made to fail, with
+           the lines it printed). Never write out command output you did not run in THIS
+           step: if the spec asked for a demonstration and the block carries none, say so
+           in one line rather than reconstructing what it probably printed (2026-09-03: a
+           PR body quoted a failing test by the wrong number, at the wrong line, in a
+           format the runner does not emit — none of it had happened).
            Include the `===ITEST EVIDENCE===` section below in the PR body when those values
            are non-empty (i.e. when run-itest was composed in and ran).
            Pass the intended Markdown directly as the tool's body value, beginning with the intended heading or first line;

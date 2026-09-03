@@ -7,7 +7,6 @@ applies the JSON wire step, seeds the task (definition embedded), and triggers w
 
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -15,8 +14,8 @@ import httpx
 import typer
 import yaml
 from rich.console import Console
-from rich.syntax import Syntax
 
+from h_cli.commands._output import print_yaml
 from h_cli.config import AGENT_IDENTITY, AGENT_URLS, FEATURE_SPECS_DIR, resolve_agent_url
 from h_cli.infrastructure import agent_service, helm, statestore, workflow_agent
 
@@ -132,10 +131,8 @@ def render(
     rendered, _ = _render(spec, slug)
     if as_json:
         print(helm.to_wire_json(rendered))
-    elif sys.stdout.isatty():
-        console.print(Syntax(rendered, "yaml", background_color="default"))
     else:
-        print(rendered, end="")
+        print_yaml(rendered)
 
 
 @app.command()

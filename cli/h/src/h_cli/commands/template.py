@@ -14,9 +14,9 @@ import httpx
 import typer
 import yaml
 from rich.console import Console
-from rich.syntax import Syntax
 from rich.table import Table
 
+from h_cli.commands._output import print_yaml
 from h_cli.config import chart_root_for, charts_roots
 from h_cli.infrastructure import helm, workflow_svc
 from h_cli.infrastructure.overlay import overlay
@@ -154,7 +154,7 @@ def compose(
     else:
         rendered = yaml.safe_dump(merged, sort_keys=False)
         console.print(f"[dim]# composed: {joined} — pass --save <key> to persist[/dim]")
-        console.print(Syntax(rendered, "yaml", background_color="default"))
+        print_yaml(rendered)
 
 
 @app.command("list")
@@ -192,7 +192,7 @@ def get(
     except helm.HelmError as err:
         err_console.print(f"[red]helm:[/red] {err}")
         raise typer.Exit(1) from err
-    console.print(Syntax(rendered, "yaml", background_color="default"))
+    print_yaml(rendered)
 
 
 # --- drift ---------------------------------------------------------------------------------------

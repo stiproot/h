@@ -400,9 +400,10 @@ if (flagViolations.length > 0) {
 // <name>` surface of their own:
 //   _local_journal  — the journal preflight shared by `h chain run --local` / `h workflow run --local`
 //   _local_registry — the refusal for `--local` reads whose registry does not exist yet
+//   _output         — print_yaml: highlight on a TTY, verbatim bytes to a pipe (rich's Syntax crops)
 // The leading underscore is the convention; it is spelled out here rather than pattern-matched so
 // adding one stays a deliberate act.
-const OMIT_COMMANDS = new Set(["__init__", "_local_journal", "_local_registry"]);
+const OMIT_COMMANDS = new Set(["__init__", "_local_journal", "_local_registry", "_output"]);
 
 const commandViolations = [];
 for (const file of readdirSync(resolve(root, "cli/h/src/h_cli/commands"))) {
