@@ -21,7 +21,7 @@ from rich.console import Console
 from rich.rule import Rule
 from rich.table import Table
 
-from h_cli.commands._quota import IgnoreQuotaOpt, OnQuotaOpt, quota_gate
+from h_cli.commands._quota import IgnoreQuotaOpt, OnQuotaOpt, quota_gate, resumption_hint
 from h_cli.config import AGENT_RUNS_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure import local_runtime, workspace
 from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
@@ -154,13 +154,22 @@ def delegate(
             console.print(run["output"])
         if run.get("status") != "completed":
             err_console.print(f"[red]{run['agent']} failed:[/red] {run.get('error', '')}")
+            _print_resumption(run)
     else:
         for run in runs:
             console.print(Rule(f"[bold]{run['agent']}[/bold] — {run.get('status')}"))
             console.print(run.get("output") or f"[red]{run.get('error', 'no output')}[/red]")
+            _print_resumption(run)
 
     _print_ledger(runs, job_group)
     raise typer.Exit(0 if envelope.get("ok") else 1)
+
+
+def _print_resumption(run: dict[str, Any]) -> None:
+    """A usage-limited run is not a failure to diagnose but a wait to schedule — say when."""
+    hint = resumption_hint(run)
+    if hint:
+        err_console.print(f"[yellow]{run['agent']} usage-limited:[/yellow] {hint}")
 
 
 def _print_ledger(runs: list[dict[str, Any]], group: str) -> None:

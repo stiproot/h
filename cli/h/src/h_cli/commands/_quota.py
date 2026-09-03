@@ -94,3 +94,38 @@ def quota_cell(row: dict[str, Any] | None, now_iso: str | None = None) -> str:
         return "-"
     mark = "!" if row.get("status") == "rejected" else ""
     return mark + " · ".join(parts)
+
+
+def resumption_hint(run: dict[str, Any], now_iso: str | None = None) -> str | None:
+    """A usage-limited run → the line that tells the driver WHEN to come back and WHAT to do:
+    `resumes after 14:05 (5h window) — re-run this command unchanged once it passes …`.
+
+    Read from the run's `quota` report (the CLI's own rate-limit event, carried as data), never
+    parsed from the limit prose: the window named is the one that is exhausted (utilization
+    ≥ 1), else the one that resets soonest. No report ⇒ the hint still says what to do, with the
+    reset unknown. Any other stop reason ⇒ None. (h #113, re-scoped once `quota:` carried the
+    reset as data.)"""
+    if run.get("stopReason") != "usage-limited":
+        return None
+    from datetime import UTC, datetime
+
+    now = datetime.fromisoformat(now_iso.replace("Z", "+00:00")) if now_iso else datetime.now(UTC)
+    candidates: list[tuple[int, datetime, str]] = []
+    for name, label in WINDOW_LABEL.items():
+        window = ((run.get("quota") or {}).get("windows") or {}).get(name)
+        if not window:
+            continue
+        try:
+            resets = datetime.fromisoformat(str(window["resetsAt"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        if resets <= now:
+            continue
+        exhausted = float(window.get("utilization", 0)) >= 1.0
+        candidates.append((0 if exhausted else 1, resets, label))
+    what = "re-run this command unchanged once it passes (same id: the worktree is reused)"
+    if not candidates:
+        return f"resumes after the reset the CLI stated (no window observed) — {what}"
+    _, resets, label = min(candidates)
+    when = resets.astimezone().strftime("%a %H:%M" if (resets - now).days >= 1 else "%H:%M")
+    return f"resumes after {when} ({label} window) — {what}"

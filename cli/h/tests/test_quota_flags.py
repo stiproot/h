@@ -12,7 +12,7 @@ import respx
 import typer
 from typer.testing import CliRunner
 
-from h_cli.commands._quota import quota_cell, quota_gate
+from h_cli.commands._quota import quota_cell, quota_gate, resumption_hint
 from h_cli.main import app
 
 runner = CliRunner()
@@ -156,3 +156,73 @@ def test_quota_cell_marks_a_rejected_report_and_a_passed_reset() -> None:
 def test_quota_cell_is_a_dash_when_nothing_was_observed() -> None:
     assert quota_cell(None) == "-"
     assert quota_cell({"executor": "codex", "status": "allowed", "windows": {}}) == "-"
+
+
+# --- a usage-limited run says when to come back ----------------------------------------------
+
+
+def _limited(windows: dict[str, Any] | None) -> dict[str, Any]:
+    run: dict[str, Any] = {"agent": "claude", "status": "failed", "stopReason": "usage-limited"}
+    if windows is not None:
+        run["quota"] = {"status": "rejected", "windows": windows}
+    return run
+
+
+def test_resumption_hint_names_the_exhausted_window_not_the_soonest() -> None:
+    hint = resumption_hint(
+        _limited(
+            {
+                "five_hour": {"utilization": 0.4, "resetsAt": "2026-09-03T12:05:00Z"},
+                "seven_day": {"utilization": 1.0, "resetsAt": "2026-09-08T07:00:00Z"},
+            }
+        ),
+        NOW,
+    )
+    assert hint is not None and "(7d window)" in hint and "re-run this command unchanged" in hint
+
+
+def test_resumption_hint_falls_back_to_the_soonest_reset_and_skips_passed_ones() -> None:
+    hint = resumption_hint(
+        _limited(
+            {
+                "five_hour": {"utilization": 0.9, "resetsAt": "2026-09-03T09:00:00Z"},
+                "seven_day": {"utilization": 0.5, "resetsAt": "2026-09-08T07:00:00Z"},
+            }
+        ),
+        NOW,
+    )
+    assert hint is not None and "(7d window)" in hint
+
+
+def test_resumption_hint_without_a_report_still_says_what_to_do() -> None:
+    hint = resumption_hint(_limited(None), NOW)
+    assert hint is not None and hint.startswith("resumes after the reset the CLI stated")
+
+
+def test_resumption_hint_is_none_for_any_other_stop() -> None:
+    assert resumption_hint({"stopReason": "timeout", "quota": {"windows": {}}}, NOW) is None
+
+
+def test_delegate_prints_the_resumption_line_for_a_usage_limited_run(monkeypatch, tmp_path) -> None:
+    def fake_run_job(job: dict[str, Any], bin_path=None) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "group": "g",
+            "runs": [
+                {
+                    **_limited(
+                        {"five_hour": {"utilization": 1.0, "resetsAt": "2999-01-01T00:00:00Z"}}
+                    ),
+                    "error": "You've hit your session limit",
+                    "runId": "r1",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("h_cli.commands.delegate.local_runtime.run_job", fake_run_job)
+    monkeypatch.setattr(
+        "h_cli.commands.delegate.workspace.assert_managed", lambda p, allow_external=False: p
+    )
+    result = runner.invoke(app, ["delegate", "say hi", "--agent", "claude", "--cwd", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "usage-limited: resumes after" in result.output and "(5h window)" in result.output
