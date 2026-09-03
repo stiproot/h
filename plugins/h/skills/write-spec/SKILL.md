@@ -54,6 +54,15 @@ For any guard, test or check the spec introduces: **make it fail on purpose**, r
 printed, revert. A check that has never been seen failing has not been tested. The failure
 demonstration is not optional — it is the evidence that the check is real.
 
+Say WHERE it is reported: the `demonstrations` field of the verify contract (what was broken,
+the command, the failing lines verbatim). "Report what it printed" in prose is not checkable —
+the step that opens the PR runs in another session and cannot see the terminal, so a
+transcript that is not in a contract field gets reconstructed from memory.
+
+**Incident:** a PR body quoted `not ok 27`, a line number and `got:/expected:` for a runner that
+prints `have:/want:`; the real transcript (`not ok 21`) was in the implementing step's ledger and
+nowhere the PR-opening step could reach.
+
 ### 6. Acceptance
 
 The exact command(s), including the **formatters**. `format:check` is a different scope from
