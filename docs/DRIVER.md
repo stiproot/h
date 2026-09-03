@@ -58,6 +58,14 @@ the driver chooses it when the extra premise and design review is worth its cost
 1. **`h status`** (landed 2026-07-26, PR #89; `--json` for scripted check-ins) — one
    screen. Verdict OK and nothing in flight you were waiting on → done, spend nothing
    further.
+   **Before FIRING anything, read the headroom:** `h agents list --local` (or `h doctor`)
+   prints one `quota:` line per executor — `5h 53% → 17:00 · 7d 22% → Tue 21:00`, a `!`
+   marking a window the CLI last reported REJECTED, `reset` a window already past its
+   reset. Those are the rate-limit windows the agent's own CLI reported at its last run,
+   and the pre-fire gate reads the same row: a fire that would push a window past 100%
+   (`--on-quota fail`, the default) or 90% (`--on-quota wait`) is refused BY NAME before
+   any cost lands. Plan against the numbers rather than discovering them from a dead run —
+   a 3,600s implement step that dies usage-limited at minute 40 has paid for 40 minutes.
 2. **Per flagged/advanced chain:** read its findings off the row
    (`curl -s localhost:8003/chain/list | jq '.chains[] | select(.chainId=="X") | .data.reviewFindings'`)
    — NOT by re-reading the whole PR.
@@ -160,10 +168,17 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 - **Re-fire a failed chain:** same registration + `--fresh` on the failed member
   (attach-by-default returns a terminal instance as-is — CLAUDE.md gotcha).
-- **Usage-limited run / exhausted provider quota:** the limit message states the reset
-  time when it is a session limit. Re-fire under an executor on a DIFFERENT provider, or
-  park (`--in <duration-to-reset>`). The three executors sit on three providers, so a
-  quota outage never blocks everything:
+- **Usage-limited run / exhausted provider quota:** the reset time is in the `quota:` row
+  (`h agents list --local`) and in the gate's refusal, which names the three ways past it.
+  Since 2026-09-03 this is the path the shepherd takes BEFORE the run, not after: the gate
+  refuses a fire that would exhaust the window, `--on-quota wait` parks it until the reset
+  (a foreground local run sleeps, up to 6h; a service run arms a `cron:sched` continuation,
+  at most `maxQuotaWaits` = 2 hops), and `--ignore-quota` is the deliberate override for a
+  run you have decided is worth the risk. After a run DID die usage-limited: re-fire under
+  an executor on a DIFFERENT provider, or park (`--at <resetsAt>` / `--in
+  <duration-to-reset>` — the resetsAt is on the row, so schedule at reset + 1m rather than
+  guessing). The three executors sit on three providers, so a quota outage never blocks
+  everything:
   `claude` (Anthropic) · `codex` (OpenAI/ChatGPT) · `openhands` (DeepSeek, via
   `LLM_API_KEY`/`LLM_BASE_URL` — the same key the DeepSeek driver fallback uses).
   **A dead provider must be dropped from PANEL ROSTERS too**, not just implement legs: a
@@ -181,6 +196,16 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
   issue #84).
 
 ## Standing conventions
+
+- **Anticipate the rate limit; never discover it from a dead run.** The `quota:` row is the
+  shepherd's clock as much as h's: read it before every fire (`h agents list --local`), and
+  when a window is near its ceiling choose deliberately — a different executor for the
+  next fire (`--agent codex`), `--on-quota wait` for anything unattended, or a scheduled
+  fire at `resetsAt + 1m`. When the SEVEN-DAY window is what is exhausting, one reset does
+  not help: the rest of the week's fires want another provider by default (a relay with
+  `--fallback-agent codex` on the service substrate; a roster without claude locally).
+  The shepherd's own wake-ups follow the same clock: a `/loop` or `ScheduleWakeup` that
+  fires into an exhausted window pays for nothing, so time the next tick at the reset.
 
 - **Verify a plan doc's CLAIMS against the repo before scoping a spec from it.** Half one of
   the pick-up validation the `plan-management` skill's step 2 and CLAUDE.md's Plans section

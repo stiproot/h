@@ -186,6 +186,14 @@ this:
   immediately as its own `<stage>(n):` commit, never batching finished work behind unfinished
   work. A killed run then costs only its in-flight item, and ANY agent can resume — the branch is
   the checkpoint, not the dead agent's context.
+- **Anticipate the limit instead of surviving it.** Every run records the rate-limit windows
+  its CLI reported (`h agents list --local` prints them per executor: `5h 53% → 17:00 · 7d
+  22% → Tue 21:00`; `!` = the CLI's last report was REJECTED), and the pre-fire gate reads that
+  row: a fire that would push a window past 100% is refused by name with the reset time and
+  the ways past it, before any cost lands. Read the row before a long delegate. For
+  unattended work pass `--on-quota wait` — the gate then refuses at 90% and, when it does,
+  the run SLEEPS until the reset (up to 6h) instead of failing. `--ignore-quota` is the
+  deliberate override, for a run you have decided is worth the risk of dying usage-limited.
 - **Fall back across CLIs deliberately.** Re-firing the same id reuses the worktree idempotently;
   on a usage-limited stop either wait out the reset or re-fire the same task under a different
   authenticated CLI (`--agent codex`, `--agent openhands`) — the checkpoint convention is what
