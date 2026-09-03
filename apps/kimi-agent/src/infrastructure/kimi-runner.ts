@@ -2,6 +2,7 @@ import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
+import type { QuotaReport } from "agent-cli";
 import { AgentRunner, RunLedger, type RunOutcome, startRunLedgerEffect } from "agent-server";
 import { AgentRunError, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
@@ -106,6 +107,7 @@ const runKimi = (
 
     let capturedOutput = "";
     let capturedStopReason: string | undefined;
+    let capturedQuota: QuotaReport | undefined;
     // Metrics captured before the nonzero-exit failure below, so the failure-path ledger finish
     // records what the run DID spend instead of dropping it (the cost-containment fix:
     // failed/timed-out runs used to ledger costUsd: null even when usage was known).
@@ -146,6 +148,7 @@ const runKimi = (
 
       capturedOutput = result.stdout ?? "";
       capturedStopReason = result.stopReason;
+      capturedQuota = result.quota;
       capturedMetrics = {
         costUsd: result.costUsd ?? null,
         costPartial: result.costPartial ?? null,
@@ -170,6 +173,9 @@ const runKimi = (
         costUsd: result.costUsd ?? null,
         costPartial: result.costPartial ?? null,
         stopReason: result.stopReason ?? null,
+        // The account's rate-limit windows as the CLI reported them — the watcher folds this
+        // into the `quota:` registry at finalize, which is what the pre-fire gate reads.
+        quota: result.quota ?? null,
       });
 
       return {
@@ -189,6 +195,7 @@ const runKimi = (
           output: capturedOutput,
           error: String(Cause.squash(cause)),
           stopReason: capturedStopReason ?? null,
+          quota: capturedQuota ?? null,
           ...capturedMetrics,
         }),
       ),

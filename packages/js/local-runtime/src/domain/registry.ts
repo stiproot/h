@@ -3,6 +3,7 @@ import {
   disarmSched,
   ExecPolicy,
   ExecPolicyStore,
+  QuotaStore,
   registerSchedForFire,
   resolveFireAt,
   type SchedRegistration,
@@ -31,7 +32,7 @@ export const runRegistry = (
 ): Effect.Effect<
   RegistryEnvelope,
   never,
-  WorkflowStore | ExecPolicyStore | CronStore | WatchStore
+  WorkflowStore | ExecPolicyStore | CronStore | WatchStore | QuotaStore
 > =>
   Effect.gen(function* () {
     const result = yield* serve(job);
@@ -48,7 +49,11 @@ export const runRegistry = (
 
 const serve = (
   job: RegistryJob,
-): Effect.Effect<unknown, Error, WorkflowStore | ExecPolicyStore | CronStore | WatchStore> =>
+): Effect.Effect<
+  unknown,
+  Error,
+  WorkflowStore | ExecPolicyStore | CronStore | WatchStore | QuotaStore
+> =>
   Effect.gen(function* () {
     switch (job.op) {
       case "workflows.list": {
@@ -119,6 +124,14 @@ const serve = (
       case "exec.get": {
         const store = yield* ExecPolicyStore;
         return Option.getOrNull(yield* store.get());
+      }
+      case "quota.list": {
+        const store = yield* QuotaStore;
+        return yield* store.list();
+      }
+      case "quota.get": {
+        const store = yield* QuotaStore;
+        return Option.getOrNull(yield* store.get(job.executor));
       }
       case "exec.save": {
         const store = yield* ExecPolicyStore;

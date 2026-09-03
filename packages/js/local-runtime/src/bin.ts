@@ -35,6 +35,7 @@ import { runEngineHost } from "./domain/engines.ts";
 import { hostname } from "node:os";
 import {
   NatsExecPolicyStoreLive,
+  NatsQuotaStoreLive,
   NatsWfStoreLive,
   NatsWorkflowStoreLive,
 } from "./infrastructure/nats-registry-stores.ts";
@@ -55,22 +56,26 @@ const git = ExecGitClient.pipe(Layer.provide(NodeContext.layer));
  */
 const FABRIC_URL = process.env.NATS_URL ?? "nats://127.0.0.1:4222";
 
+// The registries. Connect on FIRST READ, so a job that reads no registry never opens a socket —
+// see NatsKvLive. One layer value, so the agent adapter (which writes quota: and exec:) and the
+// job domain share one connection.
+const registries = Layer.mergeAll(
+  NatsExecPolicyStoreLive,
+  NatsQuotaStoreLive,
+  NatsWorkflowStoreLive,
+  NatsWfStoreLive,
+  NatsCronStoreLive,
+  NatsWatchStoreLive,
+).pipe(Layer.provide(NatsKvLive(FABRIC_URL)));
+
 const AppLive = Layer.mergeAll(
-  AgentCliAgentLive.pipe(Layer.provide(Layer.merge(ledger, platform))),
+  AgentCliAgentLive.pipe(Layer.provide(Layer.mergeAll(ledger, platform, registries))),
   GitWorkspaceLive.pipe(Layer.provide(Layer.merge(git, NodeContext.layer))),
   StderrProgressLive,
   // Connects nothing until a journaled chain actually appends/replays — an unjournaled run
   // never touches the fabric.
   NatsJournalLive,
-  // The executor-policy registry. Connects on FIRST READ, so a job that reads no registry never
-  // opens a socket — see NatsKvLive.
-  Layer.mergeAll(
-    NatsExecPolicyStoreLive,
-    NatsWorkflowStoreLive,
-    NatsWfStoreLive,
-    NatsCronStoreLive,
-    NatsWatchStoreLive,
-  ).pipe(Layer.provide(NatsKvLive(FABRIC_URL))),
+  registries,
 );
 
 /** Everything the engine host needs: the registries it decides over, and the fire path it acts through. */
@@ -82,6 +87,7 @@ const EngineLive = (url: string) => {
     NatsWorkflowStoreLive,
     NatsWatchStoreLive,
     NatsExecPolicyStoreLive,
+    NatsQuotaStoreLive,
   ).pipe(Layer.provideMerge(kv));
   return Layer.mergeAll(
     stores,

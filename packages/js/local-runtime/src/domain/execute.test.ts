@@ -1,9 +1,15 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, TestClock, TestContext } from "effect";
+import type { QuotaRow } from "engine-core";
 import type { WorkflowStep } from "workflow-core";
 import { describe, expect, it } from "vitest";
 
 import { runWorkflow } from "./execute.ts";
-import { AllowAllExecPolicy, memoryArmStores, memoryWfStore } from "./policy.test-layer.ts";
+import {
+  AllowAllExecPolicy,
+  memoryArmStores,
+  memoryQuotaStore,
+  memoryWfStore,
+} from "./policy.test-layer.ts";
 import type {
   AgentRunReport,
   AgentRunRequest,
@@ -721,5 +727,97 @@ describe("runWorkflow — the armCron closing bracket (§10)", () => {
       job([{ id: "s", activity: "run-claude", input: { task: "go" } }], { group: "plain" }),
     );
     expect(rows.size).toBe(0);
+  });
+});
+
+describe("runWorkflow — the quota gate", () => {
+  /** What claude's CLI reported last time: the 5h window nearly spent, resetting in an hour. */
+  const hot = (
+    nowMs: number,
+    utilization: number,
+    status: QuotaRow["status"] = "allowed_warning",
+  ) =>
+    new Map<string, QuotaRow>([
+      [
+        "claude",
+        {
+          executor: "claude",
+          status,
+          windows: {
+            five_hour: { utilization, resetsAt: new Date(nowMs + 3_600_000).toISOString() },
+          },
+          observedAt: new Date(nowMs).toISOString(),
+          runId: "g:claude:1",
+          history: [],
+          updatedAt: new Date(nowMs).toISOString(),
+        },
+      ],
+    ]);
+
+  const step: WorkflowStep = { id: "s", activity: "run-claude", input: { task: "go" } };
+
+  /** Runs on the TEST clock (epoch 0), so a wait can be driven rather than slept. */
+  const runGated = (j: WorkflowJob, rows: Map<string, QuotaRow>, drive?: Effect.Effect<void>) => {
+    const { layer, recorder } = stubs();
+    const program = runWorkflow(j).pipe(
+      Effect.provide(layer),
+      Effect.provide(memoryQuotaStore(rows).layer),
+      Effect.provide(AllowAllExecPolicy),
+      Effect.provide(memoryWfStore().layer),
+      Effect.provide(memoryArmStores().layer),
+    );
+    const driven = drive
+      ? Effect.gen(function* () {
+          const fiber = yield* Effect.fork(program);
+          yield* drive;
+          return yield* fiber;
+        })
+      : program;
+    return Effect.runPromise(driven.pipe(Effect.provide(TestContext.TestContext))).then(
+      (envelope) => ({ envelope, recorder }),
+    );
+  };
+
+  it("refuses a step that would not fit the window, naming every way past it", async () => {
+    const { envelope, recorder } = await runGated(job([step]), hot(0, 0.95));
+    expect(envelope.ok).toBe(false);
+    expect(envelope.failedStep).toBe("s");
+    expect(envelope.error).toContain("claude's 5h window is at 95%");
+    expect(envelope.error).toContain("--on-quota wait");
+    expect(envelope.error).toContain("--ignore-quota");
+    // Nothing was spent: the refusal is BEFORE the agent runs.
+    expect(recorder.agentRuns).toHaveLength(0);
+  });
+
+  it("proceeds when the window has room for the estimated step", async () => {
+    const { envelope, recorder } = await runGated(job([step]), hot(0, 0.5));
+    expect(envelope.ok).toBe(true);
+    expect(recorder.agentRuns).toHaveLength(1);
+  });
+
+  it("--ignore-quota fires regardless", async () => {
+    const { envelope, recorder } = await runGated(
+      job([step], { quota: { onQuota: "fail", ignore: true } }),
+      hot(0, 0.95, "rejected"),
+    );
+    expect(envelope.ok).toBe(true);
+    expect(recorder.agentRuns).toHaveLength(1);
+  });
+
+  it("--on-quota wait sleeps until the window resets, then fires", async () => {
+    const { envelope, recorder } = await runGated(
+      job([step], { quota: { onQuota: "wait" } }),
+      hot(0, 0.95),
+      // 1h to the reset + the 60s slack. Two adjusts: the first proves it is still waiting.
+      Effect.gen(function* () {
+        yield* TestClock.adjust("30 minutes");
+        yield* TestClock.adjust("31 minutes");
+      }),
+    );
+    expect(envelope.ok).toBe(true);
+    expect(recorder.agentRuns).toHaveLength(1);
+    expect(
+      recorder.progress.some((line) => line.includes("⏳ s:") && line.includes("waiting until")),
+    ).toBe(true);
   });
 });

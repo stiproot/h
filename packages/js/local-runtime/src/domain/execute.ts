@@ -6,8 +6,8 @@ import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-c
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
-import { assertExecutorAllowed } from "./policy.ts";
-import type { DiscoverArmInput, ExecPolicyStore, WfStatus } from "engine-core";
+import { assertExecutorAllowed, awaitQuotaHeadroom } from "./policy.ts";
+import type { DiscoverArmInput, ExecPolicyStore, QuotaStore, WfStatus } from "engine-core";
 import {
   CronStore,
   goalResolved,
@@ -119,6 +119,7 @@ export const runWorkflow = (
   | ProgressPort
   | JournalPort
   | ExecPolicyStore
+  | QuotaStore
   | WfStore
   | CronStore
   | WorkflowStore
@@ -165,12 +166,12 @@ export const runWorkflow = (
       execute: Effect.Effect<
         unknown,
         StepError,
-        AgentPort | WorkspacePort | ExecPolicyStore | CronStore
+        AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore
       >,
     ): Effect.Effect<
       unknown,
       StepError,
-      AgentPort | WorkspacePort | ExecPolicyStore | CronStore
+      AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore
     > => {
       const id = stepId(step);
       if (done.has(id)) {
@@ -373,7 +374,11 @@ const runStep = (
   job: WorkflowJob,
   progress: { readonly emit: (line: string) => Effect.Effect<void> },
   runs: WorkflowRunRef[],
-): Effect.Effect<unknown, StepError, AgentPort | WorkspacePort | ExecPolicyStore | CronStore> =>
+): Effect.Effect<
+  unknown,
+  StepError,
+  AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore
+> =>
   Effect.gen(function* () {
     const id = stepId(step);
     // The activity NAME may itself be a token (`{{params.runActivity}}` — fire-time identity).
@@ -453,8 +458,14 @@ const runStep = (
       return { provisioned: commands.length };
     }
 
-    // The executor-policy fence, before anything is spent. Same decision function as the service
-    // substrate's activity gate, so `h agents deny` means one thing on both.
+    // The quota gate FIRST: under --on-quota wait it sleeps through a window reset, and a
+    // usage-limited fence in the policy row lifts at that same reset — so checked in this order a
+    // waited-for step proceeds, while the other order would refuse it against a fence about to
+    // expire. Then the executor-policy fence, before anything is spent — the same decision
+    // function as the service substrate's activity gate, so `h agents deny` means one thing on both.
+    yield* awaitQuotaHeadroom(classified.agent, job.quota, (decision) =>
+      progress.emit(`⏳ ${id}: ${decision.reason} — waiting until ${decision.untilIso}`),
+    ).pipe(Effect.mapError((err) => new StepError(id, err.message)));
     yield* assertExecutorAllowed(classified.agent, new Date().toISOString()).pipe(
       Effect.mapError((err) => new StepError(id, err.message)),
     );

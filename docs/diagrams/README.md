@@ -49,6 +49,6 @@ interaction).
 | [system-c4-container](./system-c4-container.md) | C4 container | The SERVICE substrate's topology: workflow-svc (engines), agent fleet (claude/openhands/codex/dapr-agent), three MCP servers, Redis/Dapr, and the observability spine |
 | [execution-substrates-c4-container](./execution-substrates-c4-container.md) | C4 container | One composition, two executors: the shared `h` CLI front door, the LOCAL substrate (runner + agent CLI children, no infrastructure) beside the SERVICE substrate, what `workflow-core` makes structurally symmetric, and the edge by which a local agent fires durable work |
 | [local-run-sequence](./local-run-sequence.md) | sequence | One `--local` run end to end: render → job on stdin → step walk (token resolution, refused activities, worktree, setup-skip, agent spawn, contract validation) → envelope; plus the Ctrl-C reap path |
-| [cost-accounting-sequence](./cost-accounting-sequence.md) | sequence | An agent run's usage from CLI stream events → run-ledger mirror → watch-scan tallyCost → watch:ledger day rows → usage-limited auto-deny → daily-budget fence |
+| [cost-accounting-sequence](./cost-accounting-sequence.md) | sequence | An agent run's usage AND rate-limit report from CLI stream events → run-ledger mirror → watch-scan tallyCost → watch:ledger day rows → the `quota:` observation row → usage-limited auto-deny (fenced until the observed reset) → quota-wait continuation → daily-budget fence |
 
 ## Planned (add as the need arises, one per interaction that keeps needing explaining)

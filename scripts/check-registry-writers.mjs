@@ -22,6 +22,10 @@ const ownership = new Map([
   ["chain:", ["apps/workflow-svc/src"]],
   ["cron:", ["apps/workflow-svc/src"]],
   ["wf:", ["apps/workflow-svc/src"]],
+  // quota: — the OBSERVATION registry (an executor's last-seen rate-limit windows), written by the
+  // watcher at finalize. The local substrate keeps its own copy in JetStream KV, which this guard
+  // does not cover — it holds the Dapr keyspace only.
+  ["quota:", ["apps/workflow-svc/src"]],
   ["__workflow_index__", ["apps/workflow-svc/src"]],
   ["run:", ["packages/js/agent-server/src", "packages/py/agent-server/src/agent_server"]],
   ["runs:index", ["packages/js/agent-server/src", "packages/py/agent-server/src/agent_server"]],

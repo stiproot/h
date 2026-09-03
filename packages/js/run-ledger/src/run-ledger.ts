@@ -69,6 +69,22 @@ export type RunOutcome = {
    * agent-server → agent-cli dependency; the union lives in agent-cli.
    */
   stopReason?: string | null;
+  /**
+   * The account's rate-limit windows as the CLI reported them during the run, plus what the run
+   * spent of each (agent-cli's `QuotaReport`). Typed structurally here for the same reason
+   * `stopReason` is a string: this package must not depend on agent-cli. The runtime that holds
+   * both (local-runtime) is where the two shapes are type-checked against each other. Mirrored to
+   * `run:<id>` so the watcher can write the `quota:` row from it at finalization.
+   */
+  quota?: RunQuota | null;
+};
+
+/** The ledger's copy of a run's quota report — see RunOutcome.quota. */
+export type RunQuota = {
+  status: "allowed" | "allowed_warning" | "rejected";
+  windows: Partial<Record<"five_hour" | "seven_day", { utilization: number; resetsAt: string }>>;
+  observedAt: string;
+  spent: Partial<Record<"five_hour" | "seven_day", number>>;
 };
 
 /**
@@ -132,6 +148,8 @@ export type RunSummary = {
   error: string | null;
   /** Why the run stopped (classify-stop); mirrored to `run:<id>` for the watcher's fallback read. */
   stopReason: string | null;
+  /** The run's quota report (see RunOutcome.quota); null when the CLI reported none. */
+  quota: RunQuota | null;
 };
 
 /** Identity an activity route needs to write an activity record into the run ledger. */
@@ -233,6 +251,7 @@ function buildRunSummary(
     inputPreview: ctx.input.slice(0, 280),
     error: outcome.error ?? null,
     stopReason: outcome.stopReason ?? null,
+    quota: outcome.quota ?? null,
   };
 }
 

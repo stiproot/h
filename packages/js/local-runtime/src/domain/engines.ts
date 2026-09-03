@@ -2,6 +2,7 @@ import {
   CronStore,
   EventPublisher,
   ExecPolicyStore,
+  QuotaStore,
   scanCronsEffect,
   scanDiscoverEffect,
   scanSchedEffect,
@@ -123,6 +124,7 @@ export const tick = (
   | WfStore
   | WatchStore
   | ExecPolicyStore
+  | QuotaStore
   | EventPublisher
   | SourceReader
   | ProgressPort
@@ -189,6 +191,7 @@ export const runEngineHost = (
   | WfStore
   | WatchStore
   | ExecPolicyStore
+  | QuotaStore
   | EventPublisher
   | SourceReader
   | ProgressPort
@@ -229,6 +232,7 @@ export const runEngineHost = (
       | WfStore
       | WatchStore
       | ExecPolicyStore
+      | QuotaStore
       | EventPublisher
       | ProgressPort
     >;

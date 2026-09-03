@@ -1,9 +1,10 @@
 import { Effect, Exit, Layer, Option } from "effect";
 import { ExecPolicyStore } from "engine-core";
+import type { QuotaRow } from "engine-core";
 import { describe, expect, it } from "vitest";
 
 import { UnknownAgentError } from "./agents.ts";
-import { AllowAllExecPolicy } from "./policy.test-layer.ts";
+import { AllowAllExecPolicy, memoryQuotaStore } from "./policy.test-layer.ts";
 import { branchNames, EmptyRosterError, failureDetail, runDelegate } from "./delegate.ts";
 import type { AgentRunReport, AgentRunRequest, DelegateJob, WorktreeSpec } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort } from "./ports.ts";
@@ -229,6 +230,7 @@ describe("runDelegate — the executor-policy fence", () => {
       runDelegate(job({ agents: ["claude", "codex"] })).pipe(
         Effect.provide(layer),
         Effect.provide(denying("codex")),
+        Effect.provide(AllowAllExecPolicy),
       ),
     );
 
@@ -249,9 +251,62 @@ describe("runDelegate — the executor-policy fence", () => {
       runDelegate(job({ agents: ["codex"] })).pipe(
         Effect.provide(layer),
         Effect.provide(denying("codex")),
+        Effect.provide(AllowAllExecPolicy),
       ),
     );
     if (!Exit.isSuccess(exit)) throw new Error("expected success");
     expect(exit.value.runs[0]?.error).toContain("codex");
+  });
+});
+
+describe("runDelegate — the quota gate", () => {
+  /** claude's CLI reported the 5h window exhausted an hour ago, resetting in an hour. */
+  const exhausted = (): Map<string, QuotaRow> =>
+    new Map([
+      [
+        "claude",
+        {
+          executor: "claude",
+          status: "rejected",
+          windows: {
+            five_hour: { utilization: 1, resetsAt: new Date(Date.now() + 3_600_000).toISOString() },
+          },
+          observedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          runId: "g:claude:1",
+          history: [],
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    ]);
+
+  it("turns a refusal into THIS agent's failed report, without spending the run", async () => {
+    const { layer, recorder } = stubs();
+    const exit = await Effect.runPromiseExit(
+      runDelegate(job({ agents: ["claude", "codex"] })).pipe(
+        Effect.provide(layer),
+        Effect.provide(memoryQuotaStore(exhausted()).layer),
+        Effect.provide(AllowAllExecPolicy),
+      ),
+    );
+    if (!Exit.isSuccess(exit)) throw new Error("expected success");
+    const claude = exit.value.runs.find((r) => r.agent === "claude");
+    expect(claude?.status).toBe("failed");
+    expect(claude?.error).toContain("claude is rate-limited (5h window exhausted");
+    expect(claude?.error).toContain("--ignore-quota");
+    expect(exit.value.runs.find((r) => r.agent === "codex")?.status).toBe("completed");
+    expect(recorder.requests.map((r) => r.agent)).toEqual(["codex"]);
+  });
+
+  it("--ignore-quota runs it anyway", async () => {
+    const { layer, recorder } = stubs();
+    const exit = await Effect.runPromiseExit(
+      runDelegate(job({ agents: ["claude"], quota: { onQuota: "fail", ignore: true } })).pipe(
+        Effect.provide(layer),
+        Effect.provide(memoryQuotaStore(exhausted()).layer),
+        Effect.provide(AllowAllExecPolicy),
+      ),
+    );
+    if (!Exit.isSuccess(exit)) throw new Error("expected success");
+    expect(recorder.requests.map((r) => r.agent)).toEqual(["claude"]);
   });
 });

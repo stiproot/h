@@ -15,6 +15,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from h_cli.commands._quota import quota_cell
 from h_cli.config import (
     _REPO_DIR,
     CONSUMER_CONFIG_ROOT,
@@ -26,7 +27,7 @@ from h_cli.config import (
     LOCAL_WORKTREES_DIR,
     charts_roots,
 )
-from h_cli.infrastructure.local_runtime import probe_agents
+from h_cli.infrastructure.local_runtime import LocalRunError, probe_agents, registry
 
 console = Console()
 
@@ -112,6 +113,26 @@ def _runner_stale_packages(limit: int = 3) -> list[str]:
     return stale[:limit]
 
 
+def _print_quota() -> None:
+    """Each agent's rate-limit headroom as its CLI last reported it — the `quota:` registry the
+    pre-fire gate reads. Authenticated is not the same as able to run: an exhausted five-hour
+    window refuses every step until it resets, and the reset time is what a shepherd schedules
+    around. Best-effort: the registry lives on the local fabric, which may be down."""
+    try:
+        rows = registry("quota.list") or []
+    except LocalRunError as err:
+        console.print(f"[dim]quota: local fabric unreachable — no headroom report ({err})[/dim]")
+        return
+    if not rows:
+        console.print("[dim]quota: no agent has reported its rate-limit windows yet[/dim]")
+        return
+    for row in rows:
+        console.print(
+            f"quota: {row['executor']} {quota_cell(row)}  "
+            f"[dim](observed {row.get('observedAt', '?')} by {row.get('runId', '?')})[/dim]"
+        )
+
+
 def doctor() -> None:
     """Report the local-substrate toolchain: binaries, the built runner, charts, and which
     consumer config (.h/config.toml) is in effect. Informational — nothing is installed."""
@@ -126,6 +147,7 @@ def doctor() -> None:
     for name, purpose in _OPTIONAL:
         tools.add_row(*_tool_row(name, f"optional — {purpose}"))
     console.print(tools)
+    _print_quota()
     # The aggregate is about READINESS, not presence: a box full of binaries that cannot
     # authenticate runs exactly as much work as a box with none.
     if not any("ok" in status for _, status, _ in agent_rows):

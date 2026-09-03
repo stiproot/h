@@ -10,6 +10,8 @@ import { emptyLedger } from "./internal.ts";
 import type { StoredWorkflow, WorkflowRequest } from "./internal.ts";
 import { CronStore, type CronStoreService } from "./internal.ts";
 import { ExecPolicyStore, type ExecPolicyStoreService } from "./internal.ts";
+import { QuotaStore, type QuotaStoreService } from "./internal.ts";
+import type { QuotaReport, QuotaRow } from "./internal.ts";
 import type { ExecPolicy } from "./internal.ts";
 import { WatchStore, type WatchStoreService } from "./internal.ts";
 import { WorkflowInvoker, type WorkflowInvokerService } from "./internal.ts";
@@ -33,6 +35,7 @@ type MemoryWatchStore = {
   runRecords: Map<string, number | null>;
   runStopReasons: Map<string, string>;
   runKinds: Map<string, string>;
+  runQuota: Map<string, QuotaReport>;
 };
 
 function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
@@ -42,6 +45,7 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
   const runRecords = new Map<string, number | null>();
   const runStopReasons = new Map<string, string>();
   const runKinds = new Map<string, string>();
+  const runQuota = new Map<string, QuotaReport>();
   const service: WatchStoreService = {
     getRow: (id) => Effect.succeed(Option.fromNullable(rows.get(id))),
     listRows: () => Effect.succeed([...rows.values()]),
@@ -79,11 +83,12 @@ function memoryWatchStore(config?: WatchConfig): MemoryWatchStore {
               stopReason: runStopReasons.get(key) ?? null,
               agentId: key.split(":").at(-2) ?? null,
               kind: runKinds.get(key) ?? null,
+              quota: runQuota.get(key) ?? null,
             }
           : null,
       ),
   };
-  return { service, rows, ledgers, heartbeats, runRecords, runStopReasons, runKinds };
+  return { service, rows, ledgers, heartbeats, runRecords, runStopReasons, runKinds, runQuota };
 }
 
 const stubInvoker = (overrides: Partial<WorkflowInvokerService> = {}): WorkflowInvokerService => ({
@@ -159,6 +164,19 @@ function memoryExecPolicyStore(): {
   };
 }
 
+// In-memory quota store so the finalize's `quota:` writes are observable.
+function memoryQuotaStore(): { service: QuotaStoreService; rows: Map<string, QuotaRow> } {
+  const rows = new Map<string, QuotaRow>();
+  return {
+    rows,
+    service: {
+      get: (executor) => Effect.succeed(Option.fromNullable(rows.get(executor))),
+      list: () => Effect.succeed([...rows.values()]),
+      save: (row) => Effect.sync(() => void rows.set(row.executor, row)),
+    },
+  };
+}
+
 function env(
   ws: WatchStoreService,
   invoker: WorkflowInvokerService,
@@ -166,8 +184,10 @@ function env(
   publisher: EventPublisherService = capturingPublisher().service,
   cron: CronStoreService = memorySchedStore().service,
   execPolicy: ExecPolicyStoreService = memoryExecPolicyStore().service,
+  quota: QuotaStoreService = memoryQuotaStore().service,
 ) {
   return Layer.mergeAll(
+    Layer.succeed(QuotaStore, quota),
     Layer.succeed(WatchStore, ws),
     Layer.succeed(WorkflowInvoker, invoker),
     Layer.succeed(WorkflowStore, wfStore),
@@ -944,6 +964,129 @@ describe("scanWatchesEffect", () => {
     expect(report.errors[0]).toContain("bad");
     expect(report.finalized).toEqual(["good:completed"]);
     expect(mem.rows.get("good")!.status).toBe("finalized");
+  });
+});
+
+describe("scanWatchesEffect — the quota registry", () => {
+  const hour = 3_600_000;
+  const reportAt = (
+    utilization: number,
+    status: QuotaReport["status"] = "allowed",
+  ): QuotaReport => ({
+    status,
+    windows: {
+      five_hour: { utilization, resetsAt: new Date(Date.now() + hour).toISOString() },
+      seven_day: { utilization: 0.3, resetsAt: new Date(Date.now() + 5 * 24 * hour).toISOString() },
+    },
+    observedAt: new Date(Date.now() - 60_000).toISOString(),
+    spent: { five_hour: 0.12 },
+  });
+
+  const scan = (
+    mem: MemoryWatchStore,
+    quota: QuotaStoreService,
+    cron?: CronStoreService,
+    exec?: ExecPolicyStoreService,
+  ) =>
+    Effect.runPromise(
+      scanWatchesEffect(undefined).pipe(
+        Effect.provide(
+          env(
+            mem.service,
+            stubInvoker({
+              getStatus: (id) => Effect.succeed({ instanceId: id, runtimeStatus: "COMPLETED" }),
+            }),
+            stubWorkflowStore(),
+            capturingPublisher().service,
+            cron ?? memorySchedStore().service,
+            exec ?? memoryExecPolicyStore().service,
+            quota,
+          ),
+        ),
+      ),
+    );
+
+  it("folds a completed run's quota report into the executor's row — every finalize, not only limits", async () => {
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runQuota.set("run:wf-1:claude-agent:1", reportAt(0.4));
+    const quota = memoryQuotaStore();
+    const report = await scan(mem, quota.service);
+    expect(report.quotaRecorded).toEqual(["claude"]);
+    const row = quota.rows.get("claude")!;
+    expect(row.status).toBe("allowed");
+    expect(row.windows.five_hour?.utilization).toBe(0.4);
+    expect(row.runId).toBe("wf-1:claude-agent:1");
+    expect(row.history).toEqual([
+      expect.objectContaining({ runId: "wf-1:claude-agent:1", spent: { five_hour: 0.12 } }),
+    ]);
+  });
+
+  it("a usage-limited finalize fences until the exhausted window RESETS, not the flat default", async () => {
+    const mem = memoryWatchStore();
+    mem.rows.set("wf-1", activeRow({ instanceId: "wf-1" }));
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:1", "usage-limited");
+    const limited = reportAt(1, "rejected");
+    mem.runQuota.set("run:wf-1:claude-agent:1", limited);
+    const exec = memoryExecPolicyStore();
+    const report = await scan(mem, memoryQuotaStore().service, undefined, exec.service);
+    expect(report.autoDenied).toEqual(["claude"]);
+    const entry = exec.current()!.denied[0] as { until?: string };
+    const expected = new Date(limited.windows.five_hour!.resetsAt).getTime() + 60_000;
+    expect(new Date(entry.until!).getTime()).toBe(expected);
+  });
+
+  it("onQuota: wait arms a SAME-identity continuation after the reset, decrementing the wait budget", async () => {
+    const mem = memoryWatchStore({ maxEngineFiresPerDay: 10 });
+    const cron = memorySchedStore();
+    mem.rows.set(
+      "wf-1",
+      activeRow({
+        instanceId: "wf-1",
+        policy: { maxDurationMs: 60_000, onQuota: "wait" },
+        resubmit: {
+          steps: [{ activity: "run-claude", input: { task: "t" } }],
+          params: { repo: "o/r", agentId: "claude-agent" },
+          workspaceId: "ws-1",
+        },
+      }),
+    );
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:1", "usage-limited");
+    const limited = reportAt(1, "rejected");
+    mem.runQuota.set("run:wf-1:claude-agent:1", limited);
+    const report = await scan(mem, memoryQuotaStore().service, cron.service);
+    expect(report.quotaWaits).toEqual(["qw-wf-1-e1"]);
+    const sched = [...cron.sched.values()][0]!;
+    expect(sched.origin).toBe("quota-wait");
+    expect(sched.trigger.params).toEqual({ repo: "o/r", agentId: "claude-agent" }); // no identity swap
+    expect(sched.trigger.workspaceId).toBe("ws-1");
+    expect(sched.trigger.watch?.maxQuotaWaits).toBe(1);
+    // Fires AFTER the auto-deny fence (reset + slack) has expired, so the gate lets it through.
+    const fence = new Date(limited.windows.five_hour!.resetsAt).getTime() + 60_000;
+    expect(new Date(sched.fireAt).getTime()).toBeGreaterThan(fence);
+    expect(mem.ledgers.get(today())).toMatchObject({ engineFires: 1 });
+  });
+
+  it("onQuota: wait is fail-closed — no reset time reported means no continuation", async () => {
+    const mem = memoryWatchStore({ maxEngineFiresPerDay: 10 });
+    const cron = memorySchedStore();
+    mem.rows.set(
+      "wf-1",
+      activeRow({
+        instanceId: "wf-1",
+        policy: { maxDurationMs: 60_000, onQuota: "wait" },
+        resubmit: { steps: [{ activity: "run-claude", input: {} }], params: {} },
+      }),
+    );
+    mem.runRecords.set("run:wf-1:claude-agent:1", 0.5);
+    mem.runStopReasons.set("run:wf-1:claude-agent:1", "usage-limited");
+    const report = await scan(mem, memoryQuotaStore().service, cron.service);
+    expect(report.quotaWaits).toEqual([]);
+    expect(cron.sched.size).toBe(0);
+    expect(report.errors.join("\n")).toContain("reported no reset time");
   });
 });
 

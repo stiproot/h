@@ -107,12 +107,17 @@ export function mergeAutoDeny(
   policy: ExecPolicy | undefined,
   executor: string,
   nowIso: string,
+  // When the run reported WHEN its window resets (the quota observation), the fence lifts
+  // then rather than after the fixed default — a limit hit ten minutes before a reset should
+  // not cost the executor six hours. Absent ⇒ the default, as before quota was observed.
+  untilIso?: string,
 ): ExecPolicy | null {
   const entries = normalizeDenied(policy);
   const existing = entries.find((e) => e.name === executor);
   if (existing?.reason === "operator") return null;
   if (existing && (existing.until === undefined || existing.until > nowIso)) return null;
-  const until = new Date(new Date(nowIso).getTime() + DEFAULT_AUTO_DENY_MS).toISOString();
+  const until =
+    untilIso ?? new Date(new Date(nowIso).getTime() + DEFAULT_AUTO_DENY_MS).toISOString();
   const entry: DeniedEntry = { name: executor, reason: "usage-limited", deniedAt: nowIso, until };
   return {
     denied: [...entries.filter((e) => e.name !== executor), entry],

@@ -19,12 +19,25 @@ import { CHAIN_MEMBER_KINDS, WorkflowParams, WorkflowStep } from "workflow-core"
  * refuses a mismatch loudly, naming both versions. Bump on any breaking job/envelope change;
  * mirrored in h_cli/infrastructure/local_runtime.py (test_local_protocol_sync pins the pair).
  */
-export const LOCAL_PROTOCOL_VERSION = 2;
+export const LOCAL_PROTOCOL_VERSION = 3;
 
 /** The agent CLIs this substrate can drive — the closed vocabulary behind `--agent`. */
 export const LOCAL_AGENT_TYPES = ["claude", "codex", "openhands", "pi"] as const;
 
 export type LocalAgentType = (typeof LOCAL_AGENT_TYPES)[number];
+
+// The quota gate is engine-core's (`Trigger.quota` on the service substrate) — one shape, so
+// `--on-quota`/`--ignore-quota` mean the same thing on both substrates.
+import { QuotaGate } from "engine-core";
+export { QuotaGate };
+
+/** The account's rate-limit windows as the run's CLI reported them, plus what the run spent. */
+export type RunQuotaReport = {
+  status: "allowed" | "allowed_warning" | "rejected";
+  windows: Partial<Record<"five_hour" | "seven_day", { utilization: number; resetsAt: string }>>;
+  observedAt: string;
+  spent: Partial<Record<"five_hour" | "seven_day", number>>;
+};
 
 /**
  * WHAT a worktree gets checked out to. Structurally the mirror of git-core's `GitCheckout`, which
@@ -101,6 +114,8 @@ export type AgentRunReport = {
   /** Run-ledger identity, so `h runs` / `h run <id>` / obs-mcp can pick the run up. */
   runId?: string;
   runDir?: string;
+  /** What the CLI said about the account's rate-limit windows, when it said anything. */
+  quota?: RunQuotaReport;
 };
 
 /**
@@ -138,6 +153,7 @@ export const DelegateJob = Schema.Struct({
   systemPrompt: Schema.optional(Schema.String),
   permissionMode: Schema.optional(Schema.Literal("plan")),
   worktree: Schema.optional(WorktreePlan),
+  quota: Schema.optional(QuotaGate),
 });
 export type DelegateJob = Schema.Schema.Type<typeof DelegateJob>;
 
@@ -255,6 +271,7 @@ export const WorkflowJob = Schema.Struct({
   /** Present ⇒ journal every completed step to the fabric (absent under `--no-journal`, and on
    * a chain MEMBER's inner job — the chain journals at stage granularity instead). */
   journal: Schema.optional(JournalConfig),
+  quota: Schema.optional(QuotaGate),
   /**
    * Present ⇒ BRACKET this run with a `wf:run:<group>` status row (running → done/failed), so an
    * engine can read back what became of a run it fired. The counterpart of the service substrate's
@@ -334,6 +351,7 @@ export const ChainJob = Schema.Struct({
   withSetup: Schema.optional(Schema.Boolean),
   /** Present ⇒ journal every stage to the fabric (absent under `--no-journal`). */
   journal: Schema.optional(JournalConfig),
+  quota: Schema.optional(QuotaGate),
 });
 export type ChainJob = Schema.Schema.Type<typeof ChainJob>;
 
@@ -385,6 +403,13 @@ export const RegistryJob = Schema.Union(
     workflow: Schema.Unknown,
   }),
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("exec.get") }),
+  // The quota registry, read-side: `h agents list --local` / `h doctor` show the headroom.
+  Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("quota.list") }),
+  Schema.Struct({
+    kind: Schema.Literal("registry"),
+    op: Schema.Literal("quota.get"),
+    executor: Schema.String,
+  }),
   // The recur + one-shot registries, read-side. `h cron list --local` / `h schedule list --local`.
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("crons.list") }),
   Schema.Struct({ kind: Schema.Literal("registry"), op: Schema.Literal("scheds.list") }),

@@ -2,6 +2,7 @@ import { join } from "path";
 
 import { FileSystem } from "@effect/platform";
 import { AgentInvoker, toolCallTallyFor } from "agent-cli";
+import type { QuotaReport } from "agent-cli";
 import { AgentRunner, RunLedger, type RunOutcome, startRunLedgerEffect } from "agent-server";
 import { AgentRunError, provisionMcpConfig } from "core";
 import type { AgentRequest, AgentResponse } from "core";
@@ -127,6 +128,7 @@ const runClaude = (
     // Captured so BOTH ledger paths (completed + failed) record why the run stopped — a usage-limit
     // may surface as exit 0 (completed) or non-zero (failed); either way the watcher reads it.
     let capturedStopReason: string | undefined;
+    let capturedQuota: QuotaReport | undefined;
     // Metrics captured before the nonzero-exit failure below, so the failure-path ledger finish
     // records what the run DID spend instead of dropping it.
     let capturedMetrics: Partial<
@@ -152,6 +154,7 @@ const runClaude = (
 
       capturedOutput = result.stdout ?? "";
       capturedStopReason = result.stopReason;
+      capturedQuota = result.quota;
       capturedMetrics = {
         costUsd: result.costUsd ?? null,
         costPartial: result.costPartial ?? null,
@@ -181,6 +184,9 @@ const runClaude = (
         costPartial: result.costPartial ?? null,
         // Orthogonal to status: a usage-limited run can still be "completed" (Claude exits 0).
         stopReason: result.stopReason ?? null,
+        // The account's rate-limit windows as the CLI reported them — the watcher folds this
+        // into the `quota:` registry at finalize, which is what the pre-fire gate reads.
+        quota: result.quota ?? null,
       });
 
       return {
@@ -205,6 +211,7 @@ const runClaude = (
           // A usage-limit that surfaced as a non-zero exit is still recorded, so the watcher's
           // fallback can distinguish it from a generic failure on a FAILED instance.
           stopReason: capturedStopReason ?? null,
+          quota: capturedQuota ?? null,
           ...capturedMetrics,
         }),
       ),

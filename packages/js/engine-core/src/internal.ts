@@ -30,6 +30,7 @@ export * from "./models/discover.model.ts"; // cron:discover: — source enumera
 export * from "./models/schedule.model.ts"; // cron:sched:    — the one-shot scheduled fire
 export * from "./models/wf.model.ts"; // wf:     — per-workflow status + the resolved goal flag
 export * from "./models/exec.model.ts"; // exec:   — the executor policy (denies, budgets)
+export * from "./models/quota.model.ts"; // quota:  — the rate-limit windows a run last observed, per executor
 
 // The fire descriptor and the saved/stored workflow. These sit here rather than beside an HTTP
 // router because an engine's whole action vocabulary is "fire this" — a Trigger is what a chain
@@ -45,6 +46,7 @@ export * from "./ports/IChainStore.ts";
 export * from "./ports/ICronStore.ts";
 export * from "./ports/IWfStore.ts";
 export * from "./ports/IExecPolicyStore.ts";
+export * from "./ports/IQuotaStore.ts";
 export * from "./ports/ISourceReader.ts";
 export * from "./ports/IWorkflowStore.ts";
 export * from "./ports/IWorkflowInvoker.ts";
@@ -67,3 +69,16 @@ export { decide as decideDiscover } from "./discover-engine.ts";
 export type { DiscoverDecision } from "./discover-engine.ts";
 export { decide as decideSchedule } from "./schedule-engine.ts";
 export type { SchedDecision } from "./schedule-engine.ts";
+// The quota GATE — not an engine (nothing ticks it) but the same shape: a pure `decide` over a
+// registry row, run by both substrates' fire choke points before a `run-*` activity.
+export {
+  decide as decideQuota,
+  DEFAULT_MAX_WAIT_MS,
+  estimateStepSpend,
+  fenceUntilFrom,
+  foldQuotaRow,
+  quotaRefusalMessage,
+  RESET_SLACK_MS,
+  WAIT_CEILING,
+} from "./quota.ts";
+export type { OnQuota, QuotaDecision, QuotaGateOptions } from "./quota.ts";

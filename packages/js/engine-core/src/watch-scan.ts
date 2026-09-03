@@ -4,6 +4,7 @@ import { Effect, Option } from "effect";
 
 import type { StepDefinition } from "./internal.ts";
 import type { SchedRow } from "./internal.ts";
+import type { QuotaReport } from "./internal.ts";
 import {
   type WatchOutcome,
   type WatchPolicy,
@@ -21,6 +22,8 @@ import {
 import { executorFromAgentId, mergeAutoDeny, mergeBudgetDeny } from "./exec-policy.ts";
 import { CronStore } from "./internal.ts";
 import { ExecPolicyStore } from "./internal.ts";
+import { QuotaStore } from "./internal.ts";
+import { DEFAULT_MAX_WAIT_MS, RESET_SLACK_MS, fenceUntilFrom, foldQuotaRow } from "./quota.ts";
 import { WatchStore } from "./internal.ts";
 import { WorkflowInvoker } from "./internal.ts";
 import { WorkflowStore } from "./internal.ts";
@@ -42,14 +45,17 @@ const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "TERMINATED"]);
 
 // CronStore is required because the usage-limit fallback arms a cron:sched row (a deferred
 // continuation under a different agent) — the watcher never sleeps; the schedule engine fires it.
-// ExecPolicyStore: the auto-deny — a usage-limited finalize fences the executor engine-wide
-//.
+// ExecPolicyStore: the auto-deny — a usage-limited finalize fences the executor engine-wide.
+// QuotaStore: the `quota:` observation registry — every finalize folds what the run's CLI
+// reported about the account's rate-limit windows into the executor's row (the pre-fire gate's
+// read), and a usage-limited finalize fences until the exhausted window's RESET, not a flat 6h.
 export type WatchScanEnv =
   | WatchStore
   | WorkflowInvoker
   | WorkflowStore
   | CronStore
   | ExecPolicyStore
+  | QuotaStore
   | EventPublisher;
 
 export type WatchScanReport = {
@@ -60,6 +66,10 @@ export type WatchScanReport = {
   escalated: string[];
   fallbacks: string[];
   autoDenied: string[];
+  /** `quota:` rows written this tick (`<executor>` per finalize that reported windows). */
+  quotaRecorded: string[];
+  /** Same-identity continuations armed at a window's reset (`onQuota: "wait"`). */
+  quotaWaits: string[];
   errors: string[];
   disabled?: boolean;
 };
@@ -228,6 +238,8 @@ export const scanWatchesEffect = (
       escalated: [],
       fallbacks: [],
       autoDenied: [],
+      quotaRecorded: [],
+      quotaWaits: [],
       errors: [],
     };
     if (!enabled) return { ...report, disabled: true };
@@ -329,18 +341,161 @@ const saveFenced = (
   });
 
 /**
+ * The `quota:` write: fold every run mirror under this instance that carried a quota report
+ * into its executor's row. The row is an OBSERVATION (what the CLI last said about the
+ * account's windows), distinct from the `exec:` POLICY the auto-deny writes — the gate reads
+ * both. Every finalize, not only usage-limited ones: an `allowed` report at 40% is exactly
+ * what lets the gate project the next step. Returns the freshest report per executor so the
+ * auto-deny can fence until the reset it names. Best-effort, never silent.
+ */
+const executeQuotaRecord = (
+  instanceId: string,
+  nowIso: string,
+  report: WatchScanReport,
+): Effect.Effect<Record<string, QuotaReport>, never, WatchStore | QuotaStore> =>
+  Effect.gen(function* () {
+    const ws = yield* WatchStore;
+    const store = yield* QuotaStore;
+    const keys = yield* ws.listRunKeys();
+    const mine = keys.filter((key) => key.startsWith(`run:${instanceId}:`));
+    const freshest: Record<string, QuotaReport> = {};
+    for (const key of mine) {
+      const meta = yield* ws.getRunMeta(key);
+      if (!meta?.quota || !meta.agentId) continue;
+      const executor = executorFromAgentId(meta.agentId);
+      const runId = key.slice("run:".length);
+      const prev = Option.getOrUndefined(yield* store.get(executor));
+      // A row observed AFTER this run's report is newer truth — keep it, but still book the spend.
+      const newer = prev !== undefined && prev.observedAt > meta.quota.observedAt;
+      const folded = foldQuotaRow(prev, executor, meta.quota, runId, nowIso);
+      yield* store.save(
+        newer && prev
+          ? {
+              ...folded,
+              status: prev.status,
+              windows: prev.windows,
+              observedAt: prev.observedAt,
+              runId: prev.runId,
+            }
+          : folded,
+      );
+      report.quotaRecorded.push(executor);
+      const seen = freshest[executor];
+      if (!seen || seen.observedAt < meta.quota.observedAt) freshest[executor] = meta.quota;
+    }
+    return freshest;
+  }).pipe(
+    Effect.catchAll((err) =>
+      Effect.sync(() => {
+        report.errors.push(`${instanceId}: quota record skipped — ${String(err)}`);
+        return {} as Record<string, QuotaReport>;
+      }),
+    ),
+  );
+
+/**
+ * The quota wait (`onQuota: "wait"`): on a usage-limited finalize whose run reported WHEN the
+ * exhausted window resets, arm a cron:sched row that re-fires the SAME steps under the SAME
+ * identity at that reset (plus slack — after the auto-deny's fence has expired, so the gate lets
+ * it through). The fallback's machinery without the identity swap: the operator asked for this
+ * agent, later. Fail-closed like the fallback — the daily engine-fire cap, stored steps, a known
+ * reset within DEFAULT_MAX_WAIT_MS, and a `maxQuotaWaits` budget decremented into the
+ * continuation's own policy so a window that never clears cannot re-arm forever.
+ */
+const executeQuotaWait = (
+  row: WatchRow,
+  nowMs: number,
+  quotaByExecutor: Record<string, QuotaReport>,
+  report: WatchScanReport,
+): Effect.Effect<void, WorkflowError, WatchScanEnv> =>
+  Effect.gen(function* () {
+    const ws = yield* WatchStore;
+    const cs = yield* CronStore;
+    if (row.policy.onQuota !== "wait") return;
+    const nowIso = new Date(nowMs).toISOString();
+    const untilIso = Object.values(quotaByExecutor)
+      .map((q) => fenceUntilFrom(q, nowIso))
+      .filter((u): u is string => u !== undefined)
+      .sort()[0];
+    if (untilIso === undefined) {
+      report.errors.push(`${row.instanceId}: quota wait skipped — the run reported no reset time`);
+      return;
+    }
+    const fireAtMs = new Date(untilIso).getTime() + RESET_SLACK_MS;
+    if (fireAtMs - nowMs > DEFAULT_MAX_WAIT_MS) {
+      report.errors.push(
+        `${row.instanceId}: quota wait skipped — reset ${untilIso} is beyond the ${DEFAULT_MAX_WAIT_MS / 3_600_000}h wait ceiling`,
+      );
+      return;
+    }
+    if (!row.resubmit?.steps) {
+      report.errors.push(`${row.instanceId}: quota wait skipped — no stored steps to continue`);
+      return;
+    }
+    const waitsLeft = row.policy.maxQuotaWaits ?? 2;
+    if (waitsLeft <= 0) {
+      report.errors.push(`${row.instanceId}: quota wait skipped — wait budget exhausted`);
+      return;
+    }
+    const config = yield* ws.getConfig();
+    const cap = Option.isSome(config) ? config.value.maxEngineFiresPerDay : undefined;
+    const date = ledgerDate(nowMs);
+    if (cap === undefined) {
+      report.errors.push(
+        `${row.instanceId}: quota wait skipped — no maxEngineFiresPerDay configured (fail-closed)`,
+      );
+      return;
+    }
+    if ((yield* ws.getLedger(date)).engineFires >= cap) {
+      report.errors.push(
+        `${row.instanceId}: quota wait skipped — daily engine-fire cap ${cap} reached`,
+      );
+      return;
+    }
+    const schedRowId = `qw-${row.instanceId}-e${row.epoch}`;
+    const childPolicy: WatchPolicy = { ...row.policy, maxQuotaWaits: waitsLeft - 1 };
+    const schedRow: SchedRow = {
+      id: schedRowId,
+      status: "armed",
+      fireAt: new Date(fireAtMs).toISOString(),
+      trigger: {
+        steps: (row.resubmit.steps ?? []) as readonly StepDefinition[],
+        params: { ...row.resubmit.params } as WorkflowParams,
+        instanceId: schedRowId,
+        ...(row.resubmit.workspaceId ? { workspaceId: row.resubmit.workspaceId } : {}),
+        watch: childPolicy,
+        // The continuation keeps the fire's gate mode, so a still-hot window on wake defers
+        // again (bounded by maxQuotaWaits) rather than refusing under the default.
+        quota: { onQuota: "wait" },
+      },
+      epoch: 1,
+      origin: "quota-wait",
+      handoffsRemaining: waitsLeft - 1,
+      note: `quota wait from ${row.instanceId}; window resets ${untilIso}`,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    yield* cs.saveSchedRow(schedRow);
+    yield* ws.bumpLedger(date, { engineFires: 1 });
+    report.quotaWaits.push(schedRowId);
+  });
+
+/**
  * The auto-deny: a usage-limited finalize fences the
  * limited EXECUTOR engine-wide by merging a usage-limited entry into `exec:config`, so the
  * whole fleet stops trying that provider instead of every chain discovering the limit
  * independently. The executor is read off the run key that carried the usage-limited stop
  * reason (`run:<instanceId>:<agentId>:<ts>` — the ledger's key shape). mergeAutoDeny is
  * where the safety lives: it never downgrades an operator entry and is idempotent across
- * scan ticks. Best-effort by design — a failed policy write must not fail the finalize —
- * but never silent: failures land in report.errors.
+ * scan ticks. The fence's expiry comes from the run's quota report when it carried one
+ * (`fenceUntilFrom` — the exhausted window's reset plus slack). Best-effort by design — a
+ * failed policy write must not fail the finalize — but never silent: failures land in
+ * report.errors.
  */
 const executeAutoDeny = (
   instanceId: string,
   nowIso: string,
+  quotaByExecutor: Record<string, QuotaReport>,
   report: WatchScanReport,
 ): Effect.Effect<void, never, WatchStore | ExecPolicyStore> =>
   Effect.gen(function* () {
@@ -355,7 +510,10 @@ const executeAutoDeny = (
       const executor = executorFromAgentId(agentId);
       const store = yield* ExecPolicyStore;
       const policy = yield* store.get();
-      const next = mergeAutoDeny(Option.getOrUndefined(policy), executor, nowIso);
+      // Fence until the exhausted window RESETS when the run reported it, else the flat default:
+      // a 5h limit hit ten minutes before its reset should not idle the executor for six hours.
+      const until = fenceUntilFrom(quotaByExecutor[executor], nowIso);
+      const next = mergeAutoDeny(Option.getOrUndefined(policy), executor, nowIso, until);
       if (next === null) return; // operator-denied or already fenced — nothing to write
       yield* store.save(next);
       report.autoDenied.push(executor);
@@ -463,8 +621,12 @@ const executeFinalize = (
         costGap,
       })
       .pipe(Effect.ignore);
+    // The quota observation is booked on EVERY finalize (the gate's read), before the fences
+    // that depend on the reset time it carries.
+    const quotaByExecutor = yield* executeQuotaRecord(row.instanceId, endedAt, report);
     if (outcome === "usage-limited") {
-      yield* executeAutoDeny(row.instanceId, endedAt, report);
+      yield* executeAutoDeny(row.instanceId, endedAt, quotaByExecutor, report);
+      yield* executeQuotaWait(row, nowMs, quotaByExecutor, report);
     }
     // A1: with this run's spend booked, check every budgeted
     // executor's day total and fence the ones over budget. After the bump so the tally includes

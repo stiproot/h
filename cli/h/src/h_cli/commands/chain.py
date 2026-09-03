@@ -51,6 +51,7 @@ from rich.table import Table
 
 from h_cli.commands._local_journal import journal_preflight as _journal_preflight
 from h_cli.commands._local_registry import refuse_pending_registry
+from h_cli.commands._quota import IgnoreQuotaOpt, OnQuotaOpt, quota_gate
 from h_cli.commands.template import compose_templates, template_name_for_key, template_role
 from h_cli.commands.workflow import LOCAL_STEP_TIMEOUT_MS
 from h_cli.config import (
@@ -656,6 +657,8 @@ def run(
             "For throwaway runs or a machine without nats-server provisioned.",
         ),
     ] = False,
+    on_quota: OnQuotaOpt = None,
+    ignore_quota: IgnoreQuotaOpt = False,
     strategy: Annotated[
         str,
         typer.Option(
@@ -784,6 +787,7 @@ def run(
         _fail("--timeout must be a positive number of seconds")
     if resume and no_journal:
         _fail("--resume needs the journal it would replay — drop --no-journal")
+    quota = quota_gate(on_quota, ignore_quota)
 
     tokens = list(ctx.args)
     if not any(token in ("-w", "-t") for token in tokens):
@@ -875,6 +879,13 @@ def run(
             datetime.datetime.now(datetime.UTC) + datetime.timedelta(milliseconds=_budget_ms(in_))
         ).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
+    if quota:
+        # Chain-wide, stamped onto every member's fire descriptor: the engine fires members one
+        # stage at a time and each fire carries its own gate (there is no chain-level gate — a
+        # chain that is refused mid-way is a member that failed, and D6 tears the rest down).
+        for entry in workflows:
+            entry["quota"] = quota
+
     if strategy == "loop-until-clean":
         # The loop body is review-pr→revise: the review workflow is the predicate (CLEAN stops the
         # loop), and the last workflow loops back to it. Require both, in order. The engine's
@@ -907,6 +918,7 @@ def run(
             resume=resume,
             no_journal=no_journal,
             timeout_ms=(timeout * 1000 if timeout else LOCAL_STEP_TIMEOUT_MS),
+            quota=quota,
         )
         return
 
@@ -935,6 +947,7 @@ def _run_local_chain(
     resume: str | None = None,
     no_journal: bool = False,
     timeout_ms: int = LOCAL_STEP_TIMEOUT_MS,
+    quota: dict[str, Any] | None = None,
 ) -> None:
     """Execute a composed chain on the local substrate and report what it threaded.
 
@@ -970,6 +983,8 @@ def _run_local_chain(
         job["loop"] = body["loop"]
     if with_setup:
         job["withSetup"] = True
+    if quota:
+        job["quota"] = quota
     if not no_journal:
         job["journal"] = _journal_preflight(resume)
 

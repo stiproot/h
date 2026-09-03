@@ -2,6 +2,7 @@ import type { HttpClient } from "@effect/platform";
 import { Data, type Effect } from "effect";
 
 import type { StopReason } from "./classify-stop.ts";
+import type { QuotaReport } from "./quota.ts";
 
 export type { StopReason } from "./classify-stop.ts";
 
@@ -120,6 +121,12 @@ export interface InvocationResult {
    * over stderr — stderr's head is usually an incidental startup warning (h#112).
    */
   resultEventText?: string;
+  /**
+   * The account's rate-limit windows as the CLI reported them during the run, plus what the run
+   * spent of each (quota.ts). Only CLIs that emit `rate_limit_event`s (claude) produce one; the
+   * pre-fire quota gate and `h agents list` read it via the run ledger and the `quota:` registry.
+   */
+  quota?: QuotaReport;
   tokenUsage?: {
     input: number;
     output: number;

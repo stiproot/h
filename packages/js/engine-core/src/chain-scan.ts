@@ -255,6 +255,9 @@ const fireWorkflow = (
             watchMeta: { owner: "chain", chainId: row.chainId, member: memberIndex },
           }
         : {}),
+      // The member's quota gate rides its fire descriptor like any other fire's (the CLI stamps a
+      // chain-wide --on-quota onto every member; a member without one takes the fail default).
+      ...(member.quota ? { quota: member.quota } : {}),
     });
     yield* (yield* ChainStore).bumpLedger(chainLedgerDate(Date.now()), { workflowsFired: 1 });
   });

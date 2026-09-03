@@ -10,6 +10,7 @@ import { setActivityRuntime } from "./infrastructure/activity-runtime.ts";
 import { ChainStoreLive } from "./infrastructure/dapr-chain-store.ts";
 import { CronStoreLive } from "./infrastructure/dapr-cron-store.ts";
 import { ExecPolicyStoreLive } from "./infrastructure/dapr-exec-policy-store.ts";
+import { QuotaStoreLive } from "./infrastructure/dapr-quota-store.ts";
 import { WatchStoreLive } from "./infrastructure/dapr-watch-store.ts";
 import { WfStoreLive } from "./infrastructure/dapr-wf-store.ts";
 import { WorkflowInvokerLive } from "./infrastructure/dapr-workflow-invoker.ts";
@@ -42,6 +43,7 @@ const appLayer = Layer.mergeAll(
   ChainStoreLive,
   CronStoreLive,
   ExecPolicyStoreLive,
+  QuotaStoreLive,
   WfStoreLive,
   GitHubSourceReaderLive,
   DaprInvokerLive(`http://localhost:${daprHttpPort}`).pipe(Layer.provide(NodeHttpClient.layer)),

@@ -1,8 +1,14 @@
 import type { WorkflowActivityContext } from "@dapr/dapr";
 import { Effect, Option } from "effect";
 
-import { activeDenial, deniedMessage, executorFromActivity } from "engine-core";
-import { ExecPolicyStore } from "engine-core";
+import {
+  activeDenial,
+  decideQuota,
+  deniedMessage,
+  executorFromActivity,
+  quotaRefusalMessage,
+} from "engine-core";
+import { ExecPolicyStore, QuotaStore } from "engine-core";
 import { runActivity } from "./activity-runtime.ts";
 import { cloneRepoActivity } from "./activities/clone-repo.activity.ts";
 import { copySessionActivity } from "./activities/copy-session.activity.ts";
@@ -26,6 +32,13 @@ import { writeWfRowActivity } from "./activities/write-wf-row.activity.ts";
 
 type ActivityFn = (ctx: WorkflowActivityContext, input: unknown) => Promise<unknown>;
 
+/** The quota gate's per-step knobs, read off the step input (`h workflow run --on-quota`,
+ *  `--ignore-quota` → these fields on every run-* step). */
+interface QuotaGateInput {
+  onQuota?: "fail" | "wait";
+  ignoreQuota?: boolean;
+}
+
 /**
  * The executor-policy gate: before a `run-*`
  * activity invokes its agent, read `exec:config` and REFUSE a denied executor loudly. This is
@@ -36,6 +49,14 @@ type ActivityFn = (ctx: WorkflowActivityContext, input: unknown) => Promise<unkn
  * executor being named is a policy violation the operator must SEE, never a silent re-route.
  * A failed policy read also fails the step (fail-closed — a down statestore breaks everything
  * else anyway). Exported for the registry's tests.
+ *
+ * The QUOTA gate rides on the same choke point, reading the `quota:` OBSERVATION row (what the
+ * executor's CLI last said about the account's windows) BEFORE the policy fence, so both read
+ * the same instant. `fail` (default) refuses a fire the row projects would exhaust a window —
+ * by name, with every way past it in the message. `wait` lets a hot-but-open fire through: on
+ * this substrate the provider adjudicates (a refused CLI start is cheap) and the WATCHER arms
+ * the continuation at the reset — an activity cannot sleep for hours under the 1h resiliency
+ * timeout. `ignoreQuota` skips the read entirely (the operator's override).
  */
 export function gatedExecutor(activityName: string, fn: ActivityFn): ActivityFn {
   const executor = executorFromActivity(activityName);
@@ -44,13 +65,18 @@ export function gatedExecutor(activityName: string, fn: ActivityFn): ActivityFn 
     const traceparent = (input as { traceparent?: string } | null)?.traceparent;
     await runActivity(
       Effect.gen(function* () {
+        const nowIso = new Date().toISOString();
+        const gate = (input ?? {}) as QuotaGateInput;
+        if (gate.ignoreQuota !== true) {
+          const quotaRow = Option.getOrUndefined(yield* (yield* QuotaStore).get(executor));
+          const decision = decideQuota(quotaRow, { nowIso, onQuota: gate.onQuota ?? "fail" });
+          if (decision.action === "refuse") {
+            return yield* Effect.fail(new Error(quotaRefusalMessage(decision)));
+          }
+        }
         const store = yield* ExecPolicyStore;
         const policy = yield* store.get();
-        const denial = activeDenial(
-          Option.getOrUndefined(policy),
-          executor,
-          new Date().toISOString(),
-        );
+        const denial = activeDenial(Option.getOrUndefined(policy), executor, nowIso);
         if (denial !== undefined) {
           return yield* Effect.fail(new Error(deniedMessage(executor, denial)));
         }

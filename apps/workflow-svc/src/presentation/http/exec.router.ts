@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from "effect";
 import type { FastifyInstance } from "fastify";
 
 import { executorFromAgentId, normalizeDenied } from "engine-core";
+import { QuotaStore } from "engine-core";
 import { DeniedEntry } from "engine-core";
 import { ledgerDate } from "engine-core";
 import { ExecPolicyStore } from "engine-core";
@@ -49,12 +50,18 @@ export function registerExecRoutes(fastify: FastifyInstance, runtime: WorkflowRo
           const executor = executorFromAgentId(agentId);
           todaySpend[executor] = Math.round(((todaySpend[executor] ?? 0) + usd) * 10_000) / 10_000;
         }
+        // The `quota:` observation rows beside the policy, so `h agents list` shows each
+        // executor's windows next to its fence in one call. Best-effort like the ledger.
+        const quota = yield* (yield* QuotaStore)
+          .list()
+          .pipe(Effect.catchAll(() => Effect.succeed([])));
         return {
           denied: normalizeDenied(policy),
           updatedAt: policy?.updatedAt ?? "",
           budgets: policy?.budgets ?? {},
           todaySpend,
           todayCostGapRuns: ledger?.costGapRuns ?? 0,
+          quota,
         };
       }),
     ),

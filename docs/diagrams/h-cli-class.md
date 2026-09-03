@@ -72,7 +72,7 @@ classDiagram
     +KIND_MODEL_PARAMS : dict~str, tuple~str, ...~~
     +KIND_CONTRACT_SUPPLIES : dict~str, frozenset~str~~
     +WRITE_KINDS
-    +run(ctx, slug, param, local, with_setup, resume, timeout, no_journal, strategy, max_iterations, after, at, in_) None
+    +run(ctx, slug, param, local, with_setup, resume, timeout, no_journal, on_quota, ignore_quota, strategy, max_iterations, after, at, in_) None
     +list_(local) None
     +rm(chain_id) None
   }
@@ -80,7 +80,7 @@ classDiagram
   class WorkflowCmd {
     <<Typer app workflow.py>>
     +publish(template, key, schedule, workspace_id, local, disabled) None
-    +run(keys, param, inline, agent, model, instance_id, fresh, watch, budget, retry, cron, max_fires, fallback_agent, fallback_model, fallback_after, fallback_max, at, in_, via, local, timeout, with_setup, allow_external, resume, no_journal, as_json) None
+    +run(keys, param, inline, agent, model, instance_id, fresh, watch, budget, retry, cron, max_fires, fallback_agent, fallback_model, fallback_after, fallback_max, at, in_, via, on_quota, ignore_quota, local, timeout, with_setup, allow_external, resume, no_journal, as_json) None
     +pause(instance_id, key, at, in_, param, workspace_id) None
     +resume(sched_id) None
     +terminate(instance_id) None
@@ -170,7 +170,7 @@ classDiagram
   class SvcClient {
     <<httpx adapter workflow_svc.py>>
     +save(key, steps, params, schedule, workspace_id, disabled, outputs) Any
-    +run_saved(key, params, instance_id, fresh, watch, cron, at, in_) Any
+    +run_saved(key, params, instance_id, fresh, watch, cron, at, in_, quota) Any
     +chain_run(body) Any
     +chain_list() Any
     +pause(instance_id, key, params, at, in_, workspace_id) Any

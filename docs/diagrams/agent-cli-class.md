@@ -135,6 +135,7 @@ classDiagram
     +exitCode : number
     +stopReason : StopReason
     +resultEventText : string
+    +quota : QuotaReport
     +tokenUsage : input: number output: number
     +model : string
     +modelUsage : Record~string, ModelUsage~

@@ -17,6 +17,7 @@ from rich.table import Table
 
 from h_cli.commands._local_journal import journal_preflight as _journal_preflight
 from h_cli.commands._output import print_yaml
+from h_cli.commands._quota import IgnoreQuotaOpt, OnQuotaOpt, quota_gate
 from h_cli.commands.template import compose_templates, refuse_overlay, template_name_for_key
 from h_cli.config import (
     AGENT_IDENTITY,
@@ -517,6 +518,8 @@ def run(
         ),
     ] = None,
     via: ViaOpt = None,
+    on_quota: OnQuotaOpt = None,
+    ignore_quota: IgnoreQuotaOpt = False,
     local: Annotated[
         bool,
         typer.Option(
@@ -723,6 +726,13 @@ def run(
         watch_policy = {"maxDurationMs": _parse_budget(budget) if budget else DEFAULT_BUDGET_MS}
         if retry is not None:
             watch_policy["retry"] = {"maxAttempts": retry, "fresh": True}
+    quota = quota_gate(on_quota, ignore_quota)
+    # `--on-quota wait` on the SERVICE substrate is a watcher behaviour (the continuation is armed
+    # at finalize), so like --fallback it implies --watch; the local driver sleeps in-process.
+    if quota and quota["onQuota"] == "wait" and not local:
+        if watch_policy is None:
+            watch_policy = {"maxDurationMs": DEFAULT_BUDGET_MS}
+        watch_policy["onQuota"] = "wait"
     # Usage-limit fallback: on a rate limit, continue under a different agent/model after a delay.
     fallback_wanted = (
         fallback_agent is not None
@@ -833,6 +843,7 @@ def run(
             as_json=as_json,
             timeout_ms=(timeout * 1000 if timeout else LOCAL_STEP_TIMEOUT_MS),
             budget_ms=_parse_budget(budget) if budget else None,
+            quota=quota,
             arm_cron=(
                 {
                     "cadence": cron_policy["cadence"],
@@ -879,7 +890,7 @@ def run(
         )
         result = _guarded(
             lambda: workflow_svc.run_steps(
-                panelized["steps"], merged, instance_id, fresh, watch_policy, None, None
+                panelized["steps"], merged, instance_id, fresh, watch_policy, None, None, quota
             )
         )
     elif inline:
@@ -915,14 +926,14 @@ def run(
                 arm_cron["budget"] = cron_policy["budget"]
         result = _guarded(
             lambda: workflow_svc.run_steps(
-                steps, merged, instance_id, fresh, watch_policy, arm_cron, wf
+                steps, merged, instance_id, fresh, watch_policy, arm_cron, wf, quota
             )
         )
     elif via:
-        if watch_policy or cron_policy:
+        if watch_policy or cron_policy or quota:
             err_console.print(
-                "[red]--watch/--budget/--retry/--cron need workflow-svc's engines[/red] — "
-                "drop --via (the agent babysitter carries its own policy)."
+                "[red]drop --via[/red] — --watch/--budget/--retry/--cron/--on-quota need "
+                "workflow-svc's engines (the agent babysitter carries its own policy)."
             )
             raise typer.Exit(1)
         via_url = _resolve_via(via)
@@ -937,7 +948,7 @@ def run(
     else:
         result = _guarded(
             lambda: workflow_svc.run_saved(
-                key, params, instance_id, fresh, watch_policy, cron_policy, at, in_
+                key, params, instance_id, fresh, watch_policy, cron_policy, at, in_, quota
             )
         )
     console.print_json(data=result)
@@ -974,6 +985,7 @@ def _run_local(
     wf: dict[str, str] | None = None,
     timeout_ms: int = LOCAL_STEP_TIMEOUT_MS,
     as_json: bool = False,
+    quota: dict[str, Any] | None = None,
 ) -> None:
     """Execute a rendered definition on the local substrate and report what its steps produced.
 
@@ -997,6 +1009,8 @@ def _run_local(
         # engine can reach it, so the deadline it CAN enforce is "start no more steps". One rule in
         # two places — the chain-wide budget already works this way between stages.
         **({"budgetMs": budget_ms} if budget_ms else {}),
+        # The quota gate (--on-quota/--ignore-quota); absent ⇒ the executor's fail-on-hot default.
+        **({"quota": quota} if quota else {}),
         # §10: the RUN arms its own recurrence in its closing bracket. Passed through rather than
         # armed here, so "a workflow never recurs itself, and the edge does not write cron rows"
         # holds on this substrate too.

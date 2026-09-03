@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { WorkflowParams, WorkflowStep } from "workflow-core";
 
 import { WatchPolicy } from "./watch.model.ts";
+import { QuotaGate } from "./quota.model.ts";
 import { WfIdentity } from "./wf.model.ts";
 
 /**
@@ -49,6 +50,9 @@ export const TriggerFields = {
   // decoupled from the caller, never from the invocation. Whoever fires, carries: the policy
   // rides the carrier and is stripped at the choke point, never workflow input.
   watch: Schema.optional(WatchPolicy),
+  // The quota gate for this fire (see QuotaGate): the generic workflow stamps it onto every
+  // `run-*` step's input, where the activity-registry gate reads it. Absent ⇒ fail-on-hot.
+  quota: Schema.optional(QuotaGate),
 } as const;
 export const Trigger = Schema.Struct(TriggerFields);
 export type Trigger = Schema.Schema.Type<typeof Trigger>;

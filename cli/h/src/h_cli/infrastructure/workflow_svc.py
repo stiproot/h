@@ -63,6 +63,7 @@ def run_saved(
     cron: dict[str, Any] | None = None,
     at: str | None = None,
     in_: str | None = None,
+    quota: dict[str, Any] | None = None,
 ) -> Any:
     """Fire a saved workflow; fire-time params override the stored defaults key-by-key.
     An instance_id gives the run a readable, stable worktree/workspace key. fresh opts in
@@ -89,6 +90,8 @@ def run_saved(
         body["at"] = at
     if in_:
         body["in"] = in_
+    if quota:
+        body["quota"] = quota
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run/{key}", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()
@@ -102,6 +105,7 @@ def run_steps(
     watch: dict[str, Any] | None = None,
     arm_cron: dict[str, Any] | None = None,
     wf: dict[str, Any] | None = None,
+    quota: dict[str, Any] | None = None,
 ) -> Any:
     """Fire a hydrated definition (raw steps) directly — no saved key, no publish. The inline
     compose-on-fire path: the CLI renders a template and posts its steps + params here, so a
@@ -127,6 +131,8 @@ def run_steps(
         body["wf"] = wf
     if arm_cron:
         body["armCron"] = arm_cron
+    if quota:
+        body["quota"] = quota
     resp = httpx.post(f"{WORKFLOW_URL}/workflow/run", json=body, timeout=30)
     resp.raise_for_status()
     return resp.json()

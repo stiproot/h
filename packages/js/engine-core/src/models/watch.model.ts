@@ -1,4 +1,6 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
+
+import { QuotaReport } from "./quota.model.ts";
 
 /**
  * The watcher primitive's data shapes: a watch is a durable
@@ -7,8 +9,8 @@ import { Schema } from "effect";
  * deliberately NOT a rules DSL (ruling W3): the policy is a fixed struct, and every behavior
  * (budget-terminate, retry, escalate, cost tally) is engine code, never config-expressed logic.
  *
- * This module is import-free by design: `workflow.model.ts` imports `WatchPolicy` for the
- * request/save/stored schemas, so nothing here may import back. The `resubmit` steps are
+ * This module imports only `quota.model.ts` (itself a leaf) by design: `workflow.model.ts`
+ * imports `WatchPolicy` for the request/save/stored schemas, so nothing here may import back. The `resubmit` steps are
  * `Unknown` for the same reason — they were Schema-validated at original fire time and are
  * only ever round-tripped back into the invoker.
  */
@@ -74,6 +76,15 @@ export const WatchPolicy = Schema.Struct({
   retry: Schema.optional(WatchRetryPolicy),
   escalate: Schema.optional(WatchEscalatePolicy),
   fallback: Schema.optional(WatchFallbackPolicy),
+  // The quota gate's mode for this run (`h workflow run --on-quota`). `fail` (default): the
+  // activity gate refuses a fire the executor's `quota:` row says would exhaust a window. `wait`:
+  // the gate lets a hot-but-not-exhausted fire through (the provider adjudicates; a refusal is
+  // cheap), and a usage-limited finalize arms a SAME-identity continuation at the window's reset
+  // — the fallback's shape without the identity swap, because what the operator wanted was this
+  // agent, later. Bounded by `maxQuotaWaits` (default 2), decremented into the continuation's
+  // own policy, so a window that never clears cannot re-arm forever.
+  onQuota: Schema.optional(Schema.Literal("fail", "wait")),
+  maxQuotaWaits: Schema.optional(Schema.Number),
 });
 export type WatchPolicy = Schema.Schema.Type<typeof WatchPolicy>;
 
@@ -173,6 +184,8 @@ export interface RunMirrorMeta {
   stopReason: string | null;
   agentId: string | null;
   kind: string | null;
+  /** The account's rate-limit windows as this run's CLI reported them (the ledger's `quota`). */
+  quota: QuotaReport | null;
 }
 
 /** Parse a raw mirror value into {@link RunMirrorMeta} — pure, shared by both registry stores. */
@@ -187,8 +200,11 @@ export function runMirrorMetaFrom(value: unknown): RunMirrorMeta {
     stopReason: typeof record.stopReason === "string" ? record.stopReason : null,
     agentId: typeof record.agentId === "string" ? record.agentId : null,
     kind: typeof record.kind === "string" ? record.kind : null,
+    quota: Option.getOrNull(decodeQuota(record.quota)),
   };
 }
+
+const decodeQuota = Schema.decodeUnknownOption(QuotaReport);
 
 // watch:__tick__ — the scan heartbeat. `enabled: false` distinguishes a deliberate disarm
 // from a dead engine, so a staleness check (the sweep's guard) can tell the two apart.

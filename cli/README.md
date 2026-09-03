@@ -97,6 +97,10 @@ uv run h template drift [KEYS...] [--json]  # re-render each saved key's templat
                                           #   stored definition — exits 1 on drift, so it can gate
 uv run h agents list [--local]            # the workflow-invokable agents + their {runActivity, agentId}
 uv run h agents deny|allow NAME [--local] # the executor fence; --local writes the fence local runs read
+                                          #   `list` also prints one `quota:` line per executor — the account's
+                                          #   last-observed rate-limit windows (`5h 62% → 14:05 · 7d 31% → Tue 09:00`;
+                                          #   a `!` prefix = the CLI reported REJECTED; `reset` = the observation
+                                          #   predates the window's reset, so the gate lets the next fire through)
                                           # identities — i.e. what `--agent <name>` accepts
 uv run h workflow list|get [--local]      # read-side views; --local reads the local KV saved-workflow store
 uv run h workflow status                  # runtime status of one instance (service substrate)
@@ -116,6 +120,18 @@ uv run h workflow resume <schedId>        # fire a paused/scheduled continuation
                                           # workflow FROM STEP 1 on the preserved worktree — not a frozen fiber
 uv run h workflow run <key> --fallback-agent A [--fallback-model M] [--fallback-after DUR] [--fallback-max N]
                                           # on a usage-limited outcome, arm a deferred continuation under another identity
+uv run h workflow run <key> --on-quota fail|wait [--ignore-quota]  # the QUOTA GATE. Before every agent step the executor's
+                                          #   `quota:` row is read: the last report was REJECTED, or utilization plus
+                                          #   one step's typical spend (the row's history) would cross the ceiling ⇒
+                                          #   `fail` (default, ceiling 100%) refuses BY NAME before anything is paid
+                                          #   for; `wait` (ceiling 90%) on --local sleeps between steps until the
+                                          #   reset (≤6h), and on the service path implies --watch so a usage-limited
+                                          #   finalize arms a same-identity continuation at reset + slack
+                                          #   (`maxQuotaWaits`, default 2).
+                                          #   --ignore-quota fires regardless (a stale row you know is wrong). A row
+                                          #   whose reset has PASSED never blocks — stale-in-favour, the provider
+                                          #   adjudicates. Also on `h chain run` (chain-wide, before the expression)
+                                          #   and `h delegate`. Refused with --via (an engine flag, like --watch).
 uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); values ride -p; EXPR: -w KEY | -t ATOMS...
                                           #   per-member flags: --agent (SEVERAL names = a panel roster)
                                           #   /--model/--fresh/--kind/--inline/--id NAME, staging with the
@@ -127,7 +143,8 @@ uv run h chain run --slug s -p spec=@f EXPR # register a chain (temporal); value
                                           #   so concurrent members never clobber)
                                           #   (validated against the workflow's declared outputs schema at registration)
                                           #   COMMAND flags (--slug/-p/--strategy/--max-iterations/--after/
-                                          #   --at|--in/--local/--timeout/--resume/--no-journal) must PRECEDE
+                                          #   --at|--in/--local/--timeout/--resume/--no-journal/--on-quota/
+                                          #   --ignore-quota) must PRECEDE
                                           #   the expression — click would otherwise consume them out of position
 uv run h chain list                       # the durable chain registry + scan heartbeat
 uv run h watch list [--local]|get|delete  # the watcher registry (--local reads the JetStream KV rows)
@@ -313,6 +330,11 @@ in Python that would drift into confidently wrong; it is asked over the same she
 layering a `--local` run uses, so it is the answer the RUN will give for this repo. An
 unreachable probe (no built runner, an older one) reports UNKNOWN and never `ok` — answering from
 ignorance is the failure being fixed, not a milder version of it.
+
+Below the tools table doctor prints the `quota:` rows the local registry holds — each
+executor's last-observed rate-limit windows, the same lines `h agents list --local` prints — so
+"can this agent run" and "how much of it is left" are answered on one screen. A missing fabric
+or an empty registry is reported as such, never as headroom.
 
 It is a report, not a gate: every surface still
 refuses loud by name at its own point of use (the operator-provisioned posture — h never

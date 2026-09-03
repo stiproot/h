@@ -38,6 +38,8 @@ export const BUCKETS = {
   cron: "h-cron",
   wf: "h-wf",
   exec: "h-exec",
+  /** `quota:<executor>` — what the CLIs REPORTED about the account's windows (observation, not policy). */
+  quota: "h-quota",
   workflows: "h-workflows",
 } as const;
 

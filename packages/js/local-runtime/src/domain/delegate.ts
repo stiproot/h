@@ -11,8 +11,8 @@ import type {
   LocalAgentType,
 } from "./models.ts";
 import { AgentPort, ProgressPort, WorkspacePort, type WorkspaceError } from "./ports.ts";
-import { assertExecutorAllowed } from "./policy.ts";
-import type { ExecPolicyStore } from "engine-core";
+import { assertExecutorAllowed, awaitQuotaHeadroom } from "./policy.ts";
+import type { ExecPolicyStore, QuotaStore } from "engine-core";
 
 /** An empty roster is a caller bug — never a job that trivially "succeeds" with no runs. */
 export class EmptyRosterError extends Error {
@@ -86,7 +86,7 @@ export const runDelegate = (
 ): Effect.Effect<
   DelegateEnvelope,
   UnknownAgentError | EmptyRosterError | WorkspaceError,
-  AgentPort | WorkspacePort | ProgressPort | ExecPolicyStore
+  AgentPort | WorkspacePort | ProgressPort | ExecPolicyStore | QuotaStore
 > =>
   Effect.gen(function* () {
     const agent = yield* AgentPort;
@@ -118,7 +118,12 @@ export const runDelegate = (
           // The policy fence, per agent rather than per roster: a denied executor must not cost
           // its siblings their answers, so a denial becomes THIS agent's failed REPORT — the same
           // shape `AgentPort.run` uses for a dead CLI — instead of failing the whole delegate.
-          const denial = yield* assertExecutorAllowed(request.agent, new Date().toISOString()).pipe(
+          const denial = yield* awaitQuotaHeadroom(request.agent, job.quota, (decision) =>
+            progress.emit(
+              `⏳ ${request.agent}: ${decision.reason} — waiting until ${decision.untilIso}`,
+            ),
+          ).pipe(
+            Effect.flatMap(() => assertExecutorAllowed(request.agent, new Date().toISOString())),
             Effect.map(() => undefined),
             Effect.catchAll((err: Error) => Effect.succeed(err.message)),
           );

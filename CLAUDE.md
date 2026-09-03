@@ -450,7 +450,31 @@ change one, not to understand one.
   `run-*` activity and REFUSES a denied executor loudly at fire time on every path — chains,
   crons, watcher re-fires, sched continuations, fallback switches, panel branches. Surface:
   `h agents list|deny|allow|budget` (all but `budget` take `--local` — see below; operator denies never expire; allow lifts any kind; list
-  shows budget vs today's tallied spend + gap-run count).
+  shows budget vs today's tallied spend + gap-run count), and **`quota:` (the OBSERVATION
+  registry, 2026-09-03 — one row per executor, `quota:<shortname>`, holding the account's
+  rate-limit windows exactly as the agent CLI last reported them: `{status:
+  allowed|allowed_warning|rejected, windows: {five_hour|seven_day: {utilization, resetsAt}},
+  observedAt, runId}`. Claude's CLI emits `rate_limit_event` on its stream; agent-cli parses it
+  into `InvocationResult.quota`, the run ledger carries it, and the host that finalizes the run
+  writes the row — workflow-svc's WATCHER on the service substrate, the local EXECUTOR on
+  `--local`. It is an observation, never a decision: the QUOTA GATE (`decideQuota`,
+  engine-core `quota.ts`) reads it BEFORE a `run-*` fire and REFUSES BY NAME (naming the window,
+  the observation, the reset, and every way past it) when the last report was `rejected`, or when
+  the window's utilization plus what one step of that executor tends to spend (the mean of the
+  row's per-run `history`, else a default) would cross the ceiling — 100% under `fail`, 90% under
+  `wait`, because a step that starts at 95% dies half-done. Stale-in-favour: a row whose
+  `resetsAt` has passed lets the fire through and the provider adjudicates. `--on-quota
+  fail|wait` (default `fail`) and `--ignore-quota` ride the FIRE DESCRIPTOR (`Trigger.quota`, so a
+  saved key, an inline body, every chain member and a sched continuation all carry it, and the
+  generic workflow stamps it onto each step's input); `wait` on `--local` sleeps between steps
+  until the earliest reset (≤ 6h), and on the service path implies `--watch` with
+  `onQuota: wait`, so a usage-limited finalize arms a same-identity `cron:sched` continuation at
+  reset + slack (`maxQuotaWaits` counts down) instead of only auto-denying. The AUTO-DENY fence
+  itself now expires at the observed reset + 60s rather than a fixed hour. Read surfaces:
+  `h agents list [--local]` (one `quota:` line per executor under the table), `h doctor`, and
+  `GET /exec/policy`'s `quota` field. The point is that a driver can PLAN around a window it can
+  see — fire before it closes, schedule past it, or route the next run to another executor —
+  instead of discovering it from a failed run)**.
   The convention: a registry prefix names the single component that owns writing it.
 
 Watcher, chain and cron are one build-pattern instantiated three times — ARCHITECTURE.md states the
@@ -738,7 +762,8 @@ cli/                                          # the h CLI + charts + run scripts
     │   #       panel roster)/--model/--instance-id/--fresh/--via/--watch/--budget/--inline (operands
     │   #       are chart TEMPLATES, fired without publishing — --save is for OUTLIVING the fire, and
     │   #       --cron refuses an ad-hoc overlay, which has no key for the cron:/wf: rows)/--cron
-    │   #       --max-fires/--at|--in/--fallback-agent|-model|-after|-max/--local [--with-setup]
+    │   #       --max-fires/--at|--in/--fallback-agent|-model|-after|-max/--on-quota fail|wait
+    │   #       [--ignore-quota] (the quota gate — see the `quota:` registry above)/--local [--with-setup]
     │   #       [--timeout SECONDS, the per-agent-STEP wall clock, default 1800 — distinct from
     │   #       --budget's whole-run clock, and refused without --local] [--json, the result envelope
     │   #       on stdout; without it every contract-carrying step's validated block prints as a
@@ -754,7 +779,8 @@ cli/                                          # the h CLI + charts + run scripts
     │   #       otherwise consume them out of position, asserted by cli/h/tests/test_chain_expr.py):
     │   #       --slug/--param|-p/--strategy/--max-iterations/--after (the ACTIVATION GATE: hold this
     │   #       chain until another finalizes)/--at|--in/--local/--with-setup/--resume/--no-journal/
-    │   #       --timeout. --budget is the one flag whose POSITION changes its meaning (prefix =
+    │   #       --timeout/--on-quota/--ignore-quota (chain-wide: stamped onto every member's
+    │   #       trigger). --budget is the one flag whose POSITION changes its meaning (prefix =
     │   #       whole-chain clock, suffix = that member's watch policy) — see the Chain primitive.
     │   #   h watch        list [--local]|get|delete       – the watcher registry
     │   #   h cron         list [--local]|rm REPO SLUG WORKFLOW|discover add <repo> --label --cadence
@@ -763,11 +789,13 @@ cli/                                          # the h CLI + charts + run scripts
     │   #       `discover add` fires a provision workflow whose register-discover activity writes the
     │   #       row (§10 — there is no POST /cron/discover)
     │   #   h schedule     list|rm <id> [--local]          – the one-shot cron:sched rows
-    │   #   h agents       list|deny|allow|budget [--local] – the executor policy fence
+    │   #   h agents       list|deny|allow|budget [--local] – the executor policy fence; `list` also
+    │   #       prints each executor's last-observed rate-limit windows (the `quota:` registry)
     │   #   h status       [--json]                        – one-screen driver check-in
     │   #   h runs         watch GROUP [--json]            – replay a run's journal, then follow live
     │   #   h delegate     TASK --agent A [--agent B …] [--model] [--cwd] [--worktree [--base]]
-    │   #       [--plan] [--timeout] [--id] [--json]  – the LOCAL substrate's atom: agent CLIs as
+    │   #       [--plan] [--timeout] [--id] [--on-quota fail|wait] [--ignore-quota] [--json]  – the
+    │   #       LOCAL substrate's atom: agent CLIs as
     │   #       child processes, a roster in parallel, no synthesis (use the answer template for a
     │   #       judged panel)
     │   #   h workspaces   link [PATH] [--profile] [--skill N]… [--rule N]… [--rules-target] [--dry-run]

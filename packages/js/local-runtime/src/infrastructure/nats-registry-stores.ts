@@ -2,6 +2,10 @@ import {
   EXEC_POLICY_KEY,
   ExecPolicy,
   ExecPolicyStore,
+  QUOTA_PREFIX,
+  QuotaRow,
+  QuotaStore,
+  quotaKey,
   StoredWorkflow,
   WfRow,
   WfStore,
@@ -27,6 +31,9 @@ import { BUCKETS, NatsKv } from "./nats-kv.ts";
  *    `{key, params}` instead of embedded steps: triggers-as-data, locally.
  *  - **ExecPolicyStore** — the single `exec:config` row, so `h agents deny` fences local runs.
  *    A usage-limited agent on a laptop is arguably more common than on a fleet.
+ *  - **QuotaStore** — `quota:<executor>`, the account's rate-limit windows as the CLI last reported
+ *    them plus the per-run spend history. The pre-fire gate reads it to refuse a step that would
+ *    not fit; the agent adapter writes it live as the events arrive.
  */
 
 /**
@@ -56,6 +63,31 @@ export const NatsExecPolicyStoreLive: Layer.Layer<ExecPolicyStore, never, NatsKv
     return {
       get: () => kv.get(BUCKETS.exec, EXEC_POLICY_KEY, ExecPolicy),
       save: (policy) => kv.put(BUCKETS.exec, EXEC_POLICY_KEY, policy),
+    };
+  }),
+);
+
+/**
+ * `quota:<executor>` — one row per executor, written by the agent adapter as a run's rate-limit
+ * events arrive and folded once more at its end. Read by the pre-fire gate and `h agents list`.
+ */
+export const NatsQuotaStoreLive: Layer.Layer<QuotaStore, never, NatsKv> = Layer.effect(
+  QuotaStore,
+  Effect.gen(function* () {
+    const kv = yield* NatsKv;
+    const get = (executor: string) => kv.get(BUCKETS.quota, quotaKey(executor), QuotaRow);
+    return {
+      get,
+      list: () =>
+        kv.ids(BUCKETS.quota, QUOTA_PREFIX).pipe(
+          Effect.flatMap((keys) =>
+            Effect.forEach(keys, (key) => get(key.slice(QUOTA_PREFIX.length)), {
+              concurrency: 8,
+            }),
+          ),
+          Effect.map((rows) => rows.flatMap((row) => (Option.isSome(row) ? [row.value] : []))),
+        ),
+      save: (row) => kv.put(BUCKETS.quota, quotaKey(row.executor), row),
     };
   }),
 );

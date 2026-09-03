@@ -72,6 +72,7 @@ classDiagram
     +instanceId : string?
     +workspaceId : string?
     +watch : WatchPolicy?
+    +quota : QuotaGate?
   }
 
   class WatchRow {

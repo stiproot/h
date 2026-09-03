@@ -13,7 +13,7 @@ import type {
   LocalChainMember,
 } from "./models.ts";
 import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
-import type { CronStore, ExecPolicyStore, WfStore, WorkflowStore } from "engine-core";
+import type { CronStore, ExecPolicyStore, QuotaStore, WfStore, WorkflowStore } from "engine-core";
 
 /**
  * Run a chain in-process: ordered members, grouped into stages, threading state between them.
@@ -60,6 +60,7 @@ export const runChain = (
   | ProgressPort
   | JournalPort
   | ExecPolicyStore
+  | QuotaStore
   | WfStore
   | CronStore
   | WorkflowStore
@@ -307,6 +308,7 @@ const runMember = (
   | ProgressPort
   | JournalPort
   | ExecPolicyStore
+  | QuotaStore
   | WfStore
   | CronStore
   | WorkflowStore
@@ -334,6 +336,7 @@ const runMember = (
       worktreeRoot: job.worktreeRoot,
       repoPath: job.repoPath,
       ...(job.withSetup ? { withSetup: true } : {}),
+      ...(job.quota ? { quota: job.quota } : {}),
     });
     if (!envelope.ok) {
       return yield* Effect.fail(

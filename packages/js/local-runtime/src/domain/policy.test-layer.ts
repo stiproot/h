@@ -1,18 +1,46 @@
-import { CronStore, emptyCronLedger, ExecPolicyStore, WfStore, WorkflowStore } from "engine-core";
-import type { WfRow } from "engine-core";
+import {
+  CronStore,
+  emptyCronLedger,
+  ExecPolicyStore,
+  QuotaStore,
+  WfStore,
+  WorkflowStore,
+} from "engine-core";
+import type { QuotaRow, WfRow } from "engine-core";
 import { Effect, Layer, Option } from "effect";
 
 /**
- * An executor policy that denies nothing — what every test that is not ABOUT the policy should
- * provide.
+ * The two pre-fire gates, both open: an executor policy that denies nothing and a quota registry
+ * that has observed nothing — what every test that is not ABOUT a gate should provide.
  *
  * It exists as a named layer rather than an inline stub so the default is stated once and reads as
- * a deliberate "no fence here", not as an oversight. A test that means to exercise the fence builds
- * its own row; a test that says nothing gets the permissive one explicitly.
+ * a deliberate "no fence here", not as an oversight. A test that means to exercise a gate provides
+ * its own row FIRST (the innermost provide wins); a test that says nothing gets the permissive one
+ * explicitly.
  */
-export const AllowAllExecPolicy = Layer.succeed(ExecPolicyStore, {
-  get: () => Effect.succeed(Option.none()),
-  save: () => Effect.void,
+export const AllowAllExecPolicy = Layer.merge(
+  Layer.succeed(ExecPolicyStore, {
+    get: () => Effect.succeed(Option.none()),
+    save: () => Effect.void,
+  }),
+  Layer.succeed(QuotaStore, {
+    get: () => Effect.succeed(Option.none()),
+    list: () => Effect.succeed([]),
+    save: () => Effect.void,
+  }),
+);
+
+/**
+ * A quota registry over a Map: empty means "nothing observed yet", which the gate reads as
+ * proceed. A test about the gate seeds a row; every other test provides this and forgets it.
+ */
+export const memoryQuotaStore = (rows: Map<string, QuotaRow> = new Map()) => ({
+  rows,
+  layer: Layer.succeed(QuotaStore, {
+    get: (executor: string) => Effect.succeed(Option.fromNullable(rows.get(executor))),
+    list: () => Effect.succeed([...rows.values()]),
+    save: (row: QuotaRow) => Effect.sync(() => void rows.set(row.executor, row)),
+  }),
 });
 
 /**

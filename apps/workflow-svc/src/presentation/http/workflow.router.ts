@@ -15,7 +15,7 @@ import { activeTraceparent, withAmbientParent, withServerSpan } from "telemetry"
 import type { WorkflowError } from "core";
 
 import { EventPublisher } from "engine-core";
-import { WatchPolicy } from "engine-core";
+import { QuotaGate, WatchPolicy } from "engine-core";
 import { SaveWorkflowRequest, WorkflowParams, WorkflowRequest, toRequest } from "engine-core";
 import { CRON_DISARM_TOPIC, CronPolicy } from "engine-core";
 import { wfIdentityFrom } from "engine-core";
@@ -23,7 +23,7 @@ import { assertValidCron, resolveFireAt } from "engine-core";
 import { advanceSched, registerSchedForFire } from "engine-core";
 import { ChainStore } from "engine-core";
 import { CronStore } from "engine-core";
-import type { ExecPolicyStore } from "engine-core";
+import type { ExecPolicyStore, QuotaStore } from "engine-core";
 import { SourceReader } from "engine-core";
 import { WatchStore } from "engine-core";
 import { WfStore } from "engine-core";
@@ -39,6 +39,7 @@ export type WorkflowRoutesEnv =
   | ChainStore
   | CronStore
   | ExecPolicyStore
+  | QuotaStore
   | WfStore
   | SourceReader
   | EventPublisher;
@@ -67,6 +68,8 @@ const RunSavedBody = Schema.Struct({
   // Fire-time watch policy; overrides the saved workflow's stored watch policy wholesale.
   watch: Schema.optional(WatchPolicy),
   watchMeta: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  // Fire-time quota gate (h workflow run --on-quota / --ignore-quota); rides the fire descriptor.
+  quota: Schema.optional(QuotaGate),
   // Fire-time cron policy: recur this workflow on a cadence until its goal resolves or the budget is
   // spent. Registers a cron:sub row in this same handler (sibling of `watch`); needs the run to carry
   // a wf-identity (repo+slug) — the cron key mirrors the wf: coords.
@@ -283,6 +286,7 @@ export function registerWorkflowRoutes(
             fresh,
             watch,
             watchMeta,
+            quota,
             cron,
             at,
             in: inDur,
@@ -324,6 +328,7 @@ export function registerWorkflowRoutes(
                 ...((watch ?? workflow.value.watch)
                   ? { watch: watch ?? workflow.value.watch }
                   : {}),
+                ...(quota ? { quota } : {}),
               },
               ...(wf ? { wf } : {}),
               origin: "at",
@@ -344,6 +349,7 @@ export function registerWorkflowRoutes(
             ...(workspaceId ? { workspaceId } : {}),
             ...(fresh !== undefined ? { fresh } : {}),
             ...((watch ?? workflow.value.watch) ? { watch: watch ?? workflow.value.watch } : {}),
+            ...(quota ? { quota } : {}),
             ...(watchMeta ? { watchMeta } : { watchMeta: { owner: request.params.key } }),
             ...(cron && wf
               ? {

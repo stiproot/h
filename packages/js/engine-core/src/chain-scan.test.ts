@@ -65,6 +65,7 @@ function memoryChainStore(config?: ChainConfig): MemoryChainStore {
               stopReason: null,
               agentId: key.split(":").at(-2) ?? null,
               kind: null,
+              quota: null,
             }
           : null,
       ),

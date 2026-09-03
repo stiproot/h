@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from h_cli.commands._quota import quota_cell
 from h_cli.config import AGENT_IDENTITY
 from h_cli.infrastructure import local_runtime, workflow_svc
 
@@ -106,6 +107,19 @@ def _now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _quota_rows(local: bool, policy: dict) -> dict[str, dict]:
+    """The `quota:` OBSERVATION registry, keyed by executor shortname — what each agent CLI last
+    reported about its rate-limit windows. Distinct from the exec: POLICY row: this is what the
+    gate READS to refuse a fire that would not fit, and what the shepherd reads to schedule
+    around a reset. Service side it rides `/exec/policy`'s `quota` field; locally it is its own
+    registry read. Best-effort — an unreadable registry leaves the column `-`."""
+    try:
+        rows = policy.get("quota") if not local else local_runtime.registry("quota.list")
+    except Exception:
+        return {}
+    return {row["executor"]: row for row in (rows or []) if isinstance(row, dict)}
+
+
 LOCAL_OPT = typer.Option(
     False,
     "--local",
@@ -116,8 +130,10 @@ LOCAL_OPT = typer.Option(
 @app.command("list")
 def list_(local: bool = LOCAL_OPT) -> None:
     """List all workflow-invokable agents, their identities, the denied set (with provenance:
-    operator denies never expire; auto usage-limited/cost-budget denies carry an expiry), and
-    each executor's daily budget vs today's tallied spend."""
+    operator denies never expire; auto usage-limited/cost-budget denies carry an expiry), each
+    executor's daily budget vs today's tallied spend, and its rate-limit headroom as its CLI
+    last reported it (`5h 62% → 14:05 · 7d 31% → Tue 09:00`; `!` = exhausted; `reset` = the
+    observation predates the window's reset). Fire past the reset, or --on-quota wait."""
     policy: dict = {}
     try:
         policy = _policy_get(local)
@@ -132,6 +148,7 @@ def list_(local: bool = LOCAL_OPT) -> None:
             console.print(f"[yellow]{escape(str(err))}[/yellow]")
     budgets: dict = policy.get("budgets", {}) or {}
     spend: dict = policy.get("todaySpend", {}) or {}
+    quota = _quota_rows(local, policy)
 
     seen: set[str] = set()
     rows: list[tuple[str, str, str, str, str, str]] = []
@@ -160,6 +177,14 @@ def list_(local: bool = LOCAL_OPT) -> None:
     for row in rows:
         table.add_row(*row)
     console.print(table)
+    # Headroom goes under the table rather than in it: at terminal width a seventh column
+    # truncates the identities to noise, and a reset time is read as a sentence anyway.
+    for short, row in sorted(quota.items()):
+        console.print(
+            f"quota: {escape(short)} {escape(quota_cell(row))}  "
+            f"[dim](observed {escape(str(row.get('observedAt', '?')))} "
+            f"by {escape(str(row.get('runId', '?')))})[/dim]"
+        )
     if entries:
         _print_denied(list(entries.values()))
     gap_runs = policy.get("todayCostGapRuns", 0)

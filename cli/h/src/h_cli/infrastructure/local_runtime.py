@@ -29,7 +29,7 @@ class LocalRunError(RuntimeError):
 # and the runner's schemas ignore unknown fields — so skew would otherwise be silent. The runner
 # refuses a mismatch loudly, naming both versions. Mirrored in local-runtime's
 # domain/models.ts LOCAL_PROTOCOL_VERSION (test_local_protocol_sync pins the pair).
-LOCAL_PROTOCOL_VERSION = 2
+LOCAL_PROTOCOL_VERSION = 3
 
 
 def group_id(base: str) -> str:

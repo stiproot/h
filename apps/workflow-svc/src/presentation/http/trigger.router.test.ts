@@ -13,12 +13,19 @@ import { ChainStore, type ChainStoreService } from "engine-core";
 import { CronStore, type CronStoreService } from "engine-core";
 import { WatchStore, type WatchStoreService } from "engine-core";
 import { ExecPolicyStore, type ExecPolicyStoreService } from "engine-core";
+import { QuotaStore, type QuotaStoreService } from "engine-core";
 import { WfStore, type WfStoreService } from "engine-core";
 import { SourceReader, type SourceReaderService } from "engine-core";
 import { WorkflowInvoker, type WorkflowInvokerService } from "engine-core";
 import { WorkflowStore, type WorkflowStoreService } from "engine-core";
 import { registerTriggerRoutes } from "./trigger.router.ts";
 import type { WorkflowRoutesRuntime } from "./workflow.router.ts";
+
+const stubQuotaStore: QuotaStoreService = {
+  get: () => Effect.succeed(Option.none()),
+  list: () => Effect.succeed([]),
+  save: () => Effect.void,
+};
 
 const stubExecPolicyStore: ExecPolicyStoreService = {
   get: () => Effect.succeed(Option.none()),
@@ -118,6 +125,8 @@ async function makeApp(
       Layer.succeed(CronStore, stubCronStore()),
       Layer.succeed(WfStore, stubWfStore()),
       Layer.succeed(ExecPolicyStore, stubExecPolicyStore),
+
+      Layer.succeed(QuotaStore, stubQuotaStore),
       Layer.succeed(EventPublisher, stubPublisher),
       Layer.succeed(SourceReader, stubSourceReader),
     ),

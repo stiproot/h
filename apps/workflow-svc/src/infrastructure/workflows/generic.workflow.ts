@@ -12,6 +12,12 @@ export async function* genericWorkflow(
   // Seed named params under the reserved id `params`, so steps reference them exactly like
   // step results: {{params.x}} in strings, { "$ref": "params.x" } for any-typed values.
   const results: Record<string, unknown> = { params: input.params ?? {} };
+  // The fire's quota gate rides every step input, where the activity-registry gate reads it for
+  // the `run-*` activities (the others ignore the two keys). Fire-time wins over a step's own
+  // input, the same wholesale-override rule `watch` follows.
+  const quotaInput = input.quota
+    ? { onQuota: input.quota.onQuota, ...(input.quota.ignore ? { ignoreQuota: true } : {}) }
+    : {};
   const workflowInstanceId = ctx.getWorkflowInstanceId();
 
   // Registry self-reporting: when the run carries a
@@ -48,6 +54,7 @@ export async function* genericWorkflow(
             resolveRefs(
               {
                 ...branch.input,
+                ...quotaInput,
                 workflowInstanceId,
                 workspaceId: input.workspaceId,
                 traceparent: input.traceparent,
@@ -79,6 +86,7 @@ export async function* genericWorkflow(
       const resolvedInput = resolveRefs(
         {
           ...step.input,
+          ...quotaInput,
           workflowInstanceId,
           workspaceId: input.workspaceId,
           traceparent: input.traceparent,

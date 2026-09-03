@@ -5,7 +5,7 @@ import { Effect, type ManagedRuntime } from "effect";
 import { injectTraceContext, withTraceparentParent } from "telemetry";
 
 import type { CronStore } from "engine-core";
-import type { ExecPolicyStore } from "engine-core";
+import type { ExecPolicyStore, QuotaStore } from "engine-core";
 import type { WfStore } from "engine-core";
 import type { WorkflowInvoker } from "engine-core";
 import type { WorkflowStore } from "engine-core";
@@ -36,6 +36,7 @@ export type ActivityEnv =
   | WfStore
   | CronStore
   | ExecPolicyStore
+  | QuotaStore
   | WorkflowInvoker
   | WorkflowStore;
 

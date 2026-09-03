@@ -75,6 +75,8 @@ COMMAND_FLAGS = (
     "--resume",
     "--no-journal",
     "--timeout",
+    "--on-quota",
+    "--ignore-quota",
     "--strategy",
     "--max-iterations",
     "--after",

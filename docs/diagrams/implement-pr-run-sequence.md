@@ -15,7 +15,7 @@ sequenceDiagram
     autonumber
     actor Op as Operator<br/>(h CLI)
     participant Router as workflow-svc<br/>HTTP router
-    participant Reg as Registries (Redis)<br/>watch: wf: cron: exec: run:
+    participant Reg as Registries (Redis)<br/>watch: wf: cron: exec: quota: run:
     participant Wf as generic.workflow<br/>(Dapr engine)
     participant Act as Activity layer<br/>(exec-policy gate)
     participant Agent as claude-agent<br/>(service)
@@ -41,9 +41,11 @@ sequenceDiagram
 
     loop agent steps — plan then implement (verify prose folded in)
         Wf->>+Act: resolve {{params.runActivity}} → run-claude
-        Act->>Reg: read exec:config
+        Act->>Reg: read exec:config + quota:<executor>
         alt executor denied (operator | usage-limited | cost-budget)
             Act--xWf: REFUSED loudly — step fails before any model call
+        else quota gate: last report rejected, or utilization + a step's typical spend > ceiling (fail 100% | wait 90%)
+            Act--xWf: REFUSED BY NAME (window, observation, reset, the ways past it) — unless --ignore-quota
         else allowed
             Act->>+Agent: POST /run {task, cwd: worktree}
             Agent->>+CLI: spawn (detached group leader, reaper-registered)
@@ -78,7 +80,8 @@ sequenceDiagram
         Note over Watch: pure decide(): wait | terminate(budget) |<br/>retry | finalize — epoch-fenced
         Watch->>Reg: on terminal: tally cost off run: mirrors<br/>(per-agent subtotals — a missing cost is a GAP, not $0)
         Watch->>Reg: finalize watch row + bump day ledger
-        Watch->>Reg: fences: usage-limited auto-deny,<br/>daily cost-budget deny (expiring exec:config entries)
+        Watch->>Reg: quota:<executor> ← the run's rate-limit report (every finalize)
+        Watch->>Reg: fences: usage-limited auto-deny until the observed reset,<br/>daily cost-budget deny (expiring exec:config entries)<br/>onQuota=wait arms a same-identity cron:sched continuation
         Watch--)Op: publish workflow-events (terminal outcome)
         deactivate Watch
     end
@@ -90,7 +93,12 @@ sequenceDiagram
   between the two leaves a `scheduling` row the scan heals — never a silently unsupervised run.
 - **The gate** (steps 12–13): every `run-*` activity passes through the exec-policy gate; a
   denied executor is refused on EVERY fire path (chains, crons, re-fires, panels) with no
-  per-path code.
+  per-path code. The QUOTA gate sits in the same place and reads the `quota:` OBSERVATION row
+  beside the `exec:` POLICY row: it projects whether this step fits the executor's remaining
+  window (utilization + the mean spend of that executor's recent steps) and refuses by name when
+  it does not — before anything is paid for. `--on-quota`/`--ignore-quota` ride the fire
+  descriptor and reach it as step input, so the gate mode is the same on a chain member, a cron
+  re-fire and a sched continuation. A row whose reset has passed never blocks (stale-in-favour).
 - **The itest gate** (steps 21–23): the one machine-executed check — a red build fails the
   workflow before a PR exists, so reviewers never see a broken branch.
 - **The watcher lane** (bottom loop): the run never supervises itself; budgets, retries, cost

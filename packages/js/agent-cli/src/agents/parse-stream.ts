@@ -1,4 +1,5 @@
 import { classifyStop } from "./classify-stop.ts";
+import { foldQuota, parseRateLimitEvent } from "./quota.ts";
 import type { AgentEventCallback, InvocationResult, StreamEvent } from "./types.ts";
 
 interface BuildInvocationResultOptions {
@@ -89,6 +90,15 @@ export function buildInvocationResult({
     rateLimitRetries: events.filter(isRateLimitRetryEvent).length,
   });
 
+  // The account's quota as the CLI reported it along the way — every rate_limit_event, folded to
+  // the last state plus what this run spent (quota.ts). Absent for CLIs that report none.
+  const quota = foldQuota(
+    events.flatMap((event) => {
+      const observation = parseRateLimitEvent(event);
+      return observation ? [observation] : [];
+    }),
+  );
+
   return {
     // A strategy may VETO success from its own event stream: some CLIs report a fatal error as an
     // event and still exit 0 (openhands' ConversationErrorEvent — e.g. a rejected model id). Without
@@ -106,5 +116,6 @@ export function buildInvocationResult({
     numTurns: metrics?.numTurns ?? (numTurns > 0 ? numTurns : undefined),
     sessionId,
     ...(metrics?.costPartial ? { costPartial: true } : {}),
+    ...(quota ? { quota } : {}),
   };
 }

@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.rule import Rule
 from rich.table import Table
 
+from h_cli.commands._quota import IgnoreQuotaOpt, OnQuotaOpt, quota_gate
 from h_cli.config import AGENT_RUNS_DIR, LOCAL_WORKTREES_DIR
 from h_cli.infrastructure import local_runtime, workspace
 from h_cli.infrastructure.local_runtime import LocalRunError, group_id, repo_root
@@ -79,6 +80,8 @@ def delegate(
             "with no sandbox — say so deliberately.",
         ),
     ] = False,
+    on_quota: OnQuotaOpt = None,
+    ignore_quota: IgnoreQuotaOpt = False,
     as_json: Annotated[
         bool, typer.Option("--json", help="Print the raw result envelope instead of the answers.")
     ] = False,
@@ -116,6 +119,9 @@ def delegate(
         job["model"] = model
     if plan:
         job["permissionMode"] = "plan"
+    quota = quota_gate(on_quota, ignore_quota)
+    if quota:
+        job["quota"] = quota
 
     try:
         if worktree:
