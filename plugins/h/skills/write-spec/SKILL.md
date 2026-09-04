@@ -175,6 +175,9 @@ structured blocks. A missing field is a reject.
 - **The tracking doc, when the spec names one** — the spec says "status phrase in place, no
   PR number, no second entry"; the driver diffs the doc against base for `removed lines` beyond
   that status phrase and for a duplicate entry, then stamps the PR number at merge.
+- **`stopReason == "completed"`** for every agent step — read from the run ledger's
+  `summary.json`, not the structured block; `usage-limited`, `timeout` or `failed` means the
+  work is incomplete whatever the block says.
 
 Tell the implementing agent that these five fields will be checked. An agent that knows the
 driver will re-run the baseline is more careful about what it reports.
