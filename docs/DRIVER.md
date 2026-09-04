@@ -197,6 +197,11 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 ## Standing conventions
 
+- **Diff a tracking doc the run touched.** `git diff <base>..<head> -- <doc>` must show no
+  removed lines beyond the run's own status phrase and no second entry for the run's own unit;
+  a PR number in that doc is stamped by the driver at merge, never by the run — on 2026-09-04,
+  four trxy runs rewrote a neighbour's entry or duplicated their own.
+
 - **Anticipate the rate limit; never discover it from a dead run.** The `quota:` row is the
   shepherd's clock as much as h's: read it before every fire (`h agents list --local`), and
   when a window is near its ceiling choose deliberately — a different executor for the

@@ -94,6 +94,14 @@ def test_implement_is_always_four_pure_steps(hostile_spec: Path) -> None:
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
 
 
+def test_implement_tracking_doc_edit_is_append_only(hostile_spec: Path) -> None:
+    definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))
+    task = next(s for s in definition["steps"] if s["id"] == "implement")["input"]["task"]
+    assert "append-only" in task
+    assert "no PR number" in task
+    assert "read it first" in task
+
+
 def test_verify_golden(snapshot) -> None:
     """The verify overlay atom: a lone implement step carrying the gating acceptance check."""
     rendered = helm.render_workflow(
