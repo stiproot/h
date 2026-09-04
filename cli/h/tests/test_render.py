@@ -857,6 +857,3 @@ def test_plan_stops_at_the_plan_and_declares_it() -> None:
     assert persist_step["input"]["cwd"] == "{{worktree.worktreePath}}"
     assert "===OUTPUT CONTRACT===" in persist_step["input"]["task"]
     assert "planPath" in def_persist["outputs"]["properties"]
-
-
-
