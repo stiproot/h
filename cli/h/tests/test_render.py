@@ -842,6 +842,8 @@ def test_plan_stops_at_the_plan_and_declares_it() -> None:
     assert plan_step["input"]["cwd"] == "{{worktree.worktreePath}}"
     assert "===OUTPUT CONTRACT===" in plan_step["input"]["task"]
     assert definition["outputs"]["required"] == ["plan"]
+    # persist=false: the plan step's contract IS the workflow's declared outputs (no merge).
+    assert plan_step["input"]["outputContract"] == definition["outputs"]
     # Panelizable like `answer`: one contract-carrying step plus a join rule for roster runs.
     assert "plan" in definition["panelSynthesis"]
 
