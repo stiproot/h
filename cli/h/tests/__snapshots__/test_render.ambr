@@ -1563,7 +1563,7 @@
           it ran at (`git rev-parse HEAD`) and record the `git status --porcelain` output
           as `dirtyPaths`, one entry per line, VERBATIM rather than summarised. An untracked
           file that a previous step of THIS run was told to leave (the `plan` step's
-          `plan-<slug>.md`) is expected there; a tracked modification at baseline means the
+          `plan-feature-<slug>.md`) is expected there; a tracked modification at baseline means the
           baseline is not a baseline. The driver checks that the baseline's commit is the
           base branch's head. A "baseline" taken after you have already written files
           measures your own unfinished work, not the floor (one run reported 2 format
