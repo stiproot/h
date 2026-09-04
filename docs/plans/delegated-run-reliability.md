@@ -1,10 +1,10 @@
 # Delegated-run reliability — move claims off prose
 
-Status: Active — (1)–(3) landed 2026-09-02; (4) landed as h #122 (the `write-spec` skill). The
-second campaign ran 2026-09-02/03 and its count is in *Verification*: **3 of 5 merges needed
-repair, down from 9 of 9, and the LAST TWO needed none** — each report-shaped defect got its own
-contract field the same night and did not recur. What remains is item 7's decision (`run-exec`),
-whose trigger has now fired.
+Status: Active — (1)–(3) landed 2026-09-02; (4) landed as h #122 (the `write-spec` skill). Three
+campaigns' counts are in *Verification*: **9 of 9 → 3 of 5 → 2 of 13 merges needed repair**, and
+the last two repairs were spec defects, not report defects — each report-shaped defect got its
+own contract field the night it appeared and did not recur. What remains is item 7's decision
+(`run-exec`), whose trigger has fired; the plan archives on that ruling.
 Established: 2026-09-02
 
 ## The premise, and the evidence for it
@@ -150,5 +150,23 @@ and each one stopped recurring the night its evidence became a contract field. T
 plan's rule confirmed from the other side: the defects that survive are exactly the claims that
 are still prose.
 
-*Revisit when: a third campaign's count is in — the second's last two merges are a small sample —
-or sooner if a delegated run produces a defect shape not on either table above.*
+**Third campaign (2026-09-03 21:30 → 2026-09-04 09:46, same loop shape, trxy #92–#104 —
+13 merges, 12 on claude and the last on codex): 2 of 13 needed driver repair, and neither was a
+report defect.**
+
+| merge | repair | shape | what closed it |
+| --- | --- | --- | --- |
+| trxy #97 type-dup B1 | Y — content | a ported comment lacked the rule-2 citation the spec asked for | one-line fixup `59b69766`; the spec now names the citation as a DoD line |
+| trxy #98 app-settings mcp tool | Y — content | pgTAP assert was a policy-count proxy; the spec offered two asserts that both cannot work | fixup `8c3124c9`; a spec defect, not an agent one |
+| the other eleven (#92–#96, #99–#104) | **N** | — | — |
+
+The mechanical read-back — now FOUR asserts: `base`, `final <= baseline`, `baseline.commit ==
+the base head at fire time && dirty == false`, `stopReason == completed` per step — was green on
+all thirteen. The one create-pr defect of the night was a codex run reporting `skipped: GitHub
+MCP tool not installed` (the template named only the MCP tool; `076922a` gave it the `gh`/REST
+fallback); the driver opened that PR by hand, but the CODE needed nothing. So the count moved 9/9
+→ 3/5 → 2/13, and the residue is now spec quality, which is the `write-spec` skill's territory,
+not this plan's.
+
+*Revisit when: item 7 (`run-exec`) has its operator decision, or a delegated run produces a
+defect shape not on any table above. The campaign count is no longer the open question.*
