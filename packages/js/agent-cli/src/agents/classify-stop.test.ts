@@ -7,6 +7,19 @@ describe("classifyStop", () => {
     expect(classifyStop({ exitCode: 0, signal: null, stderr: "" })).toBe("completed");
   });
 
+  it("ignores stderr on a clean exit — codex's tracing log quotes paths and source lines", () => {
+    // Verbatim shape from ledger h-135-codex-quota/codex-1788527960961 (2026-09-04): one
+    // apply_patch failure echoed the worktree path (`…-quota/…`) and a source line naming
+    // `parseRateLimitEvent`; the run exited 0 with a complete result and was fenced anyway.
+    const stderr = [
+      "2026-09-04T13:23:50.418799Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /home/stiproot/code/h-worktrees/h-135-codex-quota/packages/js/agent-cli/src/agents/quota.test.ts:",
+      '    expect(parseRateLimitEvent(event("12:05 AM"), observedAt, SAST_OFFSET)?.windows.five_hour)',
+    ].join("\n");
+    expect(classifyStop({ exitCode: 0, signal: null, stderr })).toBe("completed");
+    // The same stderr on a failing exit is still read — a non-zero exit is the CLI's own report.
+    expect(classifyStop({ exitCode: 1, signal: null, stderr })).toBe("usage-limited");
+  });
+
   it("failed: non-zero exit with no limit markers", () => {
     expect(classifyStop({ exitCode: 1, signal: null, stderr: "TypeError: boom" })).toBe("failed");
   });

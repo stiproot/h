@@ -40,6 +40,7 @@ export async function runPiActivity(
       return {
         sessionId: response.sessionId,
         output: response.output,
+        toolCalls: response.toolCalls ?? null,
         workspacePath: response.workspacePath,
       };
     }),

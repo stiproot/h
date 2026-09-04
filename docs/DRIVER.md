@@ -201,6 +201,10 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
   `-p issueNumber=N`, then require create-pr's read-back `closes` to contain `N`; reject a
   missing or empty `closes` whenever `issueNumber` was set (the 2026-09-03 h-126 run opened
   PR #127 without its `Closes #126` line).
+- **Diff a tracking doc the run touched.** `git diff <base>..<head> -- <doc>` must show no
+  removed lines beyond the run's own status phrase and no second entry for the run's own unit;
+  a PR number in that doc is stamped by the driver at merge, never by the run — on 2026-09-04,
+  four trxy runs rewrote a neighbour's entry or duplicated their own.
 
 - **Anticipate the rate limit; never discover it from a dead run.** The `quota:` row is the
   shepherd's clock as much as h's: read it before every fire (`h agents list --local`), and

@@ -160,6 +160,11 @@ describe("deniedMessage", () => {
     expect(deniedMessage("codex")).toContain("h agents allow codex");
   });
 
+  it("names the LOCAL registry's lift when the local substrate refused", () => {
+    expect(deniedMessage("codex", undefined, "local")).toMatch(/h agents allow codex --local$/);
+    expect(deniedMessage("codex")).not.toContain("--local");
+  });
+
   it("carries the auto provenance and expiry when the denial is usage-limited", () => {
     const msg = deniedMessage("kimi", {
       name: "kimi",

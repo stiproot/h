@@ -17,11 +17,14 @@ from rich.table import Table
 
 from h_cli.commands._quota import quota_cell
 from h_cli.config import (
+    _CHECKOUT_ANCHOR,
+    _MAIN_CHECKOUT_DIR,
     _REPO_DIR,
     CONSUMER_CONFIG_ROOT,
     DOTENV_PATH,
     EVENTS_STORE_DIR,
     H_WORKSPACE_DIR,
+    IS_CHECKOUT,
     LOCAL_BIN,
     LOCAL_BIN_BUILDABLE,
     LOCAL_WORKTREES_DIR,
@@ -204,6 +207,9 @@ def doctor() -> None:
         str(EVENTS_STORE_DIR),
     )
     console.print(paths)
+
+    if IS_CHECKOUT:
+        console.print(f"anchor   {_CHECKOUT_ANCHOR}  (main checkout {_MAIN_CHECKOUT_DIR})")
 
     if CONSUMER_CONFIG_ROOT is not None:
         console.print(

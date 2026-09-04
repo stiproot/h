@@ -212,6 +212,7 @@ const runOne = (
       tokens: invoked.tokenUsage,
       turns: invoked.numTurns,
       sessionId: invoked.sessionId,
+      toolCalls: summary.toolCalls,
       runId: summary.runId,
       runDir: ledger.dir,
       quota: quotaReport,

@@ -1,0 +1,190 @@
+{{- /*
+adopt-plugin workflow — worktree → setup → adopt. Declare a Claude Code plugin in an EXISTING
+repo by merging marketplace + plugin entries into .claude/settings.json ADDITIVELY and appending
+a convention note to CLAUDE.md, then committing on the feature branch. Stops after the commit;
+compose with create-pr to open a PR.
+
+Why it exists: adopting a plugin (trxy 2026-08-13, vizzle #14 2026-08-30, mndy) was done by
+hand every time: four identical steps — merge settings, append CLAUDE.md, commit, open PR. This
+template does the first three; compose create-pr for the fourth.
+
+The TRAP: an empty-settings fixture proves nothing about additive behaviour — the acceptance
+fixture must have pre-existing content (another plugin, an unrelated key) so the proof is
+"both still there beside the new entries".
+
+Publish-native: per-run inputs are {{params.*}} engine tokens — save it once, fire it with:
+  h workflow run adopt-plugin \
+    -p slug=<slug> \
+    -p marketplaceKey=<key> \
+    -p marketplaceRepo=owner/name \
+    -p plugin=<plugin> \
+    -p conventionNote=@note.md
+
+Fire-time params:
+  slug              branch token; the run works on branch feature/<slug>
+  marketplaceKey    settings.json key for the marketplace (e.g. plan-management-marketplace)
+  marketplaceRepo   GitHub owner/name for the marketplace (e.g. stiproot/plan-management)
+  plugin            plugin name to enable (e.g. plan-management)
+  conventionNote    required prose appended to CLAUDE.md (@file splice supported)
+  repo              wf-registry identity (owner/name); identity only, does not drive the clone
+  clonePath         pre-clone path the worktree cuts from (empty = <sharedRoot>/repo)
+  runActivity / agentId — fire-time identity (--agent), defaulting to claude
+
+Template config (values, baked at publish time): adoptPlugin.models.adopt, adoptPlugin.remoteBase,
+adoptPlugin.gitAuth, adoptPlugin.clonePath, adoptPlugin.repo.
+
+Publish:
+  helm template adopt-plugin cli/charts/workflows -s templates/adopt-plugin.tmpl.yaml \
+    --set template=adopt-plugin --set publish=true
+*/ -}}
+{{- /*
+The declared output contract: all three fields are REQUIRED — a downstream create-pr step and
+a driver must be able to read what was written without opening the ledger.
+*/ -}}
+{{- define "h.contract.adoptPlugin" -}}
+type: object
+required:
+  - settingsPath
+  - steeringPath
+  - summary
+properties:
+  settingsPath:
+    type: string
+    description: >-
+      repo-relative path of the .claude/settings.json file as written (e.g. .claude/settings.json)
+  steeringPath:
+    type: string
+    description: >-
+      repo-relative path of the CLAUDE.md file as written (e.g. CLAUDE.md)
+  summary:
+    type: string
+    description: >-
+      what was done — which keys/plugins were already present and preserved, and a reminder
+      that declaring is not installing: each checkout must still run
+      `claude plugin install <plugin>@<marketplaceKey> --scope project`
+{{- end }}
+{{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
+{{- if eq (.Values.template | default "") "adopt-plugin" }}
+role: standalone
+summary: Declare a Claude Code plugin in an existing repo — merge settings, append CLAUDE.md, commit.
+{{- $p := .Values.adoptPlugin }}
+{{- $publish := .Values.publish | default false }}
+{{- $contract := include "h.contract.adoptPlugin" . | fromYaml }}
+{{- $runActivity := .Values.runActivity | default "run-claude" }}
+{{- /* Identity refs: emitted UNQUOTED, so the publish branch pre-quotes them. */ -}}
+{{- $activityRef := $runActivity }}
+{{- $agentIdRef := .Values.agentId }}
+{{- if $publish }}
+{{- $activityRef = include "h.token" "params.runActivity" | quote }}
+{{- $agentIdRef = include "h.token" "params.agentId" }}
+{{- end }}
+{{- $slug := "" }}
+{{- $marketplaceKey := "" }}
+{{- $marketplaceRepo := "" }}
+{{- $plugin := "" }}
+{{- $conventionNote := "" }}
+{{- if $publish }}
+{{- $slug = include "h.token" "params.slug" }}
+{{- $marketplaceKey = include "h.token" "params.marketplaceKey" }}
+{{- $marketplaceRepo = include "h.token" "params.marketplaceRepo" }}
+{{- $plugin = include "h.token" "params.plugin" }}
+{{- $conventionNote = include "h.token" "params.conventionNote" }}
+params:
+  runActivity: {{ $runActivity | quote }}
+  clonePath: {{ $p.clonePath | default "" | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  {{- with $p.repo }}
+  repo: {{ . | quote }}
+  {{- end }}
+  {{- with $p.models.adopt }}
+  modelAdopt: {{ . | quote }}
+  {{- end }}
+{{- else }}
+{{- $slug = required "adoptPlugin.slug is required (--set adoptPlugin.slug=<slug>)" $p.slug }}
+{{- $marketplaceKey = required "adoptPlugin.marketplaceKey is required" ($p.marketplaceKey | default "") }}
+{{- $marketplaceRepo = required "adoptPlugin.marketplaceRepo is required" ($p.marketplaceRepo | default "") }}
+{{- $plugin = required "adoptPlugin.plugin is required" ($p.plugin | default "") }}
+{{- $conventionNote = required "adoptPlugin.conventionNote is required" ($p.conventionNote | default "") }}
+instanceId: {{ printf "adopt-plugin-%s" $slug | quote }}
+{{- end }}
+steps:
+  - id: worktree
+    activity: create-worktree
+    input:
+      agentId: {{ $agentIdRef | quote }}
+      clonePath: {{ include "h.token" "params.clonePath" | quote }}
+      {{- include "h.worktreeSeed" $ }}
+      checkout:
+        kind: branch
+        branch: {{ printf "feature/%s" $slug | quote }}
+        {{- with $p.remoteBase }}
+        remoteBase: {{ . | quote }}
+        {{- end }}
+      {{- with $p.gitAuth }}
+      auth: {{ . | quote }}
+      {{- end }}
+  - id: setup
+    activity: setup
+    input:
+      agentId: {{ $agentIdRef | quote }}
+      setup:
+        {{- include "h.setupSteps" . | nindent 8 }}
+  - id: adopt
+    activity: {{ $activityRef }}
+    input:
+      outputContract: {{ $contract | toJson }}
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $p.models.adopt }}
+      model: {{ ternary (include "h.token" "params.modelAdopt") . $publish | quote }}
+      {{- end }}
+      task: |-
+        You are in a git worktree of the target repository, on branch feature/{{ $slug }}.
+        Your task is to declare a Claude Code plugin in this repo. Follow these instructions exactly.
+
+        The five inputs you need:
+          marketplaceKey:  {{ $marketplaceKey }}
+          marketplaceRepo: {{ $marketplaceRepo }}
+          plugin:          {{ $plugin }}
+          conventionNote:  {{ $conventionNote }}
+
+        1. Read `.claude/settings.json` if it exists (treat as `{}` when absent). Print the full
+           file contents BEFORE making any change (or print "file absent" when it does not exist).
+           Then merge ADDITIVELY:
+           - Ensure `extraKnownMarketplaces` contains the key `{{ $marketplaceKey }}` with value
+             `{"source": "github", "repo": "{{ $marketplaceRepo }}"}`.
+           - Ensure `enabledPlugins` contains the key `{{ $plugin }}@{{ $marketplaceKey }}` with
+             value `true`.
+           Preserve every other top-level key, every other entry inside `extraKnownMarketplaces`
+           and `enabledPlugins`, and the file's existing formatting choices (2-space JSON indentation,
+           trailing newline). When the file is absent, create it with only `extraKnownMarketplaces`
+           and `enabledPlugins`. Write the result and print the full file AFTER the change.
+
+        2. Append the convention note to the repo's `CLAUDE.md` (create it if absent):
+           - If the note's first line begins with `#` (a Markdown heading), append it verbatim
+             after one blank line from the last line of the existing file.
+           - Otherwise, append it under a new `## {{ $plugin }}` heading (one blank line, then the
+             heading, one blank line, then the note body).
+           Never edit any existing section of CLAUDE.md.
+
+        3. `git add` both files (`.claude/settings.json` and `CLAUDE.md`) and commit on the current
+           branch with the exact subject line:
+             chore: adopt the {{ $plugin }} plugin
+           Do NOT add any Co-Authored-By or other attribution trailers — the target repo's commit
+           conventions govern, and adding trailers here would violate them.
+
+        4. Report a structured block with exactly these three fields:
+           - `settingsPath`: the repo-relative path of the settings file as written
+             (e.g. `.claude/settings.json`)
+           - `steeringPath`: the repo-relative path of the CLAUDE.md file as written
+             (e.g. `CLAUDE.md`)
+           - `summary`: one paragraph stating (a) which keys and plugins were ALREADY present and
+             have been preserved unchanged, and (b) that DECLARING is not INSTALLING — each checkout
+             that wants the plugin's tools must still run:
+               claude plugin install {{ $plugin }}@{{ $marketplaceKey }} --scope project
+             (trxy carried declared entries from 2026-08-13 and the plugin never loaded once because
+             the install step was skipped; this reminder is mandatory so the operator does not repeat
+             that mistake)
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "h.contract.adoptPlugin" . | nindent 2 }}
+{{- end }}

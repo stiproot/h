@@ -140,6 +140,16 @@ describe("foldQuotaRow", () => {
 });
 
 describe("fenceUntilFrom", () => {
+  it("uses a Codex rejected observation's synthetic exhausted slot plus reset slack", () => {
+    const codex: QuotaReport = {
+      status: "rejected",
+      windows: { five_hour: { utilization: 1, resetsAt: "2026-09-04T10:13:00.000Z" } },
+      observedAt: "2026-09-04T09:50:00.000Z",
+      spent: {},
+    };
+    expect(fenceUntilFrom(codex, "2026-09-04T09:50:00.000Z")).toBe("2026-09-04T10:14:00.000Z");
+  });
+
   it("is the exhausted window's reset plus slack, else undefined", () => {
     const limited: QuotaReport = {
       status: "rejected",

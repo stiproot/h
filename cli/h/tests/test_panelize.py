@@ -95,6 +95,18 @@ def test_synthesis_keeps_original_id_contract_and_judge() -> None:
     assert task.count("End with json.") == 0
 
 
+def test_synthesis_includes_tool_calls_and_hollow_branch_guidance() -> None:
+    result = panelize(definition(), ROSTER[:2])
+    task = result["steps"][2]["input"]["task"]
+    assert "===CLAUDE=== (tool calls: {{claude.toolCalls}})" in task
+    assert "===CODEX=== (tool calls: {{codex.toolCalls}})" in task
+    assert (
+        "A panelist whose tool-call count is 0 produced its answer without reading anything "
+        "and must be weighed as unsupported opinion, not as a review — name it as such in the "
+        "synthesis; a blank count means the count is unknown for that CLI, not zero."
+    ) in task
+
+
 def test_panel_synthesis_guidance_is_spliced_in() -> None:
     result = panelize(definition(panelSynthesis="Verdict rule: unanimity."), ROSTER)
     assert "Verdict rule: unanimity." in result["steps"][2]["input"]["task"]
