@@ -2,6 +2,7 @@ import { FetchHttpClient } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { classifyStop } from "./classify-stop.ts";
 import { codexStrategy } from "./codex.ts";
 import type { AgentInvocationRequest, StreamEvent } from "./types.ts";
 
@@ -274,6 +275,39 @@ describe("codex JSONL parser", () => {
     parser.parseLine(JSON.stringify({ type: "error", error: "something went wrong" }), events);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: "error", result: "something went wrong" });
+  });
+
+  it("reads the top-level `message` of a current-shape error event", async () => {
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({ type: "error", message: "You've hit your usage limit. Upgrade to Pro" }),
+      events,
+    );
+    expect(events[0]).toMatchObject({
+      type: "error",
+      result: "You've hit your usage limit. Upgrade to Pro",
+    });
+  });
+
+  it("synthesizes an error result from turn.failed so the stop classifier sees the limit", async () => {
+    // Observed live 2026-09-04 (run usr-block-svc-client:codex:1788515218860): codex exits with no
+    // turn.completed, the limit text only on turn.failed, and the run classified `failed`.
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    const message =
+      "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 12:13 PM.";
+    parser.parseLine(JSON.stringify({ type: "turn.failed", error: { message } }), events);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "result", is_error: true, result: message });
+    expect(
+      classifyStop({
+        exitCode: 1,
+        signal: null,
+        stderr: "Reading additional input from stdin...",
+        resultEventText: events[0]!.result,
+      }),
+    ).toBe("usage-limited");
   });
 
   it("ignores empty and whitespace-only lines", async () => {

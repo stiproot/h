@@ -110,7 +110,11 @@ const codexJsonlParser: AgentStreamParser = {
           cached_input_tokens?: number;
           output_tokens?: number;
         };
-        error?: string;
+        // `error` is a STRING on the older `{type:"error", error}` shape and an OBJECT on
+        // `turn.failed` (`{error: {message}}`); the current `{type:"error"}` carries `message`
+        // at the top level instead. All three were observed on one run (see below).
+        error?: string | { message?: string };
+        message?: string;
       };
 
       switch (ev.type) {
@@ -151,13 +155,33 @@ const codexJsonlParser: AgentStreamParser = {
             },
           });
           break;
+        // The failure text lives in THREE places across codex versions, and the process exits
+        // without any `turn.completed`, so a `result` event is synthesized from `turn.failed`:
+        // the stop classifier and the failure report read resultEventText, and without it a
+        // usage-limited codex run classified `failed` with stderr's incidental last line
+        // ("Reading additional input from stdin...") as its error, while the real text —
+        // "You've hit your usage limit … try again at 12:13 PM" — sat only in events.jsonl
+        // (runs usr-block-svc-client:codex:1788515218860 and h-134-observed-text, 2026-09-04).
+        // A limit read as a crash defeats the usage-limit fallback and the auto-deny fence.
         case "error":
-          events.push({ type: "error", result: ev.error });
+          events.push({ type: "error", result: codexErrorText(ev) });
+          break;
+        case "turn.failed":
+          events.push({ type: "result", is_error: true, result: codexErrorText(ev) });
           break;
       }
     } catch {}
   },
 };
+
+/** The error text of a codex `error` / `turn.failed` event, whichever field this version used. */
+function codexErrorText(ev: {
+  error?: string | { message?: string };
+  message?: string;
+}): string | undefined {
+  if (typeof ev.error === "string") return ev.error;
+  return ev.error?.message ?? ev.message;
+}
 
 export const codexStrategy: AgentStrategy = {
   type: "codex",
