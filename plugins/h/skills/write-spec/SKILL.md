@@ -69,7 +69,7 @@ The exact command(s), including the **formatters**. `format:check` is a differen
 `format` in some repos, and an agent that ran the fix command and saw nothing change has no way
 to know the check was format-only. State the starting state explicitly: "fresh worktree, no
 `node_modules`, `.env` copied from `worktree.seed`". Say the baseline is taken **before any
-change**.
+change. Every string the spec asserts on cites where it was observed (Rule 2).
 
 ### 7. Definition of done
 
@@ -92,7 +92,7 @@ when it also fails on the **base branch** (not just the worktree's HEAD before t
 **Incident:** a run turned `db:test` red in a file it had edited and wrote "1 pre-existing
 failure unrelated to changes"; the suite exits 0 on the base branch and 1 on the run's branch.
 
-### Rule 2: A correction needs the command that establishes it
+### Rule 2: A claim about what the system says needs the command that showed it
 
 When the spec asks for a stale claim to be corrected (a date, a commit SHA, a removed
 dependency), require the command and the citation in the text. Otherwise the agent invents a
@@ -100,6 +100,18 @@ plausible date and cause.
 
 **Incident:** "removed 2026-08-30 when the .tsx fix landed" — the real answer was a different
 day, a different commit, and a different reason, found by `git log -S`.
+
+Any string the spec asks a test or check to assert on — an error message, a log line, a CLI's
+printed output, an HTTP body — must be text **OBSERVED** from the running system, and the spec
+must say where it was observed: the command, the file, or the run ID. Never infer it from a
+comment, a docstring, a header, an error code, or the name of a constant. An inferred string is
+a guess dressed as a requirement; the implementing agent cannot tell it from an observed one,
+and Rule 5 forbids adjusting the assertion when the guess is wrong, so a wrong guess costs the
+whole run.
+
+**Incident:** a spec asserted `/42501/` from a module header's "rejects with 42501"; the wrapper
+error carried only `permission denied for function fn_block_usr`, and the run — correctly
+refusing to soften it — delivered nothing.
 
 The same rule binds the spec's AUTHOR. A test recipe the spec hands over — "assert X with
 `has_table_privilege`", "use `throws_ok` on the update" — is a claim that the recipe works
@@ -215,7 +227,9 @@ doc file's commit, the guard prints a line:
 ```
 STALE docs/foo.md (last updated <doc-sha>, source updated <src-sha>)
 ```
-and exits non-zero after processing all pairs. A doc file with no git history is treated as
+This line is the guard's output defined by this spec, so it needs no prior runtime observation.
+An existing system's asserted output would instead need to say where it was observed. The guard
+exits non-zero after processing all pairs. A doc file with no git history is treated as
 maximally stale (epoch commit). A source file with no git history passes (nothing to mirror yet).
 
 ### The trap
@@ -261,6 +275,7 @@ Both runs must exit 0. Report the exit code and the number of lint errors for ea
 - [ ] `scripts/fixtures/doc-sources.json` exists with at least one entry.
 - [ ] Guard demonstrated failing (output recorded).
 - [ ] Mtime trap avoided (both `touch` outputs recorded).
+- [ ] Every asserted string was observed or is defined by this spec, and the spec says which.
 - [ ] Baseline lint exit 0; final lint exit 0; counts reported.
 - [ ] Driver read-back: create-pr's `base` equals the requested branch, `final.failures <=
       baseline.failures`, `baseline.commit` is the base head with `dirty: false`, every step's
