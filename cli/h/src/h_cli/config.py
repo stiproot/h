@@ -219,8 +219,10 @@ LOCAL_BIN_BUILDABLE = IS_CHECKOUT and LOCAL_BIN == CHECKOUT_RUNNER
 # `h runs`, obs-mcp and the viz beside service runs instead of in a private ledger.
 # The checkout anchor comes from Git's shared directory, so loading the CLI from h's own linked
 # worktree still reaches the main checkout's sibling workspace. .resolve() remains load-bearing
-# for configured values: a path carrying `..` compares false under Path.is_relative_to, which is
-# purely lexical.
+# for configured values: a path carrying `..` compares FALSE under Path.is_relative_to, which is
+# purely lexical — `h worktrees` filtered its entries that way and found nothing at all in the
+# default configuration (caught on its first real run, 2026-08-06). Resolving here fixes every
+# consumer at once and stops the unresolved form leaking into user-facing output.
 AGENT_RUNS_DIR = _setting(
     "AGENT_RUNS_DIR",
     "runs_dir",
