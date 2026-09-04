@@ -28,7 +28,7 @@ export interface CodexThreadStartedEvent extends CodexEventBase {
 
 /**
  * One completed item. `item.type` says what it was: `agent_message`/`message` (assistant text) or
- * `function_call`/`mcp_tool_call` (a TOOL CALL — codex's unit of tool use).
+ * one of CODEX_TOOL_ITEMS (a TOOL CALL — codex's unit of tool use).
  */
 export interface CodexItemCompletedEvent extends CodexEventBase {
   type: "item.completed";
@@ -56,8 +56,23 @@ export type CodexEvent =
   | CodexOtherEvent
   | RawLineEvent;
 
-/** Item types codex uses for a tool call — its unit of tool use. */
-const CODEX_TOOL_ITEMS = new Set(["function_call", "mcp_tool_call"]);
+/**
+ * Item types codex uses for a tool call — its unit of tool use. OBSERVED, not assumed: a census
+ * of every codex run ledger on the dev box (2026-09-04, 321 tool items across ~40 runs) streamed
+ * `command_execution` 228×, `mcp_tool_call` 57×, `file_change` 36× and `function_call` never.
+ * Until then the set held only `function_call`/`mcp_tool_call`, so a codex implement run that
+ * executed 22 commands and changed 6 files was tallied as `toolCalls: 0` — the measured-zero
+ * trap event-shape.ts documents for openhands, repeated for codex, and the day the count reached
+ * the panel judge (#96) that zero would have branded every codex panelist a hollow one.
+ * `web_search` is codex's documented fourth tool item; keep it here for when it streams.
+ */
+const CODEX_TOOL_ITEMS = new Set([
+  "command_execution",
+  "file_change",
+  "mcp_tool_call",
+  "web_search",
+  "function_call",
+]);
 
 /** True when this event is a completed TOOL CALL. */
 export function isCodexToolCall(event: CodexEvent): event is CodexItemCompletedEvent {
@@ -131,12 +146,9 @@ const codexJsonlParser: AgentStreamParser = {
                 ? [{ type: "text", text: item.text }]
                 : [];
             events.push({ type: "assistant", message: { content } });
-          } else if (
-            item?.type === "function_call" ||
-            item?.type === "mcp_tool_call" ||
-            // a shell command codex ran itself — the tool call a coding agent makes most
-            item?.type === "command_execution"
-          ) {
+          } else if (CODEX_TOOL_ITEMS.has(item?.type ?? "")) {
+            // ONE list for "is a tool call" — the parser's own copy had `command_execution` while
+            // the tally's did not, so the stream showed tool use the ledger counted as zero.
             events.push({ type: "tool_use" });
           }
           break;
