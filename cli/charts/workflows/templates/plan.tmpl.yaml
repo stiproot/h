@@ -30,9 +30,10 @@ Fire-time params:
   repo         wf-registry identity (owner/name); identity only, does not drive the clone
   clonePath    pre-clone path the worktree cuts from (empty = <sharedRoot>/repo)
   runActivity  / agentId — fire-time identity (--agent), defaulting to claude
+  planName     (when plan.persist is true) name for the plan document; empty = skip writing
 
 Template config (values, baked at publish time): plan.models.plan, plan.remoteBase,
-plan.gitAuth, plan.clonePath, plan.repo.
+plan.gitAuth, plan.clonePath, plan.repo, plan.persist, plan.planName.
 
 Publish:
   helm template plan cli/charts/workflows -s templates/plan.tmpl.yaml \
@@ -59,6 +60,17 @@ properties:
       present when no real planning was possible — e.g. the change already appears
       implemented; omitted otherwise
 {{- end }}
+{{- define "h.contract.plan-persist" -}}
+type: object
+required:
+  - planPath
+properties:
+  planPath:
+    type: string
+    description: >-
+      repo-relative path of the plan document written and committed; empty string when
+      planName was empty and nothing was written
+{{- end }}
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "plan" }}
 role: standalone
@@ -66,6 +78,8 @@ summary: Plan against a spec in a worktree, then stop — review before building
 {{- $p := .Values.plan }}
 {{- $publish := .Values.publish | default false }}
 {{- $contract := include "h.contract.plan" . | fromYaml }}
+{{- $persistContract := include "h.contract.plan-persist" . | fromYaml }}
+{{- $persist := $p.persist | default false }}
 {{- $runActivity := .Values.runActivity | default "run-claude" }}
 {{- /* Identity refs follow implement.tmpl.yaml exactly: $activityRef is emitted UNQUOTED, so the
 publish branch pre-quotes it ({{ at YAML value position parses as a flow mapping). */ -}}
@@ -77,6 +91,7 @@ publish branch pre-quotes it ({{ at YAML value position parses as a flow mapping
 {{- end }}
 {{- $slug := "" }}
 {{- $spec := "" }}
+{{- $planNameRef := ternary (include "h.token" "params.planName") ($p.planName | default "") $publish }}
 {{- if $publish }}
 {{- $slug = include "h.token" "params.slug" }}
 {{- $spec = include "h.token" "params.spec" }}
@@ -89,6 +104,9 @@ params:
   {{- end }}
   {{- with $p.models.plan }}
   modelPlan: {{ . | quote }}
+  {{- end }}
+  {{- if $persist }}
+  planName: {{ $p.planName | default "" | quote }}
   {{- end }}
 {{- else }}
 {{- $slug = required "plan.slug is required (--set plan.slug=<slug>)" $p.slug }}
@@ -143,8 +161,70 @@ steps:
 
         ===SPEC===
         {{- $spec | nindent 8 }}
+  {{- if $persist }}
+  - id: persist
+    activity: {{ $activityRef }}
+    input:
+      outputContract: {{ $persistContract | toJson }}
+      cwd: {{ include "h.token" "worktree.worktreePath" | quote }}
+      {{- with $p.models.plan }}
+      model: {{ ternary (include "h.token" "params.modelPlan") . $publish | quote }}
+      {{- end }}
+      task: |-
+        You are in a git worktree of the target repository. Your only task is to
+        persist the implementation plan produced in the previous step as a document
+        in this repository's plan convention.
+
+        Plan name: {{ $planNameRef }}
+
+        Plan content (the implementation plan to persist):
+        {{- include "h.token" "plan.structured.plan" | nindent 8 }}
+
+        If the plan name is empty, write NOTHING, commit nothing, and report
+        planPath as an empty string ("").
+
+        Otherwise:
+        1. Determine the target repository's plan convention by reading its steering
+           files: CLAUDE.md and/or docs/README.md, and the plan-management skill if
+           present at .claude/skills/plan-management/. Use docs/plans/<planName>.md
+           as the path when the repository states no alternative.
+        2. Write the plan at that path. Begin the file with this exact header block:
+             Status: Planning — <one line summarising the plan's goal>
+             Established: <today's date, YYYY-MM-DD>
+           Follow immediately with the full plan content received above.
+        3. If the repository keeps a plans index file, add one index line for this plan.
+        4. Stage and commit ONLY the new plan file (and any updated index):
+             git add <plan-path> [<index-path>]
+             git commit -m "docs(plans): add <planName>"
+           Do NOT add any Co-Authored-By or other attribution trailers — the target
+           repository's commit rules govern.
+        5. Report the repo-relative path you wrote as planPath.
+        {{ include "h.outputContractEpilogue" $persistContract | nindent 8 }}
+  {{- end }}
 outputs:
+  {{- if not $persist }}
   {{- include "h.contract.plan" . | nindent 2 }}
+  {{- else }}
+  type: object
+  required:
+    - plan
+  properties:
+    plan:
+      type: string
+      description: >-
+        the implementation plan, self-contained and grounded in the code actually read —
+        the artifact a downstream reviewer or implementer consumes
+    skipped:
+      type: string
+      description: >-
+        present when no real planning was possible — e.g. the change already appears
+        implemented; omitted otherwise
+    planPath:
+      type: string
+      description: >-
+        repo-relative path of the plan document written and committed; empty string when
+        planName was empty and nothing was written
+  {{- end }}
 {{- /*
 panelSynthesis — "how to synthesize a panel of me": spliced into the judge's task when this
 workflow runs under an --agent roster; inert otherwise.
