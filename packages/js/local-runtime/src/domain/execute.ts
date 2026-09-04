@@ -499,7 +499,11 @@ const runStep = (
     const cost = report.costUsd === undefined ? "cost unknown" : `$${report.costUsd.toFixed(4)}`;
     yield* progress.emit(`✓ ${id}: ${classified.agent} in ${seconds}s (${cost})`);
 
-    const result: AgentResult = { sessionId: report.sessionId ?? null, output: report.output };
+    const result: AgentResult = {
+      sessionId: report.sessionId ?? null,
+      output: report.output,
+      toolCalls: report.toolCalls ?? null,
+    };
     // The output contract is enforced HERE because AgentPort is contract-agnostic; engine-side the
     // run-* activity does it. Same `workflow-core` validator either way, and the same consequence:
     // a missing or mismatching fenced block FAILS THE STEP rather than passing prose downstream.

@@ -252,6 +252,27 @@ plan:
   models:
     plan: claude-sonnet-4-6
 
+# adopt-plugin workflow (templates/adopt-plugin.tmpl.yaml): worktree → setup → adopt. Declare
+# a Claude Code plugin in an existing repo: merges marketplace + plugin entries into
+# .claude/settings.json ADDITIVELY and appends a convention note to CLAUDE.md, then commits.
+# Publish-native — slug, marketplaceKey, marketplaceRepo, plugin, conventionNote are fire-time params.
+adoptPlugin:
+  # Git-branch-safe token; the run works on branch feature/<slug>. Required at render time.
+  slug: ""
+  # GitHub repo (owner/name) — the wf-registry identity segment. Identity only; does NOT drive
+  # the clone (that is clonePath). Empty = no identity row (opt-in).
+  repo: ""
+  # Local path of the pre-cloned target repo. LEAVE EMPTY — see implement.clonePath above for why
+  # baking a mode-specific path breaks host⇄compose interchangeability.
+  clonePath: ""
+  # Branch refreshed from origin before cutting feature/<slug>; empty = the agent default (main).
+  remoteBase: ""
+  # Git auth strategy NAME for the worktree step; "" = the agent's default (GIT_AUTH env).
+  gitAuth: ""
+  # Per-step model override; empty = the agent's AGENT_MODEL.
+  models:
+    adopt: ""
+
 # gc-worktrees workflow (templates/gc-worktrees.tmpl.yaml): the collector for the worktrees h cuts
 # and never removes. Defaults are the CONSERVATIVE ones — an unattended sweep keeps anything it is
 # not explicitly told it may discard, and the age floor is the liveness proxy (a supervised run is

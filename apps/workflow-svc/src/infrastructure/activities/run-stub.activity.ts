@@ -30,6 +30,7 @@ export async function runStubActivity(
       return {
         sessionId: response.sessionId,
         output: response.output,
+        toolCalls: response.toolCalls ?? null,
         workspacePath: response.workspacePath,
       };
     }).pipe(

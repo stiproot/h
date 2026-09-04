@@ -43,6 +43,7 @@ type Ports = AgentPort | WorkspacePort | ProgressPort | JournalPort;
 const stubs = (
   outputs: Record<string, string> = {},
   failing: string[] = [],
+  toolCalls: number | null = 7,
 ): { layer: Layer.Layer<Ports>; recorder: Recorder } => {
   const recorder: Recorder = {
     agentRuns: [],
@@ -63,6 +64,7 @@ const stubs = (
             cwd: request.cwd,
             output: outputs[request.task] ?? `${request.agent} answered`,
             durationMs: 5,
+            toolCalls,
             ...(failed ? { error: "boom" } : {}),
           } satisfies AgentRunReport;
         }),
@@ -123,6 +125,17 @@ describe("runWorkflow", () => {
     expect(envelope.ok).toBe(true);
     expect((envelope.results.plan as { output: string }).output).toBe("claude answered");
     expect((envelope.results.build as { output: string }).output).toBe("codex answered");
+    expect((envelope.results.plan as { toolCalls: number | null }).toolCalls).toBe(7);
+  });
+
+  it("preserves an unknown tool-call count as null", async () => {
+    const { layer } = stubs({}, [], null);
+    const envelope = await run(
+      job([{ id: "answer", activity: "run-codex", input: { task: "answer" } }]),
+      layer,
+    );
+
+    expect((envelope.results.answer as { toolCalls: number | null }).toolCalls).toBeNull();
   });
 
   // The engine seeds params under the reserved id `params`; every token form must resolve the

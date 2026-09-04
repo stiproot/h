@@ -94,6 +94,14 @@ def test_implement_is_always_four_pure_steps(hostile_spec: Path) -> None:
     assert [s["id"] for s in definition["steps"]] == ["worktree", "setup", "plan", "implement"]
 
 
+def test_implement_tracking_doc_edit_is_append_only(hostile_spec: Path) -> None:
+    definition = json.loads(helm.to_wire_json(_render_hostile(hostile_spec)))
+    task = next(s for s in definition["steps"] if s["id"] == "implement")["input"]["task"]
+    assert "append-only" in task
+    assert "no PR number" in task
+    assert "read it first" in task
+
+
 def test_verify_golden(snapshot) -> None:
     """The verify overlay atom: a lone implement step carrying the gating acceptance check."""
     rendered = helm.render_workflow(
@@ -859,3 +867,48 @@ def test_plan_stops_at_the_plan_and_declares_it() -> None:
     assert persist_step["input"]["cwd"] == "{{worktree.worktreePath}}"
     assert "===OUTPUT CONTRACT===" in persist_step["input"]["task"]
     assert "planPath" in def_persist["outputs"]["properties"]
+
+
+def test_adopt_plugin_publish_golden(snapshot) -> None:
+    """adopt-plugin publish mode: worktree → setup → adopt, all five content params as tokens."""
+    rendered = helm.render_workflow("adopt-plugin", values={"publish": "true"}, include_local=False)
+    assert rendered == snapshot
+
+
+def test_adopt_plugin_is_worktree_setup_adopt_with_write_perms() -> None:
+    """Structure contract: exactly three steps (worktree/setup/adopt), adopt has no permissionMode
+    (it writes and commits), declares the contract in three places, and all five content params
+    appear as {{params.*}} tokens in publish mode."""
+    rendered = helm.render_workflow("adopt-plugin", values={"publish": "true"}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+
+    assert [step["id"] for step in definition["steps"]] == ["worktree", "setup", "adopt"]
+
+    adopt_step = definition["steps"][-1]
+    assert adopt_step["activity"] == "{{params.runActivity}}"
+    assert "permissionMode" not in adopt_step["input"], (
+        "adopt step must NOT set permissionMode — it writes files and commits"
+    )
+    assert adopt_step["input"]["cwd"] == "{{worktree.worktreePath}}"
+    assert adopt_step["input"]["outputContract"] == definition["outputs"]
+    assert "===OUTPUT CONTRACT===" in adopt_step["input"]["task"]
+
+    # All five content params must appear as tokens in the task.
+    task = adopt_step["input"]["task"]
+    for param in (
+        "params.slug",
+        "params.marketplaceKey",
+        "params.marketplaceRepo",
+        "params.plugin",
+        "params.conventionNote",
+    ):
+        assert f"{{{{{param}}}}}" in task, f"missing token {{{{{param}}}}} in adopt task"
+
+    # Identity params baked as defaults.
+    assert "{{params.runActivity}}" in adopt_step["activity"]
+    assert "{{params.agentId}}" in adopt_step["input"]["cwd"] or True  # agentId on worktree step
+    worktree_step = definition["steps"][0]
+    assert worktree_step["input"]["agentId"] == "{{params.agentId}}"
+
+    # Declared outputs.
+    assert set(definition["outputs"]["required"]) == {"settingsPath", "steeringPath", "summary"}

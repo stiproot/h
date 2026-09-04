@@ -64,7 +64,10 @@ _SYNTHESIS_INTRO = (
     "The original task and each agent's full answer are below. Synthesize the answers into the "
     "SINGLE result the task demands — what do they agree on, where do they diverge in ways that "
     "matter, and what does the merged best answer look like? Your final json block is the "
-    "workflow's ONE output; the panelists' own outputs are raw material, not results."
+    "workflow's ONE output; the panelists' own outputs are raw material, not results. A panelist "
+    "whose tool-call count is 0 produced its answer without reading anything and must be weighed "
+    "as unsupported opinion, not as a review — name it as such in the synthesis; a blank count "
+    "means the count is unknown for that CLI, not zero."
 )
 
 
@@ -173,7 +176,10 @@ def panelize(
         branch_input["task"] = f"{preamble}\n\n{task}"
         branches.append({"id": bid, "activity": activity, "input": branch_input})
 
-    sections = "\n\n".join(f"==={bid.upper()}===\n{{{{{bid}.output}}}}" for bid in branch_ids)
+    sections = "\n\n".join(
+        f"==={bid.upper()}=== (tool calls: {{{{{bid}.toolCalls}}}})\n{{{{{bid}.output}}}}"
+        for bid in branch_ids
+    )
     guidance = definition.get("panelSynthesis")
     synthesis_parts = [_SYNTHESIS_INTRO.format(n=len(roster), roster=roster_line)]
     if isinstance(guidance, str) and guidance.strip():

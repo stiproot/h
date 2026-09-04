@@ -104,7 +104,18 @@ steps:
            Never write the token into git config or the remote URL; if GH_TOKEN is unset,
            skip the push and explain why in the `skipped` field of your final json block.
         {{- end }}
-        2. Open a pull request with the github MCP tool create_pull_request. Its BASE is
+        2. Open a pull request with the github MCP tool create_pull_request. If NO github
+           MCP tool is callable in this session (an agent CLI that loads no MCP config —
+           codex on the local substrate — has none, and asking for it to be installed
+           changes nothing), use the GitHub CLI over the same token instead:
+           `gh pr create --base <base> --head feature/{{ $slug }} --title <title> --body-file <file>`
+           (write the body to a scratch file first; `gh` reads GH_TOKEN from the
+           environment), or, with no `gh` on PATH, the REST API:
+           `curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/<owner>/<repo>/pulls`
+           with a json body `{title, head, base, body}`. A missing MCP tool is NOT a
+           reason to skip: the branch is already pushed, and a driver expects a PR
+           (2026-09-04: a codex run pushed, reported `skipped: GitHub MCP tool not
+           installed`, and the PR had to be opened by hand). Its BASE is
            `{{ include "h.token" "params.baseBranch" }}` — when that is empty use the
            repository's default branch, and when it names a branch pass it as the tool's
            `base` argument so the PR targets that branch instead. Do not retarget an
@@ -133,8 +144,10 @@ steps:
            `Closes #N` on its own line in the PR body, so the merge auto-closes that issue;
            otherwise omit it. If a PR for this branch already exists, your push has updated
            it — do not open a duplicate.
-           AFTER opening or finding the PR, read it back (pull_request_read) and report
-           its `base` and `head` branches from that response in your json block. Never
+           AFTER opening or finding the PR, read it back (pull_request_read, or
+           `gh pr view <number> --json number,url,baseRefName,headRefName` on the CLI
+           path) and report its `base` and `head` branches from that response in your
+           json block. Never
            copy the requested base into the block: the value must be what GitHub holds,
            because a PR that landed against the wrong branch is exactly what the field
            exists to catch (2026-09-01: the base was in prose only, and a driver could
@@ -154,7 +167,9 @@ steps:
         3. If a PR for this branch already existed before this push (this is a revise
            run, not a first-time creation), respond to review feedback:
            a. Find the PR number: use the github MCP tool to list pull requests by
-             head branch feature/{{ $slug }}.
+             head branch feature/{{ $slug }} (CLI path: `gh pr list --head feature/{{ $slug }} --json number`;
+             the thread steps below then go through `gh api graphql` — `resolveReviewThread`
+             takes the same PRRT_ node id).
            b. Fetch UNRESOLVED review threads: pull_request_read with method
              get_review_comments on that PR. Each thread has an isResolved field, a
              thread node id (PRRT_...), and comments with numeric ids.

@@ -61,6 +61,23 @@ def _run(repo_path: Path, *args: str) -> str:
     return out.stdout
 
 
+def is_live_worktree(path: Path) -> bool:
+    """True when `path` carries a `.git` link that still resolves — some repository's live worktree.
+
+    A true husk either has no `.git` at all or a `.git` file pointing at a `worktrees/<name>`
+    gitdir that a prune has already removed; both make `rev-parse --git-dir` fail. The check is
+    anchored on the directory's OWN `.git` so a managed root that happens to sit inside a
+    repository never has its plain leftovers rescued by the parent's `.git`.
+    """
+    if not (path / ".git").exists():
+        return False
+    try:
+        _run(path, "rev-parse", "--git-dir")
+        return True
+    except GitError:
+        return False
+
+
 def is_repo(path: Path) -> bool:
     """True when `path` is inside a git working tree — the guard before anything is run there."""
     try:

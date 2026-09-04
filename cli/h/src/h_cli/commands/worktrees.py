@@ -75,6 +75,14 @@ def _husks(repo: str) -> list[Path]:
 
     git-core's collector (`worktree-gc.ts`, the service substrate's `gc-worktrees` activity) has
     always had this pass; the operator's sweep did not, which is the parity gap this closes.
+
+    "No record" means NO repository's record, not only `repo`'s. The managed roots are shared by
+    every repo h works on, so a sweep run against one clone walks the other clones' live
+    worktrees too. Judged against `repo`'s list alone, each of those is "a directory git has no
+    record of" — on 2026-09-04 a dry run against trxy listed all nine of h's own worktrees
+    (one with a run in flight) as husks that `--prune-untracked` would collect. A directory
+    whose own `.git` link still resolves is somebody's worktree and is left strictly alone; a
+    husk is one with no `.git`, or a `.git` pointing at a gitdir that a prune has removed.
     """
     known = {e.path.resolve() for e in git.worktree_list(repo)}
     found: list[Path] = []
@@ -83,6 +91,8 @@ def _husks(repo: str) -> list[Path]:
             continue
         for child in sorted(root.iterdir()):
             if not child.is_dir() or child.resolve() in known:
+                continue
+            if git.is_live_worktree(child):
                 continue
             found.append(child)
     return found

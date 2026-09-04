@@ -28,7 +28,7 @@ export interface CodexThreadStartedEvent extends CodexEventBase {
 
 /**
  * One completed item. `item.type` says what it was: `agent_message`/`message` (assistant text) or
- * `function_call`/`mcp_tool_call` (a TOOL CALL — codex's unit of tool use).
+ * one of CODEX_TOOL_ITEMS (a TOOL CALL — codex's unit of tool use).
  */
 export interface CodexItemCompletedEvent extends CodexEventBase {
   type: "item.completed";
@@ -56,8 +56,23 @@ export type CodexEvent =
   | CodexOtherEvent
   | RawLineEvent;
 
-/** Item types codex uses for a tool call — its unit of tool use. */
-const CODEX_TOOL_ITEMS = new Set(["function_call", "mcp_tool_call"]);
+/**
+ * Item types codex uses for a tool call — its unit of tool use. OBSERVED, not assumed: a census
+ * of every codex run ledger on the dev box (2026-09-04, 321 tool items across ~40 runs) streamed
+ * `command_execution` 228×, `mcp_tool_call` 57×, `file_change` 36× and `function_call` never.
+ * Until then the set held only `function_call`/`mcp_tool_call`, so a codex implement run that
+ * executed 22 commands and changed 6 files was tallied as `toolCalls: 0` — the measured-zero
+ * trap event-shape.ts documents for openhands, repeated for codex, and the day the count reached
+ * the panel judge (#96) that zero would have branded every codex panelist a hollow one.
+ * `web_search` is codex's documented fourth tool item; keep it here for when it streams.
+ */
+const CODEX_TOOL_ITEMS = new Set([
+  "command_execution",
+  "file_change",
+  "mcp_tool_call",
+  "web_search",
+  "function_call",
+]);
 
 /** True when this event is a completed TOOL CALL. */
 export function isCodexToolCall(event: CodexEvent): event is CodexItemCompletedEvent {
@@ -99,12 +114,22 @@ const codexJsonlParser: AgentStreamParser = {
           text?: string;
           content?: Array<{ type?: string; text?: string }>;
         };
+        // Two generations of field names: the older `prompt_tokens`/`cached_tokens`, and the
+        // `input_tokens`/`cached_input_tokens` codex 0.60+ actually emits. Reading only the old
+        // pair reported `tokens.input: 0` on every codex run (ledger local-260904-071251, 2026-09-04:
+        // 38,268 input tokens on the wire, 0 in the envelope) — an unpriced run looked free.
         usage?: {
           prompt_tokens?: number;
           cached_tokens?: number;
+          input_tokens?: number;
+          cached_input_tokens?: number;
           output_tokens?: number;
         };
-        error?: string;
+        // `error` is a STRING on the older `{type:"error", error}` shape and an OBJECT on
+        // `turn.failed` (`{error: {message}}`); the current `{type:"error"}` carries `message`
+        // at the top level instead. All three were observed on one run (see below).
+        error?: string | { message?: string };
+        message?: string;
       };
 
       switch (ev.type) {
@@ -125,7 +150,9 @@ const codexJsonlParser: AgentStreamParser = {
                 ? [{ type: "text", text: item.text }]
                 : [];
             events.push({ type: "assistant", message: { content } });
-          } else if (item?.type === "function_call" || item?.type === "mcp_tool_call") {
+          } else if (CODEX_TOOL_ITEMS.has(item?.type ?? "")) {
+            // ONE list for "is a tool call" — the parser's own copy had `command_execution` while
+            // the tally's did not, so the stream showed tool use the ledger counted as zero.
             events.push({ type: "tool_use" });
           }
           break;
@@ -134,19 +161,39 @@ const codexJsonlParser: AgentStreamParser = {
           events.push({
             type: "result",
             usage: {
-              input_tokens: ev.usage?.prompt_tokens,
+              input_tokens: ev.usage?.input_tokens ?? ev.usage?.prompt_tokens,
               output_tokens: ev.usage?.output_tokens,
-              cached_input_tokens: ev.usage?.cached_tokens,
+              cached_input_tokens: ev.usage?.cached_input_tokens ?? ev.usage?.cached_tokens,
             },
           });
           break;
+        // The failure text lives in THREE places across codex versions, and the process exits
+        // without any `turn.completed`, so a `result` event is synthesized from `turn.failed`:
+        // the stop classifier and the failure report read resultEventText, and without it a
+        // usage-limited codex run classified `failed` with stderr's incidental last line
+        // ("Reading additional input from stdin...") as its error, while the real text —
+        // "You've hit your usage limit … try again at 12:13 PM" — sat only in events.jsonl
+        // (runs usr-block-svc-client:codex:1788515218860 and h-134-observed-text, 2026-09-04).
+        // A limit read as a crash defeats the usage-limit fallback and the auto-deny fence.
         case "error":
-          events.push({ type: "error", result: ev.error });
+          events.push({ type: "error", result: codexErrorText(ev) });
+          break;
+        case "turn.failed":
+          events.push({ type: "result", is_error: true, result: codexErrorText(ev) });
           break;
       }
     } catch {}
   },
 };
+
+/** The error text of a codex `error` / `turn.failed` event, whichever field this version used. */
+function codexErrorText(ev: {
+  error?: string | { message?: string };
+  message?: string;
+}): string | undefined {
+  if (typeof ev.error === "string") return ev.error;
+  return ev.error?.message ?? ev.message;
+}
 
 export const codexStrategy: AgentStrategy = {
   type: "codex",

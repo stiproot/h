@@ -111,6 +111,8 @@ export type AgentRunReport = {
   tokens?: { input: number; output: number };
   turns?: number;
   sessionId?: string;
+  /** Run-ledger tool-call tally; null means this CLI's event stream cannot be tallied. */
+  toolCalls?: number | null;
   /** Run-ledger identity, so `h runs` / `h run <id>` / obs-mcp can pick the run up. */
   runId?: string;
   runDir?: string;

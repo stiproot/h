@@ -34,11 +34,13 @@ export async function runDaprAgentActivity(
         const response = json as {
           sessionId: string | null;
           output: string;
+          toolCalls?: number | null;
           workspacePath?: string;
         };
         return {
           sessionId: response.sessionId,
           output: response.output,
+          toolCalls: response.toolCalls ?? null,
           workspacePath: response.workspacePath,
         };
       }),

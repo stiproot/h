@@ -2,6 +2,7 @@ import { FetchHttpClient } from "@effect/platform";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { classifyStop } from "./classify-stop.ts";
 import { codexStrategy } from "./codex.ts";
 import type { AgentInvocationRequest, StreamEvent } from "./types.ts";
 
@@ -199,6 +200,19 @@ describe("codex JSONL parser", () => {
     expect(events[0]).toMatchObject({ type: "tool_use" });
   });
 
+  // What codex ACTUALLY streams for a shell command and a file edit (verbatim shapes from a
+  // 2026-09-04 run ledger). These were tallied as nothing for two months — see CODEX_TOOL_ITEMS.
+  it.each([
+    { type: "command_execution", command: "/bin/bash -lc 'bun run lint'", exit_code: 0 },
+    { type: "file_change", changes: [{ path: "src/a.ts", kind: "update" }], status: "completed" },
+  ])("parses item.completed $type into tool_use", async (item) => {
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(JSON.stringify({ type: "item.completed", item }), events);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "tool_use" });
+  });
+
   it("parses item.completed mcp_tool_call into tool_use", async () => {
     const parser = await getParser();
     const events: StreamEvent[] = [];
@@ -213,7 +227,45 @@ describe("codex JSONL parser", () => {
     expect(events[0]).toMatchObject({ type: "tool_use" });
   });
 
-  it("parses turn.completed into result with usage", async () => {
+  it("parses item.completed command_execution into tool_use (the shell calls a coding agent makes)", async () => {
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "command_execution", command: "sed -n 1,80p src/ops/like.ts", exit_code: 0 },
+      }),
+      events,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "tool_use" });
+  });
+
+  it("parses turn.completed usage in the input_tokens/cached_input_tokens shape codex 0.60+ emits", async () => {
+    // Verbatim from ledger local-260904-071251 (2026-09-04); the old names read this as input 0.
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({
+        type: "turn.completed",
+        usage: {
+          input_tokens: 38268,
+          cached_input_tokens: 22528,
+          cache_write_input_tokens: 0,
+          output_tokens: 111,
+          reasoning_output_tokens: 0,
+        },
+      }),
+      events,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "result",
+      usage: { input_tokens: 38268, output_tokens: 111, cached_input_tokens: 22528 },
+    });
+  });
+
+  it("parses turn.completed usage in the older prompt_tokens/cached_tokens shape", async () => {
     const parser = await getParser();
     const events: StreamEvent[] = [];
     parser.parseLine(
@@ -238,6 +290,39 @@ describe("codex JSONL parser", () => {
     expect(events[0]).toMatchObject({ type: "error", result: "something went wrong" });
   });
 
+  it("reads the top-level `message` of a current-shape error event", async () => {
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({ type: "error", message: "You've hit your usage limit. Upgrade to Pro" }),
+      events,
+    );
+    expect(events[0]).toMatchObject({
+      type: "error",
+      result: "You've hit your usage limit. Upgrade to Pro",
+    });
+  });
+
+  it("synthesizes an error result from turn.failed so the stop classifier sees the limit", async () => {
+    // Observed live 2026-09-04 (run usr-block-svc-client:codex:1788515218860): codex exits with no
+    // turn.completed, the limit text only on turn.failed, and the run classified `failed`.
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    const message =
+      "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 12:13 PM.";
+    parser.parseLine(JSON.stringify({ type: "turn.failed", error: { message } }), events);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "result", is_error: true, result: message });
+    expect(
+      classifyStop({
+        exitCode: 1,
+        signal: null,
+        stderr: "Reading additional input from stdin...",
+        resultEventText: events[0]!.result,
+      }),
+    ).toBe("usage-limited");
+  });
+
   it("ignores empty and whitespace-only lines", async () => {
     const parser = await getParser();
     const events: StreamEvent[] = [];
@@ -258,5 +343,38 @@ describe("codex JSONL parser", () => {
     const events: StreamEvent[] = [];
     parser.parseLine(JSON.stringify({ type: "unknown.event", data: {} }), events);
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("codexStrategy.tallyToolCalls (every item type codex streams for a tool)", () => {
+  const tally = (items: string[]): number =>
+    items.reduce(
+      (n, type) =>
+        codexStrategy.tallyToolCalls?.call(codexStrategy, n, {
+          type: "item.completed",
+          item: { type },
+        }) ?? n,
+      0,
+    );
+
+  it("counts a shell command and a file edit, not just an MCP call", () => {
+    // The 2026-09-04 implement run: 22 commands + 6 file changes + 9 messages, 0 MCP calls —
+    // and a tally of 0 before this set was widened.
+    const items = [
+      ...Array<string>(22).fill("command_execution"),
+      ...Array<string>(6).fill("file_change"),
+      ...Array<string>(9).fill("agent_message"),
+    ];
+    expect(tally(items)).toBe(28);
+  });
+
+  it("does not count assistant text, reasoning or an item that only started", () => {
+    expect(tally(["agent_message", "reasoning", "error"])).toBe(0);
+    expect(
+      codexStrategy.tallyToolCalls?.call(codexStrategy, 0, {
+        type: "item.started",
+        item: { type: "command_execution" },
+      }),
+    ).toBe(0);
   });
 });
