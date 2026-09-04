@@ -253,7 +253,7 @@
       input:
         cwd: "{{worktree.worktreePath}}"
         model: "{{params.modelImplement}}"
-        outputContract: {"properties":{"base":{"description":"the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch","type":"string"},"head":{"description":"the PR's head branch as GitHub reports it","type":"string"},"pr":{"description":"the pull request number, when a PR exists (opened, updated, or pre-existing)","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"type":"object"}
+        outputContract: {"properties":{"base":{"description":"the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch","type":"string"},"closes":{"description":"the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists","items":{"type":"integer"},"type":"array"},"head":{"description":"the PR's head branch as GitHub reports it","type":"string"},"pr":{"description":"the pull request number, when a PR exists (opened, updated, or pre-existing)","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"required":["closes"],"type":"object"}
         task: |-
           ===ISSUE===
           {{params.issueNumber}}
@@ -298,7 +298,7 @@
              step: if the spec asked for a demonstration and the block carries none, say so
              in one line rather than reconstructing what it probably printed (2026-09-03: a
              PR body quoted a failing test by the wrong number, at the wrong line, in a
-             format the runner does not emit — none of it had happened).
+             format the runner does not emit — it was invented).
              Include the `===ITEST EVIDENCE===` section below in the PR body when those values
              are non-empty (i.e. when run-itest was composed in and ran).
              Pass the intended Markdown directly as the tool's body value, beginning with the intended heading or first line;
@@ -308,13 +308,15 @@
              otherwise omit it. If a PR for this branch already exists, your push has updated
              it — do not open a duplicate.
              AFTER opening or finding the PR, read it back (pull_request_read, or
-             `gh pr view <number> --json number,url,baseRefName,headRefName` on the CLI
-             path) and report its `base` and `head` branches from that response in your
-             json block. Never
-             copy the requested base into the block: the value must be what GitHub holds,
-             because a PR that landed against the wrong branch is exactly what the field
-             exists to catch (2026-09-01: the base was in prose only, and a driver could
-             not tell a retargeted PR from a correct one without opening each).
+             `gh pr view <number> --json number,url,baseRefName,headRefName,body` on the CLI
+             path) and report its `base` and `head` branches from that response in your json
+             block. In `closes`, report every integer N appearing as a `Closes #N` line in
+             the BODY of that read-back response, or `[]` if there is none. Never copy the
+             requested base or issue number into the block: the values must be what GitHub
+             holds, because `base` catches a PR opened against the wrong branch and `closes`
+             catches a dropped `Closes` line; echoing the ===ISSUE=== value would make that
+             check useless (2026-09-01: the base was in prose only, and a driver could not
+             tell a retargeted PR from a correct one without opening each).
   
           ===VERIFY EVIDENCE===
           {{implement.structured}}
@@ -349,11 +351,25 @@
           End your final message with a fenced ```json code block containing a single JSON
           object matching this schema. The block is machine-validated: a missing or
           mismatching block fails this step. Nothing may follow the block.
+          
+          MANDATORY — the block MUST carry `closes`.
+          Omitting it fails the step even when the
+          work itself succeeded, and a long run is exactly when this gets forgotten: on 2026-08-22 a
+          revise-pr run rebased a branch, fixed five review findings, replied, resolved the threads and
+          force-pushed — 28 minutes and $7.93 — then omitted one required field and was reported as a
+          failed step. Re-read this line before you write the block.
           {
             "properties": {
               "base": {
                 "description": "the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch",
                 "type": "string"
+              },
+              "closes": {
+                "description": "the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists",
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
               },
               "head": {
                 "description": "the PR's head branch as GitHub reports it",
@@ -372,6 +388,9 @@
                 "type": "string"
               }
             },
+            "required": [
+              "closes"
+            ],
             "type": "object"
           }
   outputs:
@@ -389,9 +408,16 @@
       head:
         type: string
         description: the PR's head branch as GitHub reports it
+      closes:
+        type: array
+        items:
+          type: integer
+        description: "the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists"
       skipped:
         type: string
         description: present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)
+    required:
+      - closes
   
   '''
 # ---

@@ -25,9 +25,10 @@ Render alone (for inspection):
 The declared output contract (structured-workflow-outputs plan): the workflow's typed output
 signature, rendered three ways below — the step's outputContract input (validated at the run
 activity, rung 2), the schema-derived task epilogue (steering that cannot drift), and the
-top-level outputs: block (the registration surface). No `required`: a run that cannot open a PR
-reports `skipped` instead of pr/url, and the chain fails loud downstream exactly like the
-marker-era SKIPPED tail.
+top-level outputs: block (the registration surface). A run that cannot open a PR reports `skipped`
+instead of pr/url, so those fields remain optional and the chain fails loud downstream exactly
+like the marker-era SKIPPED tail. `closes` alone is required because it is always reportable as
+`[]`, even when the run skips or the PR body closes nothing.
 */ -}}
 {{- define "h.contract.create-pr" -}}
 type: object
@@ -44,9 +45,16 @@ properties:
   head:
     type: string
     description: the PR's head branch as GitHub reports it
+  closes:
+    type: array
+    items:
+      type: integer
+    description: "the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists"
   skipped:
     type: string
     description: present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)
+required:
+  - closes
 {{- end }}
 {{- /* Template gate — see implement.tmpl.yaml: bodies only evaluate for the selected template. */ -}}
 {{- if eq (.Values.template | default "") "create-pr" }}
@@ -135,7 +143,7 @@ steps:
            step: if the spec asked for a demonstration and the block carries none, say so
            in one line rather than reconstructing what it probably printed (2026-09-03: a
            PR body quoted a failing test by the wrong number, at the wrong line, in a
-           format the runner does not emit — none of it had happened).
+           format the runner does not emit — it was invented).
            Include the `===ITEST EVIDENCE===` section below in the PR body when those values
            are non-empty (i.e. when run-itest was composed in and ran).
            Pass the intended Markdown directly as the tool's body value, beginning with the intended heading or first line;
@@ -145,13 +153,15 @@ steps:
            otherwise omit it. If a PR for this branch already exists, your push has updated
            it — do not open a duplicate.
            AFTER opening or finding the PR, read it back (pull_request_read, or
-           `gh pr view <number> --json number,url,baseRefName,headRefName` on the CLI
-           path) and report its `base` and `head` branches from that response in your
-           json block. Never
-           copy the requested base into the block: the value must be what GitHub holds,
-           because a PR that landed against the wrong branch is exactly what the field
-           exists to catch (2026-09-01: the base was in prose only, and a driver could
-           not tell a retargeted PR from a correct one without opening each).
+           `gh pr view <number> --json number,url,baseRefName,headRefName,body` on the CLI
+           path) and report its `base` and `head` branches from that response in your json
+           block. In `closes`, report every integer N appearing as a `Closes #N` line in
+           the BODY of that read-back response, or `[]` if there is none. Never copy the
+           requested base or issue number into the block: the values must be what GitHub
+           holds, because `base` catches a PR opened against the wrong branch and `closes`
+           catches a dropped `Closes` line; echoing the ===ISSUE=== value would make that
+           check useless (2026-09-01: the base was in prose only, and a driver could not
+           tell a retargeted PR from a correct one without opening each).
 
         ===VERIFY EVIDENCE===
         {{ include "h.token" "implement.structured" }}

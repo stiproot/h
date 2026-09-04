@@ -197,6 +197,11 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 ## Standing conventions
 
+- **Make issue closure a checked output.** Fire a run that should close an issue with
+  `-p issueNumber=N`, then require create-pr's read-back `closes` to contain `N`; reject a
+  missing or empty `closes` whenever `issueNumber` was set (the 2026-09-03 h-126 run opened
+  PR #127 without its `Closes #126` line).
+
 - **Anticipate the rate limit; never discover it from a dead run.** The `quota:` row is the
   shepherd's clock as much as h's: read it before every fire (`h agents list --local`), and
   when a window is near its ceiling choose deliberately — a different executor for the
