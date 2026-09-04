@@ -24,6 +24,37 @@ _CLI_DIR = Path(__file__).resolve().parents[3]
 _REPO_DIR = _CLI_DIR.parent
 _BUNDLED_DIR = Path(__file__).resolve().parent / "_bundled"
 
+
+def main_checkout_dir(repo_dir: Path) -> Path:
+    """The main checkout shared by ``repo_dir`` and any of its linked worktrees.
+
+    Git prints ``.git`` for a main checkout but an absolute path for a linked worktree, so the
+    output must be resolved relative to ``repo_dir`` rather than the process working directory.
+    An exported tree or a machine without Git retains the historical checkout-local default.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        common_dir = result.stdout.strip()
+        if not common_dir:
+            return repo_dir
+        return (repo_dir / common_dir).resolve().parent
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return repo_dir
+
+
+def checkout_anchor(repo_dir: Path) -> Path:
+    """The directory containing h's main checkout and its sibling workspace roots."""
+    return main_checkout_dir(repo_dir).parent
+
+
+_MAIN_CHECKOUT_DIR = main_checkout_dir(_REPO_DIR)
+_CHECKOUT_ANCHOR = checkout_anchor(_REPO_DIR)
+
 # Checkout mode iff the editable install's file-relative derivation actually lands in an h
 # checkout. Everything mode-dependent branches on this ONCE.
 IS_CHECKOUT = (_CLI_DIR / "charts" / "workflows").is_dir()
@@ -186,22 +217,21 @@ LOCAL_BIN_BUILDABLE = IS_CHECKOUT and LOCAL_BIN == CHECKOUT_RUNNER
 # Run-ledger root. Defaults to the SAME directory the agent services write (host mode's
 # AGENT_BASE_DIR sibling, which is the compose bind mount too), so a local run shows up in
 # `h runs`, obs-mcp and the viz beside service runs instead of in a private ledger.
-# .resolve() is load-bearing, not cosmetic: these defaults are built with `..`, and a path
-# carrying `..` compares FALSE under Path.is_relative_to, which is purely lexical. `h worktrees`
-# filtered its entries that way and so found nothing at all in the default configuration (caught
-# on its first real run, 2026-08-06). Resolving here fixes every consumer at once — and stops the
-# unresolved form leaking into user-facing output.
+# The checkout anchor comes from Git's shared directory, so loading the CLI from h's own linked
+# worktree still reaches the main checkout's sibling workspace. .resolve() remains load-bearing
+# for configured values: a path carrying `..` compares false under Path.is_relative_to, which is
+# purely lexical.
 AGENT_RUNS_DIR = _setting(
     "AGENT_RUNS_DIR",
     "runs_dir",
-    _REPO_DIR / "../h-workspace/.runs" if IS_CHECKOUT else _PACKAGED_HOME / "workspace/.runs",
+    _CHECKOUT_ANCHOR / "h-workspace/.runs" if IS_CHECKOUT else _PACKAGED_HOME / "workspace/.runs",
 ).resolve()
 
 # Where per-agent worktrees are cut for a delegated write task.
 LOCAL_WORKTREES_DIR = _setting(
     "H_LOCAL_WORKTREES_DIR",
     "worktrees_dir",
-    _REPO_DIR / "../h-worktrees" if IS_CHECKOUT else _PACKAGED_HOME / "worktrees",
+    _CHECKOUT_ANCHOR / "h-worktrees" if IS_CHECKOUT else _PACKAGED_HOME / "worktrees",
 ).resolve()
 
 # The workspace root h OWNS: the clones it works on live here (`h-workspace/<repo>`), beside the
@@ -212,7 +242,7 @@ LOCAL_WORKTREES_DIR = _setting(
 H_WORKSPACE_DIR = _setting(
     "H_WORKSPACE_DIR",
     "workspace_dir",
-    _REPO_DIR / "../h-workspace" if IS_CHECKOUT else _PACKAGED_HOME / "workspace",
+    _CHECKOUT_ANCHOR / "h-workspace" if IS_CHECKOUT else _PACKAGED_HOME / "workspace",
 ).resolve()
 
 # --- Local event fabric ----------------------------------------------------------------------
@@ -230,7 +260,7 @@ EVENTS_STORE_DIR = _setting(
 # Packaged mode has no checkout .env; ~/.h/.env is the credentials-gap file there (a missing
 # file reads as {} — the soft-dependency semantics are unchanged).
 DOTENV_PATH = _setting(
-    "H_DOTENV", "dotenv", _REPO_DIR / ".env" if IS_CHECKOUT else _PACKAGED_HOME / ".env"
+    "H_DOTENV", "dotenv", _MAIN_CHECKOUT_DIR / ".env" if IS_CHECKOUT else _PACKAGED_HOME / ".env"
 )
 FEATURE_SPECS_DIR = Path(
     os.getenv("H_FEATURE_SPECS_DIR", str(_CLI_DIR / "scripts/payloads/domain/feature-requests"))
