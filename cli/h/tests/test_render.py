@@ -389,6 +389,20 @@ def test_create_pr_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_create_pr_contract_reports_closes() -> None:
+    """The create-pr output reports issue closures observed in the read-back PR body."""
+    rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+    outputs = definition["outputs"]
+    task = definition["steps"][0]["input"]["task"]
+
+    assert outputs["required"] == ["closes"]
+    assert outputs["properties"]["closes"]["type"] == "array"
+    assert outputs["properties"]["closes"]["items"]["type"] == "integer"
+    assert "closes" in task
+    assert "baseRefName,headRefName,body" in task
+
+
 def test_create_pr_task_requires_direct_markdown_without_shell_wrapper() -> None:
     """The rendered MCP guidance must never recommend a literal shell heredoc expression."""
     rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
@@ -732,6 +746,15 @@ def test_plan_publish_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_plan_persist_publish_golden(snapshot) -> None:
+    """plan publish mode with persist=true: adds a 4th persist step (no permissionMode) and
+    a planPath property to outputs."""
+    rendered = helm.render_workflow(
+        "plan", values={"publish": "true", "plan.persist": "true"}, include_local=False
+    )
+    assert rendered == snapshot
+
+
 def test_run_itest_golden(snapshot) -> None:
     """run-itest overlay atom (Phase 2 gate): a lone itest step carrying the worktree path token."""
     rendered = helm.render_workflow("run-itest", values={"publish": "true"}, include_local=False)
@@ -845,9 +868,10 @@ def test_composed_implement_pr_full_order_single_declarer() -> None:
 
 
 def test_plan_stops_at_the_plan_and_declares_it() -> None:
-    """Structure contract: worktree → setup → plan and STOP — the split from `implement` is the
-    whole point, so an implement step appearing here would silently defeat it. The plan step is
-    read-only (permissionMode) and reports through the declared contract."""
+    """Structure contract: worktree → setup → plan and STOP (persist=false) — the split from
+    `implement` is the whole point, so an implement step appearing here would silently defeat it.
+    The plan step is read-only (permissionMode) and reports through the declared contract.
+    With persist=true a fourth `persist` step is appended and must have NO permissionMode."""
     rendered = helm.render_workflow("plan", values={"publish": "true"}, include_local=False)
     definition = json.loads(helm.to_wire_json(rendered))
     assert [step["id"] for step in definition["steps"]] == ["worktree", "setup", "plan"]
@@ -856,11 +880,25 @@ def test_plan_stops_at_the_plan_and_declares_it() -> None:
     assert plan_step["activity"] == "{{params.runActivity}}"
     assert plan_step["input"]["permissionMode"] == "plan"
     assert plan_step["input"]["cwd"] == "{{worktree.worktreePath}}"
-    assert plan_step["input"]["outputContract"] == definition["outputs"]
     assert "===OUTPUT CONTRACT===" in plan_step["input"]["task"]
     assert definition["outputs"]["required"] == ["plan"]
+    # persist=false: the plan step's contract IS the workflow's declared outputs (no merge).
+    assert plan_step["input"]["outputContract"] == definition["outputs"]
     # Panelizable like `answer`: one contract-carrying step plus a join rule for roster runs.
     assert "plan" in definition["panelSynthesis"]
+
+    # With persist=true: a fourth step is appended and must have NO permissionMode.
+    rendered_persist = helm.render_workflow(
+        "plan", values={"publish": "true", "plan.persist": "true"}, include_local=False
+    )
+    def_persist = json.loads(helm.to_wire_json(rendered_persist))
+    assert [step["id"] for step in def_persist["steps"]] == ["worktree", "setup", "plan", "persist"]
+    persist_step = def_persist["steps"][-1]
+    assert persist_step["id"] == "persist"
+    assert "permissionMode" not in persist_step["input"]
+    assert persist_step["input"]["cwd"] == "{{worktree.worktreePath}}"
+    assert "===OUTPUT CONTRACT===" in persist_step["input"]["task"]
+    assert "planPath" in def_persist["outputs"]["properties"]
 
 
 def test_adopt_plugin_publish_golden(snapshot) -> None:

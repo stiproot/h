@@ -188,6 +188,9 @@ structured blocks. A missing field is a reject.
   just created — and honestly noted as much in `notes`; the numbers still satisfied the check.
   **Incident:** the boolean read `dirty: true` for a whole night of runs before its first
   `dirtyPaths` report showed the only entry was the plan file.
+- **`closes`** (the create-pr step's block) contains the `issueNumber` the run was fired with,
+  when one was set. A `[]` beside a set `issueNumber` is a dropped `Closes` line, so the merge
+  would silently leave the issue open.
 - **The tracking doc, when the spec names one** — the spec says "status phrase in place, no
   PR number, no second entry"; the driver diffs the doc against base for `removed lines` beyond
   that status phrase and for a duplicate entry, then stamps the PR number at merge.
@@ -195,7 +198,7 @@ structured blocks. A missing field is a reject.
   `summary.json`, not the structured block; `usage-limited`, `timeout` or `failed` means the
   work is incomplete whatever the block says.
 
-Tell the implementing agent that these five fields will be checked. An agent that knows the
+Tell the implementing agent that these six fields will be checked. An agent that knows the
 driver will re-run the baseline is more careful about what it reports.
 
 ---
@@ -281,6 +284,7 @@ Both runs must exit 0. Report the exit code and the number of lint errors for ea
 - [ ] Mtime trap avoided (both `touch` outputs recorded).
 - [ ] Every asserted string was observed or is defined by this spec, and the spec says which.
 - [ ] Baseline lint exit 0; final lint exit 0; counts reported.
-- [ ] Driver read-back: create-pr's `base` equals the requested branch, `final.failures <=
-      baseline.failures`, `baseline.commit` is the base head with `dirtyPaths` naming only the
-      plan file, every step's `stopReason` is `completed`.
+- [ ] Driver read-back: create-pr's `base` equals the requested branch and its `closes` contains
+      the fired `issueNumber` when set, `final.failures <= baseline.failures`,
+      `baseline.commit` is the base head with `dirtyPaths` naming only the plan file, every
+      step's `stopReason` is `completed`.

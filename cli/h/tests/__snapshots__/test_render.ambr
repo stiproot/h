@@ -387,7 +387,7 @@
       input:
         cwd: "{{worktree.worktreePath}}"
         model: "{{params.modelImplement}}"
-        outputContract: {"properties":{"base":{"description":"the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch","type":"string"},"head":{"description":"the PR's head branch as GitHub reports it","type":"string"},"pr":{"description":"the pull request number, when a PR exists (opened, updated, or pre-existing)","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"type":"object"}
+        outputContract: {"properties":{"base":{"description":"the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch","type":"string"},"closes":{"description":"the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists","items":{"type":"integer"},"type":"array"},"head":{"description":"the PR's head branch as GitHub reports it","type":"string"},"pr":{"description":"the pull request number, when a PR exists (opened, updated, or pre-existing)","type":"integer"},"skipped":{"description":"present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)","type":"string"},"url":{"description":"the pull request URL","type":"string"}},"required":["closes"],"type":"object"}
         task: |-
           ===ISSUE===
           {{params.issueNumber}}
@@ -442,13 +442,15 @@
              otherwise omit it. If a PR for this branch already exists, your push has updated
              it — do not open a duplicate.
              AFTER opening or finding the PR, read it back (pull_request_read, or
-             `gh pr view <number> --json number,url,baseRefName,headRefName` on the CLI
-             path) and report its `base` and `head` branches from that response in your
-             json block. Never
-             copy the requested base into the block: the value must be what GitHub holds,
-             because a PR that landed against the wrong branch is exactly what the field
-             exists to catch (2026-09-01: the base was in prose only, and a driver could
-             not tell a retargeted PR from a correct one without opening each).
+             `gh pr view <number> --json number,url,baseRefName,headRefName,body` on the CLI
+             path) and report its `base` and `head` branches from that response in your json
+             block. In `closes`, report every integer N appearing as a `Closes #N` line in
+             the BODY of that read-back response, or `[]` if there is none. Never copy the
+             requested base or issue number into the block: the values must be what GitHub
+             holds, because `base` catches a PR opened against the wrong branch and `closes`
+             catches a dropped `Closes` line; echoing the ===ISSUE=== value would make that
+             check useless (2026-09-01: the base was in prose only, and a driver could not
+             tell a retargeted PR from a correct one without opening each).
   
           ===VERIFY EVIDENCE===
           {{implement.structured}}
@@ -483,11 +485,25 @@
           End your final message with a fenced ```json code block containing a single JSON
           object matching this schema. The block is machine-validated: a missing or
           mismatching block fails this step. Nothing may follow the block.
+          
+          MANDATORY — the block MUST carry `closes`.
+          Omitting it fails the step even when the
+          work itself succeeded, and a long run is exactly when this gets forgotten: on 2026-08-22 a
+          revise-pr run rebased a branch, fixed five review findings, replied, resolved the threads and
+          force-pushed — 28 minutes and $7.93 — then omitted one required field and was reported as a
+          failed step. Re-read this line before you write the block.
           {
             "properties": {
               "base": {
                 "description": "the PR's base branch AS GITHUB REPORTS IT after opening/updating (read it back from the PR, never echo the requested one) — a driver asserts it against the campaign's branch",
                 "type": "string"
+              },
+              "closes": {
+                "description": "the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists",
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
               },
               "head": {
                 "description": "the PR's head branch as GitHub reports it",
@@ -506,6 +522,9 @@
                 "type": "string"
               }
             },
+            "required": [
+              "closes"
+            ],
             "type": "object"
           }
   outputs:
@@ -523,9 +542,16 @@
       head:
         type: string
         description: the PR's head branch as GitHub reports it
+      closes:
+        type: array
+        items:
+          type: integer
+        description: "the issue numbers the PR body closes, parsed from `Closes #N` lines READ BACK from the PR (never echoed from the requested issueNumber) — `[]` when the body closes nothing or no PR exists"
       skipped:
         type: string
         description: present INSTEAD of pr/url — why no PR exists (verify gate failed, auth failure, nothing to push, ...)
+    required:
+      - closes
   
   '''
 # ---
@@ -846,6 +872,170 @@
   
           ===FEEDBACK===
           {{params.feedback}}
+  
+  '''
+# ---
+# name: test_plan_persist_publish_golden
+  '''
+  role: standalone
+  summary: Plan against a spec in a worktree, then stop — review before building.
+  params:
+    runActivity: "run-claude"
+    clonePath: ""
+    agentId: "claude-agent"
+    modelPlan: "claude-sonnet-4-6"
+    planName: ""
+  steps:
+    - id: worktree
+      activity: create-worktree
+      input:
+        agentId: "{{params.agentId}}"
+        clonePath: "{{params.clonePath}}"
+        checkout:
+          kind: branch
+          branch: "feature/{{params.slug}}"
+    - id: setup
+      activity: setup
+      input:
+        agentId: "{{params.agentId}}"
+        setup:
+          - cmd: "mkdir -p ~/.claude/skills && cp -rn \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
+          - cmd: "if [ -f \"${H_RULES_DIR:-}\"/h-runtime.md ]; then bash \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/install-steering.sh \"$H_RULES_DIR\"/h-runtime.md; fi"
+    - id: plan
+      activity: "{{params.runActivity}}"
+      input:
+        outputContract: {"properties":{"plan":{"description":"the implementation plan, self-contained and grounded in the code actually read — the artifact a downstream reviewer or implementer consumes","type":"string"},"skipped":{"description":"present when no real planning was possible — e.g. the change already appears implemented; omitted otherwise","type":"string"}},"required":["plan"],"type":"object"}
+        cwd: "{{worktree.worktreePath}}"
+        model: "{{params.modelPlan}}"
+        permissionMode: plan
+        task: |-
+          You are in a git worktree of the target repository, on branch feature/{{params.slug}}.
+  
+          Investigate the request under ===SPEC=== below and produce an implementation plan.
+          Ground it in the code you actually read — cite real paths and real existing symbols,
+          and follow the conventions of the nearest precedent already in the tree. Do NOT write
+          code or modify any files: this run plans only, and a separate run implements.
+  
+          Your plan is consumed by another agent as its sole spec, so it must stand alone —
+          name the files to change, what to add or alter in each, and the tests that prove the
+          acceptance criteria. If the change already appears implemented, say so in `skipped`
+          and keep `plan` to what you found.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          
+          MANDATORY — the block MUST carry `plan`.
+          Omitting it fails the step even when the
+          work itself succeeded, and a long run is exactly when this gets forgotten: on 2026-08-22 a
+          revise-pr run rebased a branch, fixed five review findings, replied, resolved the threads and
+          force-pushed — 28 minutes and $7.93 — then omitted one required field and was reported as a
+          failed step. Re-read this line before you write the block.
+          {
+            "properties": {
+              "plan": {
+                "description": "the implementation plan, self-contained and grounded in the code actually read — the artifact a downstream reviewer or implementer consumes",
+                "type": "string"
+              },
+              "skipped": {
+                "description": "present when no real planning was possible — e.g. the change already appears implemented; omitted otherwise",
+                "type": "string"
+              }
+            },
+            "required": [
+              "plan"
+            ],
+            "type": "object"
+          }
+  
+          ===SPEC===
+          {{params.spec}}
+    - id: persist
+      activity: "{{params.runActivity}}"
+      input:
+        outputContract: {"properties":{"planPath":{"description":"repo-relative path of the plan document written and committed; empty string when planName was empty and nothing was written","type":"string"}},"required":["planPath"],"type":"object"}
+        cwd: "{{worktree.worktreePath}}"
+        model: "{{params.modelPlan}}"
+        task: |-
+          You are in a git worktree of the target repository. Your only task is to
+          persist the implementation plan produced in the previous step as a document
+          in this repository's plan convention.
+  
+          Plan name: {{params.planName}}
+  
+          Plan content (the implementation plan to persist):
+          {{plan.structured.plan}}
+  
+          If the plan name is empty, write NOTHING, commit nothing, and report
+          planPath as an empty string ("").
+  
+          Otherwise:
+          1. Determine the target repository's plan convention by reading its steering
+             files: CLAUDE.md and/or docs/README.md, and the plan-management skill if
+             present at .claude/skills/plan-management/. Use docs/plans/<planName>.md
+             as the path when the repository states no alternative.
+          2. Write the plan at that path. Begin the file with this exact header block:
+               Status: Planning — <one line summarising the plan's goal>
+               Established: <today's date, YYYY-MM-DD>
+             Follow immediately with the full plan content received above.
+          3. If the repository keeps a plans index file, add one index line for this plan.
+          4. Stage and commit ONLY the new plan file (and any updated index):
+               git add <plan-path> [<index-path>]
+               git commit -m "docs(plans): add <planName>"
+             Do NOT add any Co-Authored-By or other attribution trailers — the target
+             repository's commit rules govern.
+          5. Report the repo-relative path you wrote as planPath.
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          
+          MANDATORY — the block MUST carry `planPath`.
+          Omitting it fails the step even when the
+          work itself succeeded, and a long run is exactly when this gets forgotten: on 2026-08-22 a
+          revise-pr run rebased a branch, fixed five review findings, replied, resolved the threads and
+          force-pushed — 28 minutes and $7.93 — then omitted one required field and was reported as a
+          failed step. Re-read this line before you write the block.
+          {
+            "properties": {
+              "planPath": {
+                "description": "repo-relative path of the plan document written and committed; empty string when planName was empty and nothing was written",
+                "type": "string"
+              }
+            },
+            "required": [
+              "planPath"
+            ],
+            "type": "object"
+          }
+  outputs:
+    type: object
+    required:
+      - plan
+    properties:
+      plan:
+        type: string
+        description: >-
+          the implementation plan, self-contained and grounded in the code actually read —
+          the artifact a downstream reviewer or implementer consumes
+      skipped:
+        type: string
+        description: >-
+          present when no real planning was possible — e.g. the change already appears
+          implemented; omitted otherwise
+      planPath:
+        type: string
+        description: >-
+          repo-relative path of the plan document written and committed; empty string when
+          planName was empty and nothing was written
+  panelSynthesis: |-
+    Merge the panelists' plans into ONE implementation plan. Prefer the plan that is better
+    grounded in the code actually read over the one that merely sounds thorough, and merge
+    complementary steps rather than picking a side when they compose. Where they disagree on
+    an approach, choose one, state briefly why in the plan itself, and make sure the result is
+    a single coherent sequence an implementer can follow start to finish.
   
   '''
 # ---
