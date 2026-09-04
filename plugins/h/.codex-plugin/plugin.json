@@ -1,7 +1,7 @@
 {
   "name": "h",
   "description": "Use h — the agentic workflow runtime — from a repo that consumes it as tooling: run domain workflows on the local substrate, delegate bounded work to another agent CLI, author domain workflow chart templates under .h/charts, and analyse a run's outcome and cost from the run ledger.",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "author": {
     "name": "stiproot"
   },
