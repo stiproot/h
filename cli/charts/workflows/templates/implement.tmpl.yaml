@@ -161,10 +161,14 @@ steps:
            and it is required. It is PER-RUN CONTEXT, not a tracking log: do NOT give it a
            progress/status section. If the repository keeps its own plan or tracking doc for
            this work, THAT doc is the authoritative record of what is done and what is next
-           — read it first and keep it current; this file only carries the plan itself. (A
-           scratch file carrying its own empty "Progress log" heading has shadowed a repo's
-           real one and cost a whole pass, because the reader saw an empty log and concluded
-           nothing had been done.)
+           — read it first. Its edit is append-only: ADD your own progress/log entry or bullet
+           in its neighbours' shape; change ONLY the status phrase of the item naming YOUR unit, IN PLACE;
+           never rewrite, reorder, merge or remove another entry's lines, or add a second entry for
+           a unit that already has one. Write no PR number and no placeholder: it is unknowable before
+           the PR exists, so the driver stamps it at merge and diffs against base for removed lines
+           and duplicate entries — four runs on 2026-09-04 each rewrote a neighbour's entry or
+           duplicated their own. This file only carries the plan itself. (A scratch file carrying its own empty
+           "Progress log" heading has shadowed a repo's real one and cost a whole pass, because the reader saw an empty log and concluded nothing had been done.)
         2. ONLY if the dapr MCP is wired in this environment, ALSO call actor_state_set with
            actorId 'feature-{{ $slug }}' and key 'plan', value the plan text — durable in the
            state store, inspectable from another session via actor_state_get. On the LOCAL

@@ -172,11 +172,14 @@ structured blocks. A missing field is a reject.
   committed tree.) **Incident:** a run reported a baseline of 2 failures — both format errors in
   files it had just created — and honestly noted as much in `notes`; the numbers still satisfied
   the check.
+- **A tracking doc named by the spec** says "status phrase in place, no PR number, no second
+  entry"; the driver diffs it against base for `removed lines` beyond that status phrase and for
+  a duplicate entry before stamping the PR number at merge.
 - **`stopReason == "completed"`** for every agent step — read from the run ledger's
   `summary.json`, not the structured block; `usage-limited`, `timeout` or `failed` means the
   work is incomplete whatever the block says.
 
-Tell the implementing agent that these three fields will be checked. An agent that knows the
+Tell the implementing agent that these five fields will be checked. An agent that knows the
 driver will re-run the baseline is more careful about what it reports.
 
 ---
