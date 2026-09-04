@@ -1,4 +1,138 @@
 # serializer version: 1
+# name: test_adopt_plugin_publish_golden
+  '''
+  role: standalone
+  summary: Declare a Claude Code plugin in an existing repo — merge settings, append CLAUDE.md, commit.
+  params:
+    runActivity: "run-claude"
+    clonePath: ""
+    agentId: "claude-agent"
+  steps:
+    - id: worktree
+      activity: create-worktree
+      input:
+        agentId: "{{params.agentId}}"
+        clonePath: "{{params.clonePath}}"
+        checkout:
+          kind: branch
+          branch: "feature/{{params.slug}}"
+    - id: setup
+      activity: setup
+      input:
+        agentId: "{{params.agentId}}"
+        setup:
+          - cmd: "mkdir -p ~/.claude/skills && cp -rn \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/. ~/.claude/skills/"
+          - cmd: "if [ -f \"${H_RULES_DIR:-}\"/h-runtime.md ]; then bash \"${H_SKILLS_DIR:?H_SKILLS_DIR must be set to the h skills root}\"/install-steering.sh \"$H_RULES_DIR\"/h-runtime.md; fi"
+    - id: adopt
+      activity: "{{params.runActivity}}"
+      input:
+        outputContract: {"properties":{"settingsPath":{"description":"repo-relative path of the .claude/settings.json file as written (e.g. .claude/settings.json)","type":"string"},"steeringPath":{"description":"repo-relative path of the CLAUDE.md file as written (e.g. CLAUDE.md)","type":"string"},"summary":{"description":"what was done — which keys/plugins were already present and preserved, and a reminder that declaring is not installing: each checkout must still run `claude plugin install \u003cplugin\u003e@\u003cmarketplaceKey\u003e --scope project`","type":"string"}},"required":["settingsPath","steeringPath","summary"],"type":"object"}
+        cwd: "{{worktree.worktreePath}}"
+        task: |-
+          You are in a git worktree of the target repository, on branch feature/{{params.slug}}.
+          Your task is to declare a Claude Code plugin in this repo. Follow these instructions exactly.
+  
+          The five inputs you need:
+            marketplaceKey:  {{params.marketplaceKey}}
+            marketplaceRepo: {{params.marketplaceRepo}}
+            plugin:          {{params.plugin}}
+            conventionNote:  {{params.conventionNote}}
+  
+          1. Read `.claude/settings.json` if it exists (treat as `{}` when absent). Print the full
+             file contents BEFORE making any change (or print "file absent" when it does not exist).
+             Then merge ADDITIVELY:
+             - Ensure `extraKnownMarketplaces` contains the key `{{params.marketplaceKey}}` with value
+               `{"source": "github", "repo": "{{params.marketplaceRepo}}"}`.
+             - Ensure `enabledPlugins` contains the key `{{params.plugin}}@{{params.marketplaceKey}}` with
+               value `true`.
+             Preserve every other top-level key, every other entry inside `extraKnownMarketplaces`
+             and `enabledPlugins`, and the file's existing formatting choices (2-space JSON indentation,
+             trailing newline). When the file is absent, create it with only `extraKnownMarketplaces`
+             and `enabledPlugins`. Write the result and print the full file AFTER the change.
+  
+          2. Append the convention note to the repo's `CLAUDE.md` (create it if absent):
+             - If the note's first line begins with `#` (a Markdown heading), append it verbatim
+               after one blank line from the last line of the existing file.
+             - Otherwise, append it under a new `## {{params.plugin}}` heading (one blank line, then the
+               heading, one blank line, then the note body).
+             Never edit any existing section of CLAUDE.md.
+  
+          3. `git add` both files (`.claude/settings.json` and `CLAUDE.md`) and commit on the current
+             branch with the exact subject line:
+               chore: adopt the {{params.plugin}} plugin
+             Do NOT add any Co-Authored-By or other attribution trailers — the target repo's commit
+             conventions govern, and adding trailers here would violate them.
+  
+          4. Report a structured block with exactly these three fields:
+             - `settingsPath`: the repo-relative path of the settings file as written
+               (e.g. `.claude/settings.json`)
+             - `steeringPath`: the repo-relative path of the CLAUDE.md file as written
+               (e.g. `CLAUDE.md`)
+             - `summary`: one paragraph stating (a) which keys and plugins were ALREADY present and
+               have been preserved unchanged, and (b) that DECLARING is not INSTALLING — each checkout
+               that wants the plugin's tools must still run:
+                 claude plugin install {{params.plugin}}@{{params.marketplaceKey}} --scope project
+               (trxy carried declared entries from 2026-08-13 and the plugin never loaded once because
+               the install step was skipped; this reminder is mandatory so the operator does not repeat
+               that mistake)
+          
+          ===OUTPUT CONTRACT===
+          End your final message with a fenced ```json code block containing a single JSON
+          object matching this schema. The block is machine-validated: a missing or
+          mismatching block fails this step. Nothing may follow the block.
+          
+          MANDATORY — the block MUST carry `settingsPath`, `steeringPath`, `summary`.
+          Omitting any one of them fails the step even when the
+          work itself succeeded, and a long run is exactly when this gets forgotten: on 2026-08-22 a
+          revise-pr run rebased a branch, fixed five review findings, replied, resolved the threads and
+          force-pushed — 28 minutes and $7.93 — then omitted one required field and was reported as a
+          failed step. Re-read this line before you write the block.
+          {
+            "properties": {
+              "settingsPath": {
+                "description": "repo-relative path of the .claude/settings.json file as written (e.g. .claude/settings.json)",
+                "type": "string"
+              },
+              "steeringPath": {
+                "description": "repo-relative path of the CLAUDE.md file as written (e.g. CLAUDE.md)",
+                "type": "string"
+              },
+              "summary": {
+                "description": "what was done — which keys/plugins were already present and preserved, and a reminder that declaring is not installing: each checkout must still run `claude plugin install \u003cplugin\u003e@\u003cmarketplaceKey\u003e --scope project`",
+                "type": "string"
+              }
+            },
+            "required": [
+              "settingsPath",
+              "steeringPath",
+              "summary"
+            ],
+            "type": "object"
+          }
+  outputs:
+    type: object
+    required:
+      - settingsPath
+      - steeringPath
+      - summary
+    properties:
+      settingsPath:
+        type: string
+        description: >-
+          repo-relative path of the .claude/settings.json file as written (e.g. .claude/settings.json)
+      steeringPath:
+        type: string
+        description: >-
+          repo-relative path of the CLAUDE.md file as written (e.g. CLAUDE.md)
+      summary:
+        type: string
+        description: >-
+          what was done — which keys/plugins were already present and preserved, and a reminder
+          that declaring is not installing: each checkout must still run
+          `claude plugin install <plugin>@<marketplaceKey> --scope project`
+  
+  '''
+# ---
 # name: test_answer_publish_golden
   '''
   role: standalone
