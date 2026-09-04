@@ -511,3 +511,40 @@ def test_husks_finds_an_unregistered_directory_and_ignores_a_registered_one(monk
 
     found = [p.name for p in wt._husks("repo")]
     assert found == ["orphaned-run"], "a registered worktree is not a husk, and a file is not one"
+
+
+def test_husks_spares_another_repos_live_worktree(monkeypatch, tmp_path):
+    """The managed root is shared across repos: a sweep against one clone must not read another
+    clone's live worktree as a husk. Discriminated by the directory's own `.git` link resolving —
+    a dangling one (pruned gitdir) stays a husk."""
+    import subprocess
+
+    from h_cli.commands import worktrees as wt
+
+    root = tmp_path / "h-worktrees"
+    root.mkdir()
+    other = tmp_path / "other-repo"
+    other.mkdir()
+    subprocess.run(["git", "init", "-q", str(other)], check=True)
+    subprocess.run(
+        ["git", "-C", str(other), "commit", "-q", "--allow-empty", "-m", "x"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(other), "worktree", "add", "-q", str(root / "theirs-live")], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(other), "worktree", "add", "-q", str(root / "theirs-pruned")], check=True
+    )
+    # Break the second one the way a failed removal does: gitdir gone, directory left behind.
+    subprocess.run(
+        ["git", "-C", str(other), "worktree", "remove", "--force", str(root / "theirs-pruned")],
+        check=True,
+    )
+    (root / "theirs-pruned").mkdir()
+    (root / "theirs-pruned" / ".git").write_text(f"gitdir: {other}/.git/worktrees/theirs-pruned\n")
+    (root / "no-git-at-all").mkdir()
+    monkeypatch.setattr(wt, "_managed_roots", lambda: [root])
+    monkeypatch.setattr("h_cli.infrastructure.git.worktree_list", lambda repo: [])
+
+    found = sorted(p.name for p in wt._husks("repo"))
+    assert found == ["no-git-at-all", "theirs-pruned"], found

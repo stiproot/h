@@ -34,8 +34,16 @@ export async function runLanggraphActivity(
       parse: "json",
     }).pipe(
       Effect.map((json) => {
-        const data = json as { sessionId: string | null; output: string };
-        return { sessionId: data.sessionId, output: data.output };
+        const data = json as {
+          sessionId: string | null;
+          output: string;
+          toolCalls?: number | null;
+        };
+        return {
+          sessionId: data.sessionId,
+          output: data.output,
+          toolCalls: data.toolCalls ?? null,
+        };
       }),
     ),
     traceparent,

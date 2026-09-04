@@ -35,6 +35,7 @@ export async function runCodexActivity(
       return {
         sessionId: response.sessionId,
         output: response.output,
+        toolCalls: response.toolCalls ?? null,
         workspacePath: response.workspacePath,
       };
     }),

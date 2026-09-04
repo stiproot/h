@@ -72,7 +72,17 @@ export function classifyStop(input: ClassifyStopInput): StopReason {
       ? "usage-limited"
       : "timeout";
   }
-  const haystack = `${input.stderr ?? ""}\n${input.resultEventText ?? ""}`;
+  // On a CLEAN exit, stderr is not evidence. Codex writes its tracing log there — every tool error
+  // echoes the file path and the source lines it failed on — so a run that exited 0 in a worktree
+  // named `h-135-codex-quota`, after one `apply_patch verification failed` line, matched `\bquota\b`
+  // and finalized usage-limited: codex was auto-fenced for 6h and the run's next step refused
+  // (2026-09-04, ledger h-135-codex-quota/codex-1788527960961). The exit-0 usage limit that is
+  // real (the Claude CLI's) arrives in the terminal result event, which stays in the haystack;
+  // stderr is consulted only when the process itself reported a failure.
+  const haystack =
+    input.exitCode === 0
+      ? (input.resultEventText ?? "")
+      : `${input.stderr ?? ""}\n${input.resultEventText ?? ""}`;
   const usageHit =
     USAGE_LIMIT.some((re) => re.test(haystack)) && !NOT_USAGE.some((re) => re.test(haystack));
   if (usageHit) return "usage-limited";

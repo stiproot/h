@@ -51,7 +51,8 @@ export const assertExecutorAllowed = (
     // Loud, never a silent re-route to a different agent: a denied executor being NAMED is a
     // decision the operator made, and quietly substituting one would hide both the denial and the
     // fact that the run did not do what was asked.
-    if (denial !== undefined) return yield* Effect.fail(new Error(deniedMessage(executor, denial)));
+    if (denial !== undefined)
+      return yield* Effect.fail(new Error(deniedMessage(executor, denial, "local")));
   });
 
 /**

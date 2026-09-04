@@ -51,7 +51,11 @@ export async function runClaudeActivity(
         model,
         permissionMode,
       });
-      return { sessionId: response.sessionId, output: response.output };
+      return {
+        sessionId: response.sessionId,
+        output: response.output,
+        toolCalls: response.toolCalls ?? null,
+      };
     }).pipe(
       Effect.withSpan("activity run-claude", {
         attributes: { "workflow.instance_id": workflowInstanceId },
