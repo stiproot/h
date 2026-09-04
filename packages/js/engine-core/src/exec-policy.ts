@@ -79,8 +79,18 @@ export function isExecutorDenied(
   return activeDenial(policy, executor, nowIso) !== undefined;
 }
 
-/** The refusal text a gated activity throws — names the executor, why, and the way back out. */
-export function deniedMessage(executor: string, entry?: DeniedEntry): string {
+/**
+ * The refusal text a gated activity throws — names the executor, why, and the way back out.
+ * `substrate` selects WHICH registry the way out edits: the `exec:` row a `--local` run reads is
+ * the local one, so the lift is `h agents allow X --local` — a driver who typed the bare form off
+ * this message on 2026-09-04 would have addressed workflow-svc, which was not running, and the
+ * fence would have stood (it was the local row that held it).
+ */
+export function deniedMessage(
+  executor: string,
+  entry?: DeniedEntry,
+  substrate: "service" | "local" = "service",
+): string {
   const why =
     entry?.reason === "usage-limited"
       ? ` (auto: a run finalized usage-limited at ${entry.deniedAt}` +
@@ -91,7 +101,7 @@ export function deniedMessage(executor: string, entry?: DeniedEntry): string {
         : "";
   return (
     `executor '${executor}' is denied by the exec:config policy${why} — ` +
-    `re-enable with: h agents allow ${executor}`
+    `re-enable with: h agents allow ${executor}${substrate === "local" ? " --local" : ""}`
   );
 }
 
