@@ -13,6 +13,15 @@
  * version is not h's to pin. A `rejected` event is the limit itself: the five-hour window at
  * utilization 1 with `overageStatus: "rejected"` — the run then stops `usage-limited`.
  *
+ * Codex has no structured quota event. Its raw stream reports either `{type:"error", message}`
+ * or `{type:"turn.failed", error:{message}}`; the invocation ledger normalizes those to
+ * `{type:"error", result}` and `{type:"result", is_error:true, result}`. The observed message is:
+ * "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit
+ * https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 12:13 PM."
+ * Codex names no window, so `five_hour` is a compatibility SLOT rather than a claimed provider
+ * window. The rejected gate reads only `status`; its fence uses the earliest future exhausted
+ * `resetsAt`, so this slot supplies the real reset without changing the shared decision table.
+ *
  * Why h cares: a run that starts at 0.95 of a five-hour window will die mid-step, paying for the
  * step and delivering nothing. Knowing the utilization BEFORE firing turns that into a refusal or
  * a wait until `resetsAt` — the thing a schedule exists for.
@@ -72,6 +81,60 @@ function windowFrom(value: unknown): QuotaWindow | undefined {
   return { utilization: Math.max(0, utilization), resetsAt: iso };
 }
 
+function codexLimitText(event: StreamEvent | Record<string, unknown>): string | undefined {
+  if (event.type === "error") {
+    const raw = event as { message?: unknown; result?: unknown };
+    if (typeof raw.message === "string") return raw.message;
+    if (typeof raw.result === "string") return raw.result;
+  }
+  if (event.type === "turn.failed") {
+    const error = (event as { error?: unknown }).error;
+    if (typeof error === "object" && error !== null) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string") return message;
+    }
+  }
+  if (event.type === "result") {
+    const raw = event as { is_error?: unknown; result?: unknown };
+    if (raw.is_error === true && typeof raw.result === "string") return raw.result;
+  }
+  return undefined;
+}
+
+function codexResetAt(
+  text: string,
+  observedAt: Date,
+  utcOffsetMinutes: number,
+): string | undefined {
+  if (!/usage limit/i.test(text)) return undefined;
+  const match = /try again at\s+(\d{1,2}):(\d{2})\s*(am|pm)?/i.exec(text);
+  if (!match) return undefined;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const suffix = match[3]?.toLowerCase();
+  if (minute > 59) return undefined;
+  if (suffix) {
+    if (hour < 1 || hour > 12) return undefined;
+    hour = (hour % 12) + (suffix === "pm" ? 12 : 0);
+  } else if (hour > 23) {
+    return undefined;
+  }
+
+  const offsetMs = utcOffsetMinutes * 60_000;
+  const local = new Date(observedAt.getTime() + offsetMs);
+  const candidateForDay = (dayOffset: number) =>
+    Date.UTC(
+      local.getUTCFullYear(),
+      local.getUTCMonth(),
+      local.getUTCDate() + dayOffset,
+      hour,
+      minute,
+    ) - offsetMs;
+  const today = candidateForDay(0);
+  return new Date(today > observedAt.getTime() ? today : candidateForDay(1)).toISOString();
+}
+
 /**
  * Whether a stream event is a rate_limit_event at all (cheap pre-check for the live path). Typed
  * over the raw record the `onEvent` callback carries — every strategy's events flow through it,
@@ -88,7 +151,19 @@ export function isQuotaEvent(event: StreamEvent | Record<string, unknown>): bool
 export function parseRateLimitEvent(
   event: StreamEvent | Record<string, unknown>,
   observedAt: Date = new Date(),
+  utcOffsetMinutes: number = -observedAt.getTimezoneOffset(),
 ): QuotaObservation | undefined {
+  const codexText = codexLimitText(event);
+  if (codexText !== undefined) {
+    const resetsAt = codexResetAt(codexText, observedAt, utcOffsetMinutes);
+    if (resetsAt === undefined) return undefined;
+    return {
+      status: "rejected",
+      windows: { five_hour: { utilization: 1, resetsAt } },
+      observedAt: observedAt.toISOString(),
+    };
+  }
+
   if (!isQuotaEvent(event)) return undefined;
   const info = (event as { rate_limit_info?: unknown }).rate_limit_info;
   if (typeof info !== "object" || info === null) return undefined;
@@ -119,7 +194,8 @@ export function parseRateLimitEvent(
  * (a legacy event names one window; a later unified event may fill the other), `status` is the
  * last one seen, and `spent` is computed per window against the FIRST observation of that window.
  * `undefined` when the stream carried no observation at all — an agent CLI that does not report
- * quota (codex, pi) yields no report rather than an empty one.
+ * quota yields no report rather than an empty one. Codex reports only when its usage-limit text
+ * includes a parseable reset time; pi does not report quota.
  */
 export function foldQuota(observations: readonly QuotaObservation[]): QuotaReport | undefined {
   let report: QuotaReport | undefined;
