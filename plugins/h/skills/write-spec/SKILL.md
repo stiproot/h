@@ -179,7 +179,7 @@ structured blocks. A missing field is a reject.
   `summary.json`, not the structured block; `usage-limited`, `timeout` or `failed` means the
   work is incomplete whatever the block says.
 
-Tell the implementing agent that these four fields will be checked. An agent that knows the
+Tell the implementing agent that these five fields will be checked. An agent that knows the
 driver will re-run the baseline is more careful about what it reports.
 
 ---

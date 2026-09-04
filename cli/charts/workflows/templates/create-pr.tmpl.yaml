@@ -143,7 +143,7 @@ steps:
            step: if the spec asked for a demonstration and the block carries none, say so
            in one line rather than reconstructing what it probably printed (2026-09-03: a
            PR body quoted a failing test by the wrong number, at the wrong line, in a
-           format the runner does not emit — it was invented).
+           format the runner does not emit — none of it had happened).
            Include the `===ITEST EVIDENCE===` section below in the PR body when those values
            are non-empty (i.e. when run-itest was composed in and ran).
            Pass the intended Markdown directly as the tool's body value, beginning with the intended heading or first line;
