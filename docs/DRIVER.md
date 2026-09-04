@@ -197,6 +197,10 @@ saved the push). When a check gates an action, run it unpiped or capture `${PIPE
 
 ## Standing conventions
 
+- **Make issue closure a checked output.** Fire a run that should close an issue with
+  `-p issueNumber=N`, then require create-pr's read-back `closes` to contain `N`; reject a
+  missing or empty `closes` whenever `issueNumber` was set (the 2026-09-03 h-126 run opened
+  PR #127 without its `Closes #126` line).
 - **Diff a tracking doc the run touched.** `git diff <base>..<head> -- <doc>` must show no
   removed lines beyond the run's own status phrase and no second entry for the run's own unit;
   a PR number in that doc is stamped by the driver at merge, never by the run — on 2026-09-04,

@@ -371,6 +371,20 @@ def test_create_pr_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_create_pr_contract_reports_closes() -> None:
+    """The create-pr output reports issue closures observed in the read-back PR body."""
+    rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
+    definition = json.loads(helm.to_wire_json(rendered))
+    outputs = definition["outputs"]
+    task = definition["steps"][0]["input"]["task"]
+
+    assert outputs["required"] == ["closes"]
+    assert outputs["properties"]["closes"]["type"] == "array"
+    assert outputs["properties"]["closes"]["items"]["type"] == "integer"
+    assert "closes" in task
+    assert "baseRefName,headRefName,body" in task
+
+
 def test_create_pr_task_requires_direct_markdown_without_shell_wrapper() -> None:
     """The rendered MCP guidance must never recommend a literal shell heredoc expression."""
     rendered = helm.render_workflow("create-pr", values={"publish": "true"}, include_local=False)
