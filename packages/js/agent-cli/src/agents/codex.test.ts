@@ -213,7 +213,45 @@ describe("codex JSONL parser", () => {
     expect(events[0]).toMatchObject({ type: "tool_use" });
   });
 
-  it("parses turn.completed into result with usage", async () => {
+  it("parses item.completed command_execution into tool_use (the shell calls a coding agent makes)", async () => {
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({
+        type: "item.completed",
+        item: { type: "command_execution", command: "sed -n 1,80p src/ops/like.ts", exit_code: 0 },
+      }),
+      events,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "tool_use" });
+  });
+
+  it("parses turn.completed usage in the input_tokens/cached_input_tokens shape codex 0.60+ emits", async () => {
+    // Verbatim from ledger local-260904-071251 (2026-09-04); the old names read this as input 0.
+    const parser = await getParser();
+    const events: StreamEvent[] = [];
+    parser.parseLine(
+      JSON.stringify({
+        type: "turn.completed",
+        usage: {
+          input_tokens: 38268,
+          cached_input_tokens: 22528,
+          cache_write_input_tokens: 0,
+          output_tokens: 111,
+          reasoning_output_tokens: 0,
+        },
+      }),
+      events,
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "result",
+      usage: { input_tokens: 38268, output_tokens: 111, cached_input_tokens: 22528 },
+    });
+  });
+
+  it("parses turn.completed usage in the older prompt_tokens/cached_tokens shape", async () => {
     const parser = await getParser();
     const events: StreamEvent[] = [];
     parser.parseLine(

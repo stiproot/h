@@ -99,9 +99,15 @@ const codexJsonlParser: AgentStreamParser = {
           text?: string;
           content?: Array<{ type?: string; text?: string }>;
         };
+        // Two generations of field names: the older `prompt_tokens`/`cached_tokens`, and the
+        // `input_tokens`/`cached_input_tokens` codex 0.60+ actually emits. Reading only the old
+        // pair reported `tokens.input: 0` on every codex run (ledger local-260904-071251, 2026-09-04:
+        // 38,268 input tokens on the wire, 0 in the envelope) — an unpriced run looked free.
         usage?: {
           prompt_tokens?: number;
           cached_tokens?: number;
+          input_tokens?: number;
+          cached_input_tokens?: number;
           output_tokens?: number;
         };
         error?: string;
@@ -125,7 +131,12 @@ const codexJsonlParser: AgentStreamParser = {
                 ? [{ type: "text", text: item.text }]
                 : [];
             events.push({ type: "assistant", message: { content } });
-          } else if (item?.type === "function_call" || item?.type === "mcp_tool_call") {
+          } else if (
+            item?.type === "function_call" ||
+            item?.type === "mcp_tool_call" ||
+            // a shell command codex ran itself — the tool call a coding agent makes most
+            item?.type === "command_execution"
+          ) {
             events.push({ type: "tool_use" });
           }
           break;
@@ -134,9 +145,9 @@ const codexJsonlParser: AgentStreamParser = {
           events.push({
             type: "result",
             usage: {
-              input_tokens: ev.usage?.prompt_tokens,
+              input_tokens: ev.usage?.input_tokens ?? ev.usage?.prompt_tokens,
               output_tokens: ev.usage?.output_tokens,
-              cached_input_tokens: ev.usage?.cached_tokens,
+              cached_input_tokens: ev.usage?.cached_input_tokens ?? ev.usage?.cached_tokens,
             },
           });
           break;
