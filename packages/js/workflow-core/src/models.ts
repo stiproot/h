@@ -47,6 +47,8 @@ export type WorkflowStep = Schema.Schema.Type<typeof WorkflowStep>;
 export type AgentResult = {
   sessionId: string | null;
   output: string;
+  // null means this agent's stream cannot be tallied; zero is a measured zero.
+  toolCalls: number | null;
   workspacePath?: string;
   // The validated structured-output block: present iff the step carried an outputContract —
   // code-guaranteed by the contract seam (structured-output.ts), never raw prose.

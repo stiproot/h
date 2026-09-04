@@ -8,7 +8,7 @@
  * MEASURED zero, not as "this agent's stream was never understood".
  *
  * That is not hypothetical: on 2026-07-27 an openhands run that made real tool calls was read as
- * `toolCalls: 0` and nearly recorded as a "hollow panelist" (the very signal docs/DRIVER.md
+ * a tool-call count of 0 and nearly recorded as a "hollow panelist" (the very signal docs/DRIVER.md
  * recommends for spotting one). The lesson encoded here:
  *
  *   1. ALWAYS log what an agent's stream actually looked like (`EventShape`) — raw data, so a
