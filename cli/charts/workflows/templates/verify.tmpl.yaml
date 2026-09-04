@@ -30,7 +30,7 @@ Render alone (for inspection):
 */ -}}
 {{- define "h.contract.verify-check" -}}
 type: object
-required: [command, exitCode, failures, commit, dirty]
+required: [command, exitCode, failures, commit, dirty, dirtyPaths]
 properties:
   command:
     type: string
@@ -40,7 +40,11 @@ properties:
     description: "`git rev-parse HEAD` at the moment the command ran — for the baseline this MUST be the base branch's head (the driver checks it: a baseline taken after your own edits is not a baseline)"
   dirty:
     type: boolean
-    description: "whether `git status --porcelain` printed anything when the command ran — MUST be false for both checks: the baseline is the untouched tree, the final is the committed one"
+    description: "dirtyPaths.length > 0 — kept for readers of the boolean; the driver checks dirtyPaths"
+  dirtyPaths:
+    type: array
+    items: {type: string}
+    description: "every line `git status --porcelain` printed when the command ran, VERBATIM including its two-character status (e.g. `?? plan-feature-x.md`, ` M src/a.ts`); `[]` when the tree was clean. The driver asserts on this list, not on `dirty`"
   exitCode:
     type: integer
     description: the command's exit status
@@ -114,13 +118,16 @@ steps:
 
         FIRST, BEFORE YOU CHANGE ANYTHING: run the floor command below and record its
         result. This is the BASELINE, and taking it is not optional. Record the commit
-        it ran at (`git rev-parse HEAD`) and whether the tree was dirty
-        (`git status --porcelain`) — the driver checks that the baseline's commit is the
-        base branch's head and the tree was clean. A "baseline" taken after you have
-        already written files measures your own unfinished work, not the floor (one run
-        reported 2 format failures in files it had just created, and called that the
-        baseline); if that happens, say so and take it again from a clean checkout of
-        the base (`git stash` / a fresh worktree), never by editing the number.
+        it ran at (`git rev-parse HEAD`) and record the `git status --porcelain` output
+        as `dirtyPaths`, one entry per line, VERBATIM rather than summarised. An untracked
+        file that a previous step of THIS run was told to leave (the `plan` step's
+        `plan-<slug>.md`) is expected there; a tracked modification at baseline means the
+        baseline is not a baseline. The driver checks that the baseline's commit is the
+        base branch's head. A "baseline" taken after you have already written files
+        measures your own unfinished work, not the floor (one run reported 2 format
+        failures in files it had just created, and called that the baseline); if that
+        happens, say so and take it again from a clean checkout of the base (`git stash`
+        / a fresh worktree), never by editing the number.
 
         A worktree is not guaranteed to start green. A dependency may be declared but
         not installed, a build artifact may be stale, or the branch may simply have

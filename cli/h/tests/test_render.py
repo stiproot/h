@@ -102,6 +102,24 @@ def test_verify_golden(snapshot) -> None:
     assert rendered == snapshot
 
 
+def test_verify_contract_reports_dirty_paths() -> None:
+    rendered = helm.render_workflow(
+        "verify", values={"publish": "true", "verify.cmd": "bun run lint"}, include_local=False
+    )
+    definition = json.loads(helm.to_wire_json(rendered))
+    implement = next(step for step in definition["steps"] if step["id"] == "implement")
+    contract = implement["input"]["outputContract"]
+    if isinstance(contract, str):
+        contract = json.loads(contract)
+
+    for check_name in ("baseline", "final"):
+        check = contract["properties"][check_name]
+        assert "dirtyPaths" in check["required"]
+        assert check["properties"]["dirtyPaths"]["type"] == "array"
+        assert check["properties"]["dirtyPaths"]["items"]["type"] == "string"
+        assert "dirty" in check["required"]
+
+
 def test_verify_requires_a_cmd() -> None:
     """verify.cmd is required — composing verify without it fails loud, never a silent no-op."""
     with pytest.raises(helm.HelmError, match="verify.cmd is required"):

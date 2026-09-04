@@ -1554,19 +1554,22 @@
   steps:
     - id: implement
       input:
-        outputContract: {"properties":{"baseline":{"description":"the floor command run BEFORE any change","properties":{"command":{"description":"the exact command run, from the worktree root","type":"string"},"commit":{"description":"`git rev-parse HEAD` at the moment the command ran — for the baseline this MUST be the base branch's head (the driver checks it: a baseline taken after your own edits is not a baseline)","type":"string"},"dirty":{"description":"whether `git status --porcelain` printed anything when the command ran — MUST be false for both checks: the baseline is the untouched tree, the final is the committed one","type":"boolean"},"exitCode":{"description":"the command's exit status","type":"integer"},"failures":{"description":"how many failing tests / errors / checks the command reported (0 when it passed)","type":"integer"},"notes":{"description":"what failed, in one line — names, not counts (omit when nothing failed)","type":"string"}},"required":["command","exitCode","failures","commit","dirty"],"type":"object"},"demonstrations":{"description":"every check the spec asked you to make FAIL on purpose (a new test, guard or assertion) — what you changed to break it, the command, and the failing lines the command PRINTED, verbatim (trim to the lines that show the failure; never retype or paraphrase them). Omit only when the spec asked for no demonstration","items":{"properties":{"command":{"type":"string"},"output":{"description":"the failing lines exactly as printed, then reverted — the driver compares this against its own re-run","type":"string"},"what":{"description":"the deliberate break, in one line (e.g. \"flipped test 21's expected letter to S\")","type":"string"}},"required":["what","command","output"],"type":"object"},"type":"array"},"extraChecks":{"description":"every further applicable check you ran beyond the floor (lint, type-check, suites) — command, exitCode, and why it covers the change","items":{"properties":{"command":{"type":"string"},"exitCode":{"type":"integer"},"why":{"type":"string"}},"required":["command","exitCode"],"type":"object"},"type":"array"},"final":{"description":"the SAME floor command run after the work, on the tree you are handing over","properties":{"command":{"description":"the exact command run, from the worktree root","type":"string"},"commit":{"description":"`git rev-parse HEAD` at the moment the command ran — for the baseline this MUST be the base branch's head (the driver checks it: a baseline taken after your own edits is not a baseline)","type":"string"},"dirty":{"description":"whether `git status --porcelain` printed anything when the command ran — MUST be false for both checks: the baseline is the untouched tree, the final is the committed one","type":"boolean"},"exitCode":{"description":"the command's exit status","type":"integer"},"failures":{"description":"how many failing tests / errors / checks the command reported (0 when it passed)","type":"integer"},"notes":{"description":"what failed, in one line — names, not counts (omit when nothing failed)","type":"string"}},"required":["command","exitCode","failures","commit","dirty"],"type":"object"},"gate":{"description":"passed: every final failure was already in the baseline (nothing regressed, and the work is committed); failed: a regression YOU introduced remains after 3 attempts (nothing committed); blocked: the baseline itself prevented the work (nothing committed)","enum":["passed","failed","blocked"],"type":"string"}},"required":["baseline","final","gate"],"type":"object"}
+        outputContract: {"properties":{"baseline":{"description":"the floor command run BEFORE any change","properties":{"command":{"description":"the exact command run, from the worktree root","type":"string"},"commit":{"description":"`git rev-parse HEAD` at the moment the command ran — for the baseline this MUST be the base branch's head (the driver checks it: a baseline taken after your own edits is not a baseline)","type":"string"},"dirty":{"description":"dirtyPaths.length \u003e 0 — kept for readers of the boolean; the driver checks dirtyPaths","type":"boolean"},"dirtyPaths":{"description":"every line `git status --porcelain` printed when the command ran, VERBATIM including its two-character status (e.g. `?? plan-feature-x.md`, ` M src/a.ts`); `[]` when the tree was clean. The driver asserts on this list, not on `dirty`","items":{"type":"string"},"type":"array"},"exitCode":{"description":"the command's exit status","type":"integer"},"failures":{"description":"how many failing tests / errors / checks the command reported (0 when it passed)","type":"integer"},"notes":{"description":"what failed, in one line — names, not counts (omit when nothing failed)","type":"string"}},"required":["command","exitCode","failures","commit","dirty","dirtyPaths"],"type":"object"},"demonstrations":{"description":"every check the spec asked you to make FAIL on purpose (a new test, guard or assertion) — what you changed to break it, the command, and the failing lines the command PRINTED, verbatim (trim to the lines that show the failure; never retype or paraphrase them). Omit only when the spec asked for no demonstration","items":{"properties":{"command":{"type":"string"},"output":{"description":"the failing lines exactly as printed, then reverted — the driver compares this against its own re-run","type":"string"},"what":{"description":"the deliberate break, in one line (e.g. \"flipped test 21's expected letter to S\")","type":"string"}},"required":["what","command","output"],"type":"object"},"type":"array"},"extraChecks":{"description":"every further applicable check you ran beyond the floor (lint, type-check, suites) — command, exitCode, and why it covers the change","items":{"properties":{"command":{"type":"string"},"exitCode":{"type":"integer"},"why":{"type":"string"}},"required":["command","exitCode"],"type":"object"},"type":"array"},"final":{"description":"the SAME floor command run after the work, on the tree you are handing over","properties":{"command":{"description":"the exact command run, from the worktree root","type":"string"},"commit":{"description":"`git rev-parse HEAD` at the moment the command ran — for the baseline this MUST be the base branch's head (the driver checks it: a baseline taken after your own edits is not a baseline)","type":"string"},"dirty":{"description":"dirtyPaths.length \u003e 0 — kept for readers of the boolean; the driver checks dirtyPaths","type":"boolean"},"dirtyPaths":{"description":"every line `git status --porcelain` printed when the command ran, VERBATIM including its two-character status (e.g. `?? plan-feature-x.md`, ` M src/a.ts`); `[]` when the tree was clean. The driver asserts on this list, not on `dirty`","items":{"type":"string"},"type":"array"},"exitCode":{"description":"the command's exit status","type":"integer"},"failures":{"description":"how many failing tests / errors / checks the command reported (0 when it passed)","type":"integer"},"notes":{"description":"what failed, in one line — names, not counts (omit when nothing failed)","type":"string"}},"required":["command","exitCode","failures","commit","dirty","dirtyPaths"],"type":"object"},"gate":{"description":"passed: every final failure was already in the baseline (nothing regressed, and the work is committed); failed: a regression YOU introduced remains after 3 attempts (nothing committed); blocked: the baseline itself prevented the work (nothing committed)","enum":["passed","failed","blocked"],"type":"string"}},"required":["baseline","final","gate"],"type":"object"}
         task: |-
           ===ACCEPTANCE CHECK===
   
           FIRST, BEFORE YOU CHANGE ANYTHING: run the floor command below and record its
           result. This is the BASELINE, and taking it is not optional. Record the commit
-          it ran at (`git rev-parse HEAD`) and whether the tree was dirty
-          (`git status --porcelain`) — the driver checks that the baseline's commit is the
-          base branch's head and the tree was clean. A "baseline" taken after you have
-          already written files measures your own unfinished work, not the floor (one run
-          reported 2 format failures in files it had just created, and called that the
-          baseline); if that happens, say so and take it again from a clean checkout of
-          the base (`git stash` / a fresh worktree), never by editing the number.
+          it ran at (`git rev-parse HEAD`) and record the `git status --porcelain` output
+          as `dirtyPaths`, one entry per line, VERBATIM rather than summarised. An untracked
+          file that a previous step of THIS run was told to leave (the `plan` step's
+          `plan-<slug>.md`) is expected there; a tracked modification at baseline means the
+          baseline is not a baseline. The driver checks that the baseline's commit is the
+          base branch's head. A "baseline" taken after you have already written files
+          measures your own unfinished work, not the floor (one run reported 2 format
+          failures in files it had just created, and called that the baseline); if that
+          happens, say so and take it again from a clean checkout of the base (`git stash`
+          / a fresh worktree), never by editing the number.
   
           A worktree is not guaranteed to start green. A dependency may be declared but
           not installed, a build artifact may be stale, or the branch may simply have
@@ -1661,8 +1664,15 @@
                     "type": "string"
                   },
                   "dirty": {
-                    "description": "whether `git status --porcelain` printed anything when the command ran — MUST be false for both checks: the baseline is the untouched tree, the final is the committed one",
+                    "description": "dirtyPaths.length \u003e 0 — kept for readers of the boolean; the driver checks dirtyPaths",
                     "type": "boolean"
+                  },
+                  "dirtyPaths": {
+                    "description": "every line `git status --porcelain` printed when the command ran, VERBATIM including its two-character status (e.g. `?? plan-feature-x.md`, ` M src/a.ts`); `[]` when the tree was clean. The driver asserts on this list, not on `dirty`",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "exitCode": {
                     "description": "the command's exit status",
@@ -1682,7 +1692,8 @@
                   "exitCode",
                   "failures",
                   "commit",
-                  "dirty"
+                  "dirty",
+                  "dirtyPaths"
                 ],
                 "type": "object"
               },
@@ -1745,8 +1756,15 @@
                     "type": "string"
                   },
                   "dirty": {
-                    "description": "whether `git status --porcelain` printed anything when the command ran — MUST be false for both checks: the baseline is the untouched tree, the final is the committed one",
+                    "description": "dirtyPaths.length \u003e 0 — kept for readers of the boolean; the driver checks dirtyPaths",
                     "type": "boolean"
+                  },
+                  "dirtyPaths": {
+                    "description": "every line `git status --porcelain` printed when the command ran, VERBATIM including its two-character status (e.g. `?? plan-feature-x.md`, ` M src/a.ts`); `[]` when the tree was clean. The driver asserts on this list, not on `dirty`",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "exitCode": {
                     "description": "the command's exit status",
@@ -1766,7 +1784,8 @@
                   "exitCode",
                   "failures",
                   "commit",
-                  "dirty"
+                  "dirty",
+                  "dirtyPaths"
                 ],
                 "type": "object"
               },
