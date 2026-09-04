@@ -526,8 +526,24 @@ def test_husks_spares_another_repos_live_worktree(monkeypatch, tmp_path):
     other = tmp_path / "other-repo"
     other.mkdir()
     subprocess.run(["git", "init", "-q", str(other)], check=True)
+    # Identity per-invocation: a CI runner has no global user.email, and `git commit` exits 128
+    # without one — the test passed on a developer box and was red on every CI run.
     subprocess.run(
-        ["git", "-C", str(other), "commit", "-q", "--allow-empty", "-m", "x"], check=True
+        [
+            "git",
+            "-C",
+            str(other),
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=h test",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "x",
+        ],
+        check=True,
     )
     subprocess.run(
         ["git", "-C", str(other), "worktree", "add", "-q", str(root / "theirs-live")], check=True
