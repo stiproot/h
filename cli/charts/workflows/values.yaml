@@ -242,6 +242,13 @@ plan:
   gitAuth: ""
   # Per-step model overrides; empty = the agent's AGENT_MODEL. Planning is the reasoning-heavy
   # half, so it defaults to the stronger model — same choice implement.models.plan makes.
+  # When true the run ends with a `persist` step that writes the plan as a document in the
+  # target repo's plan convention and commits it; the fire-time `planName` param names the doc.
+  # Off by default so the template stays the pure planning half.
+  persist: false
+  # Default name for the plan document when persist is true. Passed as the fire-time
+  # `planName` param; empty = no document written.
+  planName: ""
   models:
     plan: claude-sonnet-4-6
 
