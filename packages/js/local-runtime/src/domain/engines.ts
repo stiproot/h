@@ -13,7 +13,7 @@ import {
   WorkflowInvoker,
   WorkflowStore,
 } from "engine-core";
-import { Clock, Effect, Schedule } from "effect";
+import { Clock, Data, Effect, Schedule } from "effect";
 
 import { ProgressPort } from "./ports.ts";
 
@@ -55,13 +55,18 @@ export interface LeasePort {
   readonly write: (lease: EngineLease, revision: number) => Effect.Effect<boolean, Error>;
 }
 
-export class EngineHostConflict extends Error {
-  constructor(readonly holder: string) {
-    super(
-      `another engine host holds the lease (${holder}). Only one may tick, or every cron ` +
+export class EngineHostConflict extends Data.TaggedError("EngineHostConflict")<{
+  readonly holder: string;
+  readonly message: string;
+}> {
+  /** The refusal text lives here so every construction site words it identically. */
+  static of(holder: string): EngineHostConflict {
+    return new EngineHostConflict({
+      holder,
+      message:
+        `another engine host holds the lease (${holder}). Only one may tick, or every cron ` +
         "double-fires. Stop it first, or wait for its lease to lapse.",
-    );
-    this.name = "EngineHostConflict";
+    });
   }
 }
 
@@ -86,12 +91,12 @@ export const claimLease = (
     const held = yield* lease.read();
     if (held !== null && held.lease.hostId !== config.hostId) {
       const age = now - held.lease.renewedAt;
-      if (age < LEASE_TTL_MS) return yield* Effect.fail(new EngineHostConflict(held.lease.hostId));
+      if (age < LEASE_TTL_MS) return yield* Effect.fail(EngineHostConflict.of(held.lease.hostId));
     }
     const won = yield* lease.write({ hostId: config.hostId, renewedAt: now }, held?.revision ?? 0);
     // Losing the CAS means another host claimed between our read and our write. Refusing is the
     // only safe answer: the alternative is retrying into a race we just lost.
-    if (!won) return yield* Effect.fail(new EngineHostConflict("another host (lost the race)"));
+    if (!won) return yield* Effect.fail(EngineHostConflict.of("another host (lost the race)"));
   });
 
 export type TickReport = {

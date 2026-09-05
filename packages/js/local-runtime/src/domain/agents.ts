@@ -1,3 +1,4 @@
+import { Data } from "effect";
 import { LOCAL_AGENT_TYPES, type LocalAgentType } from "./models.ts";
 
 /**
@@ -23,20 +24,25 @@ const AGENT_ALIASES: Readonly<Record<string, LocalAgentType>> = {
 };
 
 /** An `--agent` name this substrate cannot run. */
-export class UnknownAgentError extends Error {
-  constructor(readonly agent: string) {
-    super(
-      `unknown agent '${agent}' — local execution runs: ${LOCAL_AGENT_TYPES.join(", ")}. ` +
+export class UnknownAgentError extends Data.TaggedError("UnknownAgentError")<{
+  readonly agent: string;
+  readonly message: string;
+}> {
+  /** The refusal text lives here so every construction site words it identically. */
+  static of(agent: string): UnknownAgentError {
+    return new UnknownAgentError({
+      agent,
+      message:
+        `unknown agent '${agent}' — local execution runs: ${LOCAL_AGENT_TYPES.join(", ")}. ` +
         "Agents that exist only as a service (kimi, dapr-agent, langgraph, claude-managed) run " +
         "on the service substrate; drop --local to use them.",
-    );
-    this.name = "UnknownAgentError";
+    });
   }
 }
 
 /** Resolve one `--agent` name to its canonical agent, or throw {@link UnknownAgentError}. */
 export function resolveAgent(name: string): LocalAgentType {
   const resolved = AGENT_ALIASES[name.trim().toLowerCase()];
-  if (!resolved) throw new UnknownAgentError(name);
+  if (!resolved) throw UnknownAgentError.of(name);
   return resolved;
 }

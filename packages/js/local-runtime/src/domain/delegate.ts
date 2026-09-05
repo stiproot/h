@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 
 import { resolveAgent, UnknownAgentError } from "./agents.ts";
 import type {
@@ -15,10 +15,11 @@ import { assertExecutorAllowed, awaitQuotaHeadroom } from "./policy.ts";
 import type { ExecPolicyStore, QuotaStore } from "engine-core";
 
 /** An empty roster is a caller bug — never a job that trivially "succeeds" with no runs. */
-export class EmptyRosterError extends Error {
-  constructor() {
-    super("a delegate job needs at least one agent");
-    this.name = "EmptyRosterError";
+export class EmptyRosterError extends Data.TaggedError("EmptyRosterError")<{
+  readonly message: string;
+}> {
+  static of(): EmptyRosterError {
+    return new EmptyRosterError({ message: "a delegate job needs at least one agent" });
   }
 }
 
@@ -92,7 +93,7 @@ export const runDelegate = (
     const agent = yield* AgentPort;
     const progress = yield* ProgressPort;
 
-    if (job.agents.length === 0) return yield* Effect.fail(new EmptyRosterError());
+    if (job.agents.length === 0) return yield* Effect.fail(EmptyRosterError.of());
     const roster = yield* Effect.try({
       try: () => job.agents.map(resolveAgent),
       catch: (cause) => cause as UnknownAgentError,

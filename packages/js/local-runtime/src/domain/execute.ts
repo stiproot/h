@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
-import { Cause, Clock, Effect, Either } from "effect";
+import { Cause, Clock, Data, Effect, Either } from "effect";
 import {
   applyOutputContract,
   lastFencedJson,
@@ -34,15 +34,10 @@ import type {
 import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /** A step did not produce a result. Carries the step id so the envelope can name the failure. */
-export class StepError extends Error {
-  constructor(
-    readonly step: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = "StepError";
-  }
-}
+export class StepError extends Data.TaggedError("StepError")<{
+  readonly step: string;
+  readonly message: string;
+}> {}
 
 const str = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -208,7 +203,9 @@ export const runWorkflow = (
       }
       return execute.pipe(
         Effect.tap((result) =>
-          appendStep(id, result).pipe(Effect.mapError((err) => new StepError(id, err.message))),
+          appendStep(id, result).pipe(
+            Effect.mapError((err) => new StepError({ step: id, message: err.message })),
+          ),
         ),
       );
     };
@@ -217,24 +214,26 @@ export const runWorkflow = (
       if (jc?.resume) {
         const records = yield* journal
           .replay(jc.url, journalKey)
-          .pipe(Effect.mapError((err) => new StepError("journal", err.message)));
+          .pipe(Effect.mapError((err) => new StepError({ step: "journal", message: err.message })));
         const meta = records.find((record) => record.type === "meta");
         if (!meta) {
           return yield* Effect.fail(
-            new StepError(
-              "journal",
-              `no journal for group '${job.group}' — nothing to resume (was it run with ` +
+            new StepError({
+              step: "journal",
+              message:
+                `no journal for group '${job.group}' — nothing to resume (was it run with ` +
                 "--no-journal, or has the record aged out of the stream?)",
-            ),
+            }),
           );
         }
         if (meta.definitionHash !== hash) {
           return yield* Effect.fail(
-            new StepError(
-              "journal",
-              "the composition differs from the journaled run — a changed workflow is a NEW " +
+            new StepError({
+              step: "journal",
+              message:
+                "the composition differs from the journaled run — a changed workflow is a NEW " +
                 "run, so re-fire without --resume",
-            ),
+            }),
           );
         }
         const steps = records.filter(
@@ -260,7 +259,7 @@ export const runWorkflow = (
             group: job.group,
             ts: yield* Clock.currentTimeMillis,
           })
-          .pipe(Effect.mapError((err) => new StepError("journal", err.message)));
+          .pipe(Effect.mapError((err) => new StepError({ step: "journal", message: err.message })));
       }
 
       // An ABSOLUTE deadline, stamped once before the first step. Clock rather than Date.now() so
@@ -425,10 +424,10 @@ const runStep = (
 
     if (classified.kind === "refused") {
       return yield* Effect.fail(
-        new StepError(
-          id,
-          new RefusedActivityError(activity, classified.reason, classified.why).message,
-        ),
+        new StepError({
+          step: id,
+          message: RefusedActivityError.of(activity, classified.reason, classified.why).message,
+        }),
       );
     }
 
@@ -446,7 +445,7 @@ const runStep = (
             checkout: checkoutFromInput(input),
             seed: seedFromInput(input),
           })
-          .pipe(Effect.mapError((err) => new StepError(id, err.message)));
+          .pipe(Effect.mapError((err) => new StepError({ step: id, message: err.message })));
         yield* progress.emit(`⎇ ${id}: ${worktreePath}`);
         if (seeded.copied.length + seeded.missing.length > 0) {
           yield* progress.emit(
@@ -463,7 +462,7 @@ const runStep = (
         // same reason (the provision run's own row audits the registration).
         const result = yield* registerDiscover(
           discoverRegistrationFrom(input as unknown as DiscoverArmInput),
-        ).pipe(Effect.mapError((err) => new StepError(id, err.message)));
+        ).pipe(Effect.mapError((err) => new StepError({ step: id, message: err.message })));
         yield* progress.emit(`⟳ discovery cron armed: ${result.discoverId}`);
         return result;
       }
@@ -482,7 +481,7 @@ const runStep = (
       }
       yield* workspace
         .provision(job.repoPath, commands)
-        .pipe(Effect.mapError((err) => new StepError(id, err.message)));
+        .pipe(Effect.mapError((err) => new StepError({ step: id, message: err.message })));
       yield* progress.emit(`⚙ ${id}: ran ${commands.length} setup command(s)`);
       return { provisioned: commands.length };
     }
@@ -494,9 +493,9 @@ const runStep = (
     // function as the service substrate's activity gate, so `h agents deny` means one thing on both.
     yield* awaitQuotaHeadroom(classified.agent, job.quota, (decision) =>
       progress.emit(`⏳ ${id}: ${decision.reason} — waiting until ${decision.untilIso}`),
-    ).pipe(Effect.mapError((err) => new StepError(id, err.message)));
+    ).pipe(Effect.mapError((err) => new StepError({ step: id, message: err.message })));
     yield* assertExecutorAllowed(classified.agent, new Date().toISOString()).pipe(
-      Effect.mapError((err) => new StepError(id, err.message)),
+      Effect.mapError((err) => new StepError({ step: id, message: err.message })),
     );
 
     const agent = yield* AgentPort;
@@ -522,7 +521,9 @@ const runStep = (
     });
     if (report.status === "failed") {
       yield* progress.emit(`✗ ${id}: ${report.error ?? "failed"}`);
-      return yield* Effect.fail(new StepError(id, report.error ?? `${classified.agent} failed`));
+      return yield* Effect.fail(
+        new StepError({ step: id, message: report.error ?? `${classified.agent} failed` }),
+      );
     }
     const seconds = (report.durationMs / 1000).toFixed(1);
     const cost = report.costUsd === undefined ? "cost unknown" : `$${report.costUsd.toFixed(4)}`;
@@ -548,7 +549,10 @@ const runStep = (
       if (!(firstErr instanceof StructuredOutputError)) {
         // Non-contract failure (validator bug, unsupported keyword) — no retry.
         return yield* Effect.fail(
-          new StepError(id, firstErr instanceof Error ? firstErr.message : String(firstErr)),
+          new StepError({
+            step: id,
+            message: firstErr instanceof Error ? firstErr.message : String(firstErr),
+          }),
         );
       }
       // AgentPort has no sessionId input, so prior output is passed in the prompt instead of
@@ -568,10 +572,10 @@ const runStep = (
       });
       if (reformatReport.status === "failed") {
         return yield* Effect.fail(
-          new StepError(
-            id,
-            `Reformat was attempted. ${reformatReport.error ?? "reformat agent failed"}`,
-          ),
+          new StepError({
+            step: id,
+            message: `Reformat was attempted. ${reformatReport.error ?? "reformat agent failed"}`,
+          }),
         );
       }
       const reformatResult: AgentResult = {
@@ -583,7 +587,9 @@ const runStep = (
         contractResult = applyOutputContract(reformatResult, input.outputContract);
       } catch (secondErr) {
         const msg = secondErr instanceof Error ? secondErr.message : String(secondErr);
-        return yield* Effect.fail(new StepError(id, `Reformat was attempted. ${msg}`));
+        return yield* Effect.fail(
+          new StepError({ step: id, message: `Reformat was attempted. ${msg}` }),
+        );
       }
     }
     return contractResult;
@@ -592,7 +598,10 @@ const runStep = (
       // resolveTokenString and classifyActivity throw (they are shared, dependency-free code);
       // a defect here is a definition problem, so it must read as this step's failure.
       Effect.fail(
-        new StepError(stepId(step), defect instanceof Error ? defect.message : String(defect)),
+        new StepError({
+          step: stepId(step),
+          message: defect instanceof Error ? defect.message : String(defect),
+        }),
       ),
     ),
   );
@@ -659,7 +668,9 @@ const armCron = (
         });
         if (!plan.armed) return `⊘ cron not armed: ${plan.reason}`;
         const result = yield* registerCronForFire(plan.registration).pipe(
-          Effect.mapError((error) => new StepError("arm-cron", error.message ?? String(error))),
+          Effect.mapError(
+            (error) => new StepError({ step: "arm-cron", message: error.message ?? String(error) }),
+          ),
         );
         return `⟳ cron armed: ${result.cronId} (${job.armCron!.cadence})`;
       });
