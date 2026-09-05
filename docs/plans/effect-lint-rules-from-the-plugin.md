@@ -125,7 +125,7 @@ The generator (`scripts/gen-effect-rules.mjs` to be written) does two things:
 
 Each hand-written rule file carries:
 ```yaml
-# SOURCE: ~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md
+# SOURCE: <corpus>/skills/effect-tooling-debugging/references/tooling-and-debugging.md @ v1.1.0
 # SOURCE_HASH: f83e6d56932d7573
 ```
 
@@ -136,7 +136,7 @@ Each hand-written rule file carries:
    ```
    check-effect-rules: drift detected
      rule:         rules/effect/effect-promise-ignore.yaml
-     skill:        ~/.claude/.../effect-tooling-debugging/references/tooling-and-debugging.md
+     skill:        <corpus>/skills/effect-tooling-debugging/references/tooling-and-debugging.md
      stored hash:  f83e6d56932d7573
      current hash: a1b2c3d4e5f6a7b8
    Review the skill diff, update the rule if the guidance changed, then update SOURCE_HASH.
@@ -149,28 +149,38 @@ prevents CI from passing on a machine without the plugin.
 
 ### Q3: Where does the plugin come from at generation time?
 
-**Answer: the highest semantic version present in the plugin cache, embedded at write time.**
+**Answer: from its PINNED SOURCE, fetched — never from a machine's home directory.**
 
-`installed_plugins.json` (`~/.claude/plugins/installed_plugins.json`) records every installed
-version but has no "current for this project" field that resolves unambiguously across scopes —
-multiple project scopes run different versions concurrently (1.0.0 for earlier worktrees,
-1.1.0 for newer ones, verified in the JSON).
+This repo is self-contained: nothing in it may depend on `~/.claude`, because a home path
+resolves on exactly one machine and silently means something different (or nothing) on every
+other. The same rule that stops a SKILL.md naming `~/.claude/skills/...` applies here.
 
-The generator resolves this by scanning
-`~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/` for subdirectories,
-parsing them as semver, and selecting the highest. This matches the version a developer's most
-recent worktree would have installed, and the selected version is embedded in every rule's
-`# SOURCE:` comment so the stored hash anchors to a known version.
+The corpus is a published plugin. This repo already DECLARES it, in `.claude/settings.json`:
+`enabledPlugins` names `effect-claude-primitives@effect-primitives`, and the marketplace entry
+gives its GitHub source. So the generator resolves the corpus the way h already resolves every
+other external tool — a pinned version, fetched on demand, no lockfile entry and no home
+dependency:
 
-When the pinned version is absent (e.g. on a fresh machine or CI):
-- The drift check (`check-effect-rules.mjs`) exits 0 with a skip message.
-- The rules remain valid; their fixtures still pass.
-- Regeneration is not attempted. A developer running the generator gets an error naming the
-  missing version.
+```sh
+# the same shape as `uvx vizzle@0.2.0` and `bunx @ast-grep/cli@0.45.3` in the lint chain
+git clone --depth 1 --branch v<PINNED> https://github.com/stiproot/effect-claude-primitives "$tmp"
+# corpus root: "$tmp/skills"
+```
 
-CI and developer boxes cannot disagree on rule content because **the rules are committed source
-files** — they change only when a human reviews a skill diff and updates the rule. The hash is
-purely a signal to prompt that review.
+The pinned version lives in ONE place — the generator's own constant, recorded in each rule's
+`# SOURCE:` line — so CI and a developer box cannot disagree: both fetch the same tag. Bumping
+the corpus is a deliberate edit to that constant, which is exactly the moment the drift check
+should demand a review.
+
+When the fetch fails (offline, or the tag is gone):
+- the drift check exits 0 with a skip message naming the tag it wanted;
+- the rules remain valid — they are committed source files and do not depend on the fetch;
+- regeneration errors loudly rather than silently falling back to whatever is on the machine.
+
+That last point is the whole reason not to read a local install: "whatever happens to be
+installed" was already observed to differ per scope in this very repo (h's project scope sat at
+1.0.0 while every worktree ran 1.1.0). A generator reading that would produce different rules
+depending on which directory it ran in.
 
 ### Q4: Which rules are worth having? (ranked by evidence)
 
@@ -275,7 +285,7 @@ When `scripts/check-effect-rules.mjs` finds a hash mismatch:
 ```
 check-effect-rules: drift detected
   rule:         rules/effect/effect-promise-ignore.yaml
-  skill:        ~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md
+  skill:        <corpus>/skills/effect-tooling-debugging/references/tooling-and-debugging.md
   stored hash:  f83e6d56932d7573
   current hash: a1b2c3d4e5f6a7b8
 Review the skill diff, update the rule if the guidance changed, then update SOURCE_HASH.
