@@ -30,8 +30,13 @@ guards that do not. The rules and the guards drift apart silently, which is the 
 
 ## Research findings (2026-09-05, HEAD 415b6dc)
 
-Evidence for all six design questions. Commands run, output recorded, artefacts in
-`scratch/effect-lint-research/`.
+Evidence for all six design questions: commands run, output recorded.
+
+**On the `scratch/effect-lint-research/` paths quoted below** — that was a THROWAWAY prototype in
+an untracked directory, deliberately not committed (the spec asked for a prototype, not a
+deliverable). Every artefact that matters is inlined here: each rule's full YAML, each scan
+command, and each result count. Do not go looking for the files; re-create the generator from the
+algorithm in Q2 if you need it. The paths are kept only so the commands read as they were run.
 
 ### Q1: How much can be generated rather than hand-written?
 
