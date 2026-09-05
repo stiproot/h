@@ -358,9 +358,13 @@ Every rule YAML and fixture outcome is inlined here; the scratch files contain n
 ### Method and heading command
 
 ```sh
-grep -rh '^## ' \
-  ~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/*/references/*.md \
-  | sort
+# Resolve the corpus from its PINNED SOURCE — never a home path (see Q3, and
+# scripts/check-no-home-paths.mjs). The classification below was produced against v1.1.0.
+corpus=$(mktemp -d)
+git clone --depth 1 --branch v1.1.0 \
+  https://github.com/stiproot/effect-claude-primitives "$corpus"
+
+grep -rh '^## ' "$corpus"/skills/*/references/*.md | sort
 ```
 
 Output: **247 lines** — every `## ` heading across 26 reference files in 16 skills, including
