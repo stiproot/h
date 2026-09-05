@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { Cause, Clock, Effect, Either } from "effect";
-import { applyOutputContract, resolveRefs, resolveTokenString } from "workflow-core";
+import {
+  applyOutputContract,
+  lastFencedJson,
+  resolveRefs,
+  resolveTokenString,
+  StructuredOutputError,
+} from "workflow-core";
 import type { AgentResult, StepDefinition, WorkflowStep } from "workflow-core";
 
 import { classifyActivity, RefusedActivityError } from "./activities.ts";
@@ -47,6 +53,29 @@ const str = (value: unknown): string | undefined => {
 };
 
 const stepId = (step: StepDefinition): string => step.id ?? step.activity;
+
+/**
+ * Build a reformat prompt that asks for a corrected JSON block and nothing else.
+ * The prompt carries violations, the contract, and the prior block — and is explicit that
+ * no tools should run and no files should change. The agent must REPLACE (not append) the block.
+ */
+const buildReformatPrompt = (violations: string, contract: string, priorBlock: string): string =>
+  `The JSON block you emitted at the end of your previous response does not match the required contract.
+
+CONTRACT violations (fix ALL of them):
+${violations}
+
+Required contract (JSON Schema):
+\`\`\`json
+${contract}
+\`\`\`
+
+Your previous block:
+\`\`\`json
+${priorBlock}
+\`\`\`
+
+Emit ONLY the corrected fenced \`\`\`json block. Do NOT run any tools. Do NOT change any files. Do NOT do any new work. Do NOT append a second block — REPLACE the previous block with one corrected block at the end of this response, and nothing else after it.`;
 
 /**
  * A `create-worktree` step's `checkout` input → the strategy to cut with. The in-process mirror of
@@ -507,10 +536,57 @@ const runStep = (
     // The output contract is enforced HERE because AgentPort is contract-agnostic; engine-side the
     // run-* activity does it. Same `workflow-core` validator either way, and the same consequence:
     // a missing or mismatching fenced block FAILS THE STEP rather than passing prose downstream.
-    return yield* Effect.try({
-      try: () => applyOutputContract(result, input.outputContract),
-      catch: (cause) => new StepError(id, cause instanceof Error ? cause.message : String(cause)),
-    });
+    //
+    // When the contract is violated, ask the same agent to reformat ONCE — the work completed, only
+    // the report is malformed. Exactly one retry, never a loop. This is LOCAL-SUBSTRATE ONLY:
+    // wiring a second turn into a Dapr activity involves the host's workflow runtime and is a
+    // separate, larger change; see the run-* activities in workflow-svc.
+    let contractResult: ReturnType<typeof applyOutputContract<AgentResult>>;
+    try {
+      contractResult = applyOutputContract(result, input.outputContract);
+    } catch (firstErr) {
+      if (!(firstErr instanceof StructuredOutputError)) {
+        // Non-contract failure (validator bug, unsupported keyword) — no retry.
+        return yield* Effect.fail(
+          new StepError(id, firstErr instanceof Error ? firstErr.message : String(firstErr)),
+        );
+      }
+      // AgentPort has no sessionId input, so prior output is passed in the prompt instead of
+      // resuming a named session. The agent still has its own context via its live session state.
+      const priorRaw = lastFencedJson(result.output) ?? "";
+      const contractJson = JSON.stringify(input.outputContract ?? {}, null, 2);
+      yield* progress.emit(`↻ ${id}: block rejected, asking for a reformat (1 attempt)`);
+      const reformatReport = yield* agent.run({
+        agent: classified.agent,
+        task: buildReformatPrompt(firstErr.message, contractJson, priorRaw),
+        cwd,
+        timeoutMs: job.timeoutMs,
+        model: str(input.model),
+        permissionMode: "plan",
+        runsDir: job.runsDir,
+        group: job.group,
+      });
+      if (reformatReport.status === "failed") {
+        return yield* Effect.fail(
+          new StepError(
+            id,
+            `Reformat was attempted. ${reformatReport.error ?? "reformat agent failed"}`,
+          ),
+        );
+      }
+      const reformatResult: AgentResult = {
+        sessionId: reformatReport.sessionId ?? null,
+        output: reformatReport.output,
+        toolCalls: reformatReport.toolCalls ?? null,
+      };
+      try {
+        contractResult = applyOutputContract(reformatResult, input.outputContract);
+      } catch (secondErr) {
+        const msg = secondErr instanceof Error ? secondErr.message : String(secondErr);
+        return yield* Effect.fail(new StepError(id, `Reformat was attempted. ${msg}`));
+      }
+    }
+    return contractResult;
   }).pipe(
     Effect.catchAllDefect((defect) =>
       // resolveTokenString and classifyActivity throw (they are shared, dependency-free code);
