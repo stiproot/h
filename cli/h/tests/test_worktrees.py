@@ -1,6 +1,10 @@
 """h worktrees — the sweep surface for both substrates (monkeypatched git, no HTTP)."""
 
+import errno
 import json
+import os
+import pwd
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -564,3 +568,80 @@ def test_husks_spares_another_repos_live_worktree(monkeypatch, tmp_path):
 
     found = sorted(p.name for p in wt._husks("repo"))
     assert found == ["no-git-at-all", "theirs-pruned"], found
+
+
+# --- husk permission-error reporting ----------------------------------------------------------
+
+
+@pytest.mark.skipif(os.getuid() == 0, reason="running as root — permission blocks don't apply")
+def test_sweep_husk_permission_error_reports_full_path_owner_and_suggestion(monkeypatch):
+    """A root-owned file blocking shutil.rmtree must produce a report with:
+    - the husk's full path (not just name)
+    - the blocking entry's full path
+    - the owner uid:gid (with passwd name where available)
+    - the collector's own uid
+    - whether the collection was partial or untouched
+    - a suggested sudo command the operator can run manually
+    """
+    import types
+
+    from h_cli.commands import worktrees as wt_mod
+
+    husk = LOCAL_WORKTREES_DIR / "implement-260824-121020"
+    blocking = str(LOCAL_WORKTREES_DIR / "implement-260824-121020" / "build-history.bin")
+
+    _patch_husks(monkeypatch, ["implement-260824-121020"])
+
+    def _raise_permission(*args, **kw):
+        raise PermissionError(errno.EACCES, "Permission denied", blocking)
+
+    # Patch shutil in the worktrees module so pytest's own shutil calls are unaffected.
+    monkeypatch.setattr(wt_mod, "shutil", types.SimpleNamespace(rmtree=_raise_permission))
+
+    _sizes = iter([1_800_000_000, 100_000_000])
+    monkeypatch.setattr(wt_mod, "_dir_size", lambda p: next(_sizes), raising=False)
+
+    class _Stat:
+        st_uid = 0
+        st_gid = 0
+
+    class _PwEntry:
+        pw_name = "root"
+
+    # Patch os and pwd in the worktrees module so global os.stat / pwd.getpwuid are unaffected.
+    monkeypatch.setattr(
+        wt_mod,
+        "os",
+        types.SimpleNamespace(stat=lambda p: _Stat(), getuid=lambda: 1000),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        wt_mod,
+        "pwd",
+        types.SimpleNamespace(getpwuid=lambda uid: _PwEntry()),
+        raising=False,
+    )
+
+    result = runner.invoke(app, ["worktrees", "sweep", "--prune-untracked"])
+
+    assert result.exit_code == 1
+    out = result.output
+    # Rich may wrap long paths at 80 chars; join lines before checking full-path substrings.
+    flat = out.replace("\n", "")
+
+    # New message format — the clearest indicator of the old code's poverty.
+    assert "blocked by (first encountered)" in out
+    # Full paths must appear (join lines to handle Rich console wrapping of long paths).
+    assert str(husk) in flat  # full husk path, not just name
+    assert blocking in flat  # blocking entry's full path
+    # Owner and collector uid information (absent in the old errno message).
+    assert "root (0)" in out
+    assert "1000" in out  # collector uid
+    # Size tracking distinguishes a partial collection from an untouched husk.
+    assert "reclaimed" in out or "untouched" in out
+    # Suggested operator command — the CLI never runs it (see comment in worktrees.py).
+    assert "sudo rm -rf" in out
+    # Summary line shape is unchanged.
+    assert "1 failed" in out
+    # Wording does not claim the named blocker is the only one.
+    assert "first encountered" in out

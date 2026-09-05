@@ -18,6 +18,8 @@ and push the operator to the blunt instrument. Every git check still defaults to
 error rather than auto-removing unknown state.
 """
 
+import os
+import pwd
 import shutil
 from pathlib import Path
 from typing import Annotated
@@ -32,6 +34,36 @@ from h_cli.infrastructure import git, local_runtime
 app = typer.Typer(no_args_is_help=True, help="List and remove the worktrees h cuts.")
 console = Console()
 err_console = Console(stderr=True)
+
+
+def _dir_size(path: Path) -> int:
+    """Sum file sizes under path; skips unreadable entries rather than raising."""
+    total = 0
+    try:
+        for f in path.rglob("*"):
+            try:
+                if f.is_file():
+                    total += f.stat().st_size
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return total
+
+
+def _fmt_bytes(n: float) -> str:
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if n < 1024 or unit == "GiB":
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n} B"
+
+
+def _format_owner(uid: int) -> str:
+    try:
+        return f"{pwd.getpwuid(uid).pw_name} ({uid})"
+    except KeyError:
+        return str(uid)
 
 
 def _resolve_repo(cwd: Path) -> str:
@@ -403,11 +435,37 @@ def sweep(
             err_console.print(f"[red]refusing:[/red] {path} is outside every h-managed root")
             errors += 1
             continue
+        before = _dir_size(path)
         try:
             shutil.rmtree(path)
             removed += 1
         except OSError as err:
-            err_console.print(f"[red]error:[/red] {path.name}: {err}")
+            after = _dir_size(path)
+            reclaimed = before - after
+            blocked = err.filename or "(unknown)"
+            try:
+                st = os.stat(blocked) if err.filename else None
+                uid_str = _format_owner(st.st_uid) if st else "unknown"
+                gid_str = str(st.st_gid) if st else "unknown"
+            except OSError as stat_err:
+                uid_str = f"(stat failed: {stat_err})"
+                gid_str = "unknown"
+            collector_uid = os.getuid()
+            err_console.print(f"[red]error:[/red] {path}: blocked by (first encountered) {blocked}")
+            err_console.print(f"  owner {uid_str}:{gid_str}, collector uid {collector_uid}")
+            if reclaimed > 0:
+                err_console.print(
+                    f"  partial collection: {_fmt_bytes(reclaimed)} reclaimed, "
+                    f"{_fmt_bytes(after)} remains"
+                )
+            else:
+                err_console.print(f"  untouched: {_fmt_bytes(after)} remains")
+            # Never escalate: an unattended collector must not sudo-delete paths it
+            # derived; printing the command lets the operator decide.
+            err_console.print(
+                f"  to reclaim: sudo rm -rf '{path}'  # {_fmt_bytes(after)}, "
+                "blocked by root-owned build output"
+            )
             errors += 1
 
     for e, reasons in to_skip:
