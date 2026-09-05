@@ -1207,6 +1207,7 @@ live incident that motivated it — read that before working around one.
 | --- | --- |
 | `check-tsc` | the toolchain is real — `tsc`/turbo/oxlint/oxfmt actually run (the hollow-green guard) |
 | `check-workspace-built` | a consumed workspace package has a `dist/`, so a missing build fails legibly |
+| `check-no-home-paths` | nothing the repo SHIPS resolves through `~/.claude` — a home path works on one machine and fails silently on every other; prose may discuss it, a tagged code fence may not |
 | `check-steering` | components, `run-*` activities, skill script paths, chain-expression flags and `h` commands are all documented; the CLI test suite is never cited without its `cli/h/tests` scope; **CLAUDE.md stays under its 130k-char budget** and its gotcha INDEX matches `docs/gotchas.md` in both directions |
 | `check-plans` | plan-doc headers/triggers; **nothing outside `docs/plans/` cites a plan** (`docs/plans/…` *or* bare `plans/…`); intra-plan links survive archiving |
 | `check-vocabulary` | retired terms stay retired in long-lived prose (the ARCHITECTURE.md glossary is canonical; `docs/plans/` is exempt as a historical record) |
