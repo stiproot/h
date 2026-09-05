@@ -180,14 +180,18 @@ structured blocks. A missing field is a reject.
   a regression the run owns.
 - **`baseline.commit` equals the base branch's head and `baseline.dirtyPaths` names nothing
   but the run's own plan file** (`?? plan-feature-<slug>.md`, which the `implement` template
-  deliberately leaves uncommitted — so `dirty` is `true` on every implement run, and the boolean
-  alone cannot tell that file from a half-written edit) — otherwise the "baseline" measured the
+  deliberately leaves uncommitted; since it is now gitignored the boolean `dirty` reads `false`
+  while `dirtyPaths` still lists it, so read the LIST — the boolean alone never could tell that
+  file from a half-written edit) — otherwise the "baseline" measured the
   agent's own work, and the inequality above is being checked against a meaningless floor.
   `final.dirtyPaths` is held to the same list: the final runs on the committed tree.
   **Incident:** a run reported a baseline of 2 failures — both format errors in files it had
   just created — and honestly noted as much in `notes`; the numbers still satisfied the check.
   **Incident:** the boolean read `dirty: true` for a whole night of runs before its first
-  `dirtyPaths` report showed the only entry was the plan file.
+  `dirtyPaths` report showed the only entry was the plan file. **Incident:** the night after that,
+  the plan file was gitignored, so the boolean flipped to `false` while this bullet still claimed
+  it was always `true` — a read-back line a driver treats as ground truth, wrong within a day of
+  being written.
 - **`closes`** (the create-pr step's block) contains the `issueNumber` the run was fired with,
   when one was set. A `[]` beside a set `issueNumber` is a dropped `Closes` line, so the merge
   would silently leave the issue open.
