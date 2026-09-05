@@ -624,19 +624,27 @@ def test_sweep_husk_permission_error_reports_full_path_owner_and_suggestion(monk
 
     assert result.exit_code == 1
     out = result.output
-    # Rich may wrap long paths at 80 chars; join lines before checking full-path substrings.
+    # Rich wraps to the terminal width, and the width differs between a developer's terminal and
+    # CI — so assert on NORMALISED forms, never on `out` directly. Two normalisations, because
+    # they are not interchangeable: `flat` drops newlines to rejoin a path rich split mid-token,
+    # while `squished` collapses all whitespace so a PHRASE broken across lines ("blocked by
+    # (first \n encountered)") still matches. Using `flat` for a phrase would glue words together;
+    # using `squished` for a path would insert a space into it.
+    # Incident: this assertion passed locally and failed in CI purely because the runner's
+    # checkout path is longer, so the phrase wrapped there and not here.
     flat = out.replace("\n", "")
+    squished = " ".join(out.split())
 
     # New message format — the clearest indicator of the old code's poverty.
-    assert "blocked by (first encountered)" in out
+    assert "blocked by (first encountered)" in squished
     # Full paths must appear (join lines to handle Rich console wrapping of long paths).
     assert str(husk) in flat  # full husk path, not just name
     assert blocking in flat  # blocking entry's full path
     # Owner and collector uid information (absent in the old errno message).
-    assert "root (0)" in out
-    assert "1000" in out  # collector uid
+    assert "root (0)" in squished
+    assert "1000" in squished  # collector uid
     # Size tracking distinguishes a partial collection from an untouched husk.
-    assert "reclaimed" in out or "untouched" in out
+    assert "reclaimed" in squished or "untouched" in squished
     # Suggested operator command — the CLI never runs it (see comment in worktrees.py).
     assert "sudo rm -rf" in out
     # Summary line shape is unchanged.
