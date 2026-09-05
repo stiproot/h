@@ -339,3 +339,227 @@ each rule draws from (by hash), so a human is notified when upstream guidance ch
 - Replacing the plugin's skills with lint rules. The skills teach; the rules catch.
 - Auto-fixing. Every finding so far needed a judgement about intent.
 - Generating working ast-grep patterns from prose. The corpus does not support it.
+
+## Pattern Classification: Which of the 247 Patterns Can Be Linted?
+
+Established: 2026-09-05. Prototypes in `/tmp/effect-rules/` — untracked scratch, NOT committed.
+Every rule YAML and fixture outcome is inlined here; the scratch files contain nothing additional.
+
+### Method and heading command
+
+```sh
+grep -rh '^## ' \
+  ~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/*/references/*.md \
+  | sort
+```
+
+Output: **247 lines** — every `## ` heading across 26 reference files in 16 skills, including
+duplicates where the same heading appears in multiple files. Each line was classified
+independently, since context (which skill/file) affects the analysis. Duplicates that get the same
+classification are normal and reported as separate rows in the B/C counts.
+
+### Bucket counts
+
+| Bucket | Count | % | Summary |
+|--------|-------|---|---------|
+| A — Mechanically lintable | 8 | 3.2% | Deterministic AST shape, no judgement, 0 FP observed |
+| B — Lintable with adjudication | 12 | 4.9% | Rule finds candidates; human must judge each hit |
+| C — Not lintable | 227 | 91.9% | Design guidance, architectural choices, API tutorials |
+
+The C-dominant result is expected (stated in this plan's framing). The value is the A list.
+
+### A — All mechanically lintable patterns
+
+All 8 verified with a written rule, a bad fixture (fires), and a good fixture (silent). Rules in
+`/tmp/effect-rules/` (untracked scratch, not committed). Q4 rules (R1-R3) were previously
+verified and re-confirmed here. V5, V7, V8, V9, V10 are new verifications from this pass;
+V4 and V6 were attempted as A but reclassified after testing (see note).
+
+| Skill | Heading | Rule sketch | Verified | Repo hits |
+|-------|---------|-------------|---------|-----------|
+| effect-tooling-debugging | Configure Linting for Effect | `Effect.promise($$$ARGS).pipe(Effect.ignore)` | Q4-R1 confirmed | 10, 0 FP |
+| effect-domain-modeling | Define Type-Safe Errors with Data.TaggedError | `class $NAME extends Error { $$$BODY }` | Q4-R2 confirmed | 8, 0 FP |
+| effect-core-concepts | Write Sequential Code with Effect.gen | narrow: try/catch + `return yield* Effect.fail($$$)` inside `Effect.gen($$$)`; broad (V8): `throw $EXPR` inside `Effect.gen($$$)` | Q4-R3 + V8 confirmed | 1 (narrow) / 0 (broad) |
+| effect-core-concepts-minimal | Effect.tryPromise — Wrapping Async Code | `try { $$$T } catch ($E) { $$$C }` inside `Effect.promise($FN)` | V7 | 0, 0 FP |
+| effect-error-handling | Leverage Effect's Built-in Structured Logging | `console.log($$$ARGS)` inside `Effect.gen($$$)` | V5 | 0, 0 FP |
+| effect-observability | Leverage Effect's Built-in Structured Logging | same as above (duplicate heading, different file) | V5 | 0, 0 FP |
+| effect-core-concepts-minimal | Effect.runSync and Effect.runPromise | `Effect.runPromise($$$)` inside `Effect.gen($$$)` | V9 | 0, 0 FP |
+| effect-domain-modeling | Create Type-Safe Errors | `Effect.fail(new Error($$$))` | V10 | 12, 0 FP |
+
+**Verified rule details (new verifications only; Q4 rules are in §Q4 above):**
+
+**V5 — console.log inside Effect.gen** (bad fires / good silent / 0 repo hits):
+```yaml
+id: effect-console-log-in-gen
+language: TypeScript
+rule:
+  pattern: console.log($$$ARGS)
+  inside:
+    pattern: Effect.gen($$$)
+    stopBy: end
+```
+Bad: `Effect.gen(function* () { console.log("x") })` → 1 match.
+Good: `Effect.gen(function* () { yield* Effect.log("x") })` and top-level `console.log("startup")` → 0 matches.
+
+**V7 — try/catch inside Effect.promise** (bad fires / good silent / 0 repo hits):
+```yaml
+id: effect-trycatch-in-promise
+language: TypeScript
+severity: error
+rule:
+  pattern: |
+    try { $$$T } catch ($E) { $$$C }
+  inside:
+    pattern: Effect.promise($FN)
+    stopBy: end
+```
+Bad: `Effect.promise(async () => { try { return await fetch(url) } catch (e) { throw e } })` → 1 match.
+Good: `Effect.tryPromise({ try: () => fetch(url), catch: (e) => new FetchError({ cause: e }) })` → 0 matches.
+
+**V8 — throw inside Effect.gen (broad form)** (bad fires / good silent / 0 repo hits):
+```yaml
+id: effect-throw-in-gen
+language: TypeScript
+severity: error
+rule:
+  pattern: throw $EXPR
+  inside:
+    pattern: Effect.gen($$$)
+    stopBy: end
+```
+Bad: `Effect.gen(function* () { throw new Error("bad") })` → 1 match.
+Good: `Effect.gen(function* () { yield* Effect.fail(new AppError()) })` → 0 matches.
+
+**V9 — Effect.runPromise inside Effect.gen** (bad fires / good silent / 0 repo hits):
+```yaml
+id: effect-runpromise-in-gen
+language: TypeScript
+severity: error
+rule:
+  pattern: Effect.runPromise($$$)
+  inside:
+    pattern: Effect.gen($$$)
+    stopBy: end
+```
+Bad: `Effect.gen(function* () { const r = await Effect.runPromise(someEffect) })` → 1 match.
+Good: top-level `Effect.runPromise(program)` → 0 matches.
+
+**V10 — Effect.fail(new Error(...))** (bad fires / good silent / 12 repo hits):
+```yaml
+id: effect-fail-plain-error
+language: TypeScript
+severity: warning
+rule:
+  pattern: Effect.fail(new Error($$$))
+```
+Bad: `Effect.fail(new Error("something went wrong"))` → 2 matches. Good: `Effect.fail(new AppError({ message: "x" }))` → 0 matches. Repo: 12 genuine findings (agent runners, activity-registry, test files using plain Error where tagged errors should be used).
+
+**V4 reclassified to B:** Rule `$EXPR.andThen($A).andThen($B).andThen($C)` fires correctly on bad fixture, silent on good, 0 repo hits — but the threshold of 3 is a judgment call (some teams consider 2-chain readable; `.andThen` on a 2-step pipeline is a team preference, not a defect). Kept in B.
+
+**V6 reclassified to B:** `process.env.$PROP` fires correctly on fixtures but found **85 repo hits** — many in agent service startup code (`apps/kimi-agent/index.ts`, `apps/codex-agent/index.ts`, test setup files) where `process.env` is legitimate before Effect layers are established. The FP rate disqualifies A.
+
+### B — Lintable with adjudication
+
+Grouped by false-positive source.
+
+**Group 1: Threshold judgment** — a rule can fire mechanically, but the cutoff is team-defined.
+A hit may be correct code that a reader considers readable at the current chain length.
+
+| Skill | Heading | Rule sketch | FP source |
+|-------|---------|-------------|-----------|
+| effect-domain-modeling | Avoid Long Chains of .andThen; Use Generators Instead | `$E.andThen($A).andThen($B).andThen($C)` (3+) | Threshold: 2-chain is sometimes readable; cutoff is arbitrary |
+| effect-domain-modeling | Use Effect.gen for Business Logic | same threshold; `.pipe(Effect.flatMap(...))` chain | Same: "too long" depends on team convention |
+
+**Group 2: Legitimate in non-Effect contexts** — the anti-form appears throughout the codebase
+in code that runs before or outside the Effect runtime.
+
+| Skill | Heading | Rule sketch | FP source |
+|-------|---------|-------------|-----------|
+| effect-platform | Access Environment Variables | `process.env.$PROP` | Startup code and test env setup run before Effect layers (85 repo hits; many legitimate) |
+| effect-concurrency | Manage Shared State Safely with Ref | `let $VAR` inside `Effect.gen($$$)` | Loop counters and accumulators inside gen are legitimate (`let count = 0`) |
+| effect-core-concepts | Manage Shared State Safely with Ref | same (duplicate heading in core-concepts.md) | Same |
+| effect-resource-management | Safely Bracket Resource Usage with `acquireRelease` | `try { $$$T } finally { $$$F }` inside `Effect.gen($$$)` | Synchronous cleanup in generators is sometimes intentional |
+
+**Group 3: Valid at API boundaries and interop** — the anti-form appears in code that bridges
+Effect to external types, third-party libraries, or I/O boundaries.
+
+| Skill | Heading | Rule sketch | FP source |
+|-------|---------|-------------|-----------|
+| effect-domain-modeling | Handle Missing Values with Option | function return `$T \| null` or `$T \| undefined` | API response types, third-party library types, and interop code legitimately use nullable returns |
+| effect-core-concepts | Model Optional Values Safely with Option | same | Same |
+| effect-domain-modeling | Model Optional Values Safely with Option | same (duplicate heading) | Same |
+| effect-http-client | Parse JSON Responses Safely | bare `JSON.parse($$$)` | `JSON.parse` inside `Effect.try(() => JSON.parse(s))` is correct but fires the rule |
+| effect-core-concepts-minimal | Typed Errors with `_tag` | `instanceof $ErrorType` in a catch block | `instanceof Error` is legitimate for plain JS errors; FP when checking non-Effect errors |
+
+**Group 4: Mixed guideline** — the heading covers multiple sub-rules of different lintability.
+
+| Skill | Heading | What IS lintable | What is NOT |
+|-------|---------|-----------------|-------------|
+| effect-mcp-server | Anti-Patterns | `from "zod"` import (A-type if rule is added); `process.env.$PROP` (B); `throw` inside `Effect.gen` (already V8) | "forget timeouts on external calls" (requires dataflow); "skip logging in tools" (requires dataflow); "return malformed ToolResult" (requires type inference) |
+
+### C — Not lintable (227 of 247)
+
+The dominant result. By skill, approximate C counts (A+B occurrences excluded):
+
+| Skill | Total headings | C count |
+|-------|---------------|---------|
+| effect-core-concepts | ~52 | ~48 |
+| effect-concurrency | 23 | 22 |
+| effect-data-pipelines | 14 | 14 |
+| effect-streams | 18 | 18 |
+| effect-error-handling | ~18 | ~16 |
+| effect-testing | 10 | 10 |
+| effect-http-api | 13 | 13 |
+| effect-getting-started | 10 | 10 |
+| effect-observability | 13 | 12 |
+| effect-scheduling | 6 | 6 |
+| effect-http-client | 10 | 9 |
+| effect-mcp-server | 10 | 9 |
+| effect-domain-modeling | ~16 | ~10 |
+| effect-resource-management | 8 | 7 |
+| effect-platform | 8 | 7 |
+| effect-tooling-debugging | 8 | 7 |
+
+**Three worked C explanations** (what an AST cannot know):
+
+**1. "Distinguish 'Not Found' from Errors"** (effect-domain-modeling): A rule would need to
+understand the SEMANTIC CONTRACT at the call site. Returning `Effect<Option<User>>` is correct
+when "not found" is a recoverable, expected absence (a search with zero results). Returning
+`Effect<User, UserNotFoundError>` is correct when the absence is an error (a lookup that should
+always succeed). AST sees the same code structure in both cases — only the caller's recovery
+intent distinguishes them. This is domain modeling, not syntax.
+
+**2. "Understand that Effects are Lazy Blueprints"** (effect-core-concepts): A rule would need
+to track whether an Effect VALUE is being shared across executions or simply bound for
+readability. `const roll = Effect.sync(() => Math.random())` shared across multiple `yield* roll`
+calls is a defect (same "random" value each time — the computation was only run once). The same
+binding used in a single `yield*` is fine. Dataflow and aliasing analysis across execution
+contexts is beyond AST-pattern matching.
+
+**3. "Stream vs Effect — When to Use Which"** (effect-streams): A rule would need to understand
+whether the data source is lazy/infinite or finite/eager — whether it PRODUCES one result or many
+over time. A `for await` loop over an array and a `for await` loop over a socket stream have
+the same AST shape but different correct representations (Effect vs Stream). Even a function that
+returns `AsyncIterable` could be correct as either. The choice is about the problem domain's
+time-shape, which no pattern matcher can infer from syntax.
+
+### Recommendation
+
+Ranked: incident-causing patterns first (Q4 audit findings carry the highest priority), then
+forward guards with the most repo exposure. Per-rule hit counts from scans of `packages/js` and
+`apps` (run 2026-09-05).
+
+| Rank | Rule | Heading | Hits | Rationale |
+|------|------|---------|------|-----------|
+| 1 | `effect-promise-ignore` | Configure Linting for Effect | **10** | AUDIT FINDING — 9 shutdown crashes (#143); already verified against this repo; replaces `check-effect-idioms.mjs` |
+| 2 | `effect-plain-extends-error` | Define Type-Safe Errors with Data.TaggedError | **8** | AUDIT FINDING — 8 classes with lost discriminant (#144); pending `refactor/effect-tagged-errors`; becomes a forward guard once that branch merges |
+| 3 | `effect-try-catch-in-gen` (narrow) | Write Sequential Code with Effect.gen | **1** | AUDIT FINDING — the original raw try/catch defect (#142); narrow form avoids the ~80% FP rate of the broad form |
+| 4 | `effect-fail-plain-error` | Create Type-Safe Errors | **12** | Most repo exposure of any non-audit rule; same class of defect as R2 (untagged errors that catchTag cannot recover) |
+| 5 | `effect-throw-in-gen` (broad) | Write Sequential Code with Effect.gen | **0** | Forward guard; broadens R3 to ALL throw-in-gen, not just the narrow try/catch form; fires on a defect class R3 misses |
+| 6 | `effect-console-log-in-gen` | Leverage Effect's Built-in Structured Logging | **0** | Forward guard; 0 hits means the codebase is already clean; low cost to add |
+| 7 | `effect-trycatch-in-promise` | Effect.tryPromise — Wrapping Async Code | **0** | Forward guard; prevents the pattern where a developer adds a try/catch inside Effect.promise instead of switching to tryPromise |
+| 8 | `effect-runpromise-in-gen` | Effect.runSync and Effect.runPromise | **0** | Forward guard; catches the mistake of calling Effect.runPromise inside a generator (creates a sync boundary where yield* is free) |
+
+Ranks 1-3 correspond directly to the three 2026-09-05 audit findings and should be implemented
+first. Rank 4 has the highest raw hit count and is closely related to rank 2 — both tackle
+the "untagged error" class. Ranks 5-8 are zero-hit forward guards; add them when rules 1-4 land.
