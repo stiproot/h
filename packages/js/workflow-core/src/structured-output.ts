@@ -12,11 +12,12 @@
  * believe a constraint is checked when it is not. Pure and dependency-free (no ajv): the subset is
  * small enough that a validator we fully own beats a dialect we'd only partially surface.
  */
+import { Data } from "effect";
 
 /** A structured-output contract violation — thrown by the run activities to fail the step. */
-export class StructuredOutputError extends Error {
-  override name = "StructuredOutputError";
-}
+export class StructuredOutputError extends Data.TaggedError("StructuredOutputError")<{
+  readonly message: string;
+}> {}
 
 /** The schema keywords the subset enforces (+ inert annotations). Anything else is rejected. */
 const SUPPORTED_KEYWORDS = new Set([
@@ -145,21 +146,21 @@ export function lastFencedJson(output: string): string | undefined {
 export function parseStructuredOutput(output: string, contract: unknown): unknown {
   const unsupported = unsupportedContractKeywords(contract);
   if (unsupported.length > 0)
-    throw new StructuredOutputError(
-      `output contract outside the supported subset (fail-closed): ${unsupported.join("; ")}`,
-    );
+    throw new StructuredOutputError({
+      message: `output contract outside the supported subset (fail-closed): ${unsupported.join("; ")}`,
+    });
   const raw = lastFencedJson(output);
   if (raw === undefined)
-    throw new StructuredOutputError(
-      "output contract declared but the agent output has no fenced ```json block",
-    );
+    throw new StructuredOutputError({
+      message: "output contract declared but the agent output has no fenced ```json block",
+    });
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch (err) {
-    throw new StructuredOutputError(
-      `fenced json block is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new StructuredOutputError({
+      message: `fenced json block is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
   const problems = contractViolations(value, contract);
   if (problems.length > 0) {
@@ -171,10 +172,11 @@ export function parseStructuredOutput(output: string, contract: unknown): unknow
     // reported purely as a failure because its final block omitted one field.
     const carried = isRecord(value) ? Object.keys(value) : [];
     const had = carried.length > 0 ? ` (the block carried: ${carried.join(", ")})` : "";
-    throw new StructuredOutputError(
-      `output violates its contract: ${problems.join("; ")}${had}. The step ran to completion, ` +
+    throw new StructuredOutputError({
+      message:
+        `output violates its contract: ${problems.join("; ")}${had}. The step ran to completion, ` +
         `so any side effects it had are already done — check them before re-running.`,
-    );
+    });
   }
   return value;
 }

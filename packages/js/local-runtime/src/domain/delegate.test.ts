@@ -196,7 +196,7 @@ describe("runDelegate", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    expect(exit.cause.toString()).toContain(new UnknownAgentError("gpt").message);
+    expect(exit.cause.toString()).toContain(UnknownAgentError.of("gpt").message);
     expect(recorder.requests).toHaveLength(0);
   });
 
@@ -206,7 +206,7 @@ describe("runDelegate", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    expect(exit.cause.toString()).toContain(new EmptyRosterError().message);
+    expect(exit.cause.toString()).toContain(EmptyRosterError.of().message);
   });
 });
 

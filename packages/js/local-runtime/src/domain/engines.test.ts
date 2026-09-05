@@ -83,6 +83,6 @@ describe("claimLease", () => {
 describe("EngineHostConflict", () => {
   it("says WHY only one host may tick, not merely that this one may not", () => {
     // An operator-facing refusal has to explain the consequence, or it reads as an arbitrary lock.
-    expect(new EngineHostConflict("host-b").message).toContain("double-fires");
+    expect(EngineHostConflict.of("host-b").message).toContain("double-fires");
   });
 });

@@ -1,3 +1,4 @@
+import { Data } from "effect";
 import { resolveAgent, UnknownAgentError } from "./agents.ts";
 import type { LocalAgentType } from "./models.ts";
 
@@ -103,31 +104,44 @@ const REFUSED: Readonly<Record<string, Refusal>> = {
 };
 
 /** An activity name no substrate knows — a definition bug, never a silent skip. */
-export class UnknownActivityError extends Error {
-  constructor(readonly activity: string) {
-    super(
-      `unknown activity '${activity}' — local execution runs run-<agent> plus ` +
+export class UnknownActivityError extends Data.TaggedError("UnknownActivityError")<{
+  readonly activity: string;
+  readonly message: string;
+}> {
+  /** The refusal text lives here so every construction site words it identically. */
+  static of(activity: string): UnknownActivityError {
+    return new UnknownActivityError({
+      activity,
+      message:
+        `unknown activity '${activity}' — local execution runs run-<agent> plus ` +
         `${BUILTIN_ACTIVITIES.join(", ")}.`,
-    );
-    this.name = "UnknownActivityError";
+    });
   }
 }
 
 /** An activity the local substrate declines, with the reason it declines it. */
-export class RefusedActivityError extends Error {
-  constructor(
-    readonly activity: string,
+export class RefusedActivityError extends Data.TaggedError("RefusedActivityError")<{
+  readonly activity: string;
+  readonly why: RefusalClass;
+  readonly message: string;
+}> {
+  /**
+   * The class is in the message because the two refusals call for different responses: a
+   * `pending` one may be worth waiting for or running on the service substrate today, while a
+   * `permanent` one means compose differently. A reader should not have to grep to tell which.
+   */
+  static of(
+    activity: string,
     reason: string,
-    readonly why: RefusalClass = "permanent",
-  ) {
-    // The class is in the message because the two refusals call for different responses: a
-    // `pending` one may be worth waiting for or running on the service substrate today, while a
-    // `permanent` one means compose differently. A reader should not have to grep to tell which.
-    super(
-      `'${activity}' cannot run on the local substrate (${why}): ${reason}.` +
+    why: RefusalClass = "permanent",
+  ): RefusedActivityError {
+    return new RefusedActivityError({
+      activity,
+      why,
+      message:
+        `'${activity}' cannot run on the local substrate (${why}): ${reason}.` +
         (why === "pending" ? " Run it on the service substrate meanwhile." : ""),
-    );
-    this.name = "RefusedActivityError";
+    });
   }
 }
 
@@ -140,9 +154,9 @@ export function classifyActivity(name: string): ActivityKind {
     try {
       return { kind: "agent", agent: resolveAgent(name.slice("run-".length)) };
     } catch (cause) {
-      if (cause instanceof UnknownAgentError) throw new UnknownActivityError(name);
+      if (cause instanceof UnknownAgentError) throw UnknownActivityError.of(name);
       throw cause;
     }
   }
-  throw new UnknownActivityError(name);
+  throw UnknownActivityError.of(name);
 }

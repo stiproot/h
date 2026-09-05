@@ -1,3 +1,4 @@
+import { Data } from "effect";
 import type { ChainMemberKind } from "./chain.ts";
 
 /**
@@ -18,7 +19,9 @@ import type { ChainMemberKind } from "./chain.ts";
 
 export type ChainData = Record<string, unknown>;
 
-export class ChainThreadError extends Error {}
+export class ChainThreadError extends Data.TaggedError("ChainThreadError")<{
+  readonly message: string;
+}> {}
 
 export interface WorkflowContract {
   /** ChainData → the workflow's fire-time params. Throws ChainThreadError if a required input is absent. */
@@ -72,10 +75,11 @@ function structuredField(value: Record<string, unknown>, path: string): unknown 
 function requireStructured(output: string | undefined, what: string): Record<string, unknown> {
   const structured = stepStructured(output);
   if (!structured)
-    throw new ChainThreadError(
-      `${what}: the completed workflow emitted no structured output — its template must declare ` +
+    throw new ChainThreadError({
+      message:
+        `${what}: the completed workflow emitted no structured output — its template must declare ` +
         "an outputs contract",
-    );
+    });
   return structured;
 }
 
@@ -100,7 +104,7 @@ export function capturePr(output: string | undefined, data: ChainData): void {
 export function captureReview(output: string | undefined, data: ChainData): void {
   const s = requireStructured(output, "captureReview");
   if (typeof s.verdict !== "string")
-    throw new ChainThreadError("captureReview: structured output has no 'verdict'");
+    throw new ChainThreadError({ message: "captureReview: structured output has no 'verdict'" });
   data.reviewFindings = s.verdict === "CLEAN" ? "" : String(s.summary ?? "");
 }
 
@@ -116,7 +120,7 @@ export function captureReview(output: string | undefined, data: ChainData): void
 export function captureAnswer(output: string | undefined, data: ChainData): void {
   const s = requireStructured(output, "captureAnswer");
   if (typeof s.answer !== "string" || s.answer === "")
-    throw new ChainThreadError("captureAnswer: structured output has no 'answer'");
+    throw new ChainThreadError({ message: "captureAnswer: structured output has no 'answer'" });
   data.answer = s.answer;
 }
 
@@ -133,7 +137,7 @@ export function reviewIsClean(output: string | undefined): boolean {
 
 function requireStr(data: ChainData, key: string, hint: string): string {
   const v = data[key];
-  if (typeof v !== "string" || v === "") throw new ChainThreadError(hint);
+  if (typeof v !== "string" || v === "") throw new ChainThreadError({ message: hint });
   return v;
 }
 
@@ -187,10 +191,11 @@ export function contractFor(member: MemberMappings): WorkflowContract {
       : (output, data) => {
           const structured = stepStructured(output);
           if (!structured)
-            throw new ChainThreadError(
-              `'${member.kind}' declares captures but the completed workflow emitted no ` +
+            throw new ChainThreadError({
+              message:
+                `'${member.kind}' declares captures but the completed workflow emitted no ` +
                 "structured output — does its template carry the outputContract step input?",
-            );
+            });
           // Namespace-implicit (D5): a member with an `id` writes under its own namespace `data[id]`,
           // so concurrent members of a stage never clobber; without an id it threads flat (the
           // degenerate one-member-per-stage case). A dotted `inputs` path (`id.field`) reads it back.
@@ -198,9 +203,9 @@ export function contractFor(member: MemberMappings): WorkflowContract {
           for (const [bbKey, field] of Object.entries(captures)) {
             const value = structuredField(structured, field);
             if (value === undefined || value === null)
-              throw new ChainThreadError(
-                `structured output has no field '${field}' (capture → ${bbKey})`,
-              );
+              throw new ChainThreadError({
+                message: `structured output has no field '${field}' (capture → ${bbKey})`,
+              });
             target[bbKey] = value;
           }
         },
@@ -215,9 +220,9 @@ export function contractFor(member: MemberMappings): WorkflowContract {
             // `until`'s `path`. A no-dot key is a one-step walk, i.e. the pre-D5 flat read.
             const value = structuredField(data, path);
             if (value === undefined || value === null || value === "")
-              throw new ChainThreadError(
-                `'${member.kind}' needs '${path}' on the chain data (input → ${param})`,
-              );
+              throw new ChainThreadError({
+                message: `'${member.kind}' needs '${path}' on the chain data (input → ${param})`,
+              });
             params[param] = value;
           }
           return withRepo(params, data);
@@ -262,10 +267,11 @@ export const MEMBER_KINDS: Record<ChainMemberKind, WorkflowContract> = {
     buildParams: (data) => {
       const pr = data.prNumber;
       if (typeof pr !== "string" || pr === "") {
-        throw new ChainThreadError(
-          "pr-review needs a PR number, but the previous workflow produced none " +
+        throw new ChainThreadError({
+          message:
+            "pr-review needs a PR number, but the previous workflow produced none " +
             "(no `pr` in its structured output — was the PR skipped?). Did the feature workflow open a PR?",
-        );
+        });
       }
       const params: Record<string, unknown> = { pr };
       // Optional passthrough: when the chain data carries a spec, thread it into the review
