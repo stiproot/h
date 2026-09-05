@@ -3,8 +3,6 @@
 import errno
 import json
 import os
-import pwd
-import shutil
 import subprocess
 from pathlib import Path
 
