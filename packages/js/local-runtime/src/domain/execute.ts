@@ -542,57 +542,68 @@ const runStep = (
     // the report is malformed. Exactly one retry, never a loop. This is LOCAL-SUBSTRATE ONLY:
     // wiring a second turn into a Dapr activity involves the host's workflow runtime and is a
     // separate, larger change; see the run-* activities in workflow-svc.
-    let contractResult: ReturnType<typeof applyOutputContract<AgentResult>>;
-    try {
-      contractResult = applyOutputContract(result, input.outputContract);
-    } catch (firstErr) {
-      if (!(firstErr instanceof StructuredOutputError)) {
-        // Non-contract failure (validator bug, unsupported keyword) — no retry.
-        return yield* Effect.fail(
-          new StepError({
-            step: id,
-            message: firstErr instanceof Error ? firstErr.message : String(firstErr),
-          }),
-        );
-      }
-      // AgentPort has no sessionId input, so prior output is passed in the prompt instead of
-      // resuming a named session. The agent still has its own context via its live session state.
-      const priorRaw = lastFencedJson(result.output) ?? "";
-      const contractJson = JSON.stringify(input.outputContract ?? {}, null, 2);
-      yield* progress.emit(`↻ ${id}: block rejected, asking for a reformat (1 attempt)`);
-      const reformatReport = yield* agent.run({
-        agent: classified.agent,
-        task: buildReformatPrompt(firstErr.message, contractJson, priorRaw),
-        cwd,
-        timeoutMs: job.timeoutMs,
-        model: str(input.model),
-        permissionMode: "plan",
-        runsDir: job.runsDir,
-        group: job.group,
+    // Errors stay in the Effect error channel: `Effect.try` lifts the validator's throw instead of
+    // a raw try/catch inside the generator, and recovery is a `catchAll` that re-fails with the
+    // step's own error type. (effect-claude-primitives / effect-error-handling: "errors are typed
+    // values in the E channel, not thrown exceptions".)
+    const validate = (r: AgentResult) =>
+      Effect.try({
+        try: () => applyOutputContract(r, input.outputContract),
+        catch: (cause) => cause,
       });
-      if (reformatReport.status === "failed") {
-        return yield* Effect.fail(
-          new StepError({
-            step: id,
-            message: `Reformat was attempted. ${reformatReport.error ?? "reformat agent failed"}`,
-          }),
-        );
-      }
-      const reformatResult: AgentResult = {
-        sessionId: reformatReport.sessionId ?? null,
-        output: reformatReport.output,
-        toolCalls: reformatReport.toolCalls ?? null,
-      };
-      try {
-        contractResult = applyOutputContract(reformatResult, input.outputContract);
-      } catch (secondErr) {
-        const msg = secondErr instanceof Error ? secondErr.message : String(secondErr);
-        return yield* Effect.fail(
-          new StepError({ step: id, message: `Reformat was attempted. ${msg}` }),
-        );
-      }
-    }
-    return contractResult;
+
+    return yield* validate(result).pipe(
+      Effect.catchAll((firstErr) => {
+        if (!(firstErr instanceof StructuredOutputError)) {
+          // Non-contract failure (validator bug, unsupported keyword) — no retry.
+          return Effect.fail(
+            new StepError({
+              step: id,
+              message: firstErr instanceof Error ? firstErr.message : String(firstErr),
+            }),
+          );
+        }
+        return Effect.gen(function* () {
+          // AgentPort has no sessionId input, so prior output is passed in the prompt instead of
+          // resuming a named session. The agent still has its own context via its live session.
+          const priorRaw = lastFencedJson(result.output) ?? "";
+          const contractJson = JSON.stringify(input.outputContract ?? {}, null, 2);
+          yield* progress.emit(`↻ ${id}: block rejected, asking for a reformat (1 attempt)`);
+          const reformatReport = yield* agent.run({
+            agent: classified.agent,
+            task: buildReformatPrompt(firstErr.message, contractJson, priorRaw),
+            cwd,
+            timeoutMs: job.timeoutMs,
+            model: str(input.model),
+            permissionMode: "plan",
+            runsDir: job.runsDir,
+            group: job.group,
+          });
+          if (reformatReport.status === "failed") {
+            return yield* Effect.fail(
+              new StepError({
+                step: id,
+                message: `Reformat was attempted. ${reformatReport.error ?? "reformat agent failed"}`,
+              }),
+            );
+          }
+          const reformatResult: AgentResult = {
+            sessionId: reformatReport.sessionId ?? null,
+            output: reformatReport.output,
+            toolCalls: reformatReport.toolCalls ?? null,
+          };
+          return yield* validate(reformatResult).pipe(
+            Effect.mapError(
+              (secondErr) =>
+                new StepError({
+                  step: id,
+                  message: `Reformat was attempted. ${secondErr instanceof Error ? secondErr.message : String(secondErr)}`,
+                }),
+            ),
+          );
+        });
+      }),
+    );
   }).pipe(
     Effect.catchAllDefect((defect) =>
       // resolveTokenString and classifyActivity throw (they are shared, dependency-free code);
