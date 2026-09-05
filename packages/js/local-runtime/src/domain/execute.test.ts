@@ -17,7 +17,13 @@ import type {
   WorkflowJob,
   WorktreeSpec,
 } from "./models.ts";
-import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import { AgentPort, ExecPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+
+// Tests don't exercise run-exec steps; provide a stub that always fails loud if called,
+// so a test that accidentally dispatches through ExecPort sees a clear failure.
+const NoExecPort = Layer.succeed(ExecPort, {
+  runCommand: () => Effect.die(new Error("ExecPort not expected in this test")),
+});
 
 const job = (steps: WorkflowStep[], over: Partial<WorkflowJob> = {}): WorkflowJob => ({
   kind: "workflow",
@@ -108,6 +114,7 @@ const run = (j: WorkflowJob, layer: Layer.Layer<Ports>) =>
       Effect.provide(AllowAllExecPolicy),
       Effect.provide(memoryWfStore().layer),
       Effect.provide(memoryArmStores().layer),
+      Effect.provide(NoExecPort),
     ),
   );
 
@@ -598,6 +605,7 @@ describe("runWorkflow — the wf:run bracket", () => {
         Effect.provide(AllowAllExecPolicy),
         Effect.provide(wf.layer),
         Effect.provide(memoryArmStores().layer),
+        Effect.provide(NoExecPort),
       ),
     );
     return { envelope, rows: wf.rows };
@@ -636,6 +644,7 @@ describe("runWorkflow — the wf:run bracket", () => {
         Effect.provide(AllowAllExecPolicy),
         Effect.provide(wf.layer),
         Effect.provide(memoryArmStores().layer),
+        Effect.provide(NoExecPort),
       ),
     );
     expect(wf.rows.get("feature-y")?.status).toBe("failed");
@@ -684,6 +693,7 @@ describe("runWorkflow — the armCron closing bracket (§10)", () => {
         Effect.provide(AllowAllExecPolicy),
         Effect.provide(memoryWfStore().layer),
         Effect.provide(arms.layer),
+        Effect.provide(NoExecPort),
       ),
     ).then((envelope) => ({ envelope, rows: arms.armed }));
   };
@@ -713,6 +723,7 @@ describe("runWorkflow — the armCron closing bracket (§10)", () => {
         Effect.provide(AllowAllExecPolicy),
         Effect.provide(memoryWfStore().layer),
         Effect.provide(arms.layer),
+        Effect.provide(NoExecPort),
       ),
     );
     expect(arms.armed.size).toBe(0);
@@ -907,6 +918,7 @@ describe("runWorkflow — the quota gate", () => {
       Effect.provide(AllowAllExecPolicy),
       Effect.provide(memoryWfStore().layer),
       Effect.provide(memoryArmStores().layer),
+      Effect.provide(NoExecPort),
     );
     const driven = drive
       ? Effect.gen(function* () {

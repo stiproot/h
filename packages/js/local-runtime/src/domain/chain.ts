@@ -12,7 +12,7 @@ import type {
   JournalRecord,
   LocalChainMember,
 } from "./models.ts";
-import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import { AgentPort, ExecPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 import type { CronStore, ExecPolicyStore, QuotaStore, WfStore, WorkflowStore } from "engine-core";
 
 /**
@@ -64,6 +64,7 @@ export const runChain = (
   | WfStore
   | CronStore
   | WorkflowStore
+  | ExecPort
 > =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
@@ -312,6 +313,7 @@ const runMember = (
   | WfStore
   | CronStore
   | WorkflowStore
+  | ExecPort
 > =>
   Effect.gen(function* () {
     const member = job.members[index]!;

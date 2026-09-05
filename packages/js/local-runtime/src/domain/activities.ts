@@ -40,7 +40,12 @@ export type ActivityKind =
  */
 export type RefusalClass = "pending" | "permanent";
 
-export const BUILTIN_ACTIVITIES = ["setup", "create-worktree", "register-discover"] as const;
+export const BUILTIN_ACTIVITIES = [
+  "setup",
+  "create-worktree",
+  "register-discover",
+  "run-exec",
+] as const;
 export type BuiltinActivity = (typeof BUILTIN_ACTIVITIES)[number];
 
 const isBuiltin = (name: string): name is BuiltinActivity =>

@@ -10,7 +10,11 @@ import type {
   JournalRecord,
   LocalChainMember,
 } from "./models.ts";
-import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import { AgentPort, ExecPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+
+const NoExecPort = Layer.succeed(ExecPort, {
+  runCommand: () => Effect.die(new Error("ExecPort not expected in this test")),
+});
 
 /**
  * A member whose single step echoes a canned structured block, keyed by the member's marker.
@@ -118,6 +122,7 @@ const run = (j: ChainJob, layer: Layer.Layer<Ports>) =>
       Effect.provide(AllowAllExecPolicy),
       Effect.provide(memoryWfStore().layer),
       Effect.provide(memoryArmStores().layer),
+      Effect.provide(NoExecPort),
     ),
   );
 
@@ -392,6 +397,7 @@ describe("runChain", () => {
           Effect.provide(memoryWfStore().layer),
           Effect.provide(memoryArmStores().layer),
           Effect.provide(TestContext.TestContext),
+          Effect.provide(NoExecPort),
         ),
       );
 
