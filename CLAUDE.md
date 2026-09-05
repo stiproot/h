@@ -941,7 +941,8 @@ relative link (`../../.h/skills/<name>`, so clones, worktrees and containers all
 than copied — a skill edit is live in both homes at once, and there is no copy to drift.
 `scripts/check-skills.mjs` enforces it and `node scripts/link-skills.mjs` repairs it; run that
 after adding a skill. A REAL directory in `.claude/skills/` is legal and means a repo-only skill
-agents are not given (`diagrams`, `integrate-agent`, `observe-h`). This is a guard because the gap
+agents are not given (`diagrams`, `integrate-agent`, `observe-h`, `night-campaign` — the
+overnight campaign loop, which only the DRIVER session runs). This is a guard because the gap
 is SILENT: `ways-of-working` and `delegate-locally` sat in the source dir for ten days reachable from
 neither home — a local-substrate run skips the setup step that would have copied them, and a
 missing skill never announces itself, it just never triggers.
