@@ -109,6 +109,22 @@ no hand-over. Re-measure its headline numbers against the tree before handing ov
   import built `dist`, so the baseline reported two phantom failures. Build, THEN baseline.
 - **An assertion satisfied by other people's data.** A test filtered a shared feed and asserted
   non-empty; any other worker's row satisfied it. Assert on the fixture's own id.
+- **A spec mitigation the target API cannot express.** Converting tests onto an API that
+  *degrades* — returns a fallback where the old call reported an error — silently deletes the
+  assertion that proved the call worked. A conversion of five query tests onto a
+  `callOr(..., [])` wrapper left `expect(Array.isArray(result)).toBe(true)` as the only surviving
+  assertion, which is true when the read FAILS too; measured against a dead database, all five
+  passed with nothing running. The spec had named the risk and then prescribed "keep asserting on
+  real fields", which that surface cannot do.
+
+  So when specifying a migration onto a degrading API: **for every assertion being preserved, name
+  the expression that will carry it on the new surface.** If you cannot write that expression, the
+  test cannot be converted — say so and leave it raw with a comment, rather than asking for a best
+  effort. Prose like "assert on real fields" is not an expression. And prove the vacuity by
+  breaking the dependency, not by reading the code: point a client at a dead port and see which
+  tests still pass. (Breaking it for the WHOLE suite usually proves nothing — a global fixture
+  setup dies first. Exercise the one function.)
+
 - **The measuring instrument was the bug.** Twice, on consecutive nights, a number I produced to
   make a decision was wrong in a way that looked authoritative:
   - *Indentation read as nesting.* Counting `expect(` at indent >= 8 as "inside a guard" is right
