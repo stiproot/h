@@ -743,6 +743,135 @@ describe("runWorkflow — the armCron closing bracket (§10)", () => {
   });
 });
 
+describe("runWorkflow — reformat retry on contract violation", () => {
+  const contract = {
+    type: "object",
+    required: ["answer"],
+    properties: { answer: { type: "string" } },
+  };
+  const validOut = '```json\n{"answer": "42"}\n```';
+  const badOut = "no fenced json block here";
+
+  /**
+   * A stub layer where AgentPort returns responses from a sequence — one per invocation.
+   * Remaining invocations beyond the sequence replay the last entry.
+   */
+  const sequenceStub = (
+    responses: Array<{ output: string; toolCalls: number | null; status?: "completed" | "failed" }>,
+  ): { layer: Layer.Layer<Ports>; recorder: Recorder } => {
+    const recorder: Recorder = {
+      agentRuns: [],
+      worktrees: [],
+      provisioned: [],
+      progress: [],
+      journal: new Map(),
+    };
+    let callIndex = 0;
+    const layer = Layer.mergeAll(
+      Layer.succeed(AgentPort, {
+        run: (request: AgentRunRequest) =>
+          Effect.sync(() => {
+            recorder.agentRuns.push(request);
+            const resp = responses[Math.min(callIndex, responses.length - 1)]!;
+            callIndex++;
+            return {
+              agent: request.agent,
+              status: resp.status ?? "completed",
+              cwd: request.cwd,
+              output: resp.output,
+              durationMs: 5,
+              toolCalls: resp.toolCalls,
+            } satisfies AgentRunReport;
+          }),
+      }),
+      Layer.succeed(WorkspacePort, {
+        prepare: (spec: WorktreeSpec) =>
+          Effect.sync(() => {
+            recorder.worktrees.push(spec);
+            return {
+              worktreePath: spec.worktreePath,
+              seeded: { copied: [], kept: [], missing: [] },
+            };
+          }),
+        provision: (cwd: string, commands: ReadonlyArray<{ cmd: string }>) =>
+          Effect.sync(() => {
+            recorder.provisioned.push({ cwd, commands });
+          }),
+      }),
+      Layer.succeed(ProgressPort, {
+        emit: (line: string) =>
+          Effect.sync(() => {
+            recorder.progress.push(line);
+          }),
+      }),
+      Layer.succeed(JournalPort, {
+        replay: (_url, group) => Effect.succeed(recorder.journal.get(group) ?? []),
+        append: (_url, group, record) =>
+          Effect.sync(() => {
+            const list = recorder.journal.get(group) ?? [];
+            if (!list.some((existing) => existing.seq === record.seq)) list.push(record);
+            recorder.journal.set(group, list);
+          }),
+      }),
+    );
+    return { layer, recorder };
+  };
+
+  const contractStep = (): WorkflowStep => ({
+    id: "answer",
+    activity: "run-claude",
+    input: { task: "q", outputContract: contract },
+  });
+
+  it("succeeds with the reformat block when the first block violates but the second is valid", async () => {
+    // Demonstration 1: first block violates, second is valid — step must succeed.
+    const { layer, recorder } = sequenceStub([
+      { output: badOut, toolCalls: 7 },
+      { output: validOut, toolCalls: 0 },
+    ]);
+    const envelope = await run(job([contractStep()]), layer);
+
+    expect(envelope.ok).toBe(true);
+    expect(recorder.agentRuns).toHaveLength(2);
+    // The reformat result's toolCalls comes from the second report (zero tool calls assertion).
+    // agentRuns stores requests; the toolCalls on the step result comes from the reformat report.
+    expect((envelope.results.answer as { toolCalls: number | null }).toolCalls).toBe(0);
+    expect((envelope.results.answer as { structured: unknown }).structured).toEqual({
+      answer: "42",
+    });
+    // The reformat progress line must be visible in the run ledger.
+    expect(recorder.progress.some((l) => l.includes("↻ answer:") && l.includes("reformat"))).toBe(
+      true,
+    );
+  });
+
+  it("fails with SECOND block's violations and states a reformat was attempted when both blocks fail", async () => {
+    // Demonstration 2: both blocks violate — step must fail, error names the second violation.
+    const { layer, recorder } = sequenceStub([
+      { output: badOut, toolCalls: 7 },
+      { output: "still no json", toolCalls: 0 },
+    ]);
+    const envelope = await run(job([contractStep()]), layer);
+
+    expect(envelope.ok).toBe(false);
+    expect(recorder.agentRuns).toHaveLength(2);
+    expect(envelope.error).toContain("Reformat was attempted.");
+    // The error must describe the SECOND block's problems (not merely echo the first).
+    expect(envelope.error).toContain("fenced");
+  });
+
+  it("does NOT retry on a non-contract failure — only one invocation, no reformat message", async () => {
+    // Demonstration 3: agent returns status:failed — no retry, single invocation.
+    const { layer, recorder } = sequenceStub([{ output: "", toolCalls: null, status: "failed" }]);
+    const envelope = await run(job([contractStep()]), layer);
+
+    expect(envelope.ok).toBe(false);
+    expect(recorder.agentRuns).toHaveLength(1);
+    expect(envelope.error).not.toContain("reformat");
+    expect(envelope.error).not.toContain("Reformat");
+  });
+});
+
 describe("runWorkflow — the quota gate", () => {
   /** What claude's CLI reported last time: the 5h window nearly spent, resetting in an hour. */
   const hot = (
