@@ -29,3 +29,17 @@ When your task says to publish feedback, a result, or a request for follow-up wo
 the topic the task names. Put everything the subscriber needs into the event data — do not assume
 it can see your workspace, since it runs in its own. After publishing, report what you published
 and to which topic.
+
+## Effect code follows the effect-claude-primitives plugin
+
+If you are changing TypeScript that uses Effect, load the `effect-claude-primitives` skills first
+(`effect-error-handling`, `effect-core-concepts`, …). Skills are trigger-loaded on a description
+match, so a task that never names Effect never loads them — name it yourself when the code you are
+touching uses it.
+
+Two rules that have already cost this repo defects:
+- Errors belong in the typed `E` channel: lift a throwing call with `Effect.try`, recover with
+  `catchAll`/`catchTag`. Never a raw `try/catch` inside an `Effect.gen`.
+- `Effect.promise` is for promises that CANNOT reject. A rejection is a DEFECT and
+  `Effect.ignore` does not catch defects, so `Effect.promise(...).pipe(Effect.ignore)` dies
+  instead of swallowing. Use `Effect.tryPromise`. Guarded by `scripts/check-effect-idioms.mjs`.

@@ -1164,6 +1164,38 @@ fails the build if a steering doc cites the bare one. (Found 2026-08-06 during t
 recorded only in that plan; it then bit a local-substrate run on 2026-08-10 because the steering
 docs still carried the broken form — a plan finding that was never lifted.)
 
+## Effect code follows the effect-claude-primitives plugin
+
+**Changing TypeScript that uses Effect means loading the `effect-claude-primitives` skills
+first** — `effect-error-handling`, `effect-core-concepts`, `effect-service-pattern` and the rest
+(installed for this repo; each skill's `references/` holds the full pattern
+corpus, opened on demand). They are the house rules for this codebase's Effect usage, not background
+reading.
+
+The catch that makes this a steering line rather than a preference: **agent skills are
+trigger-loaded on a description match.** An installed skill that nothing in the task text matches
+never loads — so a spec or a prompt that describes the work without naming Effect gets an agent
+that writes Effect code having never seen the rules. That is not hypothetical: on 2026-09-04 a
+spec asked for a retry around a contract validator and never used the word "Effect" (its only
+matches were the English "side effects"); the run shipped a raw `try/catch` inside an
+`Effect.gen`, REPLACING an idiomatic `Effect.try`, in a repo where the plugin was installed in
+that very worktree. `write-spec` Rule 7 is the spec-side half of this rule.
+
+The two idioms that cost us real defects, both now guarded or fixed:
+
+- **Errors belong in the typed `E` channel.** Lift a throwing call with `Effect.try` and recover
+  with `catchAll`/`catchTag` — never a raw `try/catch` inside an `Effect.gen`.
+- **`Effect.promise` is for promises that CANNOT reject.** A rejection becomes a DEFECT, and
+  `Effect.ignore` does not catch defects — so `Effect.promise(...).pipe(Effect.ignore)` says
+  "swallow this" and dies instead. Use `Effect.tryPromise`. `scripts/check-effect-idioms.mjs`
+  fails the build on that pairing; it found nine of them (eight Dapr `stop()` finalizers).
+
+Known divergence, deliberately not yet converted: `local-runtime/domain` and `workflow-core`
+define errors as plain `extends Error` rather than `Data.TaggedError`, so recovery there is
+`instanceof` rather than `catchTag`, while 39 call sites elsewhere in the repo use the tagged
+form. `StructuredOutputError` is shared with workflow-svc's `run-*` activities, so converting it
+is a cross-package change to a shared type — an operator decision, not a drive-by.
+
 ## The guards (`bun run lint`)
 
 *Harden by encoding* means the guards ARE the steering: each one is an invariant somebody decided
@@ -1184,6 +1216,7 @@ live incident that motivated it — read that before working around one.
 | `check-diagrams` | canonical diagrams are indexed both ways, kind-suffixed, one fence, `## Reading notes`; a `-class` doc with no manifest (which the generator skips silently) is caught |
 | `check-hex-lint` | every TS package with a `domain/` or `presentation/` runs dependency-cruiser in its `lint` |
 | `check-lint-parity` | every TS package's `lint` script runs the SAME checks — the repo had drifted into two halves each missing what the other had |
+| `check-effect-idioms` | `Effect.promise` never pairs with `Effect.ignore` — a rejection is a DEFECT that `ignore` cannot catch, so the pairing lies about what it does |
 | `check-runtime-parity` | neither substrate grows a private copy of `workflow-core` / `engine-core` semantics |
 | `check-sweep-parity` | the TS worktree-sweep rules match the operator command's behaviour |
 | `check-refusal-classification` | local refusals are `pending` vs `permanent`, and **no refusal outlives the engine it was waiting for** |
