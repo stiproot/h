@@ -1,0 +1,9 @@
+id: effect-plain-extends-error
+language: TypeScript
+message: |
+  class $NAME extends Error loses the discriminant that catchTag needs.
+  Use Data.TaggedError("$NAME")<{...}> so errors are recoverable by tag.
+  [Incident 2026-09-05: 8 classes converted in #144.]
+severity: warning
+rule:
+  pattern: class $NAME extends Error { $$$BODY }

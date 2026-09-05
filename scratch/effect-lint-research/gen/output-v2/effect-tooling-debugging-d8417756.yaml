@@ -1,0 +1,14 @@
+id: effect-tooling-debugging-d8417756
+language: TypeScript
+# SOURCE: ~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md
+# SOURCE_HASH: f83e6d56932d7573
+# GENERATED: stub — bad/good pair from inline fence comments
+# HUMAN REVIEW REQUIRED: convert the code shape below to an ast-grep rule
+message: |
+  Using Promise where Effect should be used
+  Prefer: Using Effect
+severity: warning
+rule:
+  # TODO: fill in from bad code:
+  # const fetchData = async () => { }  // Warn in Effect codebase
+  pattern: "TODO"

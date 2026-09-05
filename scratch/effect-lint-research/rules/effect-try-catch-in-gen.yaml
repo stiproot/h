@@ -1,0 +1,12 @@
+id: effect-try-catch-in-gen
+language: TypeScript
+message: |
+  Raw try/catch inside Effect.gen bypasses the typed error channel.
+  Use Effect.try({ try: ..., catch: ... }) to lift the failure into Effect<A, E>.
+  [Incident 2026-09-05: found in #142, replaced with Effect.try.]
+severity: warning
+rule:
+  kind: try_statement
+  inside:
+    pattern: Effect.gen($$$)
+    stopBy: end

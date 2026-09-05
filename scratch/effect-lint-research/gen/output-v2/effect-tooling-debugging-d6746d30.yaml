@@ -1,0 +1,16 @@
+id: effect-tooling-debugging-d6746d30
+language: TypeScript
+# SOURCE: ~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md
+# SOURCE_HASH: f83e6d56932d7573
+# GENERATED: stub — bad/good pair from inline fence comments
+# HUMAN REVIEW REQUIRED: convert the code shape below to an ast-grep rule
+message: |
+  Throwing errors
+  Prefer: Returning Effect with error
+severity: warning
+rule:
+  # TODO: fill in from bad code:
+  # const validate = (x: unknown) => {
+  #   if (!x) throw new Error("Invalid")  // Error
+  # }
+  pattern: "TODO"
