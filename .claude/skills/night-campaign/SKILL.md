@@ -109,3 +109,19 @@ no hand-over. Re-measure its headline numbers against the tree before handing ov
   import built `dist`, so the baseline reported two phantom failures. Build, THEN baseline.
 - **An assertion satisfied by other people's data.** A test filtered a shared feed and asserted
   non-empty; any other worker's row satisfied it. Assert on the fixture's own id.
+- **The measuring instrument was the bug.** Twice, on consecutive nights, a number I produced to
+  make a decision was wrong in a way that looked authoritative:
+  - *Indentation read as nesting.* Counting `expect(` at indent >= 8 as "inside a guard" is right
+    for `describe > it` and silently wrong for `describe > describe > it`, where every assertion
+    already sits at indent 8. It produced "25 of 25 assertions are vacuous" and excluded two
+    healthy files from a conversion campaign. One file happened to have the shallow shape, so the
+    metric looked corroborated.
+  - *`pgrep -f <pattern>` matching itself.* Checking for surviving child processes reported four
+    survivors; all four were the measurement — `pgrep`'s own cmdline and the `sh -c` wrapper both
+    contain the pattern. A `ps` listing showed zero. I nearly filed a leak that did not exist.
+
+  Both were caught only by looking at the *individual rows* behind the aggregate. So: **before a
+  count decides anything, print the things it counted and read a few.** Prefer counting the
+  construct you actually care about over a proxy for it, and when a measurement indicts someone
+  else's work, suspect the instrument first — it is the cheaper thing to check, and a retraction
+  costs far more than a re-run.
