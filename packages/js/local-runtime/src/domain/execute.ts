@@ -31,7 +31,7 @@ import type {
   WorkflowJob,
   WorkflowRunRef,
 } from "./models.ts";
-import { AgentPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
+import { AgentPort, ExecPort, JournalPort, ProgressPort, WorkspacePort } from "./ports.ts";
 
 /** A step did not produce a result. Carries the step id so the envelope can name the failure. */
 export class StepError extends Data.TaggedError("StepError")<{
@@ -147,6 +147,7 @@ export const runWorkflow = (
   | WfStore
   | CronStore
   | WorkflowStore
+  | ExecPort
 > =>
   Effect.gen(function* () {
     const progress = yield* ProgressPort;
@@ -190,12 +191,12 @@ export const runWorkflow = (
       execute: Effect.Effect<
         unknown,
         StepError,
-        AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore
+        AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore | ExecPort
       >,
     ): Effect.Effect<
       unknown,
       StepError,
-      AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore
+      AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore | ExecPort
     > => {
       const id = stepId(step);
       if (done.has(id)) {
@@ -405,7 +406,7 @@ const runStep = (
 ): Effect.Effect<
   unknown,
   StepError,
-  AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore
+  AgentPort | WorkspacePort | ExecPolicyStore | QuotaStore | CronStore | ExecPort
 > =>
   Effect.gen(function* () {
     const id = stepId(step);
@@ -465,6 +466,59 @@ const runStep = (
         ).pipe(Effect.mapError((err) => new StepError({ step: id, message: err.message })));
         yield* progress.emit(`⟳ discovery cron armed: ${result.discoverId}`);
         return result;
+      }
+
+      if (classified.name === "run-exec") {
+        const command = str(input.command);
+        if (!command) {
+          return yield* Effect.fail(
+            new StepError({ step: id, message: "'run-exec' requires a 'command' input" }),
+          );
+        }
+        const cwd = str(input.cwd) ?? job.repoPath;
+        const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : job.timeoutMs;
+        const start = yield* Clock.currentTimeMillis;
+
+        const exec = yield* ExecPort;
+        const execResult = yield* exec.runCommand(command, cwd, timeoutMs).pipe(
+          // Both ExecError (non-zero exit) and ExecTimeoutError carry a self-describing message.
+          Effect.mapError((err) => new StepError({ step: id, message: err.message })),
+        );
+
+        const elapsedSec = ((yield* Clock.currentTimeMillis) - start) / 1000;
+        yield* progress.emit(`⚙ ${id}: exit ${execResult.exitCode} in ${elapsedSec.toFixed(1)}s`);
+
+        // Apply the output contract to stdout — same seam as the agent path.
+        const validate = () =>
+          Effect.try({
+            try: () =>
+              applyOutputContract(
+                { sessionId: null, output: execResult.stdout, toolCalls: null },
+                input.outputContract,
+              ),
+            catch: (cause) => cause,
+          });
+
+        const validated = yield* validate().pipe(
+          Effect.catchAll((err) =>
+            Effect.fail(
+              new StepError({
+                step: id,
+                message: err instanceof Error ? err.message : String(err),
+              }),
+            ),
+          ),
+        );
+
+        return {
+          exitCode: execResult.exitCode,
+          stdout: execResult.stdout,
+          stderr: execResult.stderr,
+          ...(execResult.stdoutTruncated ? { stdoutTruncated: true } : {}),
+          ...(execResult.stderrTruncated ? { stderrTruncated: true } : {}),
+          notes: execResult.notes,
+          ...(validated.structured !== undefined ? { structured: validated.structured } : {}),
+        };
       }
 
       // setup: skipped unless asked for. A template's setup installs h skills into ~/.claude,

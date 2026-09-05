@@ -98,3 +98,45 @@ export class ProgressPort extends Context.Tag("local-runtime/ProgressPort")<
     readonly emit: (line: string) => Effect.Effect<void>;
   }
 >() {}
+
+/** The result of a shell command run through the `run-exec` builtin activity. */
+export interface ExecResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly stdoutTruncated?: true;
+  readonly stderrTruncated?: true;
+  readonly notes?: string;
+}
+
+/** A `run-exec` step's command exited with a non-zero status. */
+export class ExecError extends Data.TaggedError("ExecError")<{
+  readonly command: string;
+  readonly exitCode: number;
+  readonly stderrTail: string;
+  readonly message: string;
+}> {}
+
+/** A `run-exec` step's command did not finish within `timeoutMs`. */
+export class ExecTimeoutError extends Data.TaggedError("ExecTimeoutError")<{
+  readonly command: string;
+  readonly timeoutMs: number;
+  readonly message: string;
+}> {}
+
+/**
+ * Run a shell command and capture its output.
+ *
+ * This port lets the domain dispatch `run-exec` steps without importing platform I/O directly.
+ * The infrastructure adapter (`ExecPortLive`) provides the real `CommandExecutor`-backed implementation.
+ */
+export class ExecPort extends Context.Tag("local-runtime/ExecPort")<
+  ExecPort,
+  {
+    readonly runCommand: (
+      command: string,
+      cwd: string,
+      timeoutMs: number,
+    ) => Effect.Effect<ExecResult, ExecError | ExecTimeoutError>;
+  }
+>() {}

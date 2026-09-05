@@ -20,6 +20,7 @@ import { runDelegate } from "./domain/delegate.ts";
 import { runWorkflow } from "./domain/execute.ts";
 import { LOCAL_PROTOCOL_VERSION, LocalJob } from "./domain/models.ts";
 import { AgentCliAgentLive } from "./infrastructure/agent-cli-agent.ts";
+import { ExecPortLive } from "./infrastructure/exec-activity.ts";
 import { GitWorkspaceLive } from "./infrastructure/git-workspace.ts";
 import { NatsJournalLive } from "./infrastructure/nats-journal.ts";
 import { GitHubSourceReaderLive } from "git-core";
@@ -76,6 +77,8 @@ const AppLive = Layer.mergeAll(
   // never touches the fabric.
   NatsJournalLive,
   registries,
+  // Provides ExecPort so run-exec steps can run shell commands through the real CommandExecutor.
+  ExecPortLive.pipe(Layer.provide(NodeContext.layer)),
 );
 
 /** Everything the engine host needs: the registries it decides over, and the fire path it acts through. */
