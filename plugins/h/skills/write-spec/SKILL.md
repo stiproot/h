@@ -1,6 +1,6 @@
 ---
 name: write-spec
-description: Write the spec a delegated implementing agent is handed — the sections, order, six rules (each with its incident), and the mechanical read-back the driver checks before reading the diff. Use whenever authoring a spec for `h delegate`, `h workflow run --local`, or `h chain run --local` against a consumer repo.
+description: Write the spec a delegated implementing agent is handed — the sections, order, seven rules (each with its incident), and the mechanical read-back the driver checks before reading the diff. Use whenever authoring a spec for `h delegate`, `h workflow run --local`, or `h chain run --local` against a consumer repo.
 ---
 
 # Writing a spec an implementing agent can execute unsupervised
@@ -79,7 +79,7 @@ carries those numbers".
 
 ---
 
-## Part 2 — the six rules
+## Part 2 — the seven rules
 
 Each rule is paired with the incident that made it necessary. One sentence per incident.
 
@@ -166,6 +166,24 @@ because prose is honoured three times in four and a reader cannot tell which tim
 **Incident:** a PR was opened against `main` with `baseBranch=beta` clearly stated in the task
 text — 69 files onto the wrong branch, reverted by hand. The base is now a contract field the
 run reports, which is what makes it checkable.
+
+
+### Rule 7: Name the stack's own guides when the change touches code they govern
+
+If the code being changed lives under a framework with its own conventions — Effect, a plugin's
+skills, a house style guide — SAY SO IN THE SPEC, in the words those guides announce themselves
+with. Agent skills are trigger-loaded on a description match: an installed skill that nothing in
+the task text matches never loads, so the agent writes the change without ever seeing the rules
+it is being judged against. Naming the framework is what turns an available guide into a loaded
+one.
+
+**Incident:** a spec asked for a retry around a contract validator in an Effect codebase and
+never used the word "Effect" — its only two matches were the English phrase "side effects". The
+`effect-claude-primitives` plugin was installed in the run's own worktree, its
+`effect-error-handling` skill says errors belong in the typed `E` channel "not by wrapping
+everything in try/catch", and the run shipped a raw `try/catch` inside an `Effect.gen` that
+REPLACED an existing idiomatic `Effect.try`. The agent followed the spec exactly; the spec never
+pointed it at the rules.
 
 ---
 
