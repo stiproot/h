@@ -1,6 +1,9 @@
 # Generate Effect lint rules from the effect-claude-primitives plugin
 
-Status: Planning — feasibility and design are settled; what remains is implementation.
+Status: Planning — the CORE question is open and is the point of this plan: **which of the
+plugin's 247 patterns can be linted at all?** Generation/refresh was only ever the STRETCH goal,
+and it is answered below (a manifest and drift check, never derived rules). Rule mechanics are
+settled: ast-grep, three rules verified against this repo.
 **Revisit when:** the Effect audit's findings recur (a fourth Effect idiom defect), or
 when the plugin publishes a version whose guidance the repo has not reviewed.
 Established: 2026-09-05
@@ -20,6 +23,26 @@ Only (2) is guarded today, by a bespoke `scripts/check-effect-idioms.mjs` on the
 standards live in a plugin that evolves upstream**, while the enforcement lives in hand-written
 guards that do not. The rules and the guards drift apart silently, which is the same failure mode
 `vizzle doc --check` exists to prevent for diagrams.
+
+## The core question, and what is merely a stretch
+
+**CORE: can these concepts be linted at all?** The plugin carries **247 patterns** (`## ` headings
+across every skill's `references/`, counted 2026-09-05) plus the per-skill prose. They are written
+for a HUMAN — "choose `Effect.gen` for multi-step flows", "model failures precisely" — and much of
+that is irreducibly a judgement, not a syntactic shape. That is expected and fine. The question
+worth answering is where the line falls: which patterns reduce to a deterministic AST shape, which
+are matchable only with false positives a human must adjudicate, and which are pure design
+guidance a linter can never carry. A plan that ends with "here are the 20 patterns that ARE
+mechanically enforceable, and here is why the other 227 are not" is a success.
+
+**STRETCH: can the rules be generated and refreshed from the plugin?** Answered below (Q1–Q3):
+essentially no for derivation — 328 code fences, one usable good/bad pair — and yes for a
+manifest plus a content-hash drift check. Do not spend more effort trying to derive rules from
+prose; that question is closed.
+
+The failure mode to avoid is measuring the stretch goal and calling it the answer. A generator
+that emits nothing is not evidence that the concepts are unlintable — the three rules already
+verified against this repo prove otherwise.
 
 ## Feasibility — already established, do not re-litigate
 

@@ -1,0 +1,10 @@
+id: effect-promise-ignore
+language: TypeScript
+message: |
+  Effect.promise() paired with Effect.ignore() silently swallows a defect.
+  A rejection from Effect.promise is a Cause.Die, which Effect.ignore does not catch.
+  Use Effect.tryPromise({ try: ..., catch: ... }).pipe(Effect.ignore) instead.
+  [Incident 2026-09-05: 9 instances in this repo, all latent shutdown crashes.]
+severity: error
+rule:
+  pattern: Effect.promise($$$ARGS).pipe(Effect.ignore)

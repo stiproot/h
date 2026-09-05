@@ -1,0 +1,83 @@
+{
+  "generated": "2026-09-05T07:40:37.330Z",
+  "version": "v2",
+  "rules": [
+    {
+      "ruleId": "effect-tooling-debugging-d8417756",
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md",
+      "sourceHash": "f83e6d56932d7573",
+      "kind": "stub",
+      "label": "Using Promise where Effect should be used"
+    },
+    {
+      "ruleId": "effect-tooling-debugging-d6746d30",
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md",
+      "sourceHash": "f83e6d56932d7573",
+      "kind": "stub",
+      "label": "Throwing errors"
+    },
+    {
+      "ruleId": "effect-tooling-debugging-5030405c",
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-tooling-debugging/references/tooling-and-debugging.md",
+      "sourceHash": "f83e6d56932d7573",
+      "kind": "stub",
+      "label": "Using null/undefined directly"
+    }
+  ],
+  "prosePatternsOnly": [
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Use `process.env` directly (use Config module)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Initialize clients at module level (use Service)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Use raw Promises in business logic (use Effect)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Forget timeouts on external calls",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Return errors via throw (use Effect error channel)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Use Zod (use Effect Schema for consistency)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Skip logging in tools",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Use camelCase for tool names (use snake_case)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    },
+    {
+      "sourceFile": "~/.claude/plugins/cache/effect-primitives/effect-claude-primitives/1.1.0/skills/effect-mcp-server/references/mcp-server.md",
+      "sourceHash": "ee43d5a32f3fc58e",
+      "pattern": "Return malformed ToolResult (missing `content` array)",
+      "note": "prose bullet — no code fence; cannot derive structural rule"
+    }
+  ]
+}

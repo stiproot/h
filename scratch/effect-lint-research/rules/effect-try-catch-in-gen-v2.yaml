@@ -1,0 +1,18 @@
+id: effect-try-catch-in-gen
+language: TypeScript
+message: |
+  A try/catch block inside Effect.gen that fails the effect should use Effect.try instead.
+  Use: yield* Effect.try({ try: () => expr, catch: (e) => new MyError(e) })
+  [Incident 2026-09-05: found in #142, replaced with Effect.try.]
+severity: warning
+rule:
+  pattern: |
+    try {
+      $$$BODY
+    } catch ($ERR) {
+      $$$CATCH_BODY
+      return yield* Effect.fail($$$FAIL_ARGS)
+    }
+  inside:
+    pattern: Effect.gen($$$)
+    stopBy: end
