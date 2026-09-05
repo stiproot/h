@@ -29,7 +29,8 @@ export const WorkflowInvokerLive: Layer.Layer<WorkflowInvoker, never, HttpClient
       const daprBase = `http://localhost:${daprPort}`;
       const client = yield* Effect.acquireRelease(
         Effect.sync(() => new DaprWorkflowClient()),
-        (c) => Effect.promise(() => c.stop()).pipe(Effect.ignore),
+        (c) =>
+          Effect.tryPromise({ try: () => c.stop(), catch: (cause) => cause }).pipe(Effect.ignore),
       );
 
       const asWorkflowError =

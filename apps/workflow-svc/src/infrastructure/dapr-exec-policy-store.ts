@@ -20,7 +20,8 @@ export const ExecPolicyStoreLive: Layer.Layer<ExecPolicyStore> = Layer.scoped(
   Effect.gen(function* () {
     const client = yield* Effect.acquireRelease(
       Effect.sync(() => new DaprClient()),
-      (c) => Effect.promise(() => c.stop()).pipe(Effect.ignore),
+      (c) =>
+        Effect.tryPromise({ try: () => c.stop(), catch: (cause) => cause }).pipe(Effect.ignore),
     );
 
     const tryState = <A>(f: () => Promise<A>): Effect.Effect<A, WorkflowError> =>

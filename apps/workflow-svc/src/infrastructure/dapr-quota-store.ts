@@ -24,7 +24,8 @@ export const QuotaStoreLive: Layer.Layer<QuotaStore> = Layer.scoped(
   Effect.gen(function* () {
     const client = yield* Effect.acquireRelease(
       Effect.sync(() => new DaprClient()),
-      (c) => Effect.promise(() => c.stop()).pipe(Effect.ignore),
+      (c) =>
+        Effect.tryPromise({ try: () => c.stop(), catch: (cause) => cause }).pipe(Effect.ignore),
     );
 
     const tryState = <A>(key: string, f: () => Promise<A>): Effect.Effect<A, WorkflowError> =>

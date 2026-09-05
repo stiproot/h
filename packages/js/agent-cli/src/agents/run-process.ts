@@ -46,7 +46,10 @@ export function runAgentProcessEffect(
     return yield* prepared.cleanup
       ? runInvocation.pipe(
           Effect.ensuring(
-            Effect.promise(() => Promise.resolve(prepared.cleanup!())).pipe(Effect.ignore),
+            Effect.tryPromise({
+              try: () => Promise.resolve(prepared.cleanup!()),
+              catch: (cause) => cause,
+            }).pipe(Effect.ignore),
           ),
         )
       : runInvocation;
